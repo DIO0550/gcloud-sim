@@ -1,0 +1,275 @@
+# =============================================================================
+# PR で「見た目がどう変わったか」を見えるようにする。
+#
+# static export をビルドし、主要な画面を headless Chrome で撮って、main で撮ってある
+# baseline と画素で突き合わせる。変わった画面は 前 / 後 / 差分 の 3 枚を PR コメントに貼る。
+#
+# 置き場は gh-pages ブランチ（本番サイトと同じ）。visual-regression/pr-<番号>/<SHA>/ に
+# レポート（index.html）と画像を置き、GitHub Pages の URL で見比べられるようにする。
+# PR コメントの画像だけは raw.githubusercontent.com を指す。Pages のデプロイが終わる前でも
+# 見えるようにするためで、実体は同じファイル。
+#
+# 差分が出ている間はこのチェックを落とす。壊したのか意図して変えたのかは絵を見ないと
+# 分からないので、既定ではレビューを止め、意図した変更だと確認できたらラベルで通す。
+#
+# 撮る画面は .github/scripts/visual-scenarios.mjs に並べてある。増やすのはあちら。
+# =============================================================================
+name: Visual Regression
+
+on:
+  pull_request:
+    # labeled / unlabeled も受けるのは、意図した差分の承認をラベルでするため。
+    # closed は PR ごとの画像を片付けるために要る。
+    types: [opened, reopened, synchronize, closed, labeled, unlabeled]
+  workflow_dispatch:
+
+# 画像とレポートを置くブランチ（本番サイトと同じ）と、差分を承認するラベル。
+env:
+  PAGES_BRANCH: gh-pages
+  VISUAL_APPROVAL_LABEL: visual-approved
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+  NEXT_TELEMETRY_DISABLED: "1"
+
+permissions:
+  # gh-pages ブランチへレポートと画像を push する。
+  contents: write
+  # コメントとラベルの付け外し。
+  issues: write
+  pull-requests: write
+
+# PR ごとに分ける。新しい push が来たら古い撮影は打ち切ってよい。
+concurrency:
+  group: visual-regression-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  visual:
+    # ラベルの付け外しは承認ラベルのときだけ走らせる（無関係なラベルで撮り直さない）。
+    # fork と dependabot の PR では GITHUB_TOKEN が読み取りだけになり、画像を置けない。
+    #
+    # env.VISUAL_APPROVAL_LABEL ではなく綴りを直接書いているのは、job の if が env を
+    # 読めないため（参照すると常に空文字と比較され、承認しても走らなくなる）。
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.actor != 'dependabot[bot]' &&
+        (
+          (github.event.action != 'labeled' && github.event.action != 'unlabeled') ||
+          github.event.label.name == 'visual-approved'
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # ここは画像を push するので、認証情報を残す（他の workflow は push しないので消している）。
+
+      - name: Setup Node
+        if: github.event.action != 'closed'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Enable corepack
+        if: github.event.action != 'closed'
+        run: corepack enable
+
+      - name: Resolve pnpm store path
+        if: github.event.action != 'closed'
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore pnpm store
+        if: github.event.action != 'closed'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
+
+      - name: Install
+        if: github.event.action != 'closed'
+        run: pnpm install --frozen-lockfile
+
+      # ubuntu のランナーには日本語フォントが無く、そのまま撮ると日本語が豆腐（□）になる。
+      # 豆腐は毎回同じ絵なので差分として現れず、気づかないまま baseline に焼き付く。
+      - name: Install Japanese fonts
+        if: github.event.action != 'closed'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+          fc-cache -f
+
+      - name: Build
+        if: github.event.action != 'closed'
+        run: pnpm build
+
+      - name: Fetch baseline
+        if: github.event.action != 'closed'
+        run: |
+          mkdir -p visual-baseline
+          if git fetch --depth 1 origin "+refs/heads/${PAGES_BRANCH}:refs/remotes/origin/${PAGES_BRANCH}" 2>/dev/null; then
+            if git checkout "origin/${PAGES_BRANCH}" -- visual-baseline 2>/dev/null; then
+              git reset --quiet
+            else
+              echo "baseline がまだ無い（最初の 1 回はすべて新規として出る）"
+            fi
+          else
+            echo "gh-pages がまだ無い（最初の 1 回はすべて新規として出る）"
+          fi
+
+      - name: Capture screens
+        if: github.event.action != 'closed'
+        run: pnpm visual:capture -- --out visual-actual
+
+      # 差分があると 1 で終わる。ここで止めずに、レポートとコメントまで出してから落とす。
+      - name: Compare with baseline
+        if: github.event.action != 'closed'
+        id: compare
+        continue-on-error: true
+        run: >-
+          pnpm visual:compare --
+          --expected visual-baseline
+          --actual visual-actual
+          --out visual-report
+          --report-version ${{ github.event.pull_request.head.sha }}
+          --pr ${{ github.event.pull_request.number }}
+
+      # レポートは PR 番号と head の SHA で分ける。SHA を挟むのは、GitHub がコメントの画像を
+      # URL ごとにキャッシュするため（同じ URL で中身を差し替えると古い絵が出続ける）。
+      - name: Publish report
+        if: always() && github.event_name == 'pull_request'
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          CLOSED: ${{ github.event.action == 'closed' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          published=false
+          for attempt in 1 2 3 4 5; do
+            git worktree remove --force /tmp/pages 2>/dev/null || true
+
+            if git fetch --depth 1 origin "+refs/heads/${PAGES_BRANCH}:refs/remotes/origin/${PAGES_BRANCH}" 2>/dev/null; then
+              git worktree add --detach /tmp/pages "origin/${PAGES_BRANCH}"
+            else
+              git worktree add --detach /tmp/pages
+              git -C /tmp/pages rm -rf --quiet . || true
+            fi
+
+            # この PR の古い撮影ごと捨ててから置き直す（PR あたり最新の 1 回だけ残す）。
+            # 触るのは自分の場所だけで、本番サイトや他の PR には手を出さない。
+            rm -rf "/tmp/pages/visual-regression/pr-${PR}"
+            if [ "$CLOSED" != "true" ] && [ -d visual-report ]; then
+              mkdir -p "/tmp/pages/visual-regression/pr-${PR}/${SHA}"
+              cp -r visual-report/. "/tmp/pages/visual-regression/pr-${PR}/${SHA}/"
+            fi
+            touch /tmp/pages/.nojekyll
+
+            cd /tmp/pages
+            # 履歴は持たない。画像を積むと重くなる一方なので、毎回 1 コミットに作り直す。
+            # 作り直す前に前の試行のブランチを消す（残っていると --orphan が名前で衝突する）。
+            git branch -D pages 2>/dev/null || true
+            git checkout --quiet --orphan pages
+            git add -A
+            git commit --quiet -m "visual report (PR #${PR})" || true
+            if git push --force origin "HEAD:${PAGES_BRANCH}"; then
+              published=true
+              break
+            fi
+            echo "push できなかった（${attempt} 回目）。取り直して再試行する"
+            cd "$GITHUB_WORKSPACE"
+            sleep $((attempt * 3))
+          done
+          cd "$GITHUB_WORKSPACE"
+          [ "$published" = "true" ]
+
+          # 他の run と同時に force push すると、こちらの分が消えることがある。
+          # コメントの画像とレポートが 404 になるので、置けているかを取り直して確かめる。
+          if [ "$CLOSED" != "true" ] && [ -d visual-report ]; then
+            git fetch --depth 1 origin "+refs/heads/${PAGES_BRANCH}:refs/remotes/origin/${PAGES_BRANCH}"
+            git cat-file -e "origin/${PAGES_BRANCH}:visual-regression/pr-${PR}/${SHA}/summary.json" || {
+              echo "レポートが残っていない。もう一度 workflow を回す必要がある"
+              exit 1
+            }
+          fi
+
+      # 差分が出て初めて要るものなので、案内を出す直前にラベルを用意する（あれば何もしない）。
+      - name: Ensure approval label exists
+        if: github.event.action != 'closed' && steps.compare.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create "$VISUAL_APPROVAL_LABEL" \
+            --description "画面の見た目の差分をレビュー済みとして承認する" \
+            --color BFD4F2 \
+            || echo "ラベルは既にある"
+
+      - name: Comment result
+        if: always() && github.event_name == 'pull_request' && github.event.action != 'closed'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          MARKER="<!-- sticky-comment: visual-regression -->"
+          BODY=visual-comment.md
+
+          if [ -f visual-report/summary.json ]; then
+            APPROVED=false
+            if gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/labels" --jq '.[].name' \
+              | grep -Fxq "$VISUAL_APPROVAL_LABEL"; then
+              APPROVED=true
+            fi
+            OWNER="${GITHUB_REPOSITORY%%/*}"
+            REPO="${GITHUB_REPOSITORY#*/}"
+            # 画像は raw を指す（Pages のデプロイを待たずに出る）。
+            IMAGE_BASE="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${PAGES_BRANCH}/visual-regression/pr-${PR}/${SHA}"
+            # 一覧のページは Pages で開く（相対パスで画像を読むので、こちらは Pages 側）。
+            REPORT_URL="https://${OWNER}.github.io/${REPO}/visual-regression/pr-${PR}/${SHA}/"
+            node .github/scripts/visual-regression.mjs comment \
+              --summary visual-report/summary.json \
+              --image-base "$IMAGE_BASE" \
+              --report-url "$REPORT_URL" \
+              --run-url "$RUN_URL" \
+              --label "$VISUAL_APPROVAL_LABEL" \
+              --approved "$APPROVED" > "$BODY"
+          else
+            {
+              echo "$MARKER"
+              echo "## 画面の見た目の差分"
+              echo ""
+              echo "撮影か比較に失敗して、レポートを作れませんでした。"
+              echo ""
+              echo "- [Actions](${RUN_URL})"
+            } > "$BODY"
+          fi
+
+          COMMENT_ID=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
+            --jq "[.[] | select(.body | startswith(\"$MARKER\"))][0].id // empty")
+          if [ -n "$COMMENT_ID" ]; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" --field body=@"$BODY"
+          else
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" --field body=@"$BODY"
+          fi
+
+      # 差分は「壊した」と「意図して変えた」の区別が付かないので、既定では落とす。
+      # ラベルは event の payload ではなく API から読む（撮影中に付けた分も拾うため）。
+      - name: Fail on visual differences
+        if: github.event.action != 'closed' && steps.compare.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -n "$PR" ] && gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/labels" --jq '.[].name' \
+            | grep -Fxq "$VISUAL_APPROVAL_LABEL"; then
+            echo "差分は ${VISUAL_APPROVAL_LABEL} ラベルで承認済みなので通す。"
+            exit 0
+          fi
+          echo "差分が見つかった。意図した変更なら ${VISUAL_APPROVAL_LABEL} ラベルを付けると通る。"
+          exit 1

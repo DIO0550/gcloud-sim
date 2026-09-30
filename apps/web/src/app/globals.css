@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+/* Tailwind v4 の設定は CSS 側に書く（tailwind.config.js は使わない）。
+   トークンを足すときはここへ `@theme { --color-... }` の形で追加する。 */
+
+@theme {
+  /* 面と文字。canvas が下地、surface がカード。 */
+  --color-canvas: #f4f5f7;
+  --color-surface: #ffffff;
+  --color-ink: #16181d;
+  --color-muted: #4a515e;
+
+  /* 罫線。 */
+  --color-line: #e3e6ec;
+
+  /* アクセント（選択中・進行中）。 */
+  --color-accent: #2f5fa8;
+  --color-accent-hover: #27508e;
+  --color-accent-soft: #eef3fb;
+}
+
+:root {
+  /* デザインはライト 1 本。フォームコントロールが OS 設定で暗転しないよう固定する。 */
+  color-scheme: light;
+}

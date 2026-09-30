@@ -1,0 +1,159 @@
+# =============================================================================
+# PR ごとに、そのブランチのサイトを実際に触れる形で出す。
+#
+# https://dio0550.github.io/gcloud-sim/pr-preview/pr-<番号>/ に置き、URL を PR へ貼る。
+# 画像で見る差分（visual-regression.yml）と違い、こちらは手で触って確かめるためのもの。
+#
+# 出し先は deploy-pages.yml と同じ gh-pages ブランチ。main のサイトはルート、PR は
+# pr-preview/pr-<番号>/ に住み分ける。PR を閉じたらそのフォルダごと消す。
+#
+# basePath はビルド時に焼き込まれるので、プレビュー用に NEXT_PUBLIC_BASE_PATH で
+# 差し替えてビルドする（本番と同じ値のままだと、資材の URL が /gcloud-sim/... を指したまま
+# になり、プレビューでは 404 になる）。
+# =============================================================================
+name: PR Preview
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+env:
+  PAGES_BRANCH: gh-pages
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+  NEXT_TELEMETRY_DISABLED: "1"
+
+# PR ごとに分ける。新しい push が来たら古いビルドは打ち切ってよい。
+concurrency:
+  group: pr-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    # fork と dependabot の PR では GITHUB_TOKEN が読み取りだけになり、置き場へ push できない。
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # gh-pages へ push するので認証情報を残す。
+
+      - name: Setup Node
+        if: github.event.action != 'closed'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Enable corepack
+        if: github.event.action != 'closed'
+        run: corepack enable
+
+      - name: Resolve pnpm store path
+        if: github.event.action != 'closed'
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore pnpm store
+        if: github.event.action != 'closed'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
+
+      - name: Install
+        if: github.event.action != 'closed'
+        run: pnpm install --frozen-lockfile
+
+      # プレビューの置き場に合わせた basePath でビルドする。
+      - name: Build for preview
+        if: github.event.action != 'closed'
+        env:
+          NEXT_PUBLIC_BASE_PATH: /gcloud-sim/pr-preview/pr-${{ github.event.pull_request.number }}
+        run: pnpm build
+
+      - name: Publish preview
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          CLOSED: ${{ github.event.action == 'closed' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          published=false
+          for attempt in 1 2 3 4 5; do
+            git worktree remove --force /tmp/pages 2>/dev/null || true
+
+            if git fetch --depth 1 origin "+refs/heads/${PAGES_BRANCH}:refs/remotes/origin/${PAGES_BRANCH}" 2>/dev/null; then
+              git worktree add --detach /tmp/pages "origin/${PAGES_BRANCH}"
+            else
+              git worktree add --detach /tmp/pages
+              git -C /tmp/pages rm -rf --quiet . || true
+            fi
+
+            # この PR のぶんだけ置き換える。main のサイトと他の PR には触らない。
+            rm -rf "/tmp/pages/pr-preview/pr-${PR}"
+            if [ "$CLOSED" != "true" ]; then
+              mkdir -p "/tmp/pages/pr-preview/pr-${PR}"
+              cp -r apps/web/out/. "/tmp/pages/pr-preview/pr-${PR}/"
+            fi
+            # Jekyll に通させない（_next/ が配信されなくなるため）。
+            touch /tmp/pages/.nojekyll
+
+            cd /tmp/pages
+            # 履歴は持たない。サイト 1 回分が 14MB あり、積み上げるとリポジトリが太り続ける。
+            # 作り直す前に前の試行のブランチを消す（残っていると --orphan が名前で衝突する）。
+            git branch -D pages 2>/dev/null || true
+            git checkout --quiet --orphan pages
+            git add -A
+            git commit --quiet -m "preview for PR #${PR}" || true
+            if git push --force origin "HEAD:${PAGES_BRANCH}"; then
+              published=true
+              break
+            fi
+            echo "push できなかった（${attempt} 回目）。取り直して再試行する"
+            cd "$GITHUB_WORKSPACE"
+            sleep $((attempt * 3))
+          done
+          cd "$GITHUB_WORKSPACE"
+          [ "$published" = "true" ]
+
+      - name: Comment preview URL
+        if: github.event.action != 'closed'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          MARKER="<!-- sticky-comment: pr-preview -->"
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          REPO="${GITHUB_REPOSITORY#*/}"
+          URL="https://${OWNER}.github.io/${REPO}/pr-preview/pr-${PR}/"
+          BODY=preview-comment.md
+
+          {
+            echo "$MARKER"
+            echo "## プレビュー"
+            echo ""
+            echo "この PR のサイト: ${URL}"
+            echo ""
+            echo "- 反映まで 1〜数分かかる（Pages のデプロイが終わってから見える）"
+            echo "- localStorage などブラウザに保存したものは、本番とは別の URL なので混ざらない"
+            echo "- コミット: \`${SHA}\`"
+          } > "$BODY"
+
+          COMMENT_ID=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
+            --jq "[.[] | select(.body | startswith(\"$MARKER\"))][0].id // empty")
+          if [ -n "$COMMENT_ID" ]; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}" --field body=@"$BODY"
+          else
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" --field body=@"$BODY"
+          fi

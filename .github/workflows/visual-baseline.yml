@@ -1,0 +1,118 @@
+# =============================================================================
+# main の画面を撮って、visual-regression.yml が比べる相手（baseline）を更新する。
+#
+# PR 側と同じ手順で撮る。撮り方が 1 か所でも違うと、中身が同じでも差分として出るので、
+# ビルド・フォント・撮影コマンドは visual-regression.yml と揃えておく（片方を直したら
+# もう片方も直す）。
+#
+# 置き場は gh-pages ブランチの visual-baseline/。本番サイト（ルート）や PR のプレビューには
+# 触らない。
+# =============================================================================
+name: Visual Baseline
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  PAGES_BRANCH: gh-pages
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+  NEXT_TELEMETRY_DISABLED: "1"
+
+permissions:
+  contents: write
+
+# 撮り直しは重ねない。走行中のものは打ち切らない（途中で止めると baseline が半端になる）。
+concurrency:
+  group: visual-baseline
+  cancel-in-progress: false
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # baseline を push するので認証情報を残す。
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Resolve pnpm store path
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore pnpm store
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # 日本語フォントが無いと豆腐（□）で撮れてしまう。豆腐は差分として現れないので、
+      # baseline に焼き付くと PR 側からは気づけない。
+      - name: Install Japanese fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+          fc-cache -f
+
+      - name: Build
+        run: pnpm build
+
+      - name: Capture screens
+        run: pnpm visual:capture -- --out visual-baseline
+
+      - name: Publish baseline
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          published=false
+          for attempt in 1 2 3 4 5; do
+            git worktree remove --force /tmp/pages 2>/dev/null || true
+
+            if git fetch --depth 1 origin "+refs/heads/${PAGES_BRANCH}:refs/remotes/origin/${PAGES_BRANCH}" 2>/dev/null; then
+              git worktree add --detach /tmp/pages "origin/${PAGES_BRANCH}"
+            else
+              git worktree add --detach /tmp/pages
+              git -C /tmp/pages rm -rf --quiet . || true
+            fi
+
+            # baseline だけ差し替える。本番サイト・PR のプレビュー・PR のレポートは残す。
+            rm -rf /tmp/pages/visual-baseline
+            mkdir -p /tmp/pages/visual-baseline
+            cp -r visual-baseline/. /tmp/pages/visual-baseline/
+            touch /tmp/pages/.nojekyll
+
+            cd /tmp/pages
+            # 履歴は持たない。画像を積むと重くなる一方なので、毎回 1 コミットに作り直す。
+            # 作り直す前に前の試行のブランチを消す（残っていると --orphan が名前で衝突する）。
+            git branch -D pages 2>/dev/null || true
+            git checkout --quiet --orphan pages
+            git add -A
+            git commit --quiet -m "visual baseline (${SHA})" || true
+            if git push --force origin "HEAD:${PAGES_BRANCH}"; then
+              published=true
+              break
+            fi
+            echo "push できなかった（${attempt} 回目）。取り直して再試行する"
+            cd "$GITHUB_WORKSPACE"
+            sleep $((attempt * 3))
+          done
+          cd "$GITHUB_WORKSPACE"
+          [ "$published" = "true" ]
