@@ -19,7 +19,10 @@ export const Header = ({
   onOpenSettings,
 }: HeaderProps): ReactElement => {
   const projectId = Option.unwrapOr(WorldOps.currentProjectId(world), "");
-  const isOwner = world.session.principal === "owner@example.com";
+  const principal = WorldOps.currentPrincipal(world);
+  // 組織の Owner 以外で操作しているときは警告色（UC-004: 権限不足を体験している最中だと分かるように）。
+  const isOwner = Option.isSome(principal) && WorldOps.isOrganizationOwner(world, principal.value);
+  const principalValue = Option.unwrapOr(principal, "");
   return (
     <header className="flex items-center gap-4 border-line border-b bg-surface px-5 py-2.5">
       <h1 className="font-bold font-mono text-lg tracking-tight">gcloud-sim</h1>
@@ -68,10 +71,11 @@ export const Header = ({
           <span className="text-muted">プリンシパル</span>
           <select
             className={`bg-transparent font-mono ${isOwner ? "" : "text-warn-ink"}`}
-            value={world.session.principal}
+            value={principalValue}
             onChange={(event) => onPrincipalChange(event.target.value)}
             aria-label="プリンシパル"
           >
+            {!Option.isSome(principal) && <option value="">(未選択)</option>}
             {world.session.accounts.map((account) => (
               <option key={account} value={account}>
                 {account}

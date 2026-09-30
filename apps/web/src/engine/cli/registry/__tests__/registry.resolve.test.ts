@@ -52,17 +52,17 @@ test("知らないツール名は command not found になる", () => {
 });
 
 test("Tab 補完はコマンド名を前方一致で返す", () => {
-  expect(Engine.complete("gcloud compu")).toEqual(["compute"]);
-  expect(Engine.complete("gcloud compute inst")).toEqual([
+  expect(Engine.completionCandidates("gcloud compu")).toEqual(["compute"]);
+  expect(Engine.completionCandidates("gcloud compute inst")).toEqual([
     "instance-groups",
     "instance-templates",
     "instances",
   ]);
-  expect(Engine.complete("gcloud compute instances ")).toContain("create");
+  expect(Engine.completionCandidates("gcloud compute instances ")).toContain("create");
 });
 
 test("Tab 補完は - で始まる語にフラグ名を返す", () => {
-  expect(Engine.complete("gcloud compute instances create web-1 --mach")).toEqual([
+  expect(Engine.completionCandidates("gcloud compute instances create web-1 --mach")).toEqual([
     "--machine-type",
   ]);
 });

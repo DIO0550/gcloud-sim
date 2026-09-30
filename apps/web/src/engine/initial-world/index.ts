@@ -3,12 +3,14 @@ import {
   Directions,
   type FirewallRule,
   type Network,
+  type ProtocolRule,
   Subnet,
   SubnetModes,
 } from "@/engine/domains/compute";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { IamPolicy } from "@/engine/domains/iam-policy";
 import { MissionProgress } from "@/engine/domains/mission-progress";
+import type { Principal } from "@/engine/domains/principal";
 import { type Folder, type Project, ProjectStates } from "@/engine/domains/resource-hierarchy";
 import type { ServiceAccount } from "@/engine/domains/service-account";
 import type { World } from "@/engine/domains/world";
@@ -23,53 +25,67 @@ export const InitialWorldFixture = {
   devProjectId: "ace-dev-01",
   prodProjectId: "ace-prod-01",
   billingAccountId: "01AB2C-DEF345-6789AB",
-  owner: "owner@example.com",
-  developer: "dev@example.com",
+  owner: "owner@example.com" satisfies Principal,
+  developer: "dev@example.com" satisfies Principal,
   opsGroup: "group:ops@example.com",
   webServiceAccount: "web-sa@ace-dev-01.iam.gserviceaccount.com",
 } as const;
 
+/** 本物の `default` ネットワークに付いてくる 4 つのルールの材料。 */
+type DefaultRuleSeed = Readonly<{
+  name: string;
+  allowed: readonly ProtocolRule[];
+  sourceRanges: readonly string[];
+}>;
+
+const DefaultRuleSeeds: readonly DefaultRuleSeed[] = [
+  {
+    name: "default-allow-internal",
+    allowed: [
+      { protocol: "tcp", ports: ["0-65535"] },
+      { protocol: "udp", ports: ["0-65535"] },
+      { protocol: "icmp", ports: [] },
+    ],
+    sourceRanges: ["10.128.0.0/9"],
+  },
+  {
+    name: "default-allow-ssh",
+    allowed: [{ protocol: "tcp", ports: ["22"] }],
+    sourceRanges: ["0.0.0.0/0"],
+  },
+  {
+    name: "default-allow-rdp",
+    allowed: [{ protocol: "tcp", ports: ["3389"] }],
+    sourceRanges: ["0.0.0.0/0"],
+  },
+  {
+    name: "default-allow-icmp",
+    allowed: [{ protocol: "icmp", ports: [] }],
+    sourceRanges: ["0.0.0.0/0"],
+  },
+];
+
 const defaultNetwork = (
   projectId: string,
-): Readonly<{ network: Network; subnets: readonly Subnet[]; rules: readonly FirewallRule[] }> => {
-  const network: Network = { projectId, name: "default", subnetMode: SubnetModes.Auto };
-  const rule = (
-    name: string,
-    allowed: readonly Readonly<{ protocol: string; ports: readonly string[] }>[],
-    sourceRanges: readonly string[],
-    priority: number,
-  ): FirewallRule => ({
-    projectId,
-    name,
-    network: "default",
-    direction: Directions.Ingress,
-    priority,
-    sourceRanges,
-    targetTags: [],
-    allowed,
-    denied: [],
-    disabled: false,
-  });
-  return {
-    network,
-    subnets: Subnet.autoRange(projectId, "default", Region.all()),
-    rules: [
-      rule(
-        "default-allow-internal",
-        [
-          { protocol: "tcp", ports: ["0-65535"] },
-          { protocol: "udp", ports: ["0-65535"] },
-          { protocol: "icmp", ports: [] },
-        ],
-        ["10.128.0.0/9"],
-        65534,
-      ),
-      rule("default-allow-ssh", [{ protocol: "tcp", ports: ["22"] }], ["0.0.0.0/0"], 65534),
-      rule("default-allow-rdp", [{ protocol: "tcp", ports: ["3389"] }], ["0.0.0.0/0"], 65534),
-      rule("default-allow-icmp", [{ protocol: "icmp", ports: [] }], ["0.0.0.0/0"], 65534),
-    ],
-  };
-};
+): Readonly<{ network: Network; subnets: readonly Subnet[]; rules: readonly FirewallRule[] }> => ({
+  network: { projectId, name: "default", subnetMode: SubnetModes.Auto },
+  subnets: Subnet.autoRange(projectId, "default", Region.all()),
+  rules: DefaultRuleSeeds.map(
+    (seed): FirewallRule => ({
+      projectId,
+      name: seed.name,
+      network: "default",
+      direction: Directions.Ingress,
+      priority: 65534,
+      sourceRanges: seed.sourceRanges,
+      destinationRanges: [],
+      targetTags: [],
+      allowed: seed.allowed,
+      denied: [],
+      disabled: false,
+    }),
+  ),
+});
 
 export const InitialWorld = {
   /**
@@ -141,6 +157,7 @@ export const InitialWorld = {
       {
         email: f.webServiceAccount,
         displayName: "web-sa",
+        description: "",
         projectId: f.devProjectId,
         uniqueId: "100000000000000000001",
       },
@@ -162,15 +179,17 @@ export const InitialWorld = {
       networks: [dev.network, prod.network],
       subnets: [...dev.subnets, ...prod.subnets],
       firewallRules: [...dev.rules, ...prod.rules],
-      snapshots: [],
+      diskSnapshots: [],
       buckets: [],
       clusters: [],
       runServices: [],
       config: GcloudConfig.create({ "core/account": f.owner, "core/project": f.devProjectId }),
-      session: { principal: f.owner, accounts: [f.owner] },
+      session: { accounts: [f.owner] },
       operations: [],
       missions: missionIds.map(MissionProgress.create),
-      sequence: 1,
+      // フォルダ id は 284100000000 + 通し番号で採番する。固定のフォルダ（…001 / …002）と
+      // 衝突しないよう、通し番号は固定値が使う範囲の後ろから始める。
+      sequence: 10,
     };
   },
 } as const;

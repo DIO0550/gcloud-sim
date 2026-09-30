@@ -1,9 +1,31 @@
-import type { Zone } from "@/engine/domains/catalog";
+import {
+  type ApiName,
+  type BucketLocation,
+  DefaultImage,
+  DefaultMachineType,
+  type MachineTypeName,
+  type Region,
+  type StorageClass,
+  Zone,
+} from "@/engine/domains/catalog";
+import {
+  BootDiskTypes,
+  DefaultScopes,
+  ExternalIp,
+  Instance,
+  type InstanceStatus,
+  ProvisioningModels,
+  Subnet,
+  type SubnetMode,
+  SubnetModes,
+} from "@/engine/domains/compute";
 import { EffectivePermissions } from "@/engine/domains/effective-permissions";
-import { GcloudConfig } from "@/engine/domains/gcloud-config";
+import { type ConfigProperty, GcloudConfig } from "@/engine/domains/gcloud-config";
 import { type IamMember, IamPolicy, type RoleName } from "@/engine/domains/iam-policy";
 import { MissionProgress, MissionStatuses } from "@/engine/domains/mission-progress";
+import type { Principal } from "@/engine/domains/principal";
 import type { PolicyTarget } from "@/engine/domains/resource-hierarchy";
+import { ServiceAccount } from "@/engine/domains/service-account";
 import { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { ValueOf } from "@/types/ValueOf";
@@ -20,27 +42,22 @@ export const MissionDomains = {
 } as const;
 export type MissionDomain = ValueOf<typeof MissionDomains>;
 
-/** World に対する述語（DJ-010: コマンド文字列ではなく状態で判定する）。 */
+/** World に対する述語（DJ-010: コマンド文字列ではなく状態で判定する）。値の語彙はドメインの型で閉じる。 */
 export type MissionAssertion =
   | Readonly<{ kind: "billingLinked"; projectId: string }>
-  | Readonly<{ kind: "apiEnabled"; projectId: string; api: string }>
+  | Readonly<{ kind: "apiEnabled"; projectId: string; api: ApiName }>
   | Readonly<{
       kind: "configurationProperty";
       configuration: string;
-      property: "core/project" | "compute/zone" | "compute/region";
+      property: ConfigProperty;
       value: string;
     }>
-  | Readonly<{
-      kind: "networkExists";
-      projectId: string;
-      name: string;
-      subnetMode: "AUTO" | "CUSTOM";
-    }>
+  | Readonly<{ kind: "networkExists"; projectId: string; name: string; subnetMode: SubnetMode }>
   | Readonly<{
       kind: "subnetExists";
       projectId: string;
       name: string;
-      region: string;
+      region: Region;
       ipCidrRange: string;
     }>
   | Readonly<{ kind: "serviceAccountExists"; projectId: string; accountId: string }>
@@ -51,9 +68,9 @@ export type MissionAssertion =
       projectId: string;
       name: string;
       zone: Zone;
-      machineType: Option<string>;
+      machineType: Option<MachineTypeName>;
       tags: readonly string[];
-      status: Option<"RUNNING" | "TERMINATED" | "SUSPENDED">;
+      status: Option<InstanceStatus>;
     }>
   | Readonly<{
       kind: "firewallRuleExists";
@@ -62,20 +79,25 @@ export type MissionAssertion =
       allow: string;
       targetTag: string;
     }>
-  | Readonly<{ kind: "bucketExists"; name: string; location: string; storageClass: string }>
+  | Readonly<{
+      kind: "bucketExists";
+      name: string;
+      location: BucketLocation;
+      storageClass: StorageClass;
+    }>
   | Readonly<{
       kind: "clusterExists";
       projectId: string;
       name: string;
       autopilot: boolean;
-      location: string;
+      location: Zone | Region;
     }>
   | Readonly<{ kind: "snapshotExists"; projectId: string; name: string }>
   | Readonly<{
       kind: "runServiceExists";
       projectId: string;
       name: string;
-      region: string;
+      region: Region;
       allowUnauthenticated: boolean;
     }>
   | Readonly<{
@@ -87,7 +109,7 @@ export type MissionAssertion =
 
 /** ミッション開始時に World へ当てる変更（設計書 6.2 Mission.setup）。 */
 export type WorldPatch =
-  | Readonly<{ kind: "setPrincipal"; principal: string }>
+  | Readonly<{ kind: "setPrincipal"; principal: Principal }>
   | Readonly<{ kind: "setProject"; projectId: string }>
   | Readonly<{ kind: "removeBinding"; target: PolicyTarget; role: RoleName; member: IamMember }>
   | Readonly<{ kind: "ensureInstance"; projectId: string; name: string; zone: Zone }>;
@@ -165,7 +187,12 @@ const Missions: readonly Mission[] = [
     ],
     setup: [{ kind: "setProject", projectId: F.devProjectId }],
     assertions: [
-      { kind: "networkExists", projectId: F.devProjectId, name: "vpc-app", subnetMode: "CUSTOM" },
+      {
+        kind: "networkExists",
+        projectId: F.devProjectId,
+        name: "vpc-app",
+        subnetMode: SubnetModes.Custom,
+      },
       {
         kind: "subnetExists",
         projectId: F.devProjectId,
@@ -193,7 +220,7 @@ const Missions: readonly Mission[] = [
         kind: "bindingExists",
         target: devProject,
         role: "roles/storage.objectAdmin",
-        member: `serviceAccount:batch-sa@${F.devProjectId}.iam.gserviceaccount.com`,
+        member: `serviceAccount:${ServiceAccount.email("batch-sa", F.devProjectId)}`,
       },
     ],
   },
@@ -388,23 +415,23 @@ const Missions: readonly Mission[] = [
   },
 ];
 
+const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: IamMember) => {
+  const policy = World.findPolicy(world, target);
+  return Option.isSome(policy) && IamPolicy.hasBinding(policy.value, role, member);
+};
+
 const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
     case "billingLinked": {
       const project = World.findProject(world, assertion.projectId);
       return Option.isSome(project) && Option.isSome(project.value.billingAccountId);
     }
-    case "apiEnabled": {
-      const project = World.findProject(world, assertion.projectId);
-      return (
-        Option.isSome(project) && project.value.enabledApis.some((api) => api === assertion.api)
-      );
+    case "apiEnabled":
+      return World.hasApi(world, assertion.projectId, assertion.api);
+    case "configurationProperty": {
+      const values = GcloudConfig.valuesOf(world.config, assertion.configuration);
+      return Option.isSome(values) && values.value[assertion.property] === assertion.value;
     }
-    case "configurationProperty":
-      return (
-        world.config.configurations[assertion.configuration]?.[assertion.property] ===
-        assertion.value
-      );
     case "networkExists": {
       const network = World.findNetwork(world, assertion.projectId, assertion.name);
       return Option.isSome(network) && network.value.subnetMode === assertion.subnetMode;
@@ -417,23 +444,16 @@ const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
       return Option.isSome(
         World.findServiceAccount(
           world,
-          `${assertion.accountId}@${assertion.projectId}.iam.gserviceaccount.com`,
+          ServiceAccount.email(assertion.accountId, assertion.projectId),
         ),
       );
-    case "bindingExists": {
-      const policy = World.policyOf(world, assertion.target);
+    case "bindingExists":
+      return hasBinding(world, assertion.target, assertion.role, assertion.member);
+    case "bindingAbsent":
       return (
-        Option.isSome(policy) &&
-        IamPolicy.hasBinding(policy.value, assertion.role, assertion.member)
+        Option.isSome(World.findPolicy(world, assertion.target)) &&
+        !hasBinding(world, assertion.target, assertion.role, assertion.member)
       );
-    }
-    case "bindingAbsent": {
-      const policy = World.policyOf(world, assertion.target);
-      return (
-        Option.isSome(policy) &&
-        !IamPolicy.hasBinding(policy.value, assertion.role, assertion.member)
-      );
-    }
     case "instanceExists": {
       const instance = World.findInstance(
         world,
@@ -476,7 +496,9 @@ const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
       );
     }
     case "snapshotExists":
-      return World.snapshotsOf(world, assertion.projectId).some((s) => s.name === assertion.name);
+      return World.diskSnapshotsOf(world, assertion.projectId).some(
+        (s) => s.name === assertion.name,
+      );
     case "runServiceExists": {
       const service = World.findRunService(world, assertion.projectId, assertion.name);
       return (
@@ -490,9 +512,53 @@ const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
         type: "project",
         id: assertion.projectId,
       });
-      return effective.permissions.has(assertion.permission);
+      return EffectivePermissions.allows(effective, assertion.permission);
     }
   }
+};
+
+/**
+ * `ensureInstance` が作る VM。マシンタイプ・イメージ・ディスク・スコープはコマンドの既定値と同じ。
+ * 外部 IP は付けない（ミッションには要らず、採番はコマンド層の関心事）。
+ */
+const ensureInstance = (
+  world: World,
+  patch: Extract<WorldPatch, { kind: "ensureInstance" }>,
+): Result<World, string> => {
+  if (Option.isSome(World.findInstance(world, patch.projectId, patch.zone, patch.name)))
+    return Result.ok(world);
+  const project = World.findProject(world, patch.projectId);
+  if (!Option.isSome(project)) return Result.err(`project ${patch.projectId} does not exist`);
+  const subnet = World.findSubnet(world, patch.projectId, Zone.region(patch.zone), "default");
+  if (!Option.isSome(subnet)) return Result.err(`no default subnet for ${patch.zone}`);
+  const numbered = World.nextNumber(world);
+  const instance = Instance.create({
+    projectId: patch.projectId,
+    name: patch.name,
+    zone: patch.zone,
+    machineType: DefaultMachineType,
+    networkInterface: {
+      network: "default",
+      subnetwork: "default",
+      networkIP: Subnet.hostAddress(subnet.value, numbered.number),
+      externalIP: ExternalIp.None,
+    },
+    image: DefaultImage,
+    bootDisk: { sizeGb: 10, type: BootDiskTypes.Balanced },
+    tags: [],
+    serviceAccount: ServiceAccount.defaultComputeEmail(project.value.projectNumber),
+    scopes: DefaultScopes,
+    preemptible: false,
+    provisioningModel: ProvisioningModels.Standard,
+    metadata: {},
+    creationTimestamp: "2026-01-01T00:00:00.000Z",
+    sequence: numbered.number,
+  });
+  if (!Result.isOk(instance)) return instance;
+  return Result.mapErr(
+    World.withInstance(numbered.world, instance.value),
+    (e) => `instance ${e.resource} already exists`,
+  );
 };
 
 const applyPatch = (world: World, patch: WorldPatch): Result<World, string> => {
@@ -504,60 +570,19 @@ const applyPatch = (world: World, patch: WorldPatch): Result<World, string> => {
         World.withConfig(world, GcloudConfig.set(world.config, "core/project", patch.projectId)),
       );
     case "removeBinding": {
-      const policy = World.policyOf(world, patch.target);
+      const policy = World.findPolicy(world, patch.target);
       if (!Option.isSome(policy))
         return Result.err(`target ${patch.target.type}/${patch.target.id} does not exist`);
       const removed = IamPolicy.removeBinding(policy.value, patch.role, patch.member);
       if (!Option.isSome(removed)) return Result.ok(world);
-      const next = World.withPolicy(world, patch.target, removed.value);
-      return Option.isSome(next)
-        ? Result.ok(next.value)
-        : Result.err("removing the binding would violate an invariant");
-    }
-    case "ensureInstance": {
-      if (Option.isSome(World.findInstance(world, patch.projectId, patch.zone, patch.name)))
-        return Result.ok(world);
-      const project = World.findProject(world, patch.projectId);
-      if (!Option.isSome(project)) return Result.err(`project ${patch.projectId} does not exist`);
-      const subnet = World.subnetsOf(world, patch.projectId).find(
-        (s) => s.network === "default" && patch.zone.startsWith(s.region),
+      return Result.mapErr(World.withPolicy(world, patch.target, removed.value), (rejected) =>
+        rejected.kind === "last-owner"
+          ? "removing the binding would leave the organization without an owner"
+          : `target ${rejected.target.type}/${rejected.target.id} does not exist`,
       );
-      if (subnet === undefined) return Result.err(`no default subnet for ${patch.zone}`);
-      const numbered = World.nextNumber(world);
-      const added = World.withInstance(numbered.world, {
-        projectId: patch.projectId,
-        name: patch.name,
-        zone: patch.zone,
-        machineType: "e2-medium",
-        status: "RUNNING",
-        networkInterfaces: [
-          {
-            network: "default",
-            subnetwork: "default",
-            networkIP: "10.146.0.3",
-            externalIP: { kind: "none" },
-          },
-        ],
-        disks: [
-          {
-            deviceName: patch.name,
-            boot: true,
-            sizeGb: 10,
-            type: "pd-balanced",
-            sourceImage: "projects/debian-cloud/global/images/debian-12-bookworm-v20260901",
-          },
-        ],
-        tags: [],
-        serviceAccount: `${project.value.projectNumber}-compute@developer.gserviceaccount.com`,
-        scopes: [],
-        preemptible: false,
-        provisioningModel: "STANDARD",
-        metadata: {},
-        creationTimestamp: "2026-01-01T00:00:00.000Z",
-        id: String(4812000000000000000n + BigInt(numbered.number)),
-      });
-      return Result.mapErr(added, (e) => `instance ${e.resource} already exists`);
     }
+    case "ensureInstance":
+      return ensureInstance(world, patch);
   }
 };
 
@@ -589,10 +614,10 @@ export const Mission = {
       Result.mapErr(validated, (reason) => ({ missionId: mission.id, reason })),
       (w) => {
         const progress = Option.unwrapOr(
-          World.findMission(w, mission.id),
+          World.findMissionProgress(w, mission.id),
           MissionProgress.create(mission.id),
         );
-        return World.replaceMission(w, MissionProgress.start(progress));
+        return World.replaceMissionProgress(w, MissionProgress.start(progress));
       },
     );
   },
@@ -605,16 +630,16 @@ export const Mission = {
    * @returns `available` に戻した World。進行中でなければ変えない
    */
   abandon(world: World, id: string): World {
-    const progress = World.findMission(world, id);
+    const progress = World.findMissionProgress(world, id);
     return Option.isSome(progress)
-      ? World.replaceMission(world, MissionProgress.abandon(progress.value))
+      ? World.replaceMissionProgress(world, MissionProgress.abandon(progress.value))
       : world;
   },
 
   revealHint(world: World, mission: Mission): World {
-    const progress = World.findMission(world, mission.id);
+    const progress = World.findMissionProgress(world, mission.id);
     return Option.isSome(progress)
-      ? World.replaceMission(
+      ? World.replaceMissionProgress(
           world,
           MissionProgress.revealHint(progress.value, mission.hints.length),
         )
@@ -636,7 +661,7 @@ export const Mission = {
           mission.value.assertions.every((a) => isSatisfied(acc.world, a));
         if (!cleared || !Option.isSome(mission)) return acc;
         return {
-          world: World.replaceMission(acc.world, MissionProgress.complete(progress)),
+          world: World.replaceMissionProgress(acc.world, MissionProgress.complete(progress)),
           completed: [...acc.completed, mission.value],
         };
       },
@@ -651,11 +676,9 @@ export const Mission = {
    * @param mission 見るミッション
    * @returns アサーションごとの真偽（定義と同じ並び）
    */
-  progressOf(world: World, mission: Mission): readonly boolean[] {
+  assertionResults(world: World, mission: Mission): readonly boolean[] {
     return mission.assertions.map((a) => isSatisfied(world, a));
   },
-
-  isSatisfied,
 
   /** 進捗が無い id を `available` で足し、定義に無い id を落とす（import と定義の追加で揃える）。 */
   syncProgress(world: World): World {
@@ -667,7 +690,7 @@ export const Mission = {
     return { ...world, missions: [...kept, ...missing] };
   },
 
-  /** 進行中・完了の件数。ヘッダーの「ミッション 2/3」表示に使う。 */
+  /** 完了した件数と定義の総数。ヘッダーの「ミッション 2/11」表示に使う。 */
   counts(world: World): Readonly<{ completed: number; total: number }> {
     return {
       completed: world.missions.filter((m) => m.status === MissionStatuses.Completed).length,

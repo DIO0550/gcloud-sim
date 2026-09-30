@@ -63,8 +63,22 @@ export const GcloudConfig = {
     return { configurations: { default: values }, activeConfiguration: "default" };
   },
 
+  /**
+   * 名前を指定して configuration の中身を読む。
+   *
+   * @param config 設定
+   * @param name configuration の名前
+   * @returns あればその中身。無ければ `none`
+   */
+  valuesOf(config: GcloudConfig, name: string): Option<ConfigValues> {
+    return GcloudConfig.hasConfiguration(config, name)
+      ? Option.fromNullable(config.configurations[name])
+      : Option.none;
+  },
+
+  /** アクティブな configuration の中身。無いことは `World.validate` が弾いている。 */
   active(config: GcloudConfig): ConfigValues {
-    return config.configurations[config.activeConfiguration] ?? {};
+    return Option.unwrapOr(GcloudConfig.valuesOf(config, config.activeConfiguration), {});
   },
 
   /**
@@ -97,8 +111,9 @@ export const GcloudConfig = {
     };
   },
 
+  /** `in` だとプロトタイプの `toString` 等も「ある」になるので、自前のキーだけを見る。 */
   hasConfiguration(config: GcloudConfig, name: string): boolean {
-    return name in config.configurations;
+    return Object.hasOwn(config.configurations, name);
   },
 
   /**

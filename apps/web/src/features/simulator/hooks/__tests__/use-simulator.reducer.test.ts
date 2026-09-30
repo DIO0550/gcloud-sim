@@ -7,11 +7,13 @@ import {
   initialSimulatorState,
   type SimulatorState,
   simulatorReducer,
+  TranscriptLimit,
 } from "@/features/simulator/hooks/use-simulator";
 import { Option } from "@/utils/Option";
 
 const Now = "2026-09-30T14:02:31.000Z";
-const start = (): SimulatorState => initialSimulatorState(Engine.initialWorld(Now));
+const start = (): SimulatorState =>
+  initialSimulatorState({ world: Engine.initialWorld(Now), warning: Option.none });
 const submit = (state: SimulatorState, line: string, origin: "cli" | "ui" = "cli") =>
   simulatorReducer(state, { type: "submitted", line, now: Now, origin });
 
@@ -36,9 +38,9 @@ test("UI 由来の実行は出力が muted になる", () => {
   expect(s.transcript[1]).toMatchObject({ kind: "output", origin: "ui", tone: "muted" });
 });
 
-test("clear で clearEpoch が進む", () => {
+test("clear で screenClearCount が進む", () => {
   const s = submit(start(), "clear");
-  expect(s.clearEpoch).toBe(1);
+  expect(s.screenClearCount).toBe(1);
 });
 
 test("確認プロンプトの状態は次の行で消費される", () => {
@@ -60,15 +62,48 @@ test("ツリーの選択でプロパティタブに切り替わる", () => {
   expect(s.selection).toEqual(Option.some({ kind: "project", projectId: "ace-dev-01" }));
 });
 
-test("挿入要求は同じ文字列でも seq が進む", () => {
-  const once = simulatorReducer(start(), { type: "insertRequested", text: "gcloud projects list" });
-  const twice = simulatorReducer(once, { type: "insertRequested", text: "gcloud projects list" });
-  expect(Option.unwrap(twice.pendingInsert).seq).toBe(2);
+test("挿入要求は端末が取り込むまで残り、取り込むと消える", () => {
+  const requested = simulatorReducer(start(), {
+    type: "insertRequested",
+    text: "gcloud projects list",
+  });
+  expect(requested.pendingInsert).toEqual(Option.some("gcloud projects list"));
+  expect(simulatorReducer(requested, { type: "insertConsumed" }).pendingInsert).toEqual(
+    Option.none,
+  );
+});
+
+test("起動時の注意は transcript の先頭に警告として入る", () => {
+  const s = initialSimulatorState({
+    world: Engine.initialWorld(Now),
+    warning: Option.some("gcloud-sim: warning: 保存を読めませんでした"),
+  });
+  expect(s.transcript).toEqual([
+    {
+      id: 1,
+      kind: "output",
+      origin: "ui",
+      tone: "warning",
+      text: "gcloud-sim: warning: 保存を読めませんでした",
+    },
+  ]);
+});
+
+test("transcript は上限を超えると古い行から捨て、id は増え続ける", () => {
+  const many = Array.from(
+    { length: TranscriptLimit + 1 },
+    () => "gcloud config get project",
+  ).reduce((state, line) => submit(state, line), start());
+  expect(many.transcript).toHaveLength(TranscriptLimit);
+  expect(many.transcript[0]?.id).toBe(2 * (TranscriptLimit + 1) - TranscriptLimit + 1);
+  expect(many.transcript.at(-1)?.id).toBe(2 * (TranscriptLimit + 1));
 });
 
 test("ミッションを開始すると in_progress になり開始のメッセージが出る", () => {
   const s = simulatorReducer(start(), { type: "missionStarted", id: "m-setup-001" });
-  expect(Option.unwrap(World.findMission(s.world, "m-setup-001")).status).toBe("in_progress");
+  expect(Option.unwrap(World.findMissionProgress(s.world, "m-setup-001")).status).toBe(
+    "in_progress",
+  );
   expect(s.transcript.at(-1)?.text).toContain("ミッション開始");
 });
 
@@ -118,10 +153,20 @@ test("import の失敗は importError に入り、設定を閉じると消える
   );
 });
 
-test("保存に失敗すると黄色の警告が transcript に出る", () => {
-  const s = simulatorReducer(start(), { type: "persistFailed", reason: "QuotaExceededError" });
-  expect(s.transcript.at(-1)).toMatchObject({
+test("保存に失敗すると黄色の警告が transcript に出て、同じ理由では 1 回だけ出る", () => {
+  const once = simulatorReducer(start(), { type: "saveFailed", reason: "QuotaExceededError" });
+  expect(once.transcript.at(-1)).toMatchObject({
     tone: "warning",
     text: expect.stringContaining("failed to persist state"),
   });
+  expect(once.saveState).toEqual({ kind: "failed", reason: "QuotaExceededError" });
+  const twice = simulatorReducer(once, { type: "saveFailed", reason: "QuotaExceededError" });
+  expect(twice.transcript).toHaveLength(once.transcript.length);
+  const other = simulatorReducer(twice, { type: "saveFailed", reason: "SecurityError" });
+  expect(other.transcript).toHaveLength(once.transcript.length + 1);
+  expect(other.transcript.at(-1)?.text).toContain("SecurityError");
+  const saved = simulatorReducer(other, { type: "saved", bytes: 1024 });
+  expect(saved.saveState).toEqual({ kind: "saved", bytes: 1024 });
+  const again = simulatorReducer(saved, { type: "saveFailed", reason: "SecurityError" });
+  expect(again.transcript).toHaveLength(other.transcript.length + 1);
 });

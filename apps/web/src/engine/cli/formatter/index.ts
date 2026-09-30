@@ -1,4 +1,4 @@
-import { CommandFailure } from "@/engine/cli/command-error";
+import { CommandFailure } from "@/engine/cli/command-failure";
 import type { Column, JsonRecord, JsonValue } from "@/engine/cli/command-spec";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -21,7 +21,8 @@ const splitPaths = (inner: string): readonly string[] =>
 export const OutputFormat = {
   /**
    * `--format` の綴りを解釈する。対応するのは `json` / `yaml` / `value(a,b)` / `table(a,b)` /
-   * `none` / `text`（yaml と同じ扱い）。projection / transform 構文は対応しない。
+   * `none`。`text` / `flattened` / `csv` と projection / transform 構文は対応しない（E-003 に
+   * する。yaml に寄せると本物と違う出力を学んでしまう）。
    *
    * @param value `--format` の値。無ければ既定
    * @returns 解釈した形式。未対応なら E-003
@@ -30,9 +31,9 @@ export const OutputFormat = {
     if (!Option.isSome(value)) return Result.ok({ kind: "default" });
     const raw = value.value.trim();
     if (raw === "json") return Result.ok({ kind: "json" });
-    if (raw === "yaml" || raw === "text" || raw === "flattened") return Result.ok({ kind: "yaml" });
+    if (raw === "yaml") return Result.ok({ kind: "yaml" });
     if (raw === "none") return Result.ok({ kind: "none" });
-    const call = /^(value|table|csv)\((.*)\)$/.exec(raw);
+    const call = /^(value|table)\((.*)\)$/.exec(raw);
     if (call !== null) {
       const [, name, inner] = call;
       const paths = splitPaths(inner ?? "");
@@ -92,6 +93,8 @@ const columnValue = (record: JsonRecord, column: Column): string => {
       return cell(basename(raw));
     case "join":
       return Array.isArray(raw) ? raw.map(cell).join(",") : cell(raw);
+    case "flag":
+      return raw === true ? "true" : "";
   }
 };
 

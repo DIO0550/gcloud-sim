@@ -1,36 +1,33 @@
-import { CommandFailure } from "@/engine/cli/command-error";
+import { CommandFailure } from "@/engine/cli/command-failure";
 import {
   type CommandContext,
   CommandOutput,
   type CommandResult,
   type CommandSpec,
   Flag,
-  type FlagSpec,
   OutputMessage,
   ParsedArgs,
   Positional,
   type ProjectContext,
 } from "@/engine/cli/command-spec";
-import { alreadyExists, iamBindingCommands } from "@/engine/commands/shared";
+import { alreadyExists, iamBindingCommands, projectCommand } from "@/engine/commands/shared";
 import { BucketLocation, StorageClass } from "@/engine/domains/catalog";
 import { IamPolicy } from "@/engine/domains/iam-policy";
 import type { PolicyTarget } from "@/engine/domains/resource-hierarchy";
-import { Bucket, BucketName, GsUrl, type StorageObject } from "@/engine/domains/storage";
+import { Bucket, GsUrl, type StorageObject } from "@/engine/domains/storage";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
-const bucketUrlArg = (args: ParsedArgs, index = 0): Result<GsUrl, CommandFailure> =>
-  Result.mapErr(GsUrl.parse(Option.unwrapOr(ParsedArgs.positional(args, index), "")), (m) =>
+const bucketUrlArg = (args: ParsedArgs): Result<GsUrl, CommandFailure> =>
+  Result.mapErr(GsUrl.parse(Option.unwrapOr(ParsedArgs.positional(args, 0), "")), (m) =>
     CommandFailure.invalidValue("URL", m),
   );
 
-const requireBucket = (ctx: CommandContext, name: string): Result<Bucket, CommandFailure> => {
-  const bucket = World.findBucket(ctx.world, name);
-  return Option.isSome(bucket)
-    ? Result.ok(bucket.value)
-    : Result.err(CommandFailure.notFoundMessage(`gs://${name} bucket does not exist.`));
-};
+const requireBucket = (ctx: CommandContext, name: string): Result<Bucket, CommandFailure> =>
+  Option.toResult(World.findBucket(ctx.world, name), () =>
+    CommandFailure.notFoundWith(`gs://${name} bucket does not exist.`),
+  );
 
 const bucketTarget = (
   ctx: CommandContext,
@@ -40,47 +37,55 @@ const bucketTarget = (
     Result.map(requireBucket(ctx, url.bucket), (b) => ({ type: "bucket", id: b.name })),
   );
 
+/** `buckets create` と `gsutil mb` でフラグの綴りが違う分を吸収する。 */
+type CreateBucketFlags = Readonly<{
+  location: string;
+  storageClass: string;
+  uniformAccess: (args: ParsedArgs) => Result<boolean, CommandFailure>;
+}>;
+
 const createBucket = (
   ctx: ProjectContext,
   args: ParsedArgs,
-  flags: Readonly<{ location: string; storageClass: string }>,
+  flags: CreateBucketFlags,
 ): CommandResult => {
   const url = bucketUrlArg(args);
   if (!Result.isOk(url)) return url;
-  const name = Result.mapErr(BucketName.parse(url.value.bucket), (m) =>
-    CommandFailure.invalidValue("URL", m),
-  );
-  if (!Result.isOk(name)) return name;
   const rawLocation = Option.unwrapOr(ParsedArgs.string(args, flags.location), "US");
-  const location = BucketLocation.parse(rawLocation);
-  if (!Option.isSome(location))
-    return Result.err(
-      CommandFailure.invalidValue(
-        `--${flags.location}`,
-        `The specified location constraint is not valid: ${rawLocation}`,
-      ),
-    );
+  const location = Option.toResult(BucketLocation.parse(rawLocation), () =>
+    CommandFailure.invalidValue(
+      `--${flags.location}`,
+      `The specified location constraint is not valid: ${rawLocation}`,
+    ),
+  );
+  if (!Result.isOk(location)) return location;
   const rawClass = Option.unwrapOr(ParsedArgs.string(args, flags.storageClass), "STANDARD");
-  const storageClass = StorageClass.parse(rawClass);
-  if (!Option.isSome(storageClass))
-    return Result.err(
-      CommandFailure.invalidValue(`--${flags.storageClass}`, `Invalid storage class: ${rawClass}`),
-    );
-  const bucket: Bucket = {
-    projectId: ctx.project.projectId,
-    name: name.value,
-    location: location.value,
-    storageClass: storageClass.value,
-    uniformBucketLevelAccess: ParsedArgs.boolean(args, "uniform-bucket-level-access"),
-    publicAccessPrevention: ParsedArgs.boolean(args, "public-access-prevention"),
-    iamPolicy: IamPolicy.Empty,
-    objects: [],
-    timeCreated: ctx.now,
-  };
-  return Result.map(Result.mapErr(World.withBucket(ctx.world, bucket), alreadyExists), (world) => ({
-    world,
-    output: CommandOutput.messages(OutputMessage.plain(`Creating gs://${bucket.name}/...`)),
-  }));
+  const storageClass = Option.toResult(StorageClass.parse(rawClass), () =>
+    CommandFailure.invalidValue(`--${flags.storageClass}`, `Invalid storage class: ${rawClass}`),
+  );
+  if (!Result.isOk(storageClass)) return storageClass;
+  const uniformAccess = flags.uniformAccess(args);
+  if (!Result.isOk(uniformAccess)) return uniformAccess;
+  const bucket = Result.mapErr(
+    Bucket.create({
+      projectId: ctx.project.projectId,
+      name: url.value.bucket,
+      location: location.value,
+      storageClass: storageClass.value,
+      uniformBucketLevelAccess: uniformAccess.value,
+      publicAccessPrevention: ParsedArgs.boolean(args, "public-access-prevention"),
+      timeCreated: ctx.now,
+    }),
+    (m) => CommandFailure.invalidValue("URL", m),
+  );
+  if (!Result.isOk(bucket)) return bucket;
+  return Result.map(
+    Result.mapErr(World.withBucket(ctx.world, bucket.value), alreadyExists),
+    (world) => ({
+      world,
+      output: CommandOutput.messages(OutputMessage.plain(`Creating gs://${bucket.value.name}/...`)),
+    }),
+  );
 };
 
 const listUrl = (ctx: ProjectContext, target: Option<GsUrl>, long: boolean): CommandResult => {
@@ -111,6 +116,13 @@ const listUrl = (ctx: ProjectContext, target: Option<GsUrl>, long: boolean): Com
   return Result.ok({ world: ctx.world, output: CommandOutput.messages(...lines, ...total) });
 };
 
+const listRun = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+  const raw = ParsedArgs.positional(args, 0);
+  const long = ParsedArgs.boolean(args, "long");
+  if (!Option.isSome(raw)) return listUrl(ctx, Option.none, long);
+  return Result.flatMap(bucketUrlArg(args), (url) => listUrl(ctx, Option.some(url), long));
+};
+
 const objectFromLocal = (path: string, now: string): StorageObject => ({
   name:
     path
@@ -139,16 +151,15 @@ const copy = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
     );
   }
   const sourceObject: Result<StorageObject, CommandFailure> = Result.isOk(sourceUrl)
-    ? Result.flatMap(requireBucket(ctx, sourceUrl.value.bucket), (bucket) => {
-        const object = bucket.objects.find((o) => o.name === sourceUrl.value.object);
-        return object === undefined
-          ? Result.err(
-              CommandFailure.notFoundMessage(
-                `The following URLs matched no objects or files:\n-${source}`,
-              ),
-            )
-          : Result.ok(object);
-      })
+    ? Result.flatMap(requireBucket(ctx, sourceUrl.value.bucket), (bucket) =>
+        Option.toResult(
+          Option.fromNullable(bucket.objects.find((o) => o.name === sourceUrl.value.object)),
+          () =>
+            CommandFailure.notFoundWith(
+              `The following URLs matched no objects or files:\n-${source}`,
+            ),
+        ),
+      )
     : Result.ok(objectFromLocal(source, ctx.now));
   if (!Result.isOk(sourceObject)) return sourceObject;
   if (!Result.isOk(destinationUrl)) {
@@ -178,12 +189,12 @@ const copy = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   });
 };
 
-const remove = (ctx: ProjectContext, args: ParsedArgs, recursiveFlag: string): CommandResult => {
+const remove = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   const url = bucketUrlArg(args);
   if (!Result.isOk(url)) return url;
   const bucket = requireBucket(ctx, url.value.bucket);
   if (!Result.isOk(bucket)) return bucket;
-  const recursive = ParsedArgs.boolean(args, recursiveFlag);
+  const recursive = ParsedArgs.boolean(args, "recursive");
   const wantsBucket = url.value.object === "";
   if (wantsBucket) {
     if (!recursive && bucket.value.objects.length > 0) {
@@ -208,7 +219,7 @@ const remove = (ctx: ProjectContext, args: ParsedArgs, recursiveFlag: string): C
   );
   if (targets.length === 0) {
     return Result.err(
-      CommandFailure.notFoundMessage(
+      CommandFailure.notFoundWith(
         `The following URLs matched no objects or files:\n-gs://${bucket.value.name}/${url.value.object}`,
       ),
     );
@@ -222,223 +233,206 @@ const remove = (ctx: ProjectContext, args: ParsedArgs, recursiveFlag: string): C
   });
 };
 
-const projectSpec = (
-  path: readonly string[],
-  summary: string,
-  positionals: readonly ReturnType<typeof Positional.required>[],
-  flags: readonly FlagSpec[],
-  permission: string,
-  run: (ctx: ProjectContext, args: ParsedArgs) => CommandResult,
-  destructive = false,
-): CommandSpec => ({
-  kind: "project",
-  path,
-  summary,
-  positionals,
-  flags,
-  destructive,
-  requiredPermissions: [permission],
-  requiredApis: [],
-  run,
-});
+const PublicAccessPreventionFlag = Flag.boolean(
+  "public-access-prevention",
+  "Sets public access prevention to enforced.",
+);
 
-const CreateFlags = [
-  Flag.boolean("uniform-bucket-level-access", "Turns on uniform bucket-level access setting."),
-  Flag.boolean("public-access-prevention", "Sets public access prevention to enforced."),
+const UrlPositional = Positional.required("URL", "The URL of the bucket (gs://BUCKET).");
+const ObjectUrlPositional = Positional.required(
+  "URL",
+  "The gs:// URL of the object or bucket to delete.",
+);
+const ListPositional = Positional.optional(
+  "URL",
+  "The URL to list (gs://BUCKET[/PREFIX]). Lists buckets when omitted.",
+);
+const CopyPositionals = [
+  Positional.required("SOURCE", "The source path or gs:// URL."),
+  Positional.required("DESTINATION", "The destination path or gs:// URL."),
 ];
 
 export const StorageCommands: readonly CommandSpec[] = [
-  projectSpec(
-    ["gcloud", "storage", "buckets", "create"],
-    "Create Cloud Storage buckets.",
-    [Positional.required("URL", "The URL of the bucket to create (gs://BUCKET).")],
-    [
+  projectCommand({
+    path: ["gcloud", "storage", "buckets", "create"],
+    summary: "Create Cloud Storage buckets.",
+    positionals: [UrlPositional],
+    flags: [
       Flag.string("location", "Location for the bucket, e.g. ASIA-NORTHEAST1, ASIA, US."),
       Flag.string(
         "default-storage-class",
         "Default storage class for the bucket (STANDARD, NEARLINE, COLDLINE, ARCHIVE).",
       ),
-      ...CreateFlags,
+      Flag.boolean("uniform-bucket-level-access", "Turns on uniform bucket-level access setting."),
+      PublicAccessPreventionFlag,
     ],
-    "storage.buckets.create",
-    (ctx, args) =>
-      createBucket(ctx, args, { location: "location", storageClass: "default-storage-class" }),
-  ),
-  projectSpec(
-    ["gcloud", "storage", "buckets", "list"],
-    "List Cloud Storage buckets.",
-    [],
-    [],
-    "storage.buckets.list",
-    (ctx) =>
+    permission: "storage.buckets.create",
+    run: (ctx, args) =>
+      createBucket(ctx, args, {
+        location: "location",
+        storageClass: "default-storage-class",
+        uniformAccess: (a) => Result.ok(ParsedArgs.boolean(a, "uniform-bucket-level-access")),
+      }),
+  }),
+  projectCommand({
+    path: ["gcloud", "storage", "buckets", "list"],
+    summary: "List Cloud Storage buckets.",
+    permission: "storage.buckets.list",
+    run: (ctx) =>
       Result.ok({
         world: ctx.world,
         output: CommandOutput.yamlList(
           World.bucketsOf(ctx.world, ctx.project.projectId).map(Bucket.toRecord),
         ),
       }),
-  ),
-  projectSpec(
-    ["gcloud", "storage", "buckets", "describe"],
-    "Describe a Cloud Storage bucket.",
-    [Positional.required("URL", "The URL of the bucket to describe.")],
-    [],
-    "storage.buckets.get",
-    (ctx, args) =>
+  }),
+  projectCommand({
+    path: ["gcloud", "storage", "buckets", "describe"],
+    summary: "Describe a Cloud Storage bucket.",
+    positionals: [UrlPositional],
+    permission: "storage.buckets.get",
+    run: (ctx, args) =>
       Result.flatMap(bucketUrlArg(args), (url) =>
         Result.map(requireBucket(ctx, url.bucket), (bucket) => ({
           world: ctx.world,
           output: CommandOutput.yaml(Bucket.toRecord(bucket)),
         })),
       ),
-  ),
-  projectSpec(
-    ["gcloud", "storage", "buckets", "delete"],
-    "Delete Cloud Storage buckets.",
-    [Positional.required("URL", "The URL of the bucket to delete.")],
-    [],
-    "storage.buckets.delete",
-    (ctx, args) => remove(ctx, args, "recursive"),
-    true,
-  ),
+  }),
+  projectCommand({
+    path: ["gcloud", "storage", "buckets", "delete"],
+    summary: "Delete Cloud Storage buckets.",
+    positionals: [UrlPositional],
+    flags: [
+      Flag.boolean("recursive", "Delete the objects in the bucket too.", { aliases: ["-r"] }),
+    ],
+    permission: "storage.buckets.delete",
+    destructive: true,
+    run: remove,
+  }),
   ...iamBindingCommands({
     group: ["gcloud", "storage", "buckets"],
-    positional: Positional.required("URL", "The URL of the bucket (gs://BUCKET)."),
+    positional: UrlPositional,
     label: (target) => `gs://${target.id}`,
     resolveTarget: bucketTarget,
     permissions: { get: "storage.buckets.getIamPolicy", set: "storage.buckets.setIamPolicy" },
   }),
-  projectSpec(
-    ["gcloud", "storage", "ls"],
-    "List Cloud Storage buckets and objects.",
-    [
-      Positional.optional(
-        "URL",
-        "The URL to list (gs://BUCKET[/PREFIX]). Lists buckets when omitted.",
-      ),
-    ],
-    [
+  projectCommand({
+    path: ["gcloud", "storage", "ls"],
+    summary: "List Cloud Storage buckets and objects.",
+    positionals: [ListPositional],
+    flags: [
       Flag.boolean("long", "Print long listing (size, update time).", { aliases: ["-l"] }),
       Flag.boolean("recursive", "Recursively list the contents.", { aliases: ["-r"] }),
     ],
-    "storage.objects.list",
-    (ctx, args) => {
-      const raw = ParsedArgs.positional(args, 0);
-      if (!Option.isSome(raw)) return listUrl(ctx, Option.none, ParsedArgs.boolean(args, "long"));
-      return Result.flatMap(bucketUrlArg(args), (url) =>
-        listUrl(ctx, Option.some(url), ParsedArgs.boolean(args, "long")),
-      );
-    },
-  ),
-  projectSpec(
-    ["gcloud", "storage", "cp"],
-    "Upload, download, and copy Cloud Storage objects (contents are not stored).",
-    [
-      Positional.required("SOURCE", "The source path or gs:// URL."),
-      Positional.required("DESTINATION", "The destination path or gs:// URL."),
-    ],
-    [
+    permission: "storage.objects.list",
+    run: listRun,
+  }),
+  projectCommand({
+    path: ["gcloud", "storage", "cp"],
+    summary: "Upload, download, and copy Cloud Storage objects (contents are not stored).",
+    positionals: CopyPositionals,
+    flags: [
       Flag.boolean("recursive", "Recursively copy the contents of directories.", {
         aliases: ["-r"],
       }),
     ],
-    "storage.objects.create",
-    copy,
-  ),
-  projectSpec(
-    ["gcloud", "storage", "rm"],
-    "Delete objects and buckets.",
-    [Positional.required("URL", "The gs:// URL of the object or bucket to delete.")],
-    [
+    permission: "storage.objects.create",
+    run: copy,
+  }),
+  projectCommand({
+    path: ["gcloud", "storage", "rm"],
+    summary: "Delete objects and buckets.",
+    positionals: [ObjectUrlPositional],
+    flags: [
       Flag.boolean("recursive", "Recursively delete the contents of buckets or directories.", {
         aliases: ["-r"],
       }),
     ],
-    "storage.objects.delete",
-    (ctx, args) => remove(ctx, args, "recursive"),
-    true,
-  ),
+    permission: "storage.objects.delete",
+    destructive: true,
+    run: remove,
+  }),
 ];
+
+/** `gsutil mb -b on|off` を真偽に読む。 */
+const gsutilUniformAccess = (args: ParsedArgs): Result<boolean, CommandFailure> => {
+  const raw = ParsedArgs.string(args, "b");
+  if (!Option.isSome(raw)) return Result.ok(false);
+  if (raw.value === "on") return Result.ok(true);
+  if (raw.value === "off") return Result.ok(false);
+  return Result.err(CommandFailure.invalidChoice("-b", raw.value, ["on", "off"]));
+};
 
 /** `gsutil` の主要コマンドを `gcloud storage` のエイリアスとして受ける（TBD-003）。 */
 export const GsutilCommands: readonly CommandSpec[] = [
-  projectSpec(
-    ["gsutil", "mb"],
-    "Make buckets (alias of gcloud storage buckets create).",
-    [Positional.required("URL", "The URL of the bucket to create (gs://BUCKET).")],
-    [
+  projectCommand({
+    path: ["gsutil", "mb"],
+    summary: "Make buckets (alias of gcloud storage buckets create).",
+    positionals: [UrlPositional],
+    flags: [
       Flag.string("l", "Location for the bucket.", { aliases: ["-l"] }),
       Flag.string("c", "Default storage class for the bucket.", { aliases: ["-c"] }),
-      Flag.boolean("b", "Uniform bucket-level access (on|off).", { aliases: ["-b"] }),
-      ...CreateFlags,
+      Flag.string("b", "Uniform bucket-level access (on|off).", { aliases: ["-b"] }),
+      PublicAccessPreventionFlag,
     ],
-    "storage.buckets.create",
-    (ctx, args) => createBucket(ctx, args, { location: "l", storageClass: "c" }),
-  ),
-  projectSpec(
-    ["gsutil", "ls"],
-    "List providers, buckets, or objects (alias of gcloud storage ls).",
-    [Positional.optional("URL", "The URL to list.")],
-    [
+    permission: "storage.buckets.create",
+    run: (ctx, args) =>
+      createBucket(ctx, args, {
+        location: "l",
+        storageClass: "c",
+        uniformAccess: gsutilUniformAccess,
+      }),
+  }),
+  projectCommand({
+    path: ["gsutil", "ls"],
+    summary: "List providers, buckets, or objects (alias of gcloud storage ls).",
+    positionals: [ListPositional],
+    flags: [
       Flag.boolean("long", "Print long listing.", { aliases: ["-l"] }),
       Flag.boolean("recursive", "Recursively list.", { aliases: ["-r"] }),
     ],
-    "storage.objects.list",
-    (ctx, args) => {
-      const raw = ParsedArgs.positional(args, 0);
-      if (!Option.isSome(raw)) return listUrl(ctx, Option.none, ParsedArgs.boolean(args, "long"));
-      return Result.flatMap(bucketUrlArg(args), (url) =>
-        listUrl(ctx, Option.some(url), ParsedArgs.boolean(args, "long")),
-      );
-    },
-  ),
-  projectSpec(
-    ["gsutil", "cp"],
-    "Copy files and objects (alias of gcloud storage cp).",
-    [
-      Positional.required("SOURCE", "The source path or gs:// URL."),
-      Positional.required("DESTINATION", "The destination path or gs:// URL."),
-    ],
-    [
+    permission: "storage.objects.list",
+    run: listRun,
+  }),
+  projectCommand({
+    path: ["gsutil", "cp"],
+    summary: "Copy files and objects (alias of gcloud storage cp).",
+    positionals: CopyPositionals,
+    flags: [
       Flag.boolean("recursive", "Recursive copy.", { aliases: ["-r", "-R"] }),
       Flag.boolean("m", "Parallel (ignored).", { aliases: ["-m"] }),
     ],
-    "storage.objects.create",
-    copy,
-  ),
-  projectSpec(
-    ["gsutil", "rm"],
-    "Remove objects (alias of gcloud storage rm).",
-    [Positional.required("URL", "The gs:// URL of the object or bucket to delete.")],
-    [
+    permission: "storage.objects.create",
+    run: copy,
+  }),
+  projectCommand({
+    path: ["gsutil", "rm"],
+    summary: "Remove objects (alias of gcloud storage rm).",
+    positionals: [ObjectUrlPositional],
+    flags: [
       Flag.boolean("recursive", "Recursive delete.", { aliases: ["-r", "-R"] }),
       Flag.boolean("m", "Parallel (ignored).", { aliases: ["-m"] }),
     ],
-    "storage.objects.delete",
-    (ctx, args) => remove(ctx, args, "recursive"),
-    true,
-  ),
+    permission: "storage.objects.delete",
+    destructive: true,
+    run: remove,
+  }),
   {
     kind: "target",
     path: ["gsutil", "iam", "get"],
     summary: "Get the IAM policy of a bucket (alias of gcloud storage buckets get-iam-policy).",
-    positionals: [Positional.required("URL", "The URL of the bucket (gs://BUCKET).")],
+    positionals: [UrlPositional],
     flags: [],
     destructive: false,
     requiredPermissions: ["storage.buckets.getIamPolicy"],
     resolveTarget: bucketTarget,
-    run: (ctx, args) =>
-      Result.flatMap(bucketUrlArg(args), (url) =>
-        Result.map(requireBucket(ctx, url.bucket), (bucket) => ({
-          world: ctx.world,
-          output: CommandOutput.yaml({
-            bindings: bucket.iamPolicy.bindings.map((b) => ({
-              members: [...b.members],
-              role: b.role,
-            })),
-            etag: "CAE=",
-          }),
-        })),
+    run: (ctx) =>
+      Result.map(
+        Option.toResult(World.findPolicy(ctx.world, ctx.target), () =>
+          CommandFailure.notFoundWith(`gs://${ctx.target.id} bucket does not exist.`),
+        ),
+        (policy) => ({ world: ctx.world, output: CommandOutput.yaml(IamPolicy.toRecord(policy)) }),
       ),
   },
 ];

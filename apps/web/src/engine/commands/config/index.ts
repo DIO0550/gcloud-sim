@@ -1,4 +1,4 @@
-import { CommandFailure } from "@/engine/cli/command-error";
+import { CommandFailure } from "@/engine/cli/command-failure";
 import {
   Column,
   CommandOutput,
@@ -38,7 +38,7 @@ const configListLines = (config: GcloudConfig): readonly string[] => {
 
 const configurationRecords = (config: GcloudConfig) =>
   GcloudConfig.names(config).map((name) => {
-    const values = config.configurations[name] ?? {};
+    const values = Option.unwrapOr(GcloudConfig.valuesOf(config, name), {});
     return {
       name,
       is_active: name === config.activeConfiguration,
@@ -50,12 +50,12 @@ const configurationRecords = (config: GcloudConfig) =>
   });
 
 const ConfigurationColumns = [
-  Column.of("NAME", "name"),
-  Column.of("IS_ACTIVE", "is_active"),
-  Column.of("ACCOUNT", "properties.core.account"),
-  Column.of("PROJECT", "properties.core.project"),
-  Column.of("COMPUTE_DEFAULT_ZONE", "properties.compute.zone"),
-  Column.of("COMPUTE_DEFAULT_REGION", "properties.compute.region"),
+  Column.create("NAME", "name"),
+  Column.create("IS_ACTIVE", "is_active"),
+  Column.create("ACCOUNT", "properties.core.account"),
+  Column.create("PROJECT", "properties.core.project"),
+  Column.create("COMPUTE_DEFAULT_ZONE", "properties.compute.zone"),
+  Column.create("COMPUTE_DEFAULT_REGION", "properties.compute.region"),
 ];
 
 export const ConfigCommands: readonly CommandSpec[] = [
@@ -223,17 +223,13 @@ export const ConfigCommands: readonly CommandSpec[] = [
       const config = GcloudConfig.activate(ctx.world.config, name);
       if (!Option.isSome(config)) {
         return Result.err(
-          CommandFailure.notFoundMessage(
+          CommandFailure.notFoundWith(
             `Cannot activate configuration [${name}], it does not exist.`,
           ),
         );
       }
-      const principal = Option.unwrapOr(
-        GcloudConfig.get(config.value, "core/account"),
-        ctx.world.session.principal,
-      );
       return Result.ok({
-        world: World.withPrincipal(World.withConfig(ctx.world, config.value), principal),
+        world: World.withConfig(ctx.world, config.value),
         output: CommandOutput.messages(OutputMessage.plain(`Activated [${name}].`)),
       });
     },
@@ -252,7 +248,7 @@ export const ConfigCommands: readonly CommandSpec[] = [
       const record = configurationRecords(ctx.world.config).find((r) => r.name === name);
       if (record === undefined) {
         return Result.err(
-          CommandFailure.notFoundMessage(
+          CommandFailure.notFoundWith(
             `Cannot describe configuration [${name}], it does not exist.`,
           ),
         );
@@ -333,8 +329,9 @@ export const AuthCommands: readonly CommandSpec[] = [
     flags: [],
     destructive: false,
     run: (ctx) => {
+      const current = World.currentPrincipal(ctx.world);
       const rows = ctx.world.session.accounts.map((account) => ({
-        active: account === ctx.world.session.principal ? "*" : "",
+        active: Option.isSome(current) && current.value === account ? "*" : "",
         account,
       }));
       return Result.ok({
@@ -342,7 +339,7 @@ export const AuthCommands: readonly CommandSpec[] = [
         output: CommandOutput.withTrailing(
           CommandOutput.table(
             rows,
-            [Column.of("ACTIVE", "active"), Column.of("ACCOUNT", "account")],
+            [Column.create("ACTIVE", "active"), Column.create("ACCOUNT", "account")],
             [OutputMessage.plain("                 Credentialed Accounts")],
           ),
           OutputMessage.plain(""),
@@ -362,11 +359,13 @@ export const AuthCommands: readonly CommandSpec[] = [
     flags: [],
     destructive: false,
     run: (ctx, args) => {
-      const account = Option.unwrapOr(ParsedArgs.positional(args, 0), ctx.world.session.principal);
-      if (!ctx.world.session.accounts.includes(account)) {
+      const account = Option.or(ParsedArgs.positional(args, 0), World.currentPrincipal(ctx.world));
+      if (!Option.isSome(account)) return Result.err(CommandFailure.noActiveAccount());
+      const isCredentialed = ctx.world.session.accounts.some((a) => a === account.value);
+      if (!isCredentialed) {
         return Result.err(
-          CommandFailure.notFoundMessage(
-            `Account [${account}] is not among the credentialed accounts.`,
+          CommandFailure.notFoundWith(
+            `Account [${account.value}] is not among the credentialed accounts.`,
           ),
         );
       }
@@ -374,7 +373,7 @@ export const AuthCommands: readonly CommandSpec[] = [
         world: ctx.world,
         output: CommandOutput.messages(
           OutputMessage.plain(`Revoked credentials:`),
-          OutputMessage.plain(` - ${account}`),
+          OutputMessage.plain(` - ${account.value}`),
           OutputMessage.hint(
             "gcloud-sim: 疑似認証なので、アカウント一覧からは外しません（再ログインは不要）。",
           ),

@@ -1,5 +1,5 @@
 import type { BucketLocation, StorageClass } from "@/engine/domains/catalog";
-import type { IamPolicy } from "@/engine/domains/iam-policy";
+import { IamPolicy } from "@/engine/domains/iam-policy";
 import type { JsonRecord } from "@/types/Json";
 import { Result } from "@/utils/Result";
 
@@ -70,7 +70,33 @@ export const GsUrl = {
   },
 } as const;
 
+/** `Bucket.create` に渡す材料。 */
+export type BucketSeed = Readonly<{
+  projectId: string;
+  name: string;
+  location: BucketLocation;
+  storageClass: StorageClass;
+  uniformBucketLevelAccess: boolean;
+  publicAccessPrevention: boolean;
+  timeCreated: string;
+}>;
+
 export const Bucket = {
+  /**
+   * 空のバケットを作る。名前の形式はここで検証する。
+   *
+   * @param seed 材料
+   * @returns 空のポリシーとオブジェクト無しのバケット。名前の形式が悪ければ理由
+   */
+  create(seed: BucketSeed): Result<Bucket, string> {
+    return Result.map(BucketName.parse(seed.name), (name) => ({
+      ...seed,
+      name,
+      iamPolicy: IamPolicy.Empty,
+      objects: [],
+    }));
+  },
+
   withObject(bucket: Bucket, object: StorageObject): Bucket {
     const others = bucket.objects.filter((o) => o.name !== object.name);
     return { ...bucket, objects: [...others, object] };

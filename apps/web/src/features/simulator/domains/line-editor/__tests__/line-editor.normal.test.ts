@@ -123,6 +123,26 @@ test("replace は行を丸ごと置き換えカーソルを末尾に置く", () 
   expect(editor.cursor).toBe(20);
 });
 
+test("貼り付けた制御文字は入力行に入らない", () => {
+  expect(LineEditor.handle(LineEditor.create(), "a\x07b").editor.buffer).toBe("ab");
+});
+
+test("replace はエスケープ列を落とし、履歴を辿っている位置も戻す", () => {
+  const browsing = LineEditor.handle(LineEditor.create(["ls"]), "\x1b[A").editor;
+  const replaced = LineEditor.replace(browsing, "gcloud\x1b[31m projects list");
+  expect(replaced.buffer).toBe("gcloud[31m projects list");
+  expect(replaced.historyIndex).toEqual(Option.none);
+});
+
+test("貼り付けの draw は 1 つにまとまり、送信を挟むと分かれる", () => {
+  expect(LineEditor.handle(LineEditor.create(), "ab").effects).toEqual([{ kind: "draw" }]);
+  expect(LineEditor.handle(LineEditor.create(), "a\nb").effects).toEqual([
+    { kind: "draw" },
+    { kind: "submit", line: "a" },
+    { kind: "draw" },
+  ]);
+});
+
 test("Home / End と Ctrl+U でカーソルと行頭削除が効く", () => {
   const editor = type(LineEditor.create(), "abcd");
   expect(LineEditor.handle(editor, "\x1b[H").editor.cursor).toBe(0);

@@ -59,7 +59,7 @@ export const Engine = {
    * @param line 入力途中の行
    * @returns 最後の語を置き換える候補
    */
-  complete(line: string): readonly string[] {
+  completionCandidates(line: string): readonly string[] {
     const endsWithSpace = /\s$/.test(line);
     const tokens = Tokenizer.tokenize(line);
     if (!Result.isOk(tokens)) return [];

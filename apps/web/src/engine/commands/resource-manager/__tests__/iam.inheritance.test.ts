@@ -17,7 +17,7 @@ test("フォルダに付けたロールは配下のプロジェクトで効く",
     type: "project",
     id: F.devProjectId,
   });
-  expect(EffectivePermissions.has(effective, "compute.instances.create")).toBe(true);
+  expect(EffectivePermissions.allows(effective, "compute.instances.create")).toBe(true);
   expect(effective.grants).toContainEqual({
     role: "roles/compute.instanceAdmin.v1",
     grantedAt: { type: "folder", id: F.devFolderId },
@@ -33,7 +33,7 @@ test("フォルダに付けたロールは兄弟フォルダのプロジェク�
     type: "project",
     id: F.prodProjectId,
   });
-  expect(EffectivePermissions.has(effective, "compute.instances.create")).toBe(false);
+  expect(EffectivePermissions.allows(effective, "compute.instances.create")).toBe(false);
 });
 
 test("組織に付けたロールはすべてのプロジェクトで効く", () => {
@@ -45,7 +45,7 @@ test("組織に付けたロールはすべてのプロジェクトで効く", ()
     type: "project",
     id: F.prodProjectId,
   });
-  expect(EffectivePermissions.has(effective, "compute.instances.list")).toBe(true);
+  expect(EffectivePermissions.allows(effective, "compute.instances.list")).toBe(true);
 });
 
 test("カタログに無い権限は許可に倒す", () => {
@@ -53,8 +53,8 @@ test("カタログに無い権限は許可に倒す", () => {
     type: "project",
     id: F.devProjectId,
   });
-  expect(EffectivePermissions.has(effective, "compute.instances.create")).toBe(false);
-  expect(EffectivePermissions.has(effective, "spanner.instances.create")).toBe(true);
+  expect(EffectivePermissions.allows(effective, "compute.instances.create")).toBe(false);
+  expect(EffectivePermissions.allows(effective, "spanner.instances.create")).toBe(true);
 });
 
 test("add-iam-policy-binding は更新後のポリシーを YAML で出す", () => {

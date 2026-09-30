@@ -76,20 +76,20 @@ gcloud-sim は、ブラウザだけで動作する **gcloud CLI の学習用エ�
 | 用語 | 定義 | コード上の表現 |
 |:-----|:-----|:-------------|
 | エンジン | UI に依存しない純粋な TS モジュール。状態とコマンドを受け取り、新しい状態と出力を返す | `src/engine/` |
-| Console ビュー | World を Google Cloud Console 風に表示・操作する第2の UI（Phase 2） | `src/ui/console/` |
+| Console ビュー | World を Google Cloud Console 風に表示・操作する第2の UI（Phase 2） | `src/features/console/`（予定） |
 | 同等コマンド | GUI フォームの入力内容から生成される gcloud コマンド文字列 | `toEquivalentCommand()` |
-| ワールド | エミュレータが保持する全リソースの集合（組織〜リソース、config、principal を含む） | `World` |
+| ワールド | エミュレータが保持する全リソースの集合（組織〜リソース、config、疑似ログイン済みアカウントを含む）。リソースはフラットな集合で持ち、階層は `parent` / `projectId` で結ぶ | `World`（`src/engine/domains/world/`） |
 | コマンド定義 | サブコマンドの名前・フラグ・実行関数・出力整形を宣言的に記述したもの | `CommandSpec` |
-| コマンド解決 | トークン列から `CommandSpec` を特定する処理 | `resolveCommand()` |
-| プリンシパル | 現在コマンドを実行しているとみなされる主体（ユーザーまたはサービスアカウント） | `Principal`、`world.session.principal` |
+| コマンド解決 | トークン列から `CommandSpec` を特定する処理 | `CommandRegistry.resolve()` |
+| プリンシパル | 現在コマンドを実行しているとみなされる主体（ユーザーまたはサービスアカウント）。アクティブな configuration の `core/account` が正で、未設定なら「アカウント未選択」 | `Principal`、`World.currentPrincipal()` |
 | リソース階層 | Organization → Folder → Project → Resource の親子関係 | `ResourceHierarchy` |
 | IAM バインディング | ロールとメンバー集合の組。ポリシーはバインディングの配列 | `IamBinding`、`IamPolicy` |
-| 有効権限 | 階層を遡って継承したバインディングを合成し、プリンシパルが持つ権限の集合 | `resolveEffectivePermissions()` |
+| 有効権限 | 階層を遡って継承したバインディングを合成し、プリンシパルが持つ権限の集合 | `EffectivePermissions.resolve()` |
 | オペレーション | 非同期処理を表す疑似オブジェクト（インスタンス作成等）。`gcloud compute operations list` に対応 | `Operation` |
 | 出力フォーマッタ | `--format` に応じて結果を table / json / yaml / value に整形する | `Formatter` |
 | ミッション | 目標文とアサーションの組。状態を検査してクリアを判定する | `Mission`、`MissionAssertion` |
 | スナップショット | export / import で扱う、ワールドとミッション進捗を含む JSON | `Snapshot` |
-| 未対応コマンド | 解決できたがエミュレータが実装していないコマンド。明示的にエラーとする | `ERR_NOT_IMPLEMENTED` |
+| 未対応コマンド | 解決できたがエミュレータが実装していないコマンド。明示的にエラーとする | `CommandSpec` の `kind: "not-implemented"`（E-002） |
 
 ## 5. 設計判断
 
@@ -142,11 +142,11 @@ gcloud-sim は、ブラウザだけで動作する **gcloud CLI の学習用エ�
 
 ### DJ-006: IAM は「現在のプリンシパル」を切り替えて有効権限を評価する
 
-- **判断内容**: ワールドに `session.principal` を持ち、`gcloud auth login <email>`（疑似）や `gcloud config set account` で切り替えられる。各コマンドは必要な権限（例: `compute.instances.create`）を宣言し、実行前に階層継承を含めた有効権限で判定する。デフォルトのプリンシパルは組織の Owner 相当とし、初心者は権限を意識せずに操作できる。
+- **判断内容**: 主体はアクティブな configuration の `core/account` が持ち（`World.currentPrincipal`）、`gcloud auth login <email>`（疑似）や `gcloud config set account` で切り替えられる。`--account` はその 1 回だけ主体を変える。各コマンドは必要な権限（例: `compute.instances.create`）を宣言し、実行前に階層継承を含めた有効権限で判定する。デフォルトのプリンシパルは組織の Owner 相当とし、初心者は権限を意識せずに操作できる。
 - **理由**: ACE で最も点差が付くのが IAM の継承と最小権限。「権限が足りない → 適切な階層にロールを付ける → 通る」を体験できることが本ツールの核心的価値。
 - **検討した代替案**:
   - IAM を保存するだけで評価はしない: 実装は容易だが `PERMISSION_DENIED` の体験ができない → 不採用
-  - 本物のロール定義（数千の権限）を完全再現: データ量が過大 → 不採用。ACE 頻出の事前定義ロール約30個と、それが含む代表的権限のみを収録する
+  - 本物のロール定義（数千の権限）を完全再現: データ量が過大 → 不採用。ACE 頻出の事前定義ロール約 45 個と、それが含む代表的権限のみを収録する
 - **トレードオフ**: ロール→権限の対応が本物の部分集合になる。収録外の権限判定は「許可」に倒す（学習を止めないため）。この方針は `--help` と README に明記する。
 - **影響範囲**: 6（IamPolicy, Role, Principal）、7（UC-004）、10（E-006）
 
@@ -205,11 +205,16 @@ gcloud-sim は、ブラウザだけで動作する **gcloud CLI の学習用エ�
 ```mermaid
 classDiagram
     class World {
-        +schemaVersion: number
-        +hierarchy: ResourceHierarchy
+        +organization: Organization
+        +folders: Folder[]
+        +projects: Project[]
+        +billingAccounts: BillingAccount[]
+        +serviceAccounts / instances / networks / subnets / firewallRules / diskSnapshots / buckets / clusters / runServices
         +config: GcloudConfig
         +session: Session
         +operations: Operation[]
+        +missions: MissionProgress[]
+        +sequence: number
     }
     class Organization {
         +id: string
@@ -256,11 +261,11 @@ classDiagram
         +projectId: string
     }
     class Session {
-        +principal: string
-        +activeConfiguration: string
+        +accounts: Principal[]
     }
     class GcloudConfig {
         +configurations: Record~string, ConfigValues~
+        +activeConfiguration: string
     }
     class Instance {
         +name: string
@@ -355,15 +360,18 @@ classDiagram
 
 | 属性 | 型 | 必須 | 説明 | 制約 |
 |:-----|:---|:-----|:-----|:-----|
-| schemaVersion | number | Yes | Snapshot 互換性のためのバージョン | 単調増加 |
-| hierarchy | ResourceHierarchy | Yes | 組織・フォルダ・プロジェクトとその配下のリソース | ルートは Organization 1つ |
-| config | GcloudConfig | Yes | `gcloud config` の設定群（configurations 複数） | `default` 構成が必ず存在 |
-| session | Session | Yes | 現在のプリンシパルとアクティブな configuration | principal は既知のメンバーである |
+| organization / folders / projects / billingAccounts | — | Yes | 組織 1 つと、フォルダ・プロジェクト・請求アカウントのフラットな集合。階層は `parent` で結ぶ | フォルダ・プロジェクトは組織へ辿り着く（循環・10 段超え不可） |
+| serviceAccounts / instances / networks / subnets / firewallRules / diskSnapshots / buckets / clusters / runServices | — | Yes | プロジェクト配下のリソースのフラットな集合。所属は `projectId` で結ぶ | 名前の一意性は `World.with*` が守る |
+| config | GcloudConfig | Yes | `gcloud config` の設定群（configurations 複数）とアクティブな configuration の名前 | アクティブな configuration が存在する |
+| session | Session | Yes | `auth login` した疑似アカウントの一覧。今の主体は `config` の `core/account` | — |
 | operations | Operation[] | Yes | 実行済みオペレーションの履歴 | 上限 500 件で古いものから削除 |
-| missions | Mission[] | Yes | ミッション定義と進捗 | id ユニーク |
+| missions | MissionProgress[] | Yes | ミッションの進捗（定義はコードが持つ） | id ユニーク |
+| sequence | number | Yes | id・projectNumber・オペレーション名の採番に使う通し番号 | 単調増加 |
+
+`schemaVersion` は World ではなく Snapshot（`engine/snapshot/`）が持つ。
 
 **不変条件**:
-- `config.configurations[session.activeConfiguration]` が存在する。
+- `config.configurations[config.activeConfiguration]` が存在する。
 - `config` の `core/project` が設定されている場合、その projectId は hierarchy 内に存在するか、または「存在しないプロジェクト」として明示的に警告を出す（本物と同じく設定自体は許容する）。
 
 #### Project
@@ -593,16 +601,16 @@ classDiagram
 **トリガー**: コマンド実行（自動保存）、設定パネルの Export / Import / Reset ボタン
 
 **正常フロー（自動保存）**:
-1. World を `JSON.stringify` し、`gcloud-sim:world:v{schemaVersion}` キーに保存する
+1. Snapshot（`schemaVersion` 付き）を `JSON.stringify` し、`gcloud-sim:world` キーに保存する。版はキーではなく中身が持ち、読めなければ `gcloud-sim:world:unreadable` に退避してから初期状態で始める（起動時に注意を出す）
 2. 失敗時は E-010 を警告として表示し、続行する
 
 **正常フロー（Export）**:
-1. `{ schemaVersion, exportedAt, world, missions }` の Snapshot を生成する
+1. `{ schemaVersion, exportedAt, world }` の Snapshot を生成する（ミッション進捗は `world.missions`）
 2. `gcloud-sim-snapshot-{YYYYMMDD-HHmm}.json` としてダウンロードする
 
 **正常フロー（Import）**:
 1. ファイルを読み JSON としてパースする
-2. `schemaVersion` を確認し、現行と一致なら置換、旧バージョンならマイグレーション関数を順に適用する
+2. `schemaVersion` を確認し、現行と一致ならフィールドごとに形を確かめて（`Decoder`）置換、旧バージョンならマイグレーション関数を順に適用する
 3. 不変条件を検証し、通れば World を置換して保存する。置換前に「現在の状態を上書きします」と確認する
 
 **正常フロー（Reset）**:
@@ -635,7 +643,7 @@ classDiagram
 **正常フロー**:
 1. hierarchy を Organization → Folder → Project → リソース種別 → リソースのツリーとして描画する
 2. ノード選択時に、そのリソースの IamPolicy と、上位から継承されるバインディング（継承元を明示）を表示する
-3. 現在の `core/project` と `session.principal` をハイライトする
+3. 現在の `core/project` をハイライトし、`core/account` が組織の Owner 以外なら警告色で示す
 
 ### UC-008: Console ビューから VM を作成し、同等コマンドを確認する（Phase 2）
 
@@ -807,7 +815,7 @@ flowchart LR
 | 認可 | エミュレータ内の IAM 評価のみ（DJ-006）。本物のリソースには一切影響しない |
 | データ保護 | ユーザーデータはブラウザの localStorage にのみ存在し、外部送信しない。アナリティクスも入れない |
 | 入力バリデーション | ターミナル出力は xterm.js に文字列として渡す（HTML として解釈しない）。リソースツリー描画時はテキストノードとして挿入し XSS を防ぐ。Import JSON はスキーマ検証を通す |
-| サプライチェーン | 実行時依存は xterm.js（+ addon-fit）のみに限定。lockfile をコミットし、CI で `npm audit` と `npm ci` を実行。依存はバージョン固定 |
+| サプライチェーン | 実行時依存は Next.js / React と xterm.js（+ addon-fit）に限定。lockfile をコミットし、CI で `pnpm install --frozen-lockfile` を実行。xterm 系はバージョン固定 |
 | 商標・誤解防止 | README と画面フッターに「Google 非公式の学習用シミュレータ」と明記し、Google のロゴは使用しない |
 
 ### 11.3 可用性・信頼性
@@ -823,10 +831,10 @@ flowchart LR
 | 制約 | 内容 | 影響する設計判断 |
 |:-----|:-----|:---------------|
 | 静的サイト | GitHub Pages のためサーバー処理・DB なし | DJ-001, DJ-007 |
-| base パス | `https://<user>.github.io/gcloud-sim/` 配下で動くため Vite の `base` を `/gcloud-sim/` にする | ビルド設定 |
+| base パス | `https://<user>.github.io/gcloud-sim/` 配下で動くため Next.js の `basePath` を `/gcloud-sim/` にする（静的出力） | ビルド設定 |
 | 個人開発 | 単独開発のため、コマンド対応範囲は段階的に拡張する。優先順は ACE 試験ガイドの頻出順 | DJ-003, DJ-005 |
 | 本物との差異 | gcloud は頻繁に更新される。特定バージョンの公式リファレンスを基準にし、README に基準バージョンを記載する | TBD-001 |
-| 依存最小化 | 実行時依存は xterm.js 系のみ。UI フレームワークは初期バージョンでは使わず、素の TS + DOM で構成する。Console ビュー（Phase 2）で UI フレームワークを導入するかは TBD-011 | DJ-002, DJ-004, DJ-011, 11.2 |
+| 依存最小化 | 実行時依存は Next.js / React / Tailwind と xterm.js 系のみ（リポジトリの既存構成に合わせて Phase 1 から React を使う。TBD-011 の答え） | DJ-002, DJ-004, DJ-011, 11.2 |
 | フェーズ分割 | Phase 1 = CLI + リソースツリー + ミッション、Phase 2 = Console ビュー。Phase 2 はエンジン API を変更せずに追加できる構造にしておく | DJ-002, DJ-011 |
 | 言語 | UI は日本語、コマンド出力は本物準拠で英語 | 3.2 |
 | ブラウザ | 最新の Chrome / Firefox / Safari。IE 等は対象外 | — |
@@ -845,7 +853,7 @@ flowchart LR
 | TBD-008 | ミッションの初期本数とドメイン配分 | コンテンツ | 初期リリース時 | 各ドメイン 2〜3 本、合計 12 本程度から開始 |
 | TBD-009 | Tab 補完の粒度（コマンド名のみ / フラグ名まで / リソース名まで） | UI | 実装中 | 初期はコマンド名とフラグ名まで。リソース名補完は次段階 |
 | TBD-010 | Console ビュー（Phase 2）の着手条件 | DJ-011 | Phase 1 リリース後 | Compute / IAM / Storage / VPC の主要コマンドが揃い、ミッションが動いた時点で着手 |
-| TBD-011 | Console ビューで UI フレームワーク（React / Preact / Lit 等）を導入するか | DJ-011、11.2 | Phase 2 着手時 | フォームと一覧が多いため導入する可能性が高い。依存最小化の方針との兼ね合いで Preact など軽量なものを優先検討 |
+| TBD-011 | ~~Console ビューで UI フレームワーク（React / Preact / Lit 等）を導入するか~~ → 決着: リポジトリが Next.js / React で始まっていたので Phase 1 から React を使う | DJ-011、11.2 | — | — |
 | TBD-012 | 概念クイズ（4 択のサービス選定・ロール選定問題）をミッションに混ぜるか | DJ-010、コンテンツ | ミッション作成時 | 「この要件に合うリソースを作れ」型のミッションでサービス選定を体験させることを優先し、4 択クイズは別機能として後回し |
 
 ## 14. 参考資料
@@ -854,5 +862,5 @@ flowchart LR
 - gcloud CLI 公式リファレンス（`cloud.google.com/sdk/gcloud/reference`）— 出力形式・フラグの基準（TBD-001）
 - IAM 事前定義ロールのリファレンス — ロールカタログ作成の元データ
 - xterm.js 公式ドキュメント（`xtermjs.org`）
-- GitHub Pages への Vite デプロイ（`actions/deploy-pages`）
+- GitHub Pages への Next.js 静的出力のデプロイ（`actions/deploy-pages`）
 - 関連する既存のローカルエミュレータ（対象外の根拠として）: `gcloud emulators`、fake-gcs-server、floci-gcp

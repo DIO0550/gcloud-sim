@@ -44,7 +44,7 @@ export const Zone = {
    * @param zone カタログにあるゾーン
    * @returns 末尾の `-a` 等を落としたリージョン
    */
-  regionOf(zone: Zone): Region {
+  region(zone: Zone): Region {
     return zone.slice(0, zone.lastIndexOf("-")) as Region;
   },
 
@@ -52,6 +52,16 @@ export const Zone = {
     return AllZones;
   },
 } as const;
+
+/**
+ * ゾーンの API パス（`.../projects/P/zones/Z`）。zone を持つリソースとオペレーションが共有する。
+ *
+ * @param projectId プロジェクト
+ * @param zone ゾーン
+ * @returns Compute API の selfLink の形
+ */
+export const ZoneLinkFor = (projectId: string, zone: Zone): string =>
+  `https://www.googleapis.com/compute/v1/projects/${projectId}/zones/${zone}`;
 
 export const Region = {
   /**
@@ -232,8 +242,15 @@ export const ApiService = {
 /** `gcloud compute images list` に出す公開イメージ。 */
 export type PublicImage = Readonly<{ name: string; project: string; family: string }>;
 
+/** `--image-family` / `--image-project` を省いたときの既定（本物の gcloud と同じ Debian）。 */
+export const DefaultImage: PublicImage = {
+  name: "debian-12-bookworm-v20260901",
+  project: "debian-cloud",
+  family: "debian-12",
+};
+
 const PublicImages: readonly PublicImage[] = [
-  { name: "debian-12-bookworm-v20260901", project: "debian-cloud", family: "debian-12" },
+  DefaultImage,
   { name: "debian-11-bullseye-v20260901", project: "debian-cloud", family: "debian-11" },
   {
     name: "ubuntu-2404-noble-amd64-v20260901",
@@ -245,9 +262,6 @@ const PublicImages: readonly PublicImage[] = [
   { name: "rocky-linux-9-v20260901", project: "rocky-linux-cloud", family: "rocky-linux-9" },
   { name: "windows-server-2022-dc-v20260901", project: "windows-cloud", family: "windows-2022" },
 ];
-
-/** `--image-family` / `--image-project` を省いたときの既定（本物の gcloud と同じ Debian）。 */
-export const DefaultImage: PublicImage = PublicImages[0] as PublicImage;
 
 export const PublicImage = {
   /**

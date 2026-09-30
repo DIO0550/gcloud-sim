@@ -1,4 +1,4 @@
-import { CommandFailure } from "@/engine/cli/command-error";
+import { CommandFailure } from "@/engine/cli/command-failure";
 import {
   type CommandContext,
   CommandOutput,
@@ -6,17 +6,19 @@ import {
   type CommandSpec,
   Flag,
   type FlagSpec,
-  type JsonRecord,
   OutputMessage,
   ParsedArgs,
-  Positional,
   type PositionalSpec,
+  type ProjectContext,
+  type TargetContext,
 } from "@/engine/cli/command-spec";
+import type { ApiName, Zone } from "@/engine/domains/catalog";
 import { IamMember, IamPolicy, RoleName } from "@/engine/domains/iam-policy";
 import { Operation, type OperationType } from "@/engine/domains/operation";
-import type { PolicyTarget } from "@/engine/domains/resource-hierarchy";
+import type { Principal } from "@/engine/domains/principal";
+import { PolicyTarget } from "@/engine/domains/resource-hierarchy";
 import { RoleCatalog } from "@/engine/domains/role-catalog";
-import { type AlreadyExists, World } from "@/engine/domains/world";
+import { type AlreadyExists, type PolicyRejected, World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
@@ -45,6 +47,27 @@ export const CommonFlags = {
 export const alreadyExists = (failure: AlreadyExists): CommandFailure =>
   CommandFailure.alreadyExists(failure.resource);
 
+/** `PolicyRejected` を E-005 / E-012 に写す。 */
+const policyRejected = (rejected: PolicyRejected): CommandFailure => {
+  switch (rejected.kind) {
+    case "not-found":
+      return CommandFailure.notFound(PolicyTarget.toPath(rejected.target));
+    case "last-owner":
+      return CommandFailure.lastOwner();
+  }
+};
+
+/** `recordOperation` に渡す材料。通し番号は中で払い出す。 */
+export type OperationRecordSeed = Readonly<{
+  projectId: string;
+  operationType: OperationType;
+  targetLink: string;
+  targetName: string;
+  zone: Option<Zone>;
+  user: Principal;
+  now: string;
+}>;
+
 /**
  * オペレーションを履歴に足す（DJ-008: 即座に `DONE`）。
  *
@@ -54,27 +77,12 @@ export const alreadyExists = (failure: AlreadyExists): CommandFailure =>
  */
 export const recordOperation = (
   world: World,
-  seed: Readonly<{
-    projectId: string;
-    operationType: OperationType;
-    targetLink: string;
-    targetName: string;
-    zone: string;
-    user: string;
-    now: string;
-  }>,
+  seed: OperationRecordSeed,
 ): Readonly<{ world: World; operation: Operation }> => {
   const numbered = World.nextNumber(world);
   const operation = Operation.create({ ...seed, sequence: numbered.number });
   return { world: World.withOperation(numbered.world, operation), operation };
 };
-
-/** ポリシーを `get-iam-policy` / `add-iam-policy-binding` が出す形にする。 */
-export const policyRecord = (policy: IamPolicy): JsonRecord => ({
-  bindings: policy.bindings.map((b) => ({ members: [...b.members], role: b.role })),
-  etag: "BwYEp2z-Xd0=",
-  version: 1,
-});
 
 const parseBinding = (
   args: ParsedArgs,
@@ -86,7 +94,7 @@ const parseBinding = (
   const role = RoleName.parse(rawRole);
   const isKnown =
     Option.isSome(role) &&
-    (role.value.startsWith("projects/") || Option.isSome(RoleCatalog.find(role.value)));
+    (RoleName.isCustom(role.value) || Option.isSome(RoleCatalog.find(role.value)));
   if (!Option.isSome(role) || !isKnown) {
     return Result.err(
       CommandFailure.invalidIamArgument(
@@ -101,24 +109,24 @@ type BindingCommandSeed = Readonly<{
   /** `["gcloud", "projects"]` のようなグループ */
   group: readonly string[];
   positional: PositionalSpec;
-  /** `projects/ace-dev-01` のような、メッセージに出す綴り */
+  /** `project [ace-dev-01]` のような、メッセージに出す綴り */
   label: (target: PolicyTarget) => string;
   resolveTarget: (ctx: CommandContext, args: ParsedArgs) => Result<PolicyTarget, CommandFailure>;
   permissions: Readonly<{ get: string; set: string }>;
-  /** `gs://` の位置引数など、追加のフラグ */
-  extraFlags?: readonly FlagSpec[];
 }>;
+
+const requirePolicy = (ctx: TargetContext): Result<IamPolicy, CommandFailure> =>
+  Option.toResult(World.findPolicy(ctx.world, ctx.target), () =>
+    CommandFailure.notFound(PolicyTarget.toPath(ctx.target)),
+  );
 
 const bindingRun =
   (seed: BindingCommandSeed, direction: "add" | "remove") =>
-  (ctx: CommandContext, args: ParsedArgs): CommandResult => {
-    const target = seed.resolveTarget(ctx, args);
-    if (!Result.isOk(target)) return target;
+  (ctx: TargetContext, args: ParsedArgs): CommandResult => {
     const binding = parseBinding(args);
     if (!Result.isOk(binding)) return binding;
-    const current = World.policyOf(ctx.world, target.value);
-    if (!Option.isSome(current))
-      return Result.err(CommandFailure.notFound(seed.label(target.value)));
+    const current = requirePolicy(ctx);
+    if (!Result.isOk(current)) return current;
     const { member, role } = binding.value;
     const next =
       direction === "add"
@@ -126,19 +134,21 @@ const bindingRun =
         : IamPolicy.removeBinding(current.value, role, member);
     if (!Option.isSome(next)) {
       return Result.err(
-        CommandFailure.notFoundMessage(
+        CommandFailure.notFoundWith(
           "Policy binding with the specified principal, role, and condition not found!",
         ),
       );
     }
-    const world = World.withPolicy(ctx.world, target.value, next.value);
-    if (!Option.isSome(world)) return Result.err(CommandFailure.lastOwner());
-    return Result.ok({
-      world: world.value,
-      output: CommandOutput.yaml(policyRecord(next.value), [
-        OutputMessage.plain(`Updated IAM policy for ${seed.label(target.value)}.`),
+    const world = Result.mapErr(
+      World.withPolicy(ctx.world, ctx.target, next.value),
+      policyRejected,
+    );
+    return Result.map(world, (w) => ({
+      world: w,
+      output: CommandOutput.yaml(IamPolicy.toRecord(next.value), [
+        OutputMessage.plain(`Updated IAM policy for ${seed.label(ctx.target)}.`),
       ]),
-    });
+    }));
   };
 
 /**
@@ -148,54 +158,45 @@ const bindingRun =
  * @param seed 対象の解決と権限
  * @returns 3 つのコマンド定義
  */
-export const iamBindingCommands = (seed: BindingCommandSeed): readonly CommandSpec[] => {
-  const extra = seed.extraFlags ?? [];
-  return [
-    {
-      kind: "target",
-      path: [...seed.group, "get-iam-policy"],
-      summary: "Get the IAM policy for a resource.",
-      positionals: [seed.positional],
-      flags: [...extra],
-      destructive: false,
-      requiredPermissions: [seed.permissions.get],
-      resolveTarget: seed.resolveTarget,
-      run: (ctx, args) => {
-        const target = seed.resolveTarget(ctx, args);
-        if (!Result.isOk(target)) return target;
-        const policy = World.policyOf(ctx.world, target.value);
-        if (!Option.isSome(policy))
-          return Result.err(CommandFailure.notFound(seed.label(target.value)));
-        return Result.ok({
-          world: ctx.world,
-          output: CommandOutput.yaml(policyRecord(policy.value)),
-        });
-      },
-    },
-    {
-      kind: "target",
-      path: [...seed.group, "add-iam-policy-binding"],
-      summary: "Add an IAM policy binding to a resource.",
-      positionals: [seed.positional],
-      flags: [CommonFlags.member, CommonFlags.role, ...extra],
-      destructive: false,
-      requiredPermissions: [seed.permissions.set],
-      resolveTarget: seed.resolveTarget,
-      run: bindingRun(seed, "add"),
-    },
-    {
-      kind: "target",
-      path: [...seed.group, "remove-iam-policy-binding"],
-      summary: "Remove an IAM policy binding from a resource.",
-      positionals: [seed.positional],
-      flags: [CommonFlags.member, CommonFlags.role, ...extra],
-      destructive: false,
-      requiredPermissions: [seed.permissions.set],
-      resolveTarget: seed.resolveTarget,
-      run: bindingRun(seed, "remove"),
-    },
-  ];
-};
+export const iamBindingCommands = (seed: BindingCommandSeed): readonly CommandSpec[] => [
+  {
+    kind: "target",
+    path: [...seed.group, "get-iam-policy"],
+    summary: "Get the IAM policy for a resource.",
+    positionals: [seed.positional],
+    flags: [],
+    destructive: false,
+    requiredPermissions: [seed.permissions.get],
+    resolveTarget: seed.resolveTarget,
+    run: (ctx) =>
+      Result.map(requirePolicy(ctx), (policy) => ({
+        world: ctx.world,
+        output: CommandOutput.yaml(IamPolicy.toRecord(policy)),
+      })),
+  },
+  {
+    kind: "target",
+    path: [...seed.group, "add-iam-policy-binding"],
+    summary: "Add an IAM policy binding to a resource.",
+    positionals: [seed.positional],
+    flags: [CommonFlags.member, CommonFlags.role],
+    destructive: false,
+    requiredPermissions: [seed.permissions.set],
+    resolveTarget: seed.resolveTarget,
+    run: bindingRun(seed, "add"),
+  },
+  {
+    kind: "target",
+    path: [...seed.group, "remove-iam-policy-binding"],
+    summary: "Remove an IAM policy binding from a resource.",
+    positionals: [seed.positional],
+    flags: [CommonFlags.member, CommonFlags.role],
+    destructive: false,
+    requiredPermissions: [seed.permissions.set],
+    resolveTarget: seed.resolveTarget,
+    run: bindingRun(seed, "remove"),
+  },
+];
 
 /** 未対応コマンドの定義（DJ-005）。 */
 export const notImplemented = (path: readonly string[], summary: string): CommandSpec => ({
@@ -204,4 +205,32 @@ export const notImplemented = (path: readonly string[], summary: string): Comman
   summary,
 });
 
-export { Positional };
+/** `kind: "project"` の定義の材料。省いた項目は「引数なし・フラグなし・API 検証なし・確認なし」。 */
+export type ProjectCommandSeed = Readonly<{
+  path: readonly string[];
+  summary: string;
+  positionals?: readonly PositionalSpec[];
+  flags?: readonly FlagSpec[];
+  permission: string;
+  requiredApis?: readonly ApiName[];
+  destructive?: boolean;
+  run: (ctx: ProjectContext, args: ParsedArgs) => CommandResult;
+}>;
+
+/**
+ * `kind: "project"` の定義を材料から組む。同じ形の定義を並べるモジュール（storage / compute の list 等）が使う。
+ *
+ * @param seed 材料
+ * @returns コマンド定義
+ */
+export const projectCommand = (seed: ProjectCommandSeed): CommandSpec => ({
+  kind: "project",
+  path: seed.path,
+  summary: seed.summary,
+  positionals: seed.positionals ?? [],
+  flags: seed.flags ?? [],
+  destructive: seed.destructive ?? false,
+  requiredPermissions: [seed.permission],
+  requiredApis: seed.requiredApis ?? [],
+  run: seed.run,
+});

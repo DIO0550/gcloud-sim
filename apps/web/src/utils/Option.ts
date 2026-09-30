@@ -1,3 +1,5 @@
+import { Result } from "@/utils/Result";
+
 /** 値がある状態。 */
 export type Some<T> = Readonly<{
   some: true;
@@ -85,6 +87,28 @@ export const Option = {
    */
   or<T>(option: Option<T>, fallback: Option<T>): Option<T> {
     return option.some ? option : fallback;
+  },
+
+  /**
+   * 条件を満たさない値を不在にする。
+   *
+   * @param option 元
+   * @param predicate 値があるときだけ呼ぶ条件
+   * @returns 値があり条件を満たせばそのまま。それ以外は `none`
+   */
+  filter<T>(option: Option<T>, predicate: (value: T) => boolean): Option<T> {
+    return option.some && predicate(option.value) ? option : none;
+  },
+
+  /**
+   * 不在を失敗に写す。
+   *
+   * @param option 元
+   * @param error `none` のときの失敗
+   * @returns 値があれば `ok`、無ければ `error` を持つ `err`
+   */
+  toResult<T, E>(option: Option<T>, error: () => E): Result<T, E> {
+    return option.some ? Result.ok(option.value) : Result.err(error());
   },
 
   /**

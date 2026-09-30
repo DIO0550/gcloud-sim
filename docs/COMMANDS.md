@@ -102,7 +102,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 
 | コマンド | 必要な権限 | 必要な API | フラグ |
 |---|---|---|---|
-| `gcloud compute instances create` | `compute.instances.create` | `compute.googleapis.com` | `--zone` `--machine-type` `--image-family` `--image-project` `--network` `--subnet` `--tags` `--service-account` `--scopes` `--preemptible` `--provisioning-model` `--metadata` `--labels` `--boot-disk-size` `--boot-disk-type` `--address` `--async` |
+| `gcloud compute instances create` | `compute.instances.create` | `compute.googleapis.com` | `--zone` `--machine-type` `--image-family` `--image-project` `--network` `--subnet` `--tags` `--service-account` `--scopes` `--preemptible` `--provisioning-model` `--metadata` `--boot-disk-size` `--boot-disk-type` `--address` `--async` |
 | `gcloud compute instances list` | `compute.instances.list` | `compute.googleapis.com` | — |
 | `gcloud compute instances describe` | `compute.instances.get` | `compute.googleapis.com` | `--zone` |
 | `gcloud compute instances start` | `compute.instances.start` | `compute.googleapis.com` | `--zone` `--async` |
@@ -136,7 +136,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 | `gcloud storage buckets create` | `storage.buckets.create` | — | `--location` `--default-storage-class` `--uniform-bucket-level-access` `--public-access-prevention` |
 | `gcloud storage buckets list` | `storage.buckets.list` | — | — |
 | `gcloud storage buckets describe` | `storage.buckets.get` | — | — |
-| `gcloud storage buckets delete` | `storage.buckets.delete` | — | — |
+| `gcloud storage buckets delete` | `storage.buckets.delete` | — | `--recursive` |
 | `gcloud storage buckets get-iam-policy` | `storage.buckets.getIamPolicy` | — | — |
 | `gcloud storage buckets add-iam-policy-binding` | `storage.buckets.setIamPolicy` | — | `--member` `--role` |
 | `gcloud storage buckets remove-iam-policy-binding` | `storage.buckets.setIamPolicy` | — | `--member` `--role` |
@@ -144,34 +144,14 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 | `gcloud storage cp` | `storage.objects.create` | — | `--recursive` |
 | `gcloud storage rm` | `storage.objects.delete` | — | `--recursive` |
 
-### `gsutil mb`
+### `gsutil`
 
 | コマンド | 必要な権限 | 必要な API | フラグ |
 |---|---|---|---|
-| `gsutil mb` | `storage.buckets.create` | — | `--l` `--c` `--b` `--uniform-bucket-level-access` `--public-access-prevention` |
-
-### `gsutil ls`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
+| `gsutil mb` | `storage.buckets.create` | — | `--l` `--c` `--b` `--public-access-prevention` |
 | `gsutil ls` | `storage.objects.list` | — | `--long` `--recursive` |
-
-### `gsutil cp`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
 | `gsutil cp` | `storage.objects.create` | — | `--recursive` `--m` |
-
-### `gsutil rm`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
 | `gsutil rm` | `storage.objects.delete` | — | `--recursive` `--m` |
-
-### `gsutil iam`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
 | `gsutil iam get` | `storage.buckets.getIamPolicy` | — | — |
 
 ### `gcloud iam`
@@ -182,25 +162,25 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 | `gcloud iam service-accounts list` | `iam.serviceAccounts.list` | — | — |
 | `gcloud iam service-accounts describe` | `iam.serviceAccounts.get` | — | — |
 | `gcloud iam service-accounts delete` | `iam.serviceAccounts.delete` | — | — |
-| `gcloud iam roles list` | — | — | `--project` |
+| `gcloud iam roles list` | — | — | — |
 | `gcloud iam roles describe` | — | — | — |
 
 ### `gcloud container`
 
 | コマンド | 必要な権限 | 必要な API | フラグ |
 |---|---|---|---|
-| `gcloud container clusters create` | `container.clusters.create` | `container.googleapis.com` | `--zone` `--region` `--num-nodes` `--machine-type` `--cluster-version` `--release-channel` `--enable-autoscaling` `--min-nodes` `--max-nodes` |
-| `gcloud container clusters create-auto` | `container.clusters.create` | `container.googleapis.com` | `--region` `--zone` `--release-channel` |
-| `gcloud container clusters list` | `container.clusters.list` | `container.googleapis.com` | `--zone` `--region` |
+| `gcloud container clusters create` | `container.clusters.create` | `container.googleapis.com` | `--zone` `--region` `--num-nodes` `--machine-type` `--release-channel` |
+| `gcloud container clusters create-auto` | `container.clusters.create` | `container.googleapis.com` | `--zone` `--region` `--release-channel` |
+| `gcloud container clusters list` | `container.clusters.list` | `container.googleapis.com` | — |
 | `gcloud container clusters describe` | `container.clusters.get` | `container.googleapis.com` | `--zone` `--region` |
 | `gcloud container clusters delete` | `container.clusters.delete` | `container.googleapis.com` | `--zone` `--region` `--async` |
-| `gcloud container clusters get-credentials` | `container.clusters.get`, `container.clusters.getCredentials` | `container.googleapis.com` | `--zone` `--region` `--internal-ip` |
+| `gcloud container clusters get-credentials` | `container.clusters.get` `container.clusters.getCredentials` | `container.googleapis.com` | `--zone` `--region` `--internal-ip` |
 
 ### `gcloud run`
 
 | コマンド | 必要な権限 | 必要な API | フラグ |
 |---|---|---|---|
-| `gcloud run deploy` | `run.services.create` | `run.googleapis.com` | `--image` `--region` `--platform` `--allow-unauthenticated` `--port` `--memory` `--max-instances` `--min-instances` `--set-env-vars` `--service-account` |
+| `gcloud run deploy` | `run.services.create` | `run.googleapis.com` | `--image` `--region` `--platform` `--allow-unauthenticated` |
 | `gcloud run services list` | `run.services.list` | `run.googleapis.com` | `--region` `--platform` |
 | `gcloud run services describe` | `run.services.get` | `run.googleapis.com` | `--region` `--platform` |
 | `gcloud run services delete` | `run.services.delete` | `run.googleapis.com` | `--region` `--platform` |

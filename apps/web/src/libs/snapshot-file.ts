@@ -1,5 +1,6 @@
 import type { World } from "@/engine/domains/world";
 import { type ImportFailure, Snapshot } from "@/engine/snapshot";
+import { parseJson } from "@/libs/json";
 import { Result } from "@/utils/Result";
 
 /** Snapshot JSON のダウンロードと読み込み（UC-005 Export / Import）。ブラウザの API はここに閉じる。 */
@@ -29,14 +30,10 @@ export const SnapshotFile = {
    */
   async read(file: File): Promise<Result<World, ImportFailure>> {
     const text = await file.text();
-    try {
-      const parsed: unknown = JSON.parse(text);
-      return Snapshot.fromUnknown(parsed);
-    } catch (error) {
-      return Result.err({
-        kind: "malformed",
-        reason: error instanceof Error ? error.message : String(error),
-      });
-    }
+    const parsed = Result.mapErr(
+      parseJson(text),
+      (reason): ImportFailure => ({ kind: "malformed", reason }),
+    );
+    return Result.flatMap(parsed, Snapshot.fromUnknown);
   },
 } as const;

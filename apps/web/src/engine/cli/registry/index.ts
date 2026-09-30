@@ -1,4 +1,4 @@
-import { CommandFailure } from "@/engine/cli/command-error";
+import { CommandFailure } from "@/engine/cli/command-failure";
 import type { CommandSpec, FlagSpec } from "@/engine/cli/command-spec";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";

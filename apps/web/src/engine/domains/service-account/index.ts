@@ -4,6 +4,7 @@ import { Result } from "@/utils/Result";
 export type ServiceAccount = Readonly<{
   email: string;
   displayName: string;
+  description: string;
   projectId: string;
   uniqueId: string;
 }>;
@@ -17,7 +18,13 @@ export const ServiceAccount = {
    *   それ以外は理由
    */
   create(
-    seed: Readonly<{ accountId: string; displayName: string; projectId: string; uniqueId: string }>,
+    seed: Readonly<{
+      accountId: string;
+      displayName: string;
+      description: string;
+      projectId: string;
+      uniqueId: string;
+    }>,
   ): Result<ServiceAccount, string> {
     const valid = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(seed.accountId);
     if (!valid) {
@@ -26,14 +33,16 @@ export const ServiceAccount = {
       );
     }
     return Result.ok({
-      email: ServiceAccount.emailOf(seed.accountId, seed.projectId),
+      email: ServiceAccount.email(seed.accountId, seed.projectId),
       displayName: seed.displayName,
+      description: seed.description,
       projectId: seed.projectId,
       uniqueId: seed.uniqueId,
     });
   },
 
-  emailOf(accountId: string, projectId: string): string {
+  /** `NAME@PROJECT.iam.gserviceaccount.com` の綴り。 */
+  email(accountId: string, projectId: string): string {
     return `${accountId}@${projectId}.iam.gserviceaccount.com`;
   },
 
@@ -52,6 +61,7 @@ export const ServiceAccount = {
       name: `projects/${account.projectId}/serviceAccounts/${account.email}`,
       email: account.email,
       displayName: account.displayName,
+      description: account.description,
       projectId: account.projectId,
       uniqueId: account.uniqueId,
       disabled: false,

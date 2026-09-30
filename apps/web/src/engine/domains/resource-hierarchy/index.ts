@@ -1,5 +1,5 @@
 import type { ApiName } from "@/engine/domains/catalog";
-import { IamPolicy } from "@/engine/domains/iam-policy";
+import { type IamMember, IamPolicy } from "@/engine/domains/iam-policy";
 import type { JsonRecord } from "@/types/Json";
 import type { ValueOf } from "@/types/ValueOf";
 import { Option } from "@/utils/Option";
@@ -109,13 +109,16 @@ export type ProjectSeed = Readonly<{
   projectId: string;
   name: string;
   parent: ParentRef;
-  projectNumber: string;
+  /** World の通し番号。projectNumber の採番に使う */
+  sequence: number;
+  /** 作成者。プロジェクトの `roles/owner` になる（設計書 8「Project の状態」） */
+  creator: IamMember;
   createTime: string;
 }>;
 
 export const Project = {
   /**
-   * 新しいプロジェクトを作る。projectId の形式はここで検証する。
+   * 新しいプロジェクトを作る。projectId の形式はここで検証し、作成者を `roles/owner` にする。
    *
    * @param seed 材料。`name` が空なら projectId をそのまま表示名にする
    * @returns 形式を満たせば `ACTIVE` のプロジェクト。満たさなければ理由
@@ -124,12 +127,12 @@ export const Project = {
     return Result.map(ProjectId.parse(seed.projectId), (projectId) => ({
       projectId,
       name: seed.name === "" ? projectId : seed.name,
-      projectNumber: seed.projectNumber,
+      projectNumber: String(100000000000 + seed.sequence * 7919),
       parent: seed.parent,
       lifecycleState: ProjectStates.Active,
       billingAccountId: Option.none,
       enabledApis: [],
-      iamPolicy: IamPolicy.Empty,
+      iamPolicy: IamPolicy.addBinding(IamPolicy.Empty, "roles/owner", seed.creator),
       labels: {},
       createTime: seed.createTime,
     }));
@@ -165,6 +168,10 @@ export const Project = {
     return { ...project, iamPolicy };
   },
 
+  withLabels(project: Project, labels: Readonly<Record<string, string>>): Project {
+    return { ...project, labels };
+  },
+
   /** `--format=json` に出す API 表現。 */
   toRecord(project: Project): JsonRecord {
     return {
@@ -184,15 +191,29 @@ export const Folder = {
     return { ...folder, iamPolicy };
   },
 
+  /**
+   * 新しいフォルダを作る。id は通し番号から採番する。
+   *
+   * @param seed 表示名・親・通し番号
+   * @returns 空のポリシーを持つフォルダ。表示名が空なら理由
+   */
+  create(
+    seed: Readonly<{ displayName: string; parent: ParentRef; sequence: number }>,
+  ): Result<Folder, string> {
+    if (seed.displayName.trim() === "") return Result.err("Display name must not be empty.");
+    return Result.ok({
+      id: String(284100000000 + seed.sequence),
+      displayName: seed.displayName,
+      parent: seed.parent,
+      iamPolicy: IamPolicy.Empty,
+    });
+  },
+
   toRecord(folder: Folder): JsonRecord {
-    const parent =
-      folder.parent.type === "organization"
-        ? `organizations/${folder.parent.id}`
-        : `folders/${folder.parent.id}`;
     return {
-      name: `folders/${folder.id}`,
+      name: PolicyTarget.toPath({ type: "folder", id: folder.id }),
       displayName: folder.displayName,
-      parent,
+      parent: PolicyTarget.toPath(folder.parent),
       lifecycleState: "ACTIVE",
     };
   },
@@ -205,7 +226,7 @@ export const Organization = {
 
   toRecord(organization: Organization): JsonRecord {
     return {
-      name: `organizations/${organization.id}`,
+      name: PolicyTarget.toPath({ type: "organization", id: organization.id }),
       displayName: organization.displayName,
       lifecycleState: "ACTIVE",
     };

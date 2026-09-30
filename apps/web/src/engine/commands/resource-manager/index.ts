@@ -1,5 +1,6 @@
-import { CommandFailure } from "@/engine/cli/command-error";
+import { CommandFailure } from "@/engine/cli/command-failure";
 import {
+  type AuthorizedContext,
   Column,
   type CommandContext,
   CommandOutput,
@@ -12,13 +13,12 @@ import {
 import { alreadyExists, iamBindingCommands } from "@/engine/commands/shared";
 import { EffectivePermissions } from "@/engine/domains/effective-permissions";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
-import { IamPolicy } from "@/engine/domains/iam-policy";
 import { Principal } from "@/engine/domains/principal";
 import {
   Folder,
   Organization,
   type ParentRef,
-  type PolicyTarget,
+  PolicyTarget,
   Project,
   ProjectStates,
 } from "@/engine/domains/resource-hierarchy";
@@ -27,18 +27,18 @@ import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
 const ProjectColumns = [
-  Column.of("PROJECT_ID", "projectId"),
-  Column.of("NAME", "name"),
-  Column.of("PROJECT_NUMBER", "projectNumber"),
+  Column.create("PROJECT_ID", "projectId"),
+  Column.create("NAME", "name"),
+  Column.create("PROJECT_NUMBER", "projectNumber"),
 ];
 
-const visibleProjects = (ctx: CommandContext) =>
+const visibleProjects = (ctx: AuthorizedContext) =>
   World.activeProjects(ctx.world).filter((project) => {
     const effective = EffectivePermissions.resolve(ctx.world, Principal.toMember(ctx.principal), {
       type: "project",
       id: project.projectId,
     });
-    return EffectivePermissions.has(effective, "resourcemanager.projects.get");
+    return EffectivePermissions.allows(effective, "resourcemanager.projects.get");
   });
 
 const projectTarget = (
@@ -52,9 +52,7 @@ const requireProjectArg = (ctx: CommandContext, args: ParsedArgs, includeDeleted
   const project = includeDeleted
     ? World.findProject(ctx.world, id)
     : World.findActiveProject(ctx.world, id);
-  return Option.isSome(project)
-    ? Result.ok(project.value)
-    : Result.err(CommandFailure.notFound(`projects/${id}`));
+  return Option.toResult(project, () => CommandFailure.notFound(`projects/${id}`));
 };
 
 const parentFromFlags = (
@@ -76,23 +74,21 @@ const parentFromFlags = (
     : { type: "organization", id: Option.unwrapOr(organization, ctx.world.organization.id) };
   return World.hasParent(ctx.world, parent)
     ? Result.ok(parent)
-    : Result.err(
-        CommandFailure.notFound(
-          parent.type === "folder" ? `folders/${parent.id}` : `organizations/${parent.id}`,
-        ),
-      );
+    : Result.err(CommandFailure.notFound(PolicyTarget.toPath(parent)));
 };
 
-const projectNumber = (sequence: number): string => String(100000000000 + sequence * 7919);
+const ProjectApiBase = "https://cloudresourcemanager.googleapis.com/v1/projects";
 
 export const ProjectCommands: readonly CommandSpec[] = [
   {
-    kind: "plain",
+    kind: "target",
     path: ["gcloud", "projects", "list"],
     summary: "List projects accessible by the active account.",
     positionals: [],
     flags: [],
     destructive: false,
+    requiredPermissions: [],
+    resolveTarget: (ctx) => Result.ok({ type: "organization", id: ctx.world.organization.id }),
     run: (ctx) =>
       Result.ok({
         world: ctx.world,
@@ -147,17 +143,15 @@ export const ProjectCommands: readonly CommandSpec[] = [
           projectId,
           name: Option.unwrapOr(ParsedArgs.string(args, "name"), ""),
           parent: parent.value,
-          projectNumber: projectNumber(numbered.number),
+          sequence: numbered.number,
+          creator: Principal.toMember(ctx.principal),
           createTime: ctx.now,
         }),
         (message) => CommandFailure.invalidValue("PROJECT_ID", message),
       );
       if (!Result.isOk(created)) return created;
-      const owned = Project.withPolicy(
-        { ...created.value, labels: ParsedArgs.keyvalue(args, "labels") },
-        IamPolicy.addBinding(IamPolicy.Empty, "roles/owner", Principal.toMember(ctx.principal)),
-      );
-      const added = Result.mapErr(World.withProject(numbered.world, owned), alreadyExists);
+      const labeled = Project.withLabels(created.value, ParsedArgs.keyvalue(args, "labels"));
+      const added = Result.mapErr(World.withProject(numbered.world, labeled), alreadyExists);
       if (!Result.isOk(added)) return added;
       const setDefault = ParsedArgs.boolean(args, "set-as-default");
       const world = setDefault
@@ -169,9 +163,7 @@ export const ProjectCommands: readonly CommandSpec[] = [
       return Result.ok({
         world,
         output: CommandOutput.messages(
-          OutputMessage.plain(
-            `Create in progress for [https://cloudresourcemanager.googleapis.com/v1/projects/${projectId}].`,
-          ),
+          OutputMessage.plain(`Create in progress for [${ProjectApiBase}/${projectId}].`),
           OutputMessage.plain(`Waiting for [operations/cp.${numbered.number}] to finish...done.`),
           OutputMessage.plain(
             `Enabling service [cloudapis.googleapis.com] on project [${projectId}]...`,
@@ -202,9 +194,7 @@ export const ProjectCommands: readonly CommandSpec[] = [
           Project.withState(project, ProjectStates.DeleteRequested),
         ),
         output: CommandOutput.messages(
-          OutputMessage.plain(
-            `Deleted [https://cloudresourcemanager.googleapis.com/v1/projects/${project.projectId}].`,
-          ),
+          OutputMessage.plain(`Deleted [${ProjectApiBase}/${project.projectId}].`),
           OutputMessage.plain(""),
           OutputMessage.plain(
             "You can undo this operation for a limited period by running the command below.",
@@ -238,9 +228,7 @@ export const ProjectCommands: readonly CommandSpec[] = [
           Project.withState(project.value, ProjectStates.Active),
         ),
         output: CommandOutput.messages(
-          OutputMessage.plain(
-            `Restored [https://cloudresourcemanager.googleapis.com/v1/projects/${project.value.projectId}].`,
-          ),
+          OutputMessage.plain(`Restored [${ProjectApiBase}/${project.value.projectId}].`),
         ),
       });
     },
@@ -286,9 +274,9 @@ export const OrganizationCommands: readonly CommandSpec[] = [
         output: CommandOutput.table(
           [{ ...Organization.toRecord(ctx.world.organization), ID: ctx.world.organization.id }],
           [
-            Column.of("DISPLAY_NAME", "displayName"),
-            Column.of("ID", "ID"),
-            Column.of("DIRECTORY_CUSTOMER_ID", "directoryCustomerId"),
+            Column.create("DISPLAY_NAME", "displayName"),
+            Column.create("ID", "ID"),
+            Column.create("DIRECTORY_CUSTOMER_ID", "directoryCustomerId"),
           ],
         ),
       }),
@@ -331,9 +319,9 @@ const folderTarget = (
 };
 
 const FolderColumns = [
-  Column.of("ID", "name", "basename"),
-  Column.of("DISPLAY_NAME", "displayName"),
-  Column.of("PARENT_NAME", "parent"),
+  Column.create("ID", "name", "basename"),
+  Column.create("DISPLAY_NAME", "displayName"),
+  Column.create("PARENT_NAME", "parent"),
 ];
 
 export const FolderCommands: readonly CommandSpec[] = [
@@ -357,12 +345,12 @@ export const FolderCommands: readonly CommandSpec[] = [
       const parent: ParentRef = Option.isSome(folder)
         ? { type: "folder", id: folder.value }
         : { type: "organization", id: Option.unwrapOr(organization, "") };
-      const folders = ctx.world.folders.filter(
-        (f) => f.parent.type === parent.type && f.parent.id === parent.id,
-      );
       return Result.ok({
         world: ctx.world,
-        output: CommandOutput.table(folders.map(Folder.toRecord), FolderColumns),
+        output: CommandOutput.table(
+          World.foldersUnder(ctx.world, parent).map(Folder.toRecord),
+          FolderColumns,
+        ),
       });
     },
   },
@@ -385,17 +373,20 @@ export const FolderCommands: readonly CommandSpec[] = [
       const parent = parentFromFlags(ctx, args);
       if (!Result.isOk(parent)) return parent;
       const numbered = World.nextNumber(ctx.world);
-      const folder: Folder = {
-        id: String(284100000000 + numbered.number),
-        displayName: Option.unwrapOr(ParsedArgs.string(args, "display-name"), ""),
-        parent: parent.value,
-        iamPolicy: IamPolicy.Empty,
-      };
+      const folder = Result.mapErr(
+        Folder.create({
+          displayName: Option.unwrapOr(ParsedArgs.string(args, "display-name"), ""),
+          parent: parent.value,
+          sequence: numbered.number,
+        }),
+        (m) => CommandFailure.invalidValue("--display-name", m),
+      );
+      if (!Result.isOk(folder)) return folder;
       return Result.map(
-        Result.mapErr(World.withFolder(numbered.world, folder), alreadyExists),
+        Result.mapErr(World.withFolder(numbered.world, folder.value), alreadyExists),
         (world) => ({
           world,
-          output: CommandOutput.yaml(Folder.toRecord(folder), [
+          output: CommandOutput.yaml(Folder.toRecord(folder.value), [
             OutputMessage.plain(`Waiting for [operations/fc.${numbered.number}] to finish...done.`),
           ]),
         }),
@@ -411,13 +402,13 @@ export const FolderCommands: readonly CommandSpec[] = [
     destructive: false,
     requiredPermissions: ["resourcemanager.folders.get"],
     resolveTarget: folderTarget,
-    run: (ctx, args) => {
-      const id = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
-      const folder = World.findFolder(ctx.world, id);
-      return Option.isSome(folder)
-        ? Result.ok({ world: ctx.world, output: CommandOutput.yaml(Folder.toRecord(folder.value)) })
-        : Result.err(CommandFailure.notFound(`folders/${id}`));
-    },
+    run: (ctx) =>
+      Result.map(
+        Option.toResult(World.findFolder(ctx.world, ctx.target.id), () =>
+          CommandFailure.notFound(PolicyTarget.toPath(ctx.target)),
+        ),
+        (folder) => ({ world: ctx.world, output: CommandOutput.yaml(Folder.toRecord(folder)) }),
+      ),
   },
   ...iamBindingCommands({
     group: ["gcloud", "resource-manager", "folders"],

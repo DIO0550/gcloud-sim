@@ -4,6 +4,7 @@ import { Engine, type OutputLine } from "@/engine";
 import type { World } from "@/engine/domains/world";
 import { Simulator, type SimulatorIo } from "@/features/simulator";
 import type { TerminalView } from "@/libs/terminal-view";
+import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
 export const Now = "2026-09-30T14:02:31.000Z";
@@ -88,7 +89,7 @@ export const renderSimulator = (
   world: World = Engine.initialWorld(Now),
 ) => {
   const h = harness(options);
-  const rendered = render(<Simulator initialWorld={world} io={h.io} />);
+  const rendered = render(<Simulator start={{ world, warning: Option.none }} io={h.io} />);
   return { ...h, ...rendered };
 };
 

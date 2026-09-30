@@ -1,13 +1,19 @@
 import type { ReactElement } from "react";
 
-import { ExternalIp, FirewallRule, Instance } from "@/engine/domains/compute";
+import {
+  DefaultScopes,
+  ExternalIp,
+  FirewallRule,
+  Instance,
+  ProtocolRule,
+} from "@/engine/domains/compute";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import type { IamMember, RoleName } from "@/engine/domains/iam-policy";
 import { CloudRunService } from "@/engine/domains/managed-services";
 import type { PolicyTarget } from "@/engine/domains/resource-hierarchy";
 import { RoleCatalog } from "@/engine/domains/role-catalog";
 import { World } from "@/engine/domains/world";
-import { InheritedPolicy, Selection } from "@/engine/resource-tree";
+import { type BindingOrigin, BindingRow, Selection } from "@/engine/resource-tree";
 import { Option } from "@/utils/Option";
 
 type PropertiesPanelProps = Readonly<{
@@ -43,12 +49,41 @@ const roleTitle = (role: RoleName): string =>
 
 const memberLabel = (member: IamMember): string => member.replace(/^user:/, "");
 
+/** 継承元の綴り（モック s2: `組織 example.com` / `フォルダ dev` / `このプロジェクト`）。 */
+const originText = (origin: BindingOrigin): string => {
+  switch (origin.kind) {
+    case "self":
+      switch (origin.target.type) {
+        case "organization":
+          return "この組織";
+        case "folder":
+          return "このフォルダ";
+        case "project":
+          return "このプロジェクト";
+        case "bucket":
+          return "このバケット";
+      }
+      break;
+    case "organization":
+      return `組織 ${origin.displayName}`;
+    case "folder":
+      return `フォルダ ${origin.displayName}`;
+    case "project":
+      return `プロジェクト ${origin.projectId}`;
+    case "bucket":
+      return `バケット ${origin.name}`;
+  }
+};
+
+const protocolText = (rules: readonly ProtocolRule[]): string =>
+  rules.map(ProtocolRule.toText).join(", ") || "-";
+
 /** IAM の表（モック s2: プリンシパル・ロール・継承元）。 */
 const PolicyTable = ({
   world,
   target,
 }: Readonly<{ world: World; target: PolicyTarget }>): ReactElement => {
-  const rows = InheritedPolicy.of(world, target);
+  const rows = BindingRow.fromWorld(world, target);
   return (
     <table className="w-full table-fixed text-sm" aria-label="IAM ポリシー">
       <colgroup>
@@ -71,21 +106,23 @@ const PolicyTable = ({
             </td>
           </tr>
         )}
-        {rows.map((row) => (
-          <tr
-            key={`${row.member}/${row.role}/${row.grantedAt.type}/${row.grantedAt.id}`}
-            className="border-line border-t"
-          >
-            <td className="break-all py-1.5 pr-2 font-mono text-xs">{memberLabel(row.member)}</td>
-            <td className="py-1.5 pr-2">
-              {roleTitle(row.role)}
-              <span className="block font-mono text-muted text-xs">{row.role}</span>
-            </td>
-            <td className={`py-1.5 text-xs ${row.inherited ? "text-warn-ink" : "text-muted"}`}>
-              {InheritedPolicy.label(world, target, row.grantedAt)}
-            </td>
-          </tr>
-        ))}
+        {rows.map((row) => {
+          const origin = originText(row.origin);
+          return (
+            <tr key={`${row.member}/${row.role}/${origin}`} className="border-line border-t">
+              <td className="break-all py-1.5 pr-2 font-mono text-xs">{memberLabel(row.member)}</td>
+              <td className="py-1.5 pr-2">
+                {roleTitle(row.role)}
+                <span className="block font-mono text-muted text-xs">{row.role}</span>
+              </td>
+              <td
+                className={`py-1.5 text-xs ${BindingRow.isInherited(row) ? "text-warn-ink" : "text-muted"}`}
+              >
+                {origin}
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );
@@ -238,12 +275,7 @@ const Body = ({
           {rules.length > 0 && (
             <p className="mb-4 rounded bg-ok-soft px-3 py-2 text-sm">
               ↳ 適用されるファイアウォール:{" "}
-              {rules
-                .map(
-                  (r) =>
-                    `${r.name}（${r.allowed.map((a) => (a.ports.length === 0 ? a.protocol : `${a.protocol}:${a.ports.join(",")}`)).join(", ")} · タグ一致）`,
-                )
-                .join(" / ")}
+              {rules.map((r) => `${r.name}（${protocolText(r.allowed)} · タグ一致）`).join(" / ")}
             </p>
           )}
           <Section
@@ -263,7 +295,11 @@ const Body = ({
               { label: "serviceAccount", value: i.serviceAccount },
               {
                 label: "scopes",
-                value: i.scopes.length === 6 ? "デフォルト（6 件）" : `${i.scopes.length} 件`,
+                value:
+                  i.scopes.length === DefaultScopes.length &&
+                  DefaultScopes.every((s) => i.scopes.includes(s))
+                    ? `デフォルト（${DefaultScopes.length} 件）`
+                    : `${i.scopes.length} 件`,
               },
             ]}
           />
@@ -312,24 +348,8 @@ const Body = ({
             { label: "priority", value: String(r.priority) },
             { label: "sourceRanges", value: r.sourceRanges.join(", ") || "-" },
             { label: "targetTags", value: r.targetTags.join(", ") || "(すべてのインスタンス)" },
-            {
-              label: "allow",
-              value:
-                r.allowed
-                  .map((a) =>
-                    a.ports.length === 0 ? a.protocol : `${a.protocol}:${a.ports.join(",")}`,
-                  )
-                  .join(", ") || "-",
-            },
-            {
-              label: "deny",
-              value:
-                r.denied
-                  .map((a) =>
-                    a.ports.length === 0 ? a.protocol : `${a.protocol}:${a.ports.join(",")}`,
-                  )
-                  .join(", ") || "-",
-            },
+            { label: "allow", value: protocolText(r.allowed) },
+            { label: "deny", value: protocolText(r.denied) },
           ]}
         />
       );

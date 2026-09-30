@@ -1,11 +1,11 @@
 import type { ReactElement } from "react";
 
 import type { World } from "@/engine/domains/world";
-import type { TranscriptEntry } from "@/features/simulator/hooks/use-simulator";
+import type { TranscriptLine } from "@/features/simulator/hooks/use-simulator";
 
 type ChangeLogProps = Readonly<{
   world: World;
-  transcript: readonly TranscriptEntry[];
+  transcript: readonly TranscriptLine[];
 }>;
 
 const time = (iso: string): string => iso.slice(11, 19);

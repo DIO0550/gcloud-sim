@@ -105,6 +105,29 @@ export const CommandFailure = {
     );
   },
 
+  /**
+   * region 未設定（E-004）。zone と同じく対話プロンプトの代わりに指定方法を案内する。
+   *
+   * @param property 既定を置けるプロパティ（`compute/region` か `run/region`）。ヒントに出す
+   */
+  regionRequired(property: string): CommandFailure {
+    return failure(
+      ErrorCodes.MissingArgument,
+      "argument --region: Must be specified. gcloud-sim does not prompt for a region.",
+      [
+        `--region=REGION を付けるか、gcloud config set ${property} REGION で既定のリージョンを設定してください。`,
+      ],
+    );
+  },
+
+  /** `core/account` が未設定（本物の `You do not currently have an active account selected.`）。 */
+  noActiveAccount(): CommandFailure {
+    return failure(
+      ErrorCodes.MissingArgument,
+      "You do not currently have an active account selected.\nPlease run:\n\n  $ gcloud auth login\n\nto obtain new credentials.\n\nIf you have already logged in with a different account, run:\n\n  $ gcloud config set account ACCOUNT\n\nto select an already authenticated account to use.",
+    );
+  },
+
   projectRequired(): CommandFailure {
     return failure(
       ErrorCodes.MissingArgument,
@@ -119,7 +142,8 @@ export const CommandFailure = {
     );
   },
 
-  notFoundMessage(message: string): CommandFailure {
+  /** E-005 を、`Could not fetch resource` の定型ではない本物の文で出す。 */
+  notFoundWith(message: string): CommandFailure {
     return failure(ErrorCodes.NotFound, message);
   },
 

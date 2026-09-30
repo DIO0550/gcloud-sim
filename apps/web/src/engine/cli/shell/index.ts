@@ -1,8 +1,10 @@
 import { ArgParser } from "@/engine/cli/arg-parser";
-import { CommandFailure } from "@/engine/cli/command-error";
+import { CommandFailure } from "@/engine/cli/command-failure";
 import {
+  type AuthorizedContext,
   CommandContext,
   type CommandOutput,
+  type CommandResult,
   CommandSpec,
   Flag,
   type FlagSpec,
@@ -129,11 +131,25 @@ const outputLines = (output: CommandOutput, options: ListOptions): readonly Outp
   ...messageLines(output.trailing),
 ];
 
+/**
+ * 主体を決める（`--account` → `core/account`）。`plain` 以外のコマンドは主体が要るので、
+ * 無ければ本物と同じ「アカウントが選ばれていない」失敗にする。
+ */
+const resolvePrincipal = (world: World, args: ParsedArgs): Result<Principal, CommandFailure> => {
+  const flag = ParsedArgs.string(args, "account");
+  if (Option.isSome(flag)) {
+    return Result.mapErr(Principal.parse(flag.value), (m) =>
+      CommandFailure.invalidValue("--account", m),
+    );
+  }
+  return Option.toResult(World.currentPrincipal(world), CommandFailure.noActiveAccount);
+};
+
 const authorize = (
-  ctx: CommandContext,
+  ctx: AuthorizedContext,
   target: PolicyTarget,
   permissions: readonly string[],
-): Result<CommandContext, CommandFailure> => {
+): Result<AuthorizedContext, CommandFailure> => {
   const effective = EffectivePermissions.resolve(
     ctx.world,
     Principal.toMember(ctx.principal),
@@ -148,7 +164,7 @@ const authorize = (
   );
 };
 
-const runSpec = (spec: CommandSpec, ctx: CommandContext, args: ParsedArgs) => {
+const runSpec = (spec: CommandSpec, ctx: CommandContext, args: ParsedArgs): CommandResult => {
   switch (spec.kind) {
     case "not-implemented":
       return Result.err(CommandFailure.notImplemented(spec.path));
@@ -157,8 +173,14 @@ const runSpec = (spec: CommandSpec, ctx: CommandContext, args: ParsedArgs) => {
     case "target": {
       const target = spec.resolveTarget(ctx, args);
       if (!Result.isOk(target)) return target;
-      const authorized = authorize(ctx, target.value, spec.requiredPermissions);
-      return Result.flatMap(authorized, (c) => spec.run(c, args));
+      const principal = resolvePrincipal(ctx.world, args);
+      if (!Result.isOk(principal)) return principal;
+      const authorized = authorize(
+        { ...ctx, principal: principal.value },
+        target.value,
+        spec.requiredPermissions,
+      );
+      return Result.flatMap(authorized, (c) => spec.run({ ...c, target: target.value }, args));
     }
     case "project": {
       const project = CommandContext.requireProject(ctx);
@@ -171,8 +193,14 @@ const runSpec = (spec: CommandSpec, ctx: CommandContext, args: ParsedArgs) => {
         const title = Option.isSome(service) ? service.value.title : disabled;
         return Result.err(CommandFailure.apiDisabled(title, disabled, project.value.projectId));
       }
+      const principal = resolvePrincipal(ctx.world, args);
+      if (!Result.isOk(principal)) return principal;
       const target: PolicyTarget = { type: "project", id: project.value.projectId };
-      const authorized = authorize(ctx, target, spec.requiredPermissions);
+      const authorized = authorize(
+        { ...ctx, principal: principal.value },
+        target,
+        spec.requiredPermissions,
+      );
       return Result.flatMap(authorized, (c) => spec.run({ ...c, project: project.value }, args));
     }
   }
@@ -232,7 +260,6 @@ const execute = (
   const ctx: CommandContext = {
     world,
     now: input.now,
-    principal: Option.unwrapOr(ParsedArgs.string(args.value, "account"), world.session.principal),
     projectId: Option.or(ParsedArgs.string(args.value, "project"), World.currentProjectId(world)),
   };
   const outcome = runSpec(spec, ctx, args.value);

@@ -21,9 +21,9 @@ const records = [
   },
 ];
 const columns = [
-  Column.of("NAME", "name"),
-  Column.of("ZONE", "zone", "basename"),
-  Column.of("STATUS", "status"),
+  Column.create("NAME", "name"),
+  Column.create("ZONE", "zone", "basename"),
+  Column.create("STATUS", "status"),
 ];
 
 const options = (overrides: Partial<ListOptions> = {}): ListOptions => ({
@@ -184,6 +184,16 @@ test("未対応の --format は E-003 になる", () => {
   expect(Result.isOk(result)).toBe(false);
   if (!Result.isOk(result)) expect(result.error.code).toBe("E-003");
 });
+
+test.each(["text", "flattened", "csv(name)"])(
+  "本物にはあるが再現していない --format=%s は yaml に寄せず E-003 になる",
+  (format) => {
+    const result = OutputFormat.parse(Option.some(format));
+    expect(Result.isOk(result)).toBe(false);
+    if (!Result.isOk(result))
+      expect(result.error.message).toContain(`Unsupported format [${format}]`);
+  },
+);
 
 test("文法に合わない --filter は E-003 になる", () => {
   const result = Filter.parse("status=");

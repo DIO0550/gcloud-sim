@@ -1,4 +1,5 @@
 import type { OutputLine } from "@/engine";
+import { StringEx } from "@/utils/StringEx";
 
 /**
  * xterm.js を包んだ最小の口。feature はここを通してだけ端末に触る。
@@ -30,9 +31,14 @@ const Ansi = {
   plain: "",
 } as const;
 
-/** 調子ごとの ANSI 色。`plain` は色を付けない。 */
-export const colorize = (line: OutputLine): string =>
-  line.tone === "plain" ? line.text : `${Ansi[line.tone]}${line.text}${Ansi.reset}`;
+/**
+ * 調子ごとの ANSI 色。`plain` は色を付けない。制御文字は書く前に落とす（コマンドの出力には
+ * Snapshot 由来の文字列が混ざるので、エスケープ列を端末に解釈させない）。
+ */
+export const colorize = (line: OutputLine): string => {
+  const text = StringEx.withoutControlChars(line.text);
+  return line.tone === "plain" ? text : `${Ansi[line.tone]}${text}${Ansi.reset}`;
+};
 
 /** `TerminalView` を作る関数の型。テストではフェイクを注入する。 */
 export type TerminalViewFactory = (container: HTMLElement) => Promise<TerminalView>;

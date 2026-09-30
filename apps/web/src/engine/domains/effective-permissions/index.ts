@@ -41,7 +41,7 @@ export const EffectivePermissions = {
    */
   resolve(world: World, subject: IamMember, target: PolicyTarget): EffectivePermissions {
     const grants = World.ancestry(world, target).flatMap((ancestor) => {
-      const policy = World.policyOf(world, ancestor);
+      const policy = World.findPolicy(world, ancestor);
       const roles = Option.isSome(policy) ? IamPolicy.rolesOf(policy.value, subject) : [];
       return roles.map((role): EffectiveGrant => ({ role, grantedAt: ancestor }));
     });
@@ -55,28 +55,31 @@ export const EffectivePermissions = {
   },
 
   /**
-   * 権限を持っているか。カタログに無い権限は判定せず許可に倒す（DJ-006）。
+   * その権限での操作を許すか。カタログに無い権限は判定せず許可に倒す（DJ-006）ので、
+   * 「持っている」（`permissions.has`）とは答えが違う。
    *
    * @param effective 評価済みの有効権限
    * @param permission 必要な権限
    * @returns 持っていれば真。カタログ外の権限も真
    */
-  has(effective: EffectivePermissions, permission: string): boolean {
+  allows(effective: EffectivePermissions, permission: string): boolean {
     return !RoleCatalog.isKnownPermission(permission) || effective.permissions.has(permission);
   },
 
   /**
-   * 必要な権限をすべて持っているか確かめる。
+   * 必要な権限をすべて許すか確かめる。
    *
    * @param effective 評価済みの有効権限
    * @param required 必要な権限
-   * @returns すべて持っていれば `ok`。足りなければ最初に足りなかった権限
+   * @returns すべて許せば `ok`。足りなければ最初に足りなかった権限
    */
   require(
     effective: EffectivePermissions,
     required: readonly string[],
   ): Result<EffectivePermissions, MissingPermission> {
-    const missing = required.find((permission) => !EffectivePermissions.has(effective, permission));
+    const missing = required.find(
+      (permission) => !EffectivePermissions.allows(effective, permission),
+    );
     if (missing === undefined) return Result.ok(effective);
     return Result.err({
       permission: missing,

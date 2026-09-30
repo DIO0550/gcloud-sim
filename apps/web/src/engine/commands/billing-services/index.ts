@@ -1,4 +1,4 @@
-import { CommandFailure } from "@/engine/cli/command-error";
+import { CommandFailure } from "@/engine/cli/command-failure";
 import {
   Column,
   type CommandContext,
@@ -8,6 +8,7 @@ import {
   OutputMessage,
   ParsedArgs,
   Positional,
+  type TargetContext,
 } from "@/engine/cli/command-spec";
 import { ApiService } from "@/engine/domains/catalog";
 import { BillingAccount, type PolicyTarget, Project } from "@/engine/domains/resource-hierarchy";
@@ -16,10 +17,10 @@ import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
 const BillingColumns = [
-  Column.of("ACCOUNT_ID", "name", "basename"),
-  Column.of("NAME", "displayName"),
-  Column.of("OPEN", "open"),
-  Column.of("MASTER_ACCOUNT_ID", "masterBillingAccount"),
+  Column.create("ACCOUNT_ID", "name", "basename"),
+  Column.create("NAME", "displayName"),
+  Column.create("OPEN", "open"),
+  Column.create("MASTER_ACCOUNT_ID", "masterBillingAccount"),
 ];
 
 const billingInfo = (project: Project) => ({
@@ -41,13 +42,11 @@ const projectArgTarget = (
     : Result.err(CommandFailure.notFound(`projects/${id}`));
 };
 
-const projectArg = (ctx: CommandContext, args: ParsedArgs): Result<Project, CommandFailure> => {
-  const id = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
-  const project = World.findActiveProject(ctx.world, id);
-  return Option.isSome(project)
-    ? Result.ok(project.value)
-    : Result.err(CommandFailure.notFound(`projects/${id}`));
-};
+/** `projectArgTarget` で解決済みの対象からプロジェクトを引く。 */
+const targetProject = (ctx: TargetContext): Result<Project, CommandFailure> =>
+  Option.toResult(World.findActiveProject(ctx.world, ctx.target.id), () =>
+    CommandFailure.notFound(`projects/${ctx.target.id}`),
+  );
 
 export const BillingCommands: readonly CommandSpec[] = [
   {
@@ -75,13 +74,15 @@ export const BillingCommands: readonly CommandSpec[] = [
     destructive: false,
     run: (ctx, args) => {
       const id = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
-      const account = World.findBillingAccount(ctx.world, id);
-      return Option.isSome(account)
-        ? Result.ok({
-            world: ctx.world,
-            output: CommandOutput.yaml(BillingAccount.toRecord(account.value)),
-          })
-        : Result.err(CommandFailure.notFound(`billingAccounts/${id}`));
+      return Result.map(
+        Option.toResult(World.findBillingAccount(ctx.world, id), () =>
+          CommandFailure.notFound(`billingAccounts/${id}`),
+        ),
+        (account) => ({
+          world: ctx.world,
+          output: CommandOutput.yaml(BillingAccount.toRecord(account)),
+        }),
+      );
     },
   },
   {
@@ -93,8 +94,8 @@ export const BillingCommands: readonly CommandSpec[] = [
     destructive: false,
     requiredPermissions: ["billing.resourceAssociations.list"],
     resolveTarget: projectArgTarget,
-    run: (ctx, args) =>
-      Result.map(projectArg(ctx, args), (project) => ({
+    run: (ctx) =>
+      Result.map(targetProject(ctx), (project) => ({
         world: ctx.world,
         output: CommandOutput.yaml(billingInfo(project)),
       })),
@@ -109,7 +110,7 @@ export const BillingCommands: readonly CommandSpec[] = [
     requiredPermissions: ["billing.resourceAssociations.create"],
     resolveTarget: projectArgTarget,
     run: (ctx, args) => {
-      const project = projectArg(ctx, args);
+      const project = targetProject(ctx);
       if (!Result.isOk(project)) return project;
       const accountId = Option.unwrapOr(ParsedArgs.string(args, "billing-account"), "");
       const account = World.findBillingAccount(ctx.world, accountId);
@@ -138,8 +139,8 @@ export const BillingCommands: readonly CommandSpec[] = [
     destructive: false,
     requiredPermissions: ["billing.resourceAssociations.delete"],
     resolveTarget: projectArgTarget,
-    run: (ctx, args) =>
-      Result.map(projectArg(ctx, args), (project) => {
+    run: (ctx) =>
+      Result.map(targetProject(ctx), (project) => {
         const unlinked = Project.withBilling(project, Option.none);
         return {
           world: World.replaceProject(ctx.world, unlinked),
@@ -156,22 +157,22 @@ const serviceRecord = (project: Project, service: ApiService) => ({
   state: Project.hasApi(project, service.name) ? "ENABLED" : "DISABLED",
 });
 
-const ServiceColumns = [Column.of("NAME", "config.name"), Column.of("TITLE", "config.title")];
+const ServiceColumns = [
+  Column.create("NAME", "config.name"),
+  Column.create("TITLE", "config.title"),
+];
 
 const parseServices = (args: ParsedArgs): Result<readonly ApiService[], CommandFailure> =>
   Result.all(
-    args.positionals.map((raw) => {
-      const service = ApiService.parse(raw);
-      return Option.isSome(service)
-        ? Result.ok(service.value)
-        : Result.err(
-            CommandFailure.notFoundMessage(
-              `[${raw}] is not a known service. gcloud-sim knows: ${ApiService.all()
-                .map((a) => a.name)
-                .join(", ")}`,
-            ),
-          );
-    }),
+    args.positionals.map((raw) =>
+      Option.toResult(ApiService.parse(raw), () =>
+        CommandFailure.notFoundWith(
+          `[${raw}] is not a known service. gcloud-sim knows: ${ApiService.all()
+            .map((a) => a.name)
+            .join(", ")}`,
+        ),
+      ),
+    ),
   );
 
 export const ServiceCommands: readonly CommandSpec[] = [

@@ -1,27 +1,32 @@
 import type { ApiName, Zone } from "@/engine/domains/catalog";
-import type { FirewallRule, Instance, Network, Snapshot, Subnet } from "@/engine/domains/compute";
+import type {
+  DiskSnapshot,
+  FirewallRule,
+  Instance,
+  Network,
+  Subnet,
+} from "@/engine/domains/compute";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { IamPolicy } from "@/engine/domains/iam-policy";
 import type { CloudRunService, GkeCluster } from "@/engine/domains/managed-services";
-import { type MissionProgress, MissionStatuses } from "@/engine/domains/mission-progress";
+import { MissionProgress } from "@/engine/domains/mission-progress";
 import { type Operation, OperationHistoryLimit } from "@/engine/domains/operation";
-import type { Principal } from "@/engine/domains/principal";
+import { Principal } from "@/engine/domains/principal";
 import {
   type BillingAccount,
-  type Folder,
-  type Organization,
+  Folder,
+  Organization,
   type ParentRef,
-  type PolicyTarget,
+  PolicyTarget,
   Project,
 } from "@/engine/domains/resource-hierarchy";
 import type { ServiceAccount } from "@/engine/domains/service-account";
-import type { Bucket } from "@/engine/domains/storage";
+import { Bucket } from "@/engine/domains/storage";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
+/** `gcloud auth login` で登録した疑似アカウント。今の主体は `core/account`（`World.currentPrincipal`）が正。 */
 export type Session = Readonly<{
-  principal: Principal;
-  /** `gcloud auth login` で登録した疑似アカウント。`auth list` に出す */
   accounts: readonly Principal[];
 }>;
 
@@ -40,7 +45,7 @@ export type World = Readonly<{
   networks: readonly Network[];
   subnets: readonly Subnet[];
   firewallRules: readonly FirewallRule[];
-  snapshots: readonly Snapshot[];
+  diskSnapshots: readonly DiskSnapshot[];
   buckets: readonly Bucket[];
   clusters: readonly GkeCluster[];
   runServices: readonly CloudRunService[];
@@ -58,6 +63,14 @@ export type Numbered = Readonly<{ world: World; number: number }>;
 /** 同じ名前のリソースが既にあるときの失敗。`resource` は E-008 に出す綴り。 */
 export type AlreadyExists = Readonly<{ resource: string }>;
 
+/** ポリシーの置き換えの失敗。対象が無いか、組織の最後の Owner を外そうとした。 */
+export type PolicyRejected =
+  | Readonly<{ kind: "not-found"; target: PolicyTarget }>
+  | Readonly<{ kind: "last-owner" }>;
+
+/** フォルダのネストの上限（設計書 6.3）。 */
+const FolderNestLimit = 10;
+
 const replaceBy = <T>(items: readonly T[], matches: (item: T) => boolean, next: T): readonly T[] =>
   items.map((item) => (matches(item) ? next : item));
 
@@ -66,6 +79,40 @@ const addUnique = (
   resource: string,
   patch: () => World,
 ): Result<World, AlreadyExists> => (exists ? Result.err({ resource }) : Result.ok(patch()));
+
+const sameInstance = (a: Instance, b: Instance): boolean =>
+  a.projectId === b.projectId && a.zone === b.zone && a.name === b.name;
+
+const sameInProject =
+  <T extends { projectId: string; name: string }>(projectId: string, name: string) =>
+  (item: T): boolean =>
+    item.projectId === projectId && item.name === name;
+
+/**
+ * 親を辿って組織まで届くか。同じフォルダに 2 度来たら循環、フォルダの数が上限を超えたら深すぎる。
+ *
+ * @param parent 起点の親
+ * @param folderLimit 辿ってよいフォルダの数。フォルダ自身を数えるなら上限 - 1、プロジェクトなら上限
+ * @returns 届けば辿ったフォルダの数。循環・上限超え・親の欠落は `none`
+ */
+const foldersToOrganization = (
+  world: World,
+  parent: ParentRef,
+  folderLimit: number,
+): Option<number> => {
+  const visited = new Set<string>();
+  let current = parent;
+  let folders = 0;
+  while (current.type === "folder") {
+    if (visited.has(current.id) || folders >= folderLimit) return Option.none;
+    visited.add(current.id);
+    folders += 1;
+    const folder = World.findFolder(world, current.id);
+    if (!Option.isSome(folder)) return Option.none;
+    current = folder.value.parent;
+  }
+  return current.id === world.organization.id ? Option.some(folders) : Option.none;
+};
 
 export const World = {
   /**
@@ -96,7 +143,7 @@ export const World = {
 
   /** 削除要求済みも含めて、その ID が使われているか。`config set project` の警告に使う。 */
   hasProjectId(world: World, projectId: string): boolean {
-    return world.projects.some((p) => p.projectId === projectId);
+    return Option.isSome(World.findProject(world, projectId));
   },
 
   findFolder(world: World, folderId: string): Option<Folder> {
@@ -105,6 +152,20 @@ export const World = {
 
   findBillingAccount(world: World, id: string): Option<BillingAccount> {
     return Option.fromNullable(world.billingAccounts.find((b) => b.id === id));
+  },
+
+  /** 親の直下にあるフォルダ（表示名順）。 */
+  foldersUnder(world: World, parent: ParentRef): readonly Folder[] {
+    return world.folders
+      .filter((f) => PolicyTarget.equals(f.parent, parent))
+      .toSorted((a, b) => a.displayName.localeCompare(b.displayName));
+  },
+
+  /** 親の直下にある操作できるプロジェクト（ID 順）。 */
+  projectsUnder(world: World, parent: ParentRef): readonly Project[] {
+    return World.activeProjects(world)
+      .filter((p) => PolicyTarget.equals(p.parent, parent))
+      .toSorted((a, b) => a.projectId.localeCompare(b.projectId));
   },
 
   /**
@@ -116,8 +177,8 @@ export const World = {
    */
   withProject(world: World, project: Project): Result<World, AlreadyExists> {
     return addUnique(
-      world.projects.some((p) => p.projectId === project.projectId),
-      `projects/${project.projectId}`,
+      World.hasProjectId(world, project.projectId),
+      PolicyTarget.toPath({ type: "project", id: project.projectId }),
       () => ({ ...world, projects: [...world.projects, project] }),
     );
   },
@@ -131,8 +192,8 @@ export const World = {
 
   withFolder(world: World, folder: Folder): Result<World, AlreadyExists> {
     return addUnique(
-      world.folders.some((f) => f.id === folder.id),
-      `folders/${folder.id}`,
+      Option.isSome(World.findFolder(world, folder.id)),
+      PolicyTarget.toPath({ type: "folder", id: folder.id }),
       () => ({ ...world, folders: [...world.folders, folder] }),
     );
   },
@@ -160,11 +221,12 @@ export const World = {
    *
    * @param world 元
    * @param target 起点
-   * @returns 起点 → 親 → … → 組織。起点が見つからなければ起点だけ
+   * @returns 起点 → 親 → … → 組織。親が欠けていれば辿れたところまで。同じフォルダには 2 度入らない
    */
   ancestry(world: World, target: PolicyTarget): readonly PolicyTarget[] {
     const climb = (ref: ParentRef, acc: readonly PolicyTarget[]): readonly PolicyTarget[] => {
-      if (ref.type === "organization") return [...acc, ref];
+      const seen = acc.some((a) => PolicyTarget.equals(a, ref));
+      if (ref.type === "organization" || seen) return [...acc, ref];
       const folder = World.findFolder(world, ref.id);
       return Option.isSome(folder) ? climb(folder.value.parent, [...acc, ref]) : [...acc, ref];
     };
@@ -195,7 +257,7 @@ export const World = {
    * @param target 対象
    * @returns そのリソースに直接付いたポリシー。リソースが無ければ `none`
    */
-  policyOf(world: World, target: PolicyTarget): Option<IamPolicy> {
+  findPolicy(world: World, target: PolicyTarget): Option<IamPolicy> {
     switch (target.type) {
       case "organization":
         return world.organization.id === target.id
@@ -217,28 +279,39 @@ export const World = {
    * @param world 元
    * @param target 対象
    * @param policy 新しいポリシー
-   * @returns 置き換えた World。リソースが無ければ `none`、組織の最後の Owner を外すなら `none`
+   * @returns 置き換えた World。リソースが無い・組織の最後の Owner を外す、はそれぞれの理由で `err`
    */
-  withPolicy(world: World, target: PolicyTarget, policy: IamPolicy): Option<World> {
+  withPolicy(world: World, target: PolicyTarget, policy: IamPolicy): Result<World, PolicyRejected> {
+    const notFound: PolicyRejected = { kind: "not-found", target };
     switch (target.type) {
       case "organization": {
-        const accepted =
-          world.organization.id === target.id && World.keepsOrganizationOwner(policy);
-        return accepted
-          ? Option.some({ ...world, organization: { ...world.organization, iamPolicy: policy } })
-          : Option.none;
+        if (world.organization.id !== target.id) return Result.err(notFound);
+        if (!World.keepsOrganizationOwner(policy)) return Result.err({ kind: "last-owner" });
+        return Result.ok({
+          ...world,
+          organization: Organization.withPolicy(world.organization, policy),
+        });
       }
       case "folder":
-        return Option.map(World.findFolder(world, target.id), (f) =>
-          World.replaceFolder(world, { ...f, iamPolicy: policy }),
+        return Option.toResult(
+          Option.map(World.findFolder(world, target.id), (f) =>
+            World.replaceFolder(world, Folder.withPolicy(f, policy)),
+          ),
+          () => notFound,
         );
       case "project":
-        return Option.map(World.findProject(world, target.id), (p) =>
-          World.replaceProject(world, Project.withPolicy(p, policy)),
+        return Option.toResult(
+          Option.map(World.findProject(world, target.id), (p) =>
+            World.replaceProject(world, Project.withPolicy(p, policy)),
+          ),
+          () => notFound,
         );
       case "bucket":
-        return Option.map(World.findBucket(world, target.id), (b) =>
-          World.replaceBucket(world, { ...b, iamPolicy: policy }),
+        return Option.toResult(
+          Option.map(World.findBucket(world, target.id), (b) =>
+            World.replaceBucket(world, Bucket.withPolicy(b, policy)),
+          ),
+          () => notFound,
         );
     }
   },
@@ -253,6 +326,15 @@ export const World = {
     return IamPolicy.membersOf(policy, "roles/owner").length > 0;
   },
 
+  /** 主体が組織の `roles/owner` を直接持っているか。ヘッダーの「Owner 以外で操作中」の判定に使う。 */
+  isOrganizationOwner(world: World, principal: Principal): boolean {
+    return IamPolicy.hasBinding(
+      world.organization.iamPolicy,
+      "roles/owner",
+      Principal.toMember(principal),
+    );
+  },
+
   // --- サービスアカウント ---
 
   serviceAccountsOf(world: World, projectId: string): readonly ServiceAccount[] {
@@ -265,7 +347,7 @@ export const World = {
 
   withServiceAccount(world: World, account: ServiceAccount): Result<World, AlreadyExists> {
     return addUnique(
-      world.serviceAccounts.some((s) => s.email === account.email),
+      Option.isSome(World.findServiceAccount(world, account.email)),
       `projects/${account.projectId}/serviceAccounts/${account.email}`,
       () => ({ ...world, serviceAccounts: [...world.serviceAccounts, account] }),
     );
@@ -296,20 +378,21 @@ export const World = {
    */
   withInstance(world: World, instance: Instance): Result<World, AlreadyExists> {
     return addUnique(
-      Option.isSome(World.findInstance(world, instance.projectId, instance.zone, instance.name)),
+      world.instances.some((i) => sameInstance(i, instance)),
       `projects/${instance.projectId}/zones/${instance.zone}/instances/${instance.name}`,
       () => ({ ...world, instances: [...world.instances, instance] }),
     );
   },
 
   replaceInstance(world: World, instance: Instance): World {
-    const same = (i: Instance) =>
-      i.projectId === instance.projectId && i.zone === instance.zone && i.name === instance.name;
-    return { ...world, instances: replaceBy(world.instances, same, instance) };
+    return {
+      ...world,
+      instances: replaceBy(world.instances, (i) => sameInstance(i, instance), instance),
+    };
   },
 
   withoutInstance(world: World, instance: Instance): World {
-    return { ...world, instances: world.instances.filter((i) => i !== instance) };
+    return { ...world, instances: world.instances.filter((i) => !sameInstance(i, instance)) };
   },
 
   networksOf(world: World, projectId: string): readonly Network[] {
@@ -317,9 +400,7 @@ export const World = {
   },
 
   findNetwork(world: World, projectId: string, name: string): Option<Network> {
-    return Option.fromNullable(
-      world.networks.find((n) => n.projectId === projectId && n.name === name),
-    );
+    return Option.fromNullable(world.networks.find(sameInProject(projectId, name)));
   },
 
   withNetwork(
@@ -342,16 +423,17 @@ export const World = {
    * ネットワークを消す。サブネットが残っていれば消せない（設計書 6.3）。
    *
    * @param world 元
-   * @param projectId 所有プロジェクト
-   * @param name ネットワーク名
-   * @returns 消した World。サブネットが残っていれば `none`
+   * @param network 消すネットワーク
+   * @returns 消した World。サブネットが残っていれば、削除を妨げている最初のサブネット
    */
-  withoutNetwork(world: World, projectId: string, name: string): Option<World> {
-    const hasSubnets = world.subnets.some((s) => s.projectId === projectId && s.network === name);
-    if (hasSubnets) return Option.none;
-    return Option.some({
+  withoutNetwork(world: World, network: Network): Result<World, Subnet> {
+    const blocking = world.subnets.find(
+      (s) => s.projectId === network.projectId && s.network === network.name,
+    );
+    if (blocking !== undefined) return Result.err(blocking);
+    return Result.ok({
       ...world,
-      networks: world.networks.filter((n) => !(n.projectId === projectId && n.name === name)),
+      networks: world.networks.filter((n) => !sameInProject(network.projectId, network.name)(n)),
     });
   },
 
@@ -375,18 +457,12 @@ export const World = {
     );
   },
 
-  withoutSubnet(world: World, subnet: Subnet): World {
-    return { ...world, subnets: world.subnets.filter((s) => s !== subnet) };
-  },
-
   firewallRulesOf(world: World, projectId: string): readonly FirewallRule[] {
     return world.firewallRules.filter((r) => r.projectId === projectId);
   },
 
   findFirewallRule(world: World, projectId: string, name: string): Option<FirewallRule> {
-    return Option.fromNullable(
-      world.firewallRules.find((r) => r.projectId === projectId && r.name === name),
-    );
+    return Option.fromNullable(world.firewallRules.find(sameInProject(projectId, name)));
   },
 
   withFirewallRule(world: World, rule: FirewallRule): Result<World, AlreadyExists> {
@@ -397,24 +473,24 @@ export const World = {
     );
   },
 
-  withoutFirewallRule(world: World, projectId: string, name: string): World {
+  withoutFirewallRule(world: World, rule: FirewallRule): World {
     return {
       ...world,
       firewallRules: world.firewallRules.filter(
-        (r) => !(r.projectId === projectId && r.name === name),
+        (r) => !sameInProject(rule.projectId, rule.name)(r),
       ),
     };
   },
 
-  snapshotsOf(world: World, projectId: string): readonly Snapshot[] {
-    return world.snapshots.filter((s) => s.projectId === projectId);
+  diskSnapshotsOf(world: World, projectId: string): readonly DiskSnapshot[] {
+    return world.diskSnapshots.filter((s) => s.projectId === projectId);
   },
 
-  withSnapshot(world: World, snapshot: Snapshot): Result<World, AlreadyExists> {
+  withDiskSnapshot(world: World, snapshot: DiskSnapshot): Result<World, AlreadyExists> {
     return addUnique(
-      world.snapshots.some((s) => s.projectId === snapshot.projectId && s.name === snapshot.name),
+      world.diskSnapshots.some(sameInProject(snapshot.projectId, snapshot.name)),
       `projects/${snapshot.projectId}/global/snapshots/${snapshot.name}`,
-      () => ({ ...world, snapshots: [...world.snapshots, snapshot] }),
+      () => ({ ...world, diskSnapshots: [...world.diskSnapshots, snapshot] }),
     );
   },
 
@@ -439,7 +515,7 @@ export const World = {
   withBucket(world: World, bucket: Bucket): Result<World, AlreadyExists> {
     return addUnique(
       Option.isSome(World.findBucket(world, bucket.name)),
-      `buckets/${bucket.name}`,
+      PolicyTarget.toPath({ type: "bucket", id: bucket.name }),
       () => ({ ...world, buckets: [...world.buckets, bucket] }),
     );
   },
@@ -459,9 +535,7 @@ export const World = {
   },
 
   findCluster(world: World, projectId: string, name: string): Option<GkeCluster> {
-    return Option.fromNullable(
-      world.clusters.find((c) => c.projectId === projectId && c.name === name),
-    );
+    return Option.fromNullable(world.clusters.find(sameInProject(projectId, name)));
   },
 
   withCluster(world: World, cluster: GkeCluster): Result<World, AlreadyExists> {
@@ -472,10 +546,10 @@ export const World = {
     );
   },
 
-  withoutCluster(world: World, projectId: string, name: string): World {
+  withoutCluster(world: World, cluster: GkeCluster): World {
     return {
       ...world,
-      clusters: world.clusters.filter((c) => !(c.projectId === projectId && c.name === name)),
+      clusters: world.clusters.filter((c) => !sameInProject(cluster.projectId, cluster.name)(c)),
     };
   },
 
@@ -484,23 +558,23 @@ export const World = {
   },
 
   findRunService(world: World, projectId: string, name: string): Option<CloudRunService> {
-    return Option.fromNullable(
-      world.runServices.find((s) => s.projectId === projectId && s.name === name),
-    );
+    return Option.fromNullable(world.runServices.find(sameInProject(projectId, name)));
   },
 
-  /** `run deploy` は同名なら新しいリビジョンとして置き換えるので、重複を弾かない。 */
-  withRunService(world: World, service: CloudRunService): World {
+  /** `run deploy` は同名なら新しいリビジョンとして置き換えるので、重複を弾かず上書きする。 */
+  withRunServiceReplaced(world: World, service: CloudRunService): World {
     const others = world.runServices.filter(
-      (s) => !(s.projectId === service.projectId && s.name === service.name),
+      (s) => !sameInProject(service.projectId, service.name)(s),
     );
     return { ...world, runServices: [...others, service] };
   },
 
-  withoutRunService(world: World, projectId: string, name: string): World {
+  withoutRunService(world: World, service: CloudRunService): World {
     return {
       ...world,
-      runServices: world.runServices.filter((s) => !(s.projectId === projectId && s.name === name)),
+      runServices: world.runServices.filter(
+        (s) => !sameInProject(service.projectId, service.name)(s),
+      ),
     };
   },
 
@@ -516,11 +590,24 @@ export const World = {
   },
 
   /**
-   * プリンシパルを切り替える。`core/account` も揃える（`config set account` と `auth login` の両方の入口）。
+   * 今コマンドを実行している主体。アクティブな configuration の `core/account` が正で、
+   * 未設定なら `none`（本物と同じく「アカウントが選ばれていない」状態）。
+   */
+  currentPrincipal(world: World): Option<Principal> {
+    const account = GcloudConfig.get(world.config, "core/account");
+    return Option.flatMap(account, (value) => {
+      const parsed = Principal.parse(value);
+      return Result.isOk(parsed) ? Option.some(parsed.value) : Option.none;
+    });
+  },
+
+  /**
+   * 主体を切り替える。`core/account` を書き、疑似ログイン済みの一覧にも足す
+   * （`config set account` と `auth login` の両方の入口）。
    *
    * @param world 元
    * @param principal 次の主体。未知のメールでも受け付ける（11.2: 認証は疑似）
-   * @returns 主体・アカウント一覧・`core/account` を更新した World
+   * @returns `core/account` とアカウント一覧を更新した World
    */
   withPrincipal(world: World, principal: Principal): World {
     const accounts = world.session.accounts.includes(principal)
@@ -528,7 +615,7 @@ export const World = {
       : [...world.session.accounts, principal];
     return {
       ...world,
-      session: { principal, accounts },
+      session: { accounts },
       config: GcloudConfig.set(world.config, "core/account", principal),
     };
   },
@@ -559,22 +646,22 @@ export const World = {
 
   // --- missions ---
 
-  findMission(world: World, id: string): Option<MissionProgress> {
+  findMissionProgress(world: World, id: string): Option<MissionProgress> {
     return Option.fromNullable(world.missions.find((m) => m.id === id));
   },
 
-  replaceMission(world: World, progress: MissionProgress): World {
+  replaceMissionProgress(world: World, progress: MissionProgress): World {
     return { ...world, missions: replaceBy(world.missions, (m) => m.id === progress.id, progress) };
   },
 
   missionsInProgress(world: World): readonly MissionProgress[] {
-    return world.missions.filter((m) => m.status === MissionStatuses.InProgress);
+    return world.missions.filter(MissionProgress.isInProgress);
   },
 
   // --- 不変条件 ---
 
   /**
-   * 設計書 6.2 の不変条件を確かめる。import とミッションの setup の後に通す。
+   * 設計書 6.2 / 6.3 の不変条件を確かめる。import とミッションの setup の後に通す。
    *
    * @param world 確かめる World
    * @returns 満たしていれば同じ World。満たさなければ最初に見つけた違反
@@ -600,13 +687,25 @@ export const World = {
     if (new Set(bucketNames).size !== bucketNames.length) {
       return Result.err("bucket names are not unique");
     }
-    const orphanProject = world.projects.find((p) => !World.hasParent(world, p.parent));
-    if (orphanProject !== undefined) {
-      return Result.err(`project [${orphanProject.projectId}] has a missing parent`);
+    const folderIds = world.folders.map((f) => f.id);
+    if (new Set(folderIds).size !== folderIds.length) {
+      return Result.err("folder IDs are not unique");
     }
-    const orphanFolder = world.folders.find((f) => !World.hasParent(world, f.parent));
-    if (orphanFolder !== undefined) {
-      return Result.err(`folder [${orphanFolder.id}] has a missing parent`);
+    const unreachableFolder = world.folders.find(
+      (f) => !Option.isSome(foldersToOrganization(world, f.parent, FolderNestLimit - 1)),
+    );
+    if (unreachableFolder !== undefined) {
+      return Result.err(
+        `folder [${unreachableFolder.id}] does not reach the organization (missing parent, cycle, or nested deeper than ${FolderNestLimit})`,
+      );
+    }
+    const unreachableProject = world.projects.find(
+      (p) => !Option.isSome(foldersToOrganization(world, p.parent, FolderNestLimit)),
+    );
+    if (unreachableProject !== undefined) {
+      return Result.err(
+        `project [${unreachableProject.projectId}] does not reach the organization`,
+      );
     }
     const brokenBilling = world.projects.find(
       (p) =>
@@ -615,6 +714,10 @@ export const World = {
     );
     if (brokenBilling !== undefined) {
       return Result.err(`project [${brokenBilling.projectId}] links a missing billing account`);
+    }
+    const orphanInstance = world.instances.find((i) => !World.hasProjectId(world, i.projectId));
+    if (orphanInstance !== undefined) {
+      return Result.err(`instance [${orphanInstance.name}] belongs to a missing project`);
     }
     return Result.ok(world);
   },

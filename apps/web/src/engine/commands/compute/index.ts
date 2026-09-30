@@ -1,4 +1,4 @@
-import { CommandFailure } from "@/engine/cli/command-error";
+import { CommandFailure } from "@/engine/cli/command-failure";
 import {
   Column,
   CommandContext,
@@ -6,13 +6,19 @@ import {
   type CommandResult,
   type CommandSpec,
   Flag,
+  type FlagSpec,
   type JsonRecord,
   OutputMessage,
   ParsedArgs,
   Positional,
   type ProjectContext,
 } from "@/engine/cli/command-spec";
-import { alreadyExists, CommonFlags, recordOperation } from "@/engine/commands/shared";
+import {
+  alreadyExists,
+  CommonFlags,
+  projectCommand,
+  recordOperation,
+} from "@/engine/commands/shared";
 import {
   DefaultImage,
   DefaultMachineType,
@@ -22,24 +28,30 @@ import {
   Zone,
 } from "@/engine/domains/catalog";
 import {
-  type AttachedDisk,
+  BootDiskType,
+  BootDiskTypes,
   DefaultScopes,
+  Direction,
   Directions,
+  DiskSizeGb,
+  DiskSnapshot,
   ExternalIp,
+  FirewallAction,
+  FirewallActions,
   FirewallRule,
   Instance,
-  InstanceStatuses,
+  type InstanceTransition,
+  InstanceTransitions,
   Network,
   type NetworkInterface,
   ProtocolRule,
+  ProvisioningModel,
   ProvisioningModels,
-  ResourceName,
   Scope,
-  Snapshot,
   Subnet,
   SubnetModes,
 } from "@/engine/domains/compute";
-import { Operation } from "@/engine/domains/operation";
+import { Operation, OperationTypes } from "@/engine/domains/operation";
 import { ServiceAccount } from "@/engine/domains/service-account";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
@@ -48,52 +60,47 @@ import { Result } from "@/utils/Result";
 const ComputeApi = "compute.googleapis.com" as const;
 
 const InstanceColumns = [
-  Column.of("NAME", "name"),
-  Column.of("ZONE", "zone", "basename"),
-  Column.of("MACHINE_TYPE", "machineType", "basename"),
-  Column.of("PREEMPTIBLE", "scheduling.preemptibleFlag"),
-  Column.of("INTERNAL_IP", "networkInterfaces[0].networkIP"),
-  Column.of("EXTERNAL_IP", "networkInterfaces[0].accessConfigs[0].natIP"),
-  Column.of("STATUS", "status"),
+  Column.create("NAME", "name"),
+  Column.create("ZONE", "zone", "basename"),
+  Column.create("MACHINE_TYPE", "machineType", "basename"),
+  Column.create("PREEMPTIBLE", "scheduling.preemptible", "flag"),
+  Column.create("INTERNAL_IP", "networkInterfaces[0].networkIP"),
+  Column.create("EXTERNAL_IP", "networkInterfaces[0].accessConfigs[0].natIP"),
+  Column.create("STATUS", "status"),
 ];
-
-/** table の PREEMPTIBLE 列は真のときだけ `true` を出す（本物と同じ）。 */
-const instanceRecord = (instance: Instance): JsonRecord => {
-  const record = Instance.toRecord(instance);
-  const scheduling = record.scheduling as Readonly<Record<string, unknown>>;
-  return {
-    ...record,
-    scheduling: { ...scheduling, preemptibleFlag: instance.preemptible ? "true" : "" },
-  } as JsonRecord;
-};
 
 const invalidName = (message: string): CommandFailure =>
   CommandFailure.invalidValue("NAME", message);
 
 const externalIp = (sequence: number): string => `34.84.${(sequence >> 8) % 256}.${sequence % 256}`;
 
-const bootDisk = (name: string, args: ParsedArgs, image: PublicImage): AttachedDisk => {
-  const rawSize = Option.unwrapOr(ParsedArgs.string(args, "boot-disk-size"), "10GB");
-  const size = Number.parseInt(rawSize, 10);
-  return {
-    deviceName: name,
-    boot: true,
-    sizeGb: Number.isNaN(size) ? 10 : size,
-    type: Option.unwrapOr(ParsedArgs.string(args, "boot-disk-type"), "pd-balanced"),
-    sourceImage: `projects/${image.project}/global/images/${image.name}`,
-  };
-};
-
 const resolveImage = (args: ParsedArgs): Result<PublicImage, CommandFailure> => {
   const family = ParsedArgs.string(args, "image-family");
   const project = Option.unwrapOr(ParsedArgs.string(args, "image-project"), DefaultImage.project);
   if (!Option.isSome(family)) return Result.ok(DefaultImage);
-  const image = PublicImage.parseFamily(family.value, project);
-  return Option.isSome(image)
-    ? Result.ok(image.value)
-    : Result.err(
-        CommandFailure.notFound(`projects/${project}/global/images/family/${family.value}`),
-      );
+  return Option.toResult(PublicImage.parseFamily(family.value, project), () =>
+    CommandFailure.notFound(`projects/${project}/global/images/family/${family.value}`),
+  );
+};
+
+const resolveBootDisk = (
+  args: ParsedArgs,
+): Result<Readonly<{ sizeGb: number; type: BootDiskType }>, CommandFailure> => {
+  const size = Result.mapErr(
+    DiskSizeGb.parse(Option.unwrapOr(ParsedArgs.string(args, "boot-disk-size"), "10GB")),
+    (m) => CommandFailure.invalidValue("--boot-disk-size", m),
+  );
+  if (!Result.isOk(size)) return size;
+  const rawType = Option.unwrapOr(
+    ParsedArgs.string(args, "boot-disk-type"),
+    BootDiskTypes.Balanced,
+  );
+  return Result.map(
+    Option.toResult(BootDiskType.parse(rawType), () =>
+      CommandFailure.invalidChoice("--boot-disk-type", rawType, Object.values(BootDiskTypes)),
+    ),
+    (type) => ({ sizeGb: size.value, type }),
+  );
 };
 
 const resolveNetworkInterface = (
@@ -103,7 +110,7 @@ const resolveNetworkInterface = (
 ): Result<NetworkInterface, CommandFailure> => {
   const projectId = ctx.project.projectId;
   const networkName = Option.unwrapOr(ParsedArgs.string(args, "network"), "default");
-  const region = Zone.regionOf(zone);
+  const region = Zone.region(zone);
   const network = World.findNetwork(ctx.world, projectId, networkName);
   if (!Option.isSome(network)) {
     return Result.err(
@@ -130,7 +137,7 @@ const resolveNetworkInterface = (
   }
   const inSubnet = World.instancesOf(ctx.world, projectId).filter((i) =>
     i.networkInterfaces.some(
-      (nic) => nic.subnetwork === subnetName && Zone.regionOf(i.zone) === region,
+      (nic) => nic.subnetwork === subnetName && Zone.region(i.zone) === region,
     ),
   ).length;
   const wantsAddress = Option.unwrapOr(ParsedArgs.booleanChoice(args, "address"), true);
@@ -147,34 +154,44 @@ const resolveNetworkInterface = (
 const asyncOutput = (operation: Operation, verb: string, name: string): CommandOutput =>
   CommandOutput.messages(
     OutputMessage.plain(
-      `Instance ${verb} in progress for [${name}]: https://www.googleapis.com/compute/v1/projects/${operation.projectId}/zones/${operation.zone}/operations/${operation.name}`,
+      `Instance ${verb} in progress for [${name}]: ${Operation.selfLink(operation)}`,
     ),
     OutputMessage.plain(
       "Use [gcloud compute operations describe URI] command to check the status of the operation(s).",
     ),
   );
 
+const resolveServiceAccount = (
+  ctx: ProjectContext,
+  args: ParsedArgs,
+): Result<string, CommandFailure> => {
+  const defaultEmail = ServiceAccount.defaultComputeEmail(ctx.project.projectNumber);
+  const chosen = Option.unwrapOr(ParsedArgs.string(args, "service-account"), defaultEmail);
+  const isKnown =
+    chosen === defaultEmail || Option.isSome(World.findServiceAccount(ctx.world, chosen));
+  return isKnown
+    ? Result.ok(chosen)
+    : Result.err(
+        CommandFailure.notFound(`projects/${ctx.project.projectId}/serviceAccounts/${chosen}`),
+      );
+};
+
 const createInstance = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
-  const rawName = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
-  const name = Result.mapErr(ResourceName.parse(rawName), invalidName);
-  if (!Result.isOk(name)) return name;
   const zone = CommandContext.resolveZone(ctx, ParsedArgs.string(args, "zone"));
   if (!Result.isOk(zone)) return zone;
   const machineTypeName = Option.unwrapOr(
     ParsedArgs.string(args, "machine-type"),
     DefaultMachineType,
   );
-  const machineType = MachineType.parse(machineTypeName);
-  if (!Option.isSome(machineType)) {
-    return Result.err(
-      CommandFailure.notFound(
-        `projects/${ctx.project.projectId}/zones/${zone.value}/machineTypes/${machineTypeName}`,
-      ),
-    );
-  }
+  const machineType = Option.toResult(MachineType.parse(machineTypeName), () =>
+    CommandFailure.notFound(
+      `projects/${ctx.project.projectId}/zones/${zone.value}/machineTypes/${machineTypeName}`,
+    ),
+  );
+  if (!Result.isOk(machineType)) return machineType;
   const preemptible = ParsedArgs.boolean(args, "preemptible");
   const provisioningModel = Option.unwrapOr(
-    ParsedArgs.string(args, "provisioning-model"),
+    Option.flatMap(ParsedArgs.string(args, "provisioning-model"), ProvisioningModel.parse),
     ProvisioningModels.Standard,
   );
   if (preemptible && provisioningModel === ProvisioningModels.Spot) {
@@ -187,59 +204,51 @@ const createInstance = (ctx: ProjectContext, args: ParsedArgs): CommandResult =>
   }
   const image = resolveImage(args);
   if (!Result.isOk(image)) return image;
+  const bootDisk = resolveBootDisk(args);
+  if (!Result.isOk(bootDisk)) return bootDisk;
   const nic = resolveNetworkInterface(ctx, args, zone.value);
   if (!Result.isOk(nic)) return nic;
-  const serviceAccount = Option.unwrapOr(
-    ParsedArgs.string(args, "service-account"),
-    ServiceAccount.defaultComputeEmail(ctx.project.projectNumber),
-  );
-  const isCustomSa =
-    serviceAccount !== ServiceAccount.defaultComputeEmail(ctx.project.projectNumber);
-  if (isCustomSa && !Option.isSome(World.findServiceAccount(ctx.world, serviceAccount))) {
-    return Result.err(
-      CommandFailure.notFound(
-        `projects/${ctx.project.projectId}/serviceAccounts/${serviceAccount}`,
-      ),
-    );
-  }
+  const serviceAccount = resolveServiceAccount(ctx, args);
+  if (!Result.isOk(serviceAccount)) return serviceAccount;
   const rawScopes = ParsedArgs.list(args, "scopes");
   const scopes = rawScopes.length === 0 ? DefaultScopes : rawScopes.flatMap(Scope.expand);
   const numbered = World.nextNumber(ctx.world);
-  const instance: Instance = {
-    projectId: ctx.project.projectId,
-    name: name.value,
-    zone: zone.value,
-    machineType: machineType.value.name,
-    status: InstanceStatuses.Running,
-    networkInterfaces: [nic.value],
-    disks: [bootDisk(name.value, args, image.value)],
-    tags: ParsedArgs.list(args, "tags"),
-    serviceAccount,
-    scopes,
-    preemptible,
-    provisioningModel:
-      provisioningModel === ProvisioningModels.Spot
-        ? ProvisioningModels.Spot
-        : ProvisioningModels.Standard,
-    metadata: ParsedArgs.keyvalue(args, "metadata"),
-    creationTimestamp: ctx.now,
-    id: String(4812000000000000000n + BigInt(numbered.number)),
-  };
-  const added = Result.mapErr(World.withInstance(numbered.world, instance), alreadyExists);
+  const instance = Result.mapErr(
+    Instance.create({
+      projectId: ctx.project.projectId,
+      name: Option.unwrapOr(ParsedArgs.positional(args, 0), ""),
+      zone: zone.value,
+      machineType: machineType.value.name,
+      networkInterface: nic.value,
+      image: image.value,
+      bootDisk: bootDisk.value,
+      tags: ParsedArgs.list(args, "tags"),
+      serviceAccount: serviceAccount.value,
+      scopes,
+      preemptible,
+      provisioningModel,
+      metadata: ParsedArgs.keyvalue(args, "metadata"),
+      creationTimestamp: ctx.now,
+      sequence: numbered.number,
+    }),
+    invalidName,
+  );
+  if (!Result.isOk(instance)) return instance;
+  const added = Result.mapErr(World.withInstance(numbered.world, instance.value), alreadyExists);
   if (!Result.isOk(added)) return added;
   const { world, operation } = recordOperation(added.value, {
-    projectId: instance.projectId,
-    operationType: "insert",
-    targetLink: Instance.selfLink(instance),
-    targetName: instance.name,
-    zone: instance.zone,
+    projectId: instance.value.projectId,
+    operationType: OperationTypes.Insert,
+    targetLink: Instance.selfLink(instance.value),
+    targetName: instance.value.name,
+    zone: Option.some(instance.value.zone),
     user: ctx.principal,
     now: ctx.now,
   });
   const output = ParsedArgs.boolean(args, "async")
-    ? asyncOutput(operation, "creation", instance.name)
-    : CommandOutput.table([instanceRecord(instance)], InstanceColumns, [
-        OutputMessage.plain(`Created [${Instance.selfLink(instance)}].`),
+    ? asyncOutput(operation, "creation", instance.value.name)
+    : CommandOutput.table([Instance.toRecord(instance.value)], InstanceColumns, [
+        OutputMessage.plain(`Created [${Instance.selfLink(instance.value)}].`),
       ]);
   return Result.ok({ world, output });
 };
@@ -248,183 +257,141 @@ const instanceArg = (ctx: ProjectContext, args: ParsedArgs): Result<Instance, Co
   const name = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
   const zone = CommandContext.resolveZone(ctx, ParsedArgs.string(args, "zone"));
   if (!Result.isOk(zone)) return zone;
-  const instance = World.findInstance(ctx.world, ctx.project.projectId, zone.value, name);
-  return Option.isSome(instance)
-    ? Result.ok(instance.value)
-    : Result.err(
-        CommandFailure.notFound(
-          `projects/${ctx.project.projectId}/zones/${zone.value}/instances/${name}`,
-        ),
-      );
+  return Option.toResult(
+    World.findInstance(ctx.world, ctx.project.projectId, zone.value, name),
+    () =>
+      CommandFailure.notFound(
+        `projects/${ctx.project.projectId}/zones/${zone.value}/instances/${name}`,
+      ),
+  );
 };
 
-type Transition = Readonly<{
-  verb: string;
-  operationType: "start" | "stop" | "suspend" | "resume";
-  permission: string;
-  from: readonly Instance["status"][];
-  to: Instance["status"];
-  /** `from` 以外のうち、冪等に成功扱いする状態（設計書 8「不正な遷移」） */
-  idempotentFrom: readonly Instance["status"][];
-}>;
-
-const Transitions: Readonly<Record<"start" | "stop" | "suspend" | "resume", Transition>> = {
-  start: {
-    verb: "Starting",
-    operationType: "start",
-    permission: "compute.instances.start",
-    from: [InstanceStatuses.Terminated],
-    to: InstanceStatuses.Running,
-    idempotentFrom: [InstanceStatuses.Running],
-  },
-  stop: {
-    verb: "Stopping",
-    operationType: "stop",
-    permission: "compute.instances.stop",
-    from: [InstanceStatuses.Running],
-    to: InstanceStatuses.Terminated,
-    idempotentFrom: [InstanceStatuses.Terminated],
-  },
-  suspend: {
-    verb: "Suspending",
-    operationType: "suspend",
-    permission: "compute.instances.suspend",
-    from: [InstanceStatuses.Running],
-    to: InstanceStatuses.Suspended,
-    idempotentFrom: [InstanceStatuses.Suspended],
-  },
-  resume: {
-    verb: "Resuming",
-    operationType: "resume",
-    permission: "compute.instances.resume",
-    from: [InstanceStatuses.Suspended],
-    to: InstanceStatuses.Running,
-    idempotentFrom: [InstanceStatuses.Running],
-  },
+/** 遷移コマンドの綴り。規則そのものは `Instance.transition` が持ち、ここは動詞の活用だけ。 */
+const TransitionVerbs: Readonly<
+  Record<InstanceTransition, Readonly<{ progressive: string; past: string }>>
+> = {
+  start: { progressive: "Starting", past: "started" },
+  stop: { progressive: "Stopping", past: "stopped" },
+  suspend: { progressive: "Suspending", past: "suspended" },
+  resume: { progressive: "Resuming", past: "resumed" },
 };
 
-const transitionCommand = (name: keyof typeof Transitions): CommandSpec => {
-  const t = Transitions[name];
+const transitionCommand = (transition: InstanceTransition): CommandSpec => {
+  const verbs = TransitionVerbs[transition];
   return {
     kind: "project",
-    path: ["gcloud", "compute", "instances", name],
-    summary: `${t.verb.replace(/ing$/, "")} a virtual machine instance.`,
+    path: ["gcloud", "compute", "instances", transition],
+    summary: `${verbs.progressive.replace(/ing$/, "")} a virtual machine instance.`,
     positionals: [Positional.required("INSTANCE_NAME", "Name of the instance to operate on.")],
     flags: [CommonFlags.zone, CommonFlags.async],
     destructive: false,
-    requiredPermissions: [t.permission],
+    requiredPermissions: [`compute.instances.${transition}`],
     requiredApis: [ComputeApi],
     run: (ctx, args) => {
       const instance = instanceArg(ctx, args);
       if (!Result.isOk(instance)) return instance;
-      const current = instance.value;
-      const done = OutputMessage.plain(`${t.verb} instance(s) ${current.name}...done.`);
-      if (t.idempotentFrom.includes(current.status)) {
-        return Result.ok({
-          world: ctx.world,
-          output: CommandOutput.messages(
-            done,
-            OutputMessage.plain(`Updated [${Instance.selfLink(current)}].`),
-          ),
-        });
-      }
-      if (!t.from.includes(current.status)) {
-        return Result.err(
+      const transitioned = Result.mapErr(
+        Instance.transition(instance.value, transition, externalIp(ctx.world.sequence)),
+        (status) =>
           CommandFailure.invalidState(
-            `Invalid resource state for "${Instance.selfLink(current)}": instance is in status ${current.status} and cannot be ${name === "stop" ? "stopped" : `${name}d`}.`,
+            `Invalid resource state for "${Instance.selfLink(instance.value)}": instance is in status ${status} and cannot be ${verbs.past}.`,
           ),
-        );
+      );
+      if (!Result.isOk(transitioned)) return transitioned;
+      const next = transitioned.value.instance;
+      const done = [
+        OutputMessage.plain(`${verbs.progressive} instance(s) ${next.name}...done.`),
+        OutputMessage.plain(`Updated [${Instance.selfLink(next)}].`),
+      ];
+      if (transitioned.value.kind === "unchanged") {
+        return Result.ok({ world: ctx.world, output: CommandOutput.messages(...done) });
       }
-      const next = Instance.withStatus(current, t.to, externalIp(ctx.world.sequence));
       const { world, operation } = recordOperation(World.replaceInstance(ctx.world, next), {
         projectId: next.projectId,
-        operationType: t.operationType,
+        operationType: transition,
         targetLink: Instance.selfLink(next),
         targetName: next.name,
-        zone: next.zone,
+        zone: Option.some(next.zone),
         user: ctx.principal,
         now: ctx.now,
       });
       const output = ParsedArgs.boolean(args, "async")
-        ? asyncOutput(operation, name, next.name)
-        : CommandOutput.messages(
-            done,
-            OutputMessage.plain(`Updated [${Instance.selfLink(next)}].`),
-          );
+        ? asyncOutput(operation, transition, next.name)
+        : CommandOutput.messages(...done);
       return Result.ok({ world, output });
     },
   };
 };
 
 const ZoneColumns = [
-  Column.of("NAME", "name"),
-  Column.of("REGION", "region", "basename"),
-  Column.of("STATUS", "status"),
-  Column.of("NEXT_MAINTENANCE", "nextMaintenance"),
-  Column.of("TURNDOWN_DATE", "turndownDate"),
+  Column.create("NAME", "name"),
+  Column.create("REGION", "region", "basename"),
+  Column.create("STATUS", "status"),
+  Column.create("NEXT_MAINTENANCE", "nextMaintenance"),
+  Column.create("TURNDOWN_DATE", "turndownDate"),
 ];
 const RegionColumns = [
-  Column.of("NAME", "name"),
-  Column.of("CPUS", "quotas[0].usage"),
-  Column.of("STATUS", "status"),
+  Column.create("NAME", "name"),
+  Column.create("CPUS", "quotas[0].usage"),
+  Column.create("STATUS", "status"),
 ];
 const MachineTypeColumns = [
-  Column.of("NAME", "name"),
-  Column.of("ZONE", "zone"),
-  Column.of("CPUS", "guestCpus"),
-  Column.of("MEMORY_GB", "memoryGb"),
-  Column.of("DEPRECATED", "deprecated"),
+  Column.create("NAME", "name"),
+  Column.create("ZONE", "zone"),
+  Column.create("CPUS", "guestCpus"),
+  Column.create("MEMORY_GB", "memoryGb"),
+  Column.create("DEPRECATED", "deprecated"),
 ];
 const ImageColumns = [
-  Column.of("NAME", "name"),
-  Column.of("PROJECT", "project"),
-  Column.of("FAMILY", "family"),
-  Column.of("DEPRECATED", "deprecated"),
-  Column.of("STATUS", "status"),
+  Column.create("NAME", "name"),
+  Column.create("PROJECT", "project"),
+  Column.create("FAMILY", "family"),
+  Column.create("DEPRECATED", "deprecated"),
+  Column.create("STATUS", "status"),
 ];
 const DiskColumns = [
-  Column.of("NAME", "name"),
-  Column.of("LOCATION", "zone", "basename"),
-  Column.of("LOCATION_SCOPE", "locationScope"),
-  Column.of("SIZE_GB", "sizeGb"),
-  Column.of("TYPE", "type"),
-  Column.of("STATUS", "status"),
+  Column.create("NAME", "name"),
+  Column.create("LOCATION", "zone", "basename"),
+  Column.create("LOCATION_SCOPE", "locationScope"),
+  Column.create("SIZE_GB", "sizeGb"),
+  Column.create("TYPE", "type"),
+  Column.create("STATUS", "status"),
 ];
 const SnapshotColumns = [
-  Column.of("NAME", "name"),
-  Column.of("DISK_SIZE_GB", "diskSizeGb"),
-  Column.of("SRC_DISK", "sourceDisk", "basename"),
-  Column.of("STATUS", "status"),
+  Column.create("NAME", "name"),
+  Column.create("DISK_SIZE_GB", "diskSizeGb"),
+  Column.create("SRC_DISK", "sourceDisk", "basename"),
+  Column.create("STATUS", "status"),
 ];
 const NetworkColumns = [
-  Column.of("NAME", "name"),
-  Column.of("SUBNET_MODE", "subnetMode"),
-  Column.of("BGP_ROUTING_MODE", "routingConfig.routingMode"),
-  Column.of("IPV4_RANGE", "IPv4Range"),
-  Column.of("GATEWAY_IPV4", "gatewayIPv4"),
+  Column.create("NAME", "name"),
+  Column.create("SUBNET_MODE", "subnetMode"),
+  Column.create("BGP_ROUTING_MODE", "routingConfig.routingMode"),
+  Column.create("IPV4_RANGE", "IPv4Range"),
+  Column.create("GATEWAY_IPV4", "gatewayIPv4"),
 ];
 const SubnetColumns = [
-  Column.of("NAME", "name"),
-  Column.of("REGION", "region", "basename"),
-  Column.of("NETWORK", "network", "basename"),
-  Column.of("RANGE", "ipCidrRange"),
+  Column.create("NAME", "name"),
+  Column.create("REGION", "region", "basename"),
+  Column.create("NETWORK", "network", "basename"),
+  Column.create("RANGE", "ipCidrRange"),
 ];
 const FirewallColumns = [
-  Column.of("NAME", "name"),
-  Column.of("NETWORK", "network", "basename"),
-  Column.of("DIRECTION", "direction"),
-  Column.of("PRIORITY", "priority"),
-  Column.of("ALLOW", "allowText"),
-  Column.of("DENY", "denyText"),
-  Column.of("DISABLED", "disabled"),
+  Column.create("NAME", "name"),
+  Column.create("NETWORK", "network", "basename"),
+  Column.create("DIRECTION", "direction"),
+  Column.create("PRIORITY", "priority"),
+  Column.create("ALLOW", "allowText"),
+  Column.create("DENY", "denyText"),
+  Column.create("DISABLED", "disabled"),
 ];
 const OperationColumns = [
-  Column.of("NAME", "name"),
-  Column.of("TYPE", "operationType"),
-  Column.of("TARGET", "targetLink", "basename"),
-  Column.of("HTTP_STATUS", "httpStatus"),
-  Column.of("STATUS", "status"),
-  Column.of("TIMESTAMP", "insertTime"),
+  Column.create("NAME", "name"),
+  Column.create("TYPE", "operationType"),
+  Column.create("TARGET", "targetLink", "basename"),
+  Column.create("HTTP_STATUS", "httpStatus"),
+  Column.create("STATUS", "status"),
+  Column.create("TIMESTAMP", "insertTime"),
 ];
 
 const networkRecord = (network: Network): JsonRecord => ({
@@ -452,25 +419,28 @@ const diskRecords = (ctx: ProjectContext): readonly JsonRecord[] =>
     })),
   );
 
-const listCommand = (
-  path: readonly string[],
-  summary: string,
-  permission: string,
-  columns: readonly Column[],
-  records: (ctx: ProjectContext, args: ParsedArgs) => readonly JsonRecord[],
-  flags: readonly ReturnType<typeof Flag.string>[] = [],
-): CommandSpec => ({
-  kind: "project",
-  path,
-  summary,
-  positionals: [],
-  flags,
-  destructive: false,
-  requiredPermissions: [permission],
-  requiredApis: [ComputeApi],
-  run: (ctx, args) =>
-    Result.ok({ world: ctx.world, output: CommandOutput.table(records(ctx, args), columns) }),
-});
+type ListCommandSeed = Readonly<{
+  path: readonly string[];
+  summary: string;
+  permission: string;
+  columns: readonly Column[];
+  records: (ctx: ProjectContext, args: ParsedArgs) => readonly JsonRecord[];
+  flags?: readonly FlagSpec[];
+}>;
+
+const listCommand = (seed: ListCommandSeed): CommandSpec =>
+  projectCommand({
+    path: seed.path,
+    summary: seed.summary,
+    flags: seed.flags,
+    permission: seed.permission,
+    requiredApis: [ComputeApi],
+    run: (ctx, args) =>
+      Result.ok({
+        world: ctx.world,
+        output: CommandOutput.table(seed.records(ctx, args), seed.columns),
+      }),
+  });
 
 const parseProtocolRules = (
   flag: string,
@@ -481,6 +451,186 @@ const parseProtocolRules = (
       Result.mapErr(ProtocolRule.parse(v), (m) => CommandFailure.invalidValue(flag, m)),
     ),
   );
+
+const requireNetwork = (ctx: ProjectContext, name: string): Result<Network, CommandFailure> =>
+  Option.toResult(World.findNetwork(ctx.world, ctx.project.projectId, name), () =>
+    CommandFailure.notFound(`projects/${ctx.project.projectId}/global/networks/${name}`),
+  );
+
+const requireFirewallRule = (
+  ctx: ProjectContext,
+  name: string,
+): Result<FirewallRule, CommandFailure> =>
+  Option.toResult(World.findFirewallRule(ctx.world, ctx.project.projectId, name), () =>
+    CommandFailure.notFound(`projects/${ctx.project.projectId}/global/firewalls/${name}`),
+  );
+
+const createFirewallRule = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+  const networkName = Option.unwrapOr(ParsedArgs.string(args, "network"), "default");
+  const network = requireNetwork(ctx, networkName);
+  if (!Result.isOk(network)) return network;
+  const allowFlag = ParsedArgs.list(args, "allow");
+  const action = Option.flatMap(ParsedArgs.string(args, "action"), FirewallAction.parse);
+  const hasAllow = allowFlag.length > 0;
+  if (hasAllow === Option.isSome(action)) {
+    return Result.err(CommandFailure.mustBeSpecified("(--action --rules | --allow)"));
+  }
+  const rules = parseProtocolRules(
+    hasAllow ? "--allow" : "--rules",
+    hasAllow ? allowFlag : ParsedArgs.list(args, "rules"),
+  );
+  if (!Result.isOk(rules)) return rules;
+  const rule = Result.mapErr(
+    FirewallRule.create({
+      projectId: ctx.project.projectId,
+      name: Option.unwrapOr(ParsedArgs.positional(args, 0), ""),
+      network: networkName,
+      direction: Option.unwrapOr(
+        Option.flatMap(ParsedArgs.string(args, "direction"), Direction.parse),
+        Directions.Ingress,
+      ),
+      priority: ParsedArgs.integer(args, "priority"),
+      sourceRanges: ParsedArgs.list(args, "source-ranges"),
+      destinationRanges: ParsedArgs.list(args, "destination-ranges"),
+      targetTags: ParsedArgs.list(args, "target-tags"),
+      rules: rules.value,
+      action: Option.unwrapOr(action, FirewallActions.Allow),
+      disabled: ParsedArgs.boolean(args, "disabled"),
+    }),
+    invalidName,
+  );
+  if (!Result.isOk(rule)) return rule;
+  return Result.map(
+    Result.mapErr(World.withFirewallRule(ctx.world, rule.value), alreadyExists),
+    (world) => ({
+      world,
+      output: CommandOutput.table([firewallRecord(rule.value)], FirewallColumns, [
+        OutputMessage.plain("Creating firewall...done."),
+        OutputMessage.plain(`Created [${FirewallRule.selfLink(rule.value)}].`),
+      ]),
+    }),
+  );
+};
+
+const createNetwork = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+  const mode = Option.unwrapOr(ParsedArgs.string(args, "subnet-mode"), "auto");
+  const network = Result.mapErr(
+    Network.create({
+      projectId: ctx.project.projectId,
+      name: Option.unwrapOr(ParsedArgs.positional(args, 0), ""),
+      subnetMode: mode === "custom" ? SubnetModes.Custom : SubnetModes.Auto,
+    }),
+    invalidName,
+  );
+  if (!Result.isOk(network)) return network;
+  const created = network.value;
+  const subnets =
+    created.subnetMode === SubnetModes.Auto
+      ? Subnet.autoRange(created.projectId, created.name, Region.all())
+      : [];
+  return Result.map(
+    Result.mapErr(World.withNetwork(ctx.world, created, subnets), alreadyExists),
+    (world) => ({
+      world,
+      output: CommandOutput.withTrailing(
+        CommandOutput.table([networkRecord(created)], NetworkColumns, [
+          OutputMessage.plain(`Created [${Network.selfLink(created)}].`),
+        ]),
+        OutputMessage.plain(""),
+        OutputMessage.plain("Instances on this network will not be reachable until firewall rules"),
+        OutputMessage.plain(
+          "are created. As an example, you can allow all internal traffic between",
+        ),
+        OutputMessage.plain("instances as well as SSH, RDP, and ICMP by running:"),
+        OutputMessage.plain(""),
+        OutputMessage.plain(
+          `$ gcloud compute firewall-rules create <FIREWALL_NAME> --network ${created.name} --allow tcp,udp,icmp --source-ranges <IP_RANGE>`,
+        ),
+        OutputMessage.plain(
+          `$ gcloud compute firewall-rules create <FIREWALL_NAME> --network ${created.name} --allow tcp:22,tcp:3389,icmp`,
+        ),
+      ),
+    }),
+  );
+};
+
+const createSubnet = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+  const region = CommandContext.resolveRegion(ctx, ParsedArgs.string(args, "region"));
+  if (!Result.isOk(region)) return region;
+  const networkName = Option.unwrapOr(ParsedArgs.string(args, "network"), "");
+  const network = requireNetwork(ctx, networkName);
+  if (!Result.isOk(network)) return network;
+  const subnet = Result.mapErr(
+    Subnet.create({
+      projectId: ctx.project.projectId,
+      name: Option.unwrapOr(ParsedArgs.positional(args, 0), ""),
+      region: region.value,
+      network: networkName,
+      ipCidrRange: Option.unwrapOr(ParsedArgs.string(args, "range"), ""),
+      privateIpGoogleAccess: ParsedArgs.boolean(args, "enable-private-ip-google-access"),
+    }),
+    (m) => CommandFailure.invalidValue(m.includes("ipCidrRange") ? "--range" : "NAME", m),
+  );
+  if (!Result.isOk(subnet)) return subnet;
+  return Result.map(
+    Result.mapErr(World.withSubnet(ctx.world, subnet.value), alreadyExists),
+    (world) => ({
+      world,
+      output: CommandOutput.table([Subnet.toRecord(subnet.value)], SubnetColumns, [
+        OutputMessage.plain(`Created [${Subnet.selfLink(subnet.value)}].`),
+      ]),
+    }),
+  );
+};
+
+const createDiskSnapshot = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+  const zone = CommandContext.resolveZone(
+    ctx,
+    Option.or(ParsedArgs.string(args, "source-disk-zone"), ParsedArgs.string(args, "zone")),
+  );
+  if (!Result.isOk(zone)) return zone;
+  const diskName = Option.unwrapOr(ParsedArgs.string(args, "source-disk"), "");
+  const owner = World.instancesOf(ctx.world, ctx.project.projectId).find(
+    (i) => i.zone === zone.value && i.disks.some((d) => d.deviceName === diskName),
+  );
+  const disk = owner?.disks.find((d) => d.deviceName === diskName);
+  if (disk === undefined) {
+    return Result.err(
+      CommandFailure.notFound(
+        `projects/${ctx.project.projectId}/zones/${zone.value}/disks/${diskName}`,
+      ),
+    );
+  }
+  const snapshot = Result.mapErr(
+    DiskSnapshot.create({
+      projectId: ctx.project.projectId,
+      name: Option.unwrapOr(ParsedArgs.positional(args, 0), ""),
+      sourceDisk: diskName,
+      sourceZone: zone.value,
+      diskSizeGb: disk.sizeGb,
+      creationTimestamp: ctx.now,
+    }),
+    invalidName,
+  );
+  if (!Result.isOk(snapshot)) return snapshot;
+  const added = Result.mapErr(World.withDiskSnapshot(ctx.world, snapshot.value), alreadyExists);
+  if (!Result.isOk(added)) return added;
+  const { world } = recordOperation(added.value, {
+    projectId: snapshot.value.projectId,
+    operationType: OperationTypes.CreateSnapshot,
+    targetLink: DiskSnapshot.sourceDiskLink(snapshot.value),
+    targetName: diskName,
+    zone: Option.some(zone.value),
+    user: ctx.principal,
+    now: ctx.now,
+  });
+  return Result.ok({
+    world,
+    output: CommandOutput.table([DiskSnapshot.toRecord(snapshot.value)], SnapshotColumns, [
+      OutputMessage.plain(`Created [${DiskSnapshot.selfLink(snapshot.value)}].`),
+    ]),
+  });
+};
 
 export const ComputeCommands: readonly CommandSpec[] = [
   {
@@ -517,19 +667,20 @@ export const ComputeCommands: readonly CommandSpec[] = [
         "Access scopes for the service account (aliases such as cloud-platform, storage-ro, or 'default').",
       ),
       Flag.boolean("preemptible", "If provided, instances will be preemptible and time-limited."),
-      Flag.enum("provisioning-model", "Specifies the provisioning model for the instance.", [
-        "STANDARD",
-        "SPOT",
-      ]),
+      Flag.enum(
+        "provisioning-model",
+        "Specifies the provisioning model for the instance.",
+        Object.values(ProvisioningModels),
+      ),
       Flag.keyvalue(
         "metadata",
         "Metadata to be made available to the guest operating system running on the instances.",
       ),
-      Flag.keyvalue("labels", "List of label KEY=VALUE pairs to add."),
-      Flag.string("boot-disk-size", "The size of the boot disk, e.g. 10GB."),
-      Flag.string(
+      Flag.string("boot-disk-size", "The size of the boot disk, e.g. 10GB (default: 10GB)."),
+      Flag.enum(
         "boot-disk-type",
-        "The type of the boot disk (pd-standard, pd-balanced, pd-ssd).",
+        "The type of the boot disk (default: pd-balanced).",
+        Object.values(BootDiskTypes),
       ),
       Flag.boolean(
         "address",
@@ -542,16 +693,16 @@ export const ComputeCommands: readonly CommandSpec[] = [
     requiredApis: [ComputeApi],
     run: createInstance,
   },
-  listCommand(
-    ["gcloud", "compute", "instances", "list"],
-    "List Compute Engine virtual machine instances.",
-    "compute.instances.list",
-    InstanceColumns,
-    (ctx) =>
+  listCommand({
+    path: ["gcloud", "compute", "instances", "list"],
+    summary: "List Compute Engine virtual machine instances.",
+    permission: "compute.instances.list",
+    columns: InstanceColumns,
+    records: (ctx) =>
       World.instancesOf(ctx.world, ctx.project.projectId)
         .toSorted((a, b) => a.name.localeCompare(b.name))
-        .map(instanceRecord),
-  ),
+        .map(Instance.toRecord),
+  }),
   {
     kind: "project",
     path: ["gcloud", "compute", "instances", "describe"],
@@ -567,10 +718,7 @@ export const ComputeCommands: readonly CommandSpec[] = [
         output: CommandOutput.yaml(Instance.toRecord(instance)),
       })),
   },
-  transitionCommand("start"),
-  transitionCommand("stop"),
-  transitionCommand("suspend"),
-  transitionCommand("resume"),
+  ...Object.values(InstanceTransitions).map(transitionCommand),
   {
     kind: "project",
     path: ["gcloud", "compute", "instances", "delete"],
@@ -592,10 +740,10 @@ export const ComputeCommands: readonly CommandSpec[] = [
         World.withoutInstance(ctx.world, instance.value),
         {
           projectId: instance.value.projectId,
-          operationType: "delete",
+          operationType: OperationTypes.Delete,
           targetLink: Instance.selfLink(instance.value),
           targetName: instance.value.name,
-          zone: instance.value.zone,
+          zone: Option.some(instance.value.zone),
           user: ctx.principal,
           now: ctx.now,
         },
@@ -608,38 +756,39 @@ export const ComputeCommands: readonly CommandSpec[] = [
       return Result.ok({ world, output });
     },
   },
-  listCommand(
-    ["gcloud", "compute", "zones", "list"],
-    "List Compute Engine zones.",
-    "compute.zones.list",
-    ZoneColumns,
-    (ctx) =>
+  listCommand({
+    path: ["gcloud", "compute", "zones", "list"],
+    summary: "List Compute Engine zones.",
+    permission: "compute.zones.list",
+    columns: ZoneColumns,
+    records: (ctx) =>
       Zone.all().map((zone) => ({
         name: zone,
-        region: `https://www.googleapis.com/compute/v1/projects/${ctx.project.projectId}/regions/${Zone.regionOf(zone)}`,
+        region: `https://www.googleapis.com/compute/v1/projects/${ctx.project.projectId}/regions/${Zone.region(zone)}`,
         status: "UP",
         nextMaintenance: "",
         turndownDate: "",
       })),
-  ),
-  listCommand(
-    ["gcloud", "compute", "regions", "list"],
-    "List Compute Engine regions.",
-    "compute.regions.list",
-    RegionColumns,
-    () =>
+  }),
+  listCommand({
+    path: ["gcloud", "compute", "regions", "list"],
+    summary: "List Compute Engine regions.",
+    permission: "compute.regions.list",
+    columns: RegionColumns,
+    records: () =>
       Region.all().map((region) => ({
         name: region,
         status: "UP",
         quotas: [{ metric: "CPUS", usage: 0, limit: 24 }],
       })),
-  ),
-  listCommand(
-    ["gcloud", "compute", "machine-types", "list"],
-    "List Compute Engine machine types.",
-    "compute.machineTypes.list",
-    MachineTypeColumns,
-    (_ctx, args) => {
+  }),
+  listCommand({
+    path: ["gcloud", "compute", "machine-types", "list"],
+    summary: "List Compute Engine machine types.",
+    permission: "compute.machineTypes.list",
+    columns: MachineTypeColumns,
+    flags: [Flag.list("zones", "If provided, only resources from the given zones are queried.")],
+    records: (_ctx, args) => {
       const zones = ParsedArgs.list(args, "zones");
       const chosen = zones.length === 0 ? Zone.all() : Zone.all().filter((z) => zones.includes(z));
       return chosen.flatMap((zone) =>
@@ -653,22 +802,22 @@ export const ComputeCommands: readonly CommandSpec[] = [
         })),
       );
     },
-    [Flag.list("zones", "If provided, only resources from the given zones are queried.")],
-  ),
-  listCommand(
-    ["gcloud", "compute", "images", "list"],
-    "List Compute Engine images.",
-    "compute.images.list",
-    ImageColumns,
-    () => PublicImage.all().map((image) => ({ ...image, deprecated: "", status: "READY" })),
-  ),
-  listCommand(
-    ["gcloud", "compute", "disks", "list"],
-    "List Compute Engine disks.",
-    "compute.disks.list",
-    DiskColumns,
-    diskRecords,
-  ),
+  }),
+  listCommand({
+    path: ["gcloud", "compute", "images", "list"],
+    summary: "List Compute Engine images.",
+    permission: "compute.images.list",
+    columns: ImageColumns,
+    records: () =>
+      PublicImage.all().map((image) => ({ ...image, deprecated: "", status: "READY" })),
+  }),
+  listCommand({
+    path: ["gcloud", "compute", "disks", "list"],
+    summary: "List Compute Engine disks.",
+    permission: "compute.disks.list",
+    columns: DiskColumns,
+    records: diskRecords,
+  }),
   {
     kind: "project",
     path: ["gcloud", "compute", "snapshots", "create"],
@@ -682,70 +831,23 @@ export const ComputeCommands: readonly CommandSpec[] = [
     destructive: false,
     requiredPermissions: ["compute.disks.createSnapshot"],
     requiredApis: [ComputeApi],
-    run: (ctx, args) => {
-      const rawName = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
-      const name = Result.mapErr(ResourceName.parse(rawName), invalidName);
-      if (!Result.isOk(name)) return name;
-      const zone = CommandContext.resolveZone(
-        ctx,
-        Option.or(ParsedArgs.string(args, "source-disk-zone"), ParsedArgs.string(args, "zone")),
-      );
-      if (!Result.isOk(zone)) return zone;
-      const diskName = Option.unwrapOr(ParsedArgs.string(args, "source-disk"), "");
-      const owner = World.instancesOf(ctx.world, ctx.project.projectId).find(
-        (i) => i.zone === zone.value && i.disks.some((d) => d.deviceName === diskName),
-      );
-      const disk = owner?.disks.find((d) => d.deviceName === diskName);
-      if (disk === undefined) {
-        return Result.err(
-          CommandFailure.notFound(
-            `projects/${ctx.project.projectId}/zones/${zone.value}/disks/${diskName}`,
-          ),
-        );
-      }
-      const snapshot: Snapshot = {
-        projectId: ctx.project.projectId,
-        name: name.value,
-        sourceDisk: diskName,
-        sourceZone: zone.value,
-        diskSizeGb: disk.sizeGb,
-        creationTimestamp: ctx.now,
-      };
-      const added = Result.mapErr(World.withSnapshot(ctx.world, snapshot), alreadyExists);
-      if (!Result.isOk(added)) return added;
-      const { world } = recordOperation(added.value, {
-        projectId: snapshot.projectId,
-        operationType: "createSnapshot",
-        targetLink: `https://www.googleapis.com/compute/v1/projects/${snapshot.projectId}/zones/${zone.value}/disks/${diskName}`,
-        targetName: diskName,
-        zone: zone.value,
-        user: ctx.principal,
-        now: ctx.now,
-      });
-      return Result.ok({
-        world,
-        output: CommandOutput.table([Snapshot.toRecord(snapshot)], SnapshotColumns, [
-          OutputMessage.plain(
-            `Created [https://www.googleapis.com/compute/v1/projects/${snapshot.projectId}/global/snapshots/${snapshot.name}].`,
-          ),
-        ]),
-      });
-    },
+    run: createDiskSnapshot,
   },
-  listCommand(
-    ["gcloud", "compute", "snapshots", "list"],
-    "List Compute Engine snapshots.",
-    "compute.snapshots.list",
-    SnapshotColumns,
-    (ctx) => World.snapshotsOf(ctx.world, ctx.project.projectId).map(Snapshot.toRecord),
-  ),
+  listCommand({
+    path: ["gcloud", "compute", "snapshots", "list"],
+    summary: "List Compute Engine snapshots.",
+    permission: "compute.snapshots.list",
+    columns: SnapshotColumns,
+    records: (ctx) =>
+      World.diskSnapshotsOf(ctx.world, ctx.project.projectId).map(DiskSnapshot.toRecord),
+  }),
   {
     kind: "project",
     path: ["gcloud", "compute", "networks", "create"],
     summary: "Create a Compute Engine network.",
     positionals: [Positional.required("NAME", "Name of the network to create.")],
     flags: [
-      Flag.enum("subnet-mode", "The subnet mode of the network.", ["auto", "custom", "legacy"]),
+      Flag.enum("subnet-mode", "The subnet mode of the network.", ["auto", "custom"]),
       Flag.enum("bgp-routing-mode", "The BGP routing mode for this network.", [
         "global",
         "regional",
@@ -754,57 +856,15 @@ export const ComputeCommands: readonly CommandSpec[] = [
     destructive: false,
     requiredPermissions: ["compute.networks.create"],
     requiredApis: [ComputeApi],
-    run: (ctx, args) => {
-      const rawName = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
-      const name = Result.mapErr(ResourceName.parse(rawName), invalidName);
-      if (!Result.isOk(name)) return name;
-      const mode = Option.unwrapOr(ParsedArgs.string(args, "subnet-mode"), "auto");
-      const network: Network = {
-        projectId: ctx.project.projectId,
-        name: name.value,
-        subnetMode: mode === "custom" ? SubnetModes.Custom : SubnetModes.Auto,
-      };
-      const subnets =
-        network.subnetMode === SubnetModes.Auto
-          ? Subnet.autoRange(network.projectId, network.name, Region.all())
-          : [];
-      return Result.map(
-        Result.mapErr(World.withNetwork(ctx.world, network, subnets), alreadyExists),
-        (world) => ({
-          world,
-          output: CommandOutput.withTrailing(
-            CommandOutput.table([networkRecord(network)], NetworkColumns, [
-              OutputMessage.plain(
-                `Created [https://www.googleapis.com/compute/v1/projects/${network.projectId}/global/networks/${network.name}].`,
-              ),
-            ]),
-            OutputMessage.plain(""),
-            OutputMessage.plain(
-              "Instances on this network will not be reachable until firewall rules",
-            ),
-            OutputMessage.plain(
-              "are created. As an example, you can allow all internal traffic between",
-            ),
-            OutputMessage.plain("instances as well as SSH, RDP, and ICMP by running:"),
-            OutputMessage.plain(""),
-            OutputMessage.plain(
-              `$ gcloud compute firewall-rules create <FIREWALL_NAME> --network ${network.name} --allow tcp,udp,icmp --source-ranges <IP_RANGE>`,
-            ),
-            OutputMessage.plain(
-              `$ gcloud compute firewall-rules create <FIREWALL_NAME> --network ${network.name} --allow tcp:22,tcp:3389,icmp`,
-            ),
-          ),
-        }),
-      );
-    },
+    run: createNetwork,
   },
-  listCommand(
-    ["gcloud", "compute", "networks", "list"],
-    "List Compute Engine networks.",
-    "compute.networks.list",
-    NetworkColumns,
-    (ctx) => World.networksOf(ctx.world, ctx.project.projectId).map(networkRecord),
-  ),
+  listCommand({
+    path: ["gcloud", "compute", "networks", "list"],
+    summary: "List Compute Engine networks.",
+    permission: "compute.networks.list",
+    columns: NetworkColumns,
+    records: (ctx) => World.networksOf(ctx.world, ctx.project.projectId).map(networkRecord),
+  }),
   {
     kind: "project",
     path: ["gcloud", "compute", "networks", "describe"],
@@ -814,15 +874,11 @@ export const ComputeCommands: readonly CommandSpec[] = [
     destructive: false,
     requiredPermissions: ["compute.networks.get"],
     requiredApis: [ComputeApi],
-    run: (ctx, args) => {
-      const name = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
-      const network = World.findNetwork(ctx.world, ctx.project.projectId, name);
-      return Option.isSome(network)
-        ? Result.ok({ world: ctx.world, output: CommandOutput.yaml(networkRecord(network.value)) })
-        : Result.err(
-            CommandFailure.notFound(`projects/${ctx.project.projectId}/global/networks/${name}`),
-          );
-    },
+    run: (ctx, args) =>
+      Result.map(
+        requireNetwork(ctx, Option.unwrapOr(ParsedArgs.positional(args, 0), "")),
+        (network) => ({ world: ctx.world, output: CommandOutput.yaml(networkRecord(network)) }),
+      ),
   },
   {
     kind: "project",
@@ -834,27 +890,19 @@ export const ComputeCommands: readonly CommandSpec[] = [
     requiredPermissions: ["compute.networks.delete"],
     requiredApis: [ComputeApi],
     run: (ctx, args) => {
-      const name = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
-      const link = `projects/${ctx.project.projectId}/global/networks/${name}`;
-      if (!Option.isSome(World.findNetwork(ctx.world, ctx.project.projectId, name)))
-        return Result.err(CommandFailure.notFound(link));
-      const world = World.withoutNetwork(ctx.world, ctx.project.projectId, name);
-      if (!Option.isSome(world)) {
-        const subnet = World.subnetsOf(ctx.world, ctx.project.projectId).find(
-          (s) => s.network === name,
-        );
-        return Result.err(
-          CommandFailure.invalidState(
-            `The network resource '${link}' is already being used by 'projects/${ctx.project.projectId}/regions/${subnet?.region}/subnetworks/${subnet?.name}'`,
-          ),
-        );
-      }
-      return Result.ok({
-        world: world.value,
-        output: CommandOutput.messages(
-          OutputMessage.plain(`Deleted [https://www.googleapis.com/compute/v1/${link}].`),
+      const network = requireNetwork(ctx, Option.unwrapOr(ParsedArgs.positional(args, 0), ""));
+      if (!Result.isOk(network)) return network;
+      const world = Result.mapErr(World.withoutNetwork(ctx.world, network.value), (subnet) =>
+        CommandFailure.invalidState(
+          `The network resource '${Network.selfLink(network.value)}' is already being used by '${Subnet.selfLink(subnet)}'`,
         ),
-      });
+      );
+      return Result.map(world, (w) => ({
+        world: w,
+        output: CommandOutput.messages(
+          OutputMessage.plain(`Deleted [${Network.selfLink(network.value)}].`),
+        ),
+      }));
     },
   },
   {
@@ -876,62 +924,15 @@ export const ComputeCommands: readonly CommandSpec[] = [
     destructive: false,
     requiredPermissions: ["compute.subnetworks.create"],
     requiredApis: [ComputeApi],
-    run: (ctx, args) => {
-      const rawName = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
-      const name = Result.mapErr(ResourceName.parse(rawName), invalidName);
-      if (!Result.isOk(name)) return name;
-      const rawRegion = Option.or(
-        ParsedArgs.string(args, "region"),
-        Option.fromNullable(
-          ctx.world.config.configurations[ctx.world.config.activeConfiguration]?.["compute/region"],
-        ),
-      );
-      if (!Option.isSome(rawRegion)) return Result.err(CommandFailure.mustBeSpecified("--region"));
-      const region = Region.parse(rawRegion.value);
-      if (!Option.isSome(region))
-        return Result.err(
-          CommandFailure.notFound(`projects/${ctx.project.projectId}/regions/${rawRegion.value}`),
-        );
-      const networkName = Option.unwrapOr(ParsedArgs.string(args, "network"), "");
-      if (!Option.isSome(World.findNetwork(ctx.world, ctx.project.projectId, networkName))) {
-        return Result.err(
-          CommandFailure.notFound(
-            `projects/${ctx.project.projectId}/global/networks/${networkName}`,
-          ),
-        );
-      }
-      const subnet = Result.mapErr(
-        Subnet.create({
-          projectId: ctx.project.projectId,
-          name: name.value,
-          region: region.value,
-          network: networkName,
-          ipCidrRange: Option.unwrapOr(ParsedArgs.string(args, "range"), ""),
-          privateIpGoogleAccess: ParsedArgs.boolean(args, "enable-private-ip-google-access"),
-        }),
-        (m) => CommandFailure.invalidValue("--range", m),
-      );
-      if (!Result.isOk(subnet)) return subnet;
-      return Result.map(
-        Result.mapErr(World.withSubnet(ctx.world, subnet.value), alreadyExists),
-        (world) => ({
-          world,
-          output: CommandOutput.table([Subnet.toRecord(subnet.value)], SubnetColumns, [
-            OutputMessage.plain(
-              `Created [https://www.googleapis.com/compute/v1/projects/${ctx.project.projectId}/regions/${region.value}/subnetworks/${name.value}].`,
-            ),
-          ]),
-        }),
-      );
-    },
+    run: createSubnet,
   },
-  listCommand(
-    ["gcloud", "compute", "networks", "subnets", "list"],
-    "List Compute Engine subnetworks.",
-    "compute.subnetworks.list",
-    SubnetColumns,
-    (ctx) => World.subnetsOf(ctx.world, ctx.project.projectId).map(Subnet.toRecord),
-  ),
+  listCommand({
+    path: ["gcloud", "compute", "networks", "subnets", "list"],
+    summary: "List Compute Engine subnetworks.",
+    permission: "compute.subnetworks.list",
+    columns: SubnetColumns,
+    records: (ctx) => World.subnetsOf(ctx.world, ctx.project.projectId).map(Subnet.toRecord),
+  }),
   {
     kind: "project",
     path: ["gcloud", "compute", "firewall-rules", "create"],
@@ -943,15 +944,16 @@ export const ComputeCommands: readonly CommandSpec[] = [
         "allow",
         "A list of protocols and ports whose traffic will be allowed, e.g. tcp:80,tcp:443,icmp.",
       ),
-      Flag.enum("action", "The action for the firewall rule.", ["ALLOW", "DENY"]),
+      Flag.enum("action", "The action for the firewall rule.", Object.values(FirewallActions)),
       Flag.list(
         "rules",
         "A list of protocols and ports to which the firewall rule will apply (used with --action).",
       ),
-      Flag.enum("direction", "Direction of the traffic the rule applies to.", [
-        "INGRESS",
-        "EGRESS",
-      ]),
+      Flag.enum(
+        "direction",
+        "Direction of the traffic the rule applies to.",
+        Object.values(Directions),
+      ),
       Flag.integer("priority", "Priority of the rule (0-65535, default 1000)."),
       Flag.list(
         "source-ranges",
@@ -961,81 +963,24 @@ export const ComputeCommands: readonly CommandSpec[] = [
         "target-tags",
         "A list of instance tags indicating the set of instances on the network which may accept connections.",
       ),
-      Flag.list("destination-ranges", "A list of IP address blocks for outbound connections."),
+      Flag.list(
+        "destination-ranges",
+        "A list of IP address blocks for outbound connections (EGRESS only).",
+      ),
       Flag.boolean("disabled", "Disable the firewall rule."),
     ],
     destructive: false,
     requiredPermissions: ["compute.firewalls.create"],
     requiredApis: [ComputeApi],
-    run: (ctx, args) => {
-      const rawName = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
-      const name = Result.mapErr(ResourceName.parse(rawName), invalidName);
-      if (!Result.isOk(name)) return name;
-      const networkName = Option.unwrapOr(ParsedArgs.string(args, "network"), "default");
-      if (!Option.isSome(World.findNetwork(ctx.world, ctx.project.projectId, networkName))) {
-        return Result.err(
-          CommandFailure.notFound(
-            `projects/${ctx.project.projectId}/global/networks/${networkName}`,
-          ),
-        );
-      }
-      const allowFlag = ParsedArgs.list(args, "allow");
-      const action = ParsedArgs.string(args, "action");
-      const rules = ParsedArgs.list(args, "rules");
-      const hasAllow = allowFlag.length > 0;
-      const hasAction = Option.isSome(action);
-      if (hasAllow === hasAction) {
-        return Result.err(CommandFailure.mustBeSpecified("(--action --rules | --allow)"));
-      }
-      const parsed = parseProtocolRules(
-        hasAllow ? "--allow" : "--rules",
-        hasAllow ? allowFlag : rules,
-      );
-      if (!Result.isOk(parsed)) return parsed;
-      const denies = hasAction && action.value === "DENY";
-      const direction =
-        Option.unwrapOr(ParsedArgs.string(args, "direction"), Directions.Ingress) ===
-        Directions.Egress
-          ? Directions.Egress
-          : Directions.Ingress;
-      const rule: FirewallRule = {
-        projectId: ctx.project.projectId,
-        name: name.value,
-        network: networkName,
-        direction,
-        priority: Option.unwrapOr(ParsedArgs.integer(args, "priority"), 1000),
-        sourceRanges:
-          direction === Directions.Ingress
-            ? ParsedArgs.list(args, "source-ranges").length === 0
-              ? ["0.0.0.0/0"]
-              : ParsedArgs.list(args, "source-ranges")
-            : [],
-        targetTags: ParsedArgs.list(args, "target-tags"),
-        allowed: denies ? [] : parsed.value,
-        denied: denies ? parsed.value : [],
-        disabled: ParsedArgs.boolean(args, "disabled"),
-      };
-      return Result.map(
-        Result.mapErr(World.withFirewallRule(ctx.world, rule), alreadyExists),
-        (world) => ({
-          world,
-          output: CommandOutput.table([firewallRecord(rule)], FirewallColumns, [
-            OutputMessage.plain("Creating firewall...done."),
-            OutputMessage.plain(
-              `Created [https://www.googleapis.com/compute/v1/projects/${rule.projectId}/global/firewalls/${rule.name}].`,
-            ),
-          ]),
-        }),
-      );
-    },
+    run: createFirewallRule,
   },
-  listCommand(
-    ["gcloud", "compute", "firewall-rules", "list"],
-    "List Compute Engine firewall rules.",
-    "compute.firewalls.list",
-    FirewallColumns,
-    (ctx) => World.firewallRulesOf(ctx.world, ctx.project.projectId).map(firewallRecord),
-  ),
+  listCommand({
+    path: ["gcloud", "compute", "firewall-rules", "list"],
+    summary: "List Compute Engine firewall rules.",
+    permission: "compute.firewalls.list",
+    columns: FirewallColumns,
+    records: (ctx) => World.firewallRulesOf(ctx.world, ctx.project.projectId).map(firewallRecord),
+  }),
   {
     kind: "project",
     path: ["gcloud", "compute", "firewall-rules", "describe"],
@@ -1045,18 +990,11 @@ export const ComputeCommands: readonly CommandSpec[] = [
     destructive: false,
     requiredPermissions: ["compute.firewalls.get"],
     requiredApis: [ComputeApi],
-    run: (ctx, args) => {
-      const name = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
-      const rule = World.findFirewallRule(ctx.world, ctx.project.projectId, name);
-      return Option.isSome(rule)
-        ? Result.ok({
-            world: ctx.world,
-            output: CommandOutput.yaml(FirewallRule.toRecord(rule.value)),
-          })
-        : Result.err(
-            CommandFailure.notFound(`projects/${ctx.project.projectId}/global/firewalls/${name}`),
-          );
-    },
+    run: (ctx, args) =>
+      Result.map(
+        requireFirewallRule(ctx, Option.unwrapOr(ParsedArgs.positional(args, 0), "")),
+        (rule) => ({ world: ctx.world, output: CommandOutput.yaml(FirewallRule.toRecord(rule)) }),
+      ),
   },
   {
     kind: "project",
@@ -1067,28 +1005,26 @@ export const ComputeCommands: readonly CommandSpec[] = [
     destructive: true,
     requiredPermissions: ["compute.firewalls.delete"],
     requiredApis: [ComputeApi],
-    run: (ctx, args) => {
-      const name = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
-      const link = `projects/${ctx.project.projectId}/global/firewalls/${name}`;
-      if (!Option.isSome(World.findFirewallRule(ctx.world, ctx.project.projectId, name)))
-        return Result.err(CommandFailure.notFound(link));
-      return Result.ok({
-        world: World.withoutFirewallRule(ctx.world, ctx.project.projectId, name),
-        output: CommandOutput.messages(
-          OutputMessage.plain(`Deleted [https://www.googleapis.com/compute/v1/${link}].`),
-        ),
-      });
-    },
+    run: (ctx, args) =>
+      Result.map(
+        requireFirewallRule(ctx, Option.unwrapOr(ParsedArgs.positional(args, 0), "")),
+        (rule) => ({
+          world: World.withoutFirewallRule(ctx.world, rule),
+          output: CommandOutput.messages(
+            OutputMessage.plain(`Deleted [${FirewallRule.selfLink(rule)}].`),
+          ),
+        }),
+      ),
   },
-  listCommand(
-    ["gcloud", "compute", "operations", "list"],
-    "List Compute Engine operations.",
-    "compute.zoneOperations.list",
-    OperationColumns,
-    (ctx) =>
+  listCommand({
+    path: ["gcloud", "compute", "operations", "list"],
+    summary: "List Compute Engine operations.",
+    permission: "compute.zoneOperations.list",
+    columns: OperationColumns,
+    records: (ctx) =>
       World.operationsOf(ctx.world, ctx.project.projectId).map((o) => ({
         ...Operation.toRecord(o),
         httpStatus: 200,
       })),
-  ),
+  }),
 ];

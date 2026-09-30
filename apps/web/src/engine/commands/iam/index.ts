@@ -1,4 +1,4 @@
-import { CommandFailure } from "@/engine/cli/command-error";
+import { CommandFailure } from "@/engine/cli/command-failure";
 import {
   Column,
   CommandOutput,
@@ -17,12 +17,15 @@ import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
 const ServiceAccountColumns = [
-  Column.of("DISPLAY NAME", "displayName"),
-  Column.of("EMAIL", "email"),
-  Column.of("DISABLED", "disabled"),
+  Column.create("DISPLAY NAME", "displayName"),
+  Column.create("EMAIL", "email"),
+  Column.create("DISABLED", "disabled"),
 ];
 
-const RoleColumns = [Column.of("NAME", "name"), Column.of("TITLE", "title")];
+const RoleColumns = [Column.create("NAME", "name"), Column.create("TITLE", "title")];
+
+const unknownServiceAccount = (email: string): CommandFailure =>
+  CommandFailure.notFoundWith(`NOT_FOUND: Unknown service account: ${email}`);
 
 export const IamCommands: readonly CommandSpec[] = [
   {
@@ -49,6 +52,7 @@ export const IamCommands: readonly CommandSpec[] = [
         ServiceAccount.create({
           accountId,
           displayName: Option.unwrapOr(ParsedArgs.string(args, "display-name"), ""),
+          description: Option.unwrapOr(ParsedArgs.string(args, "description"), ""),
           projectId: ctx.project.projectId,
           uniqueId: String(100000000000000000000n + BigInt(numbered.number)),
         }),
@@ -101,15 +105,15 @@ export const IamCommands: readonly CommandSpec[] = [
     requiredApis: [],
     run: (ctx, args) => {
       const email = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
-      const account = World.findServiceAccount(ctx.world, email);
-      return Option.isSome(account)
-        ? Result.ok({
-            world: ctx.world,
-            output: CommandOutput.yaml(ServiceAccount.toRecord(account.value)),
-          })
-        : Result.err(
-            CommandFailure.notFoundMessage(`NOT_FOUND: Unknown service account: ${email}`),
-          );
+      return Result.map(
+        Option.toResult(World.findServiceAccount(ctx.world, email), () =>
+          unknownServiceAccount(email),
+        ),
+        (account) => ({
+          world: ctx.world,
+          output: CommandOutput.yaml(ServiceAccount.toRecord(account)),
+        }),
+      );
     },
   },
   {
@@ -124,9 +128,7 @@ export const IamCommands: readonly CommandSpec[] = [
     run: (ctx, args) => {
       const email = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
       if (!Option.isSome(World.findServiceAccount(ctx.world, email))) {
-        return Result.err(
-          CommandFailure.notFoundMessage(`NOT_FOUND: Unknown service account: ${email}`),
-        );
+        return Result.err(unknownServiceAccount(email));
       }
       return Result.ok({
         world: World.withoutServiceAccount(ctx.world, email),
@@ -139,12 +141,7 @@ export const IamCommands: readonly CommandSpec[] = [
     path: ["gcloud", "iam", "roles", "list"],
     summary: "List predefined roles known to gcloud-sim.",
     positionals: [],
-    flags: [
-      Flag.string(
-        "project",
-        "The project of custom roles to list (custom roles are not simulated).",
-      ),
-    ],
+    flags: [],
     destructive: false,
     run: (ctx) =>
       Result.ok({
@@ -164,11 +161,10 @@ export const IamCommands: readonly CommandSpec[] = [
     destructive: false,
     run: (ctx, args) => {
       const raw = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
-      const name = RoleName.parse(raw);
-      const role = Option.flatMap(name, RoleCatalog.find);
+      const role = Option.flatMap(RoleName.parse(raw), RoleCatalog.find);
       if (!Option.isSome(role))
         return Result.err(
-          CommandFailure.notFoundMessage(`NOT_FOUND: The role named ${raw} was not found.`),
+          CommandFailure.notFoundWith(`NOT_FOUND: The role named ${raw} was not found.`),
         );
       return Result.ok({
         world: ctx.world,

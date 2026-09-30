@@ -1,20 +1,26 @@
 "use client";
 
-import { type ReactElement, useCallback, useEffect, useState } from "react";
+import { type ReactElement, useCallback, useEffect } from "react";
 
 import { Engine } from "@/engine";
 import type { World } from "@/engine/domains/world";
 import { World as WorldOps } from "@/engine/domains/world";
 import { Mission } from "@/engine/missions";
-import { type ImportFailure, Snapshot } from "@/engine/snapshot";
+import type { ImportFailure } from "@/engine/snapshot";
 import { ChangeLog } from "@/features/simulator/components/ChangeLog";
 import { Header } from "@/features/simulator/components/Header";
 import { MissionPanel } from "@/features/simulator/components/MissionPanel";
 import { PropertiesPanel } from "@/features/simulator/components/PropertiesPanel";
 import { ResourceTree } from "@/features/simulator/components/ResourceTree";
-import { type SaveState, SettingsDialog } from "@/features/simulator/components/SettingsDialog";
+import { SettingsDialog } from "@/features/simulator/components/SettingsDialog";
 import { Terminal } from "@/features/simulator/components/Terminal";
-import { type PanelTab, PanelTabs, useSimulator } from "@/features/simulator/hooks/use-simulator";
+import {
+  type PanelTab,
+  PanelTabs,
+  type SimulatorStart,
+  useSimulator,
+} from "@/features/simulator/hooks/use-simulator";
+import { describeImportFailure } from "@/features/simulator/utils/import-failure-message";
 import type { TerminalViewFactory } from "@/libs/terminal-view";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -31,7 +37,7 @@ export type SimulatorIo = Readonly<{
 }>;
 
 type SimulatorProps = Readonly<{
-  initialWorld: World;
+  start: SimulatorStart;
   io: SimulatorIo;
 }>;
 
@@ -42,22 +48,17 @@ const Tabs: readonly Readonly<{ tab: PanelTab; label: (missions: string) => stri
 ];
 
 /** CLI 画面全体（モック 2a）: ヘッダー / リソース階層 / ターミナル / 右ペイン / 設定。 */
-export const Simulator = ({ initialWorld, io }: SimulatorProps): ReactElement => {
-  const [state, dispatch] = useSimulator(initialWorld);
-  const [saveState, setSaveState] = useState<SaveState>({ kind: "saved", bytes: 0 });
-  const { world } = state;
+export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
+  const [state, dispatch] = useSimulator(start);
+  const { world, saveState } = state;
 
   // World が変わるたびに保存する（localStorage との同期。UC-005 自動保存）。
   useEffect(() => {
     const saved = io.save(world, io.now());
     if (Result.isOk(saved)) {
-      setSaveState({ kind: "saved", bytes: saved.value });
+      dispatch({ type: "saved", bytes: saved.value });
     } else {
-      setSaveState((previous) => {
-        const alreadyWarned = previous.kind === "failed" && previous.reason === saved.error.reason;
-        if (!alreadyWarned) dispatch({ type: "persistFailed", reason: saved.error.reason });
-        return { kind: "failed", reason: saved.error.reason };
-      });
+      dispatch({ type: "saveFailed", reason: saved.error.reason });
     }
   }, [world, io, dispatch]);
 
@@ -67,12 +68,13 @@ export const Simulator = ({ initialWorld, io }: SimulatorProps): ReactElement =>
   );
   const submitFromUi = (line: string): void =>
     dispatch({ type: "submitted", line, now: io.now(), origin: "ui" });
-  const complete = useCallback((line: string) => Engine.complete(line), []);
+  const completionCandidates = useCallback((line: string) => Engine.completionCandidates(line), []);
+  const insertConsumed = useCallback(() => dispatch({ type: "insertConsumed" }), [dispatch]);
 
   const importFile = async (file: File): Promise<void> => {
     const read = await io.readFile(file);
     if (!Result.isOk(read)) {
-      dispatch({ type: "importFailed", message: Snapshot.describeFailure(read.error) });
+      dispatch({ type: "importFailed", message: describeImportFailure(read.error) });
       return;
     }
     if (!io.confirm("現在の状態を上書きします。よろしいですか？")) return;
@@ -108,10 +110,11 @@ export const Simulator = ({ initialWorld, io }: SimulatorProps): ReactElement =>
         />
         <Terminal
           transcript={state.transcript}
-          clearEpoch={state.clearEpoch}
+          screenClearCount={state.screenClearCount}
           pendingInsert={state.pendingInsert}
+          onInsertConsumed={insertConsumed}
           onSubmit={submit}
-          complete={complete}
+          completionCandidates={completionCandidates}
           createView={io.createTerminalView}
           caption={`configuration: ${world.config.activeConfiguration}`}
         />

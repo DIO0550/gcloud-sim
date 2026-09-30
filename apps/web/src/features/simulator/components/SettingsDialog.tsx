@@ -31,7 +31,7 @@ const countResources = (world: World): number =>
   world.clusters.length +
   world.runServices.length +
   world.serviceAccounts.length +
-  world.snapshots.length;
+  world.diskSnapshots.length;
 
 const kb = (bytes: number): string => `${Math.max(1, Math.round(bytes / 1024))} KB`;
 

@@ -1,4 +1,5 @@
 import { Option } from "@/utils/Option";
+import { StringEx } from "@/utils/StringEx";
 
 /** 入力行の状態。バッファとカーソル、↑↓で辿る履歴。 */
 export type LineEditor = Readonly<{
@@ -13,7 +14,7 @@ export type LineEditor = Readonly<{
 
 /** キー入力を適用した結果、コンポーネントが端末に対して行うこと。 */
 export type EditorEffect =
-  | Readonly<{ kind: "render" }>
+  | Readonly<{ kind: "draw" }>
   | Readonly<{ kind: "submit"; line: string }>
   | Readonly<{ kind: "complete" }>
   | Readonly<{ kind: "clear" }>
@@ -48,7 +49,7 @@ const step = (editor: LineEditor, ...effects: readonly EditorEffect[]): EditorSt
   editor,
   effects,
 });
-const render = (editor: LineEditor): EditorStep => step(editor, { kind: "render" });
+const draw = (editor: LineEditor): EditorStep => step(editor, { kind: "draw" });
 
 const withBuffer = (editor: LineEditor, buffer: string, cursor: number): LineEditor => ({
   ...editor,
@@ -56,12 +57,18 @@ const withBuffer = (editor: LineEditor, buffer: string, cursor: number): LineEdi
   cursor: Math.max(0, Math.min(buffer.length, cursor)),
 });
 
-const insert = (editor: LineEditor, text: string): LineEditor =>
-  withBuffer(
+/**
+ * 文字を入力行に入れる。キーとして意味を持つ制御文字は `single` が先に拾うので、ここに来た
+ * 制御文字は端末のエスケープ列として書き戻されないように落とす。
+ */
+const insert = (editor: LineEditor, text: string): LineEditor => {
+  const printable = StringEx.withoutControlChars(text);
+  return withBuffer(
     editor,
-    editor.buffer.slice(0, editor.cursor) + text + editor.buffer.slice(editor.cursor),
-    editor.cursor + text.length,
+    editor.buffer.slice(0, editor.cursor) + printable + editor.buffer.slice(editor.cursor),
+    editor.cursor + printable.length,
   );
+};
 
 const backspace = (editor: LineEditor): LineEditor =>
   editor.cursor === 0
@@ -122,9 +129,9 @@ const single = (editor: LineEditor, key: string): EditorStep => {
       return submit(editor);
     case Keys.Backspace:
     case Keys.BackspaceCtrlH:
-      return render(backspace(editor));
+      return draw(backspace(editor));
     case Keys.Delete:
-      return render(deleteForward(editor));
+      return draw(deleteForward(editor));
     case Keys.Tab:
       return step(editor, { kind: "complete" });
     case Keys.CtrlC:
@@ -137,25 +144,25 @@ const single = (editor: LineEditor, key: string): EditorStep => {
     case Keys.CtrlA:
     case Keys.Home:
     case Keys.HomeAlt:
-      return render({ ...editor, cursor: 0 });
+      return draw({ ...editor, cursor: 0 });
     case Keys.CtrlE:
     case Keys.End:
     case Keys.EndAlt:
-      return render({ ...editor, cursor: editor.buffer.length });
+      return draw({ ...editor, cursor: editor.buffer.length });
     case Keys.CtrlU:
-      return render(withBuffer(editor, editor.buffer.slice(editor.cursor), 0));
+      return draw(withBuffer(editor, editor.buffer.slice(editor.cursor), 0));
     case Keys.CtrlK:
-      return render(withBuffer(editor, editor.buffer.slice(0, editor.cursor), editor.cursor));
+      return draw(withBuffer(editor, editor.buffer.slice(0, editor.cursor), editor.cursor));
     case Keys.Left:
-      return render({ ...editor, cursor: Math.max(0, editor.cursor - 1) });
+      return draw({ ...editor, cursor: Math.max(0, editor.cursor - 1) });
     case Keys.Right:
-      return render({ ...editor, cursor: Math.min(editor.buffer.length, editor.cursor + 1) });
+      return draw({ ...editor, cursor: Math.min(editor.buffer.length, editor.cursor + 1) });
     case Keys.Up:
-      return render(historyUp(editor));
+      return draw(historyUp(editor));
     case Keys.Down:
-      return render(historyDown(editor));
+      return draw(historyDown(editor));
     default:
-      return key.startsWith("\x1b") ? step(editor) : render(insert(editor, key));
+      return key.startsWith("\x1b") ? step(editor) : draw(insert(editor, key));
   }
 };
 
@@ -185,7 +192,8 @@ export const LineEditor = {
 
   /**
    * xterm の onData が渡す文字列を適用する。複数文字（貼り付け）は 1 文字ずつ適用し、
-   * 貼り付けた改行はそのまま送信になる。
+   * 貼り付けた改行はそのまま送信になる。連続する `draw` は 1 つにまとめる（貼り付けの
+   * 1 文字ごとに描き直さない）。
    *
    * @param editor 今の状態
    * @param data 入力
@@ -195,13 +203,17 @@ export const LineEditor = {
     const isEscape = data.startsWith("\x1b");
     if (isEscape || data.length === 1) return single(editor, data);
     const normalized = data.replace(/\r\n/g, "\n").replace(/[ \t]*\\\n\s*/g, " ");
-    return [...normalized].reduce<EditorStep>(
-      (acc, char) => {
-        const next = single(acc.editor, char);
-        return { editor: next.editor, effects: [...acc.effects, ...next.effects] };
-      },
-      { editor, effects: [] },
-    );
+    const effects: EditorEffect[] = [];
+    let current = editor;
+    for (const char of normalized) {
+      const next = single(current, char);
+      current = next.editor;
+      for (const effect of next.effects) {
+        const duplicatesDraw = effect.kind === "draw" && effects.at(-1)?.kind === "draw";
+        if (!duplicatesDraw) effects.push(effect);
+      }
+    }
+    return { editor: current, effects };
   },
 
   /**
@@ -212,7 +224,12 @@ export const LineEditor = {
    * @returns カーソルを末尾に置いた状態
    */
   replace(editor: LineEditor, line: string): LineEditor {
-    return { ...withBuffer(editor, line, line.length), historyIndex: Option.none, draft: "" };
+    const printable = StringEx.withoutControlChars(line);
+    return {
+      ...withBuffer(editor, printable, printable.length),
+      historyIndex: Option.none,
+      draft: "",
+    };
   },
 
   /**

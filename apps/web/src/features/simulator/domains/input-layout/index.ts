@@ -1,10 +1,10 @@
 import { Option } from "@/utils/Option";
 
 /** 端末に描いた入力行の大きさ。次に描き直すとき、カーソルが何行目にいるかをこれから求める。 */
-export type InputRender = Readonly<{ length: number; cursor: number }>;
+export type DrawnInput = Readonly<{ length: number; cursor: number }>;
 
 /** 描き直しの指示。`sequence` を端末に書き、`rendered` を次回の `previous` にする。 */
-export type Redraw = Readonly<{ sequence: string; rendered: InputRender }>;
+export type Redraw = Readonly<{ sequence: string; rendered: DrawnInput }>;
 
 const PromptText = "$ ";
 const PromptAnsi = "\x1b[32m$\x1b[0m ";
@@ -13,7 +13,7 @@ const PromptLength = PromptText.length;
 const up = (rows: number): string => (rows > 0 ? `\x1b[${rows}A` : "");
 
 /** 描いてあるプロンプトと入力行を消して、行頭に戻る。 */
-const erase = (previous: Option<InputRender>, cols: number): string => {
+const erase = (previous: Option<DrawnInput>, cols: number): string => {
   const cursorRow = Option.isSome(previous)
     ? Math.floor((PromptLength + previous.value.cursor) / cols)
     : 0;
@@ -36,7 +36,7 @@ export const InputLayout = {
    * @returns 端末に書く列と、次回の `previous`
    */
   redraw(
-    previous: Option<InputRender>,
+    previous: Option<DrawnInput>,
     editor: Readonly<{ buffer: string; cursor: number }>,
     cols: number,
   ): Redraw {
@@ -59,7 +59,7 @@ export const InputLayout = {
    * @param cols 端末の列数
    * @returns 端末に書く列
    */
-  erase(previous: Option<InputRender>, cols: number): string {
+  erase(previous: Option<DrawnInput>, cols: number): string {
     return erase(previous, Math.max(1, cols));
   },
 } as const;

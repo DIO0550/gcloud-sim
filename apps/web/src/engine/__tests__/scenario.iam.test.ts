@@ -3,7 +3,7 @@ import { expect, test } from "vitest";
 
 import { run, session } from "@/engine/__tests__/setup";
 import { World } from "@/engine/domains/world";
-import { InheritedPolicy } from "@/engine/resource-tree";
+import { BindingRow } from "@/engine/resource-tree";
 import { Option } from "@/utils/Option";
 
 /** UC-004 代替フロー（本ツールの核心）を shell 経由で通しで確かめる。 */
@@ -42,24 +42,23 @@ test("dev に切り替える → 拒否される → フォルダに付与する
     "Created [https://www.googleapis.com/compute/v1/projects/ace-dev-01/zones/asia-northeast1-a/instances/web-2].",
   );
   expect(success.lines[2]?.text).toMatch(/^web-2\s+asia-northeast1-a\s+e2-medium\s+.*RUNNING$/);
-  expect(step4.world.session.principal).toBe("dev@example.com");
+  expect(World.currentPrincipal(step4.world)).toEqual(Option.some("dev@example.com"));
 
-  const inherited = InheritedPolicy.of(success.world, { type: "project", id: "ace-dev-01" });
-  const devRows = inherited.filter((r) => r.member === "user:dev@example.com");
+  const rows = BindingRow.fromWorld(success.world, { type: "project", id: "ace-dev-01" });
+  const devRows = rows.filter((r) => r.member === "user:dev@example.com");
   expect(devRows).toEqual([
     {
       member: "user:dev@example.com",
       role: "roles/viewer",
-      grantedAt: { type: "project", id: "ace-dev-01" },
-      inherited: false,
+      origin: { kind: "self", target: { type: "project", id: "ace-dev-01" } },
     },
     {
       member: "user:dev@example.com",
       role: "roles/compute.instanceAdmin.v1",
-      grantedAt: { type: "folder", id: "284100000001" },
-      inherited: true,
+      origin: { kind: "folder", displayName: "dev" },
     },
   ]);
+  expect(devRows.map(BindingRow.isInherited)).toEqual([false, true]);
 });
 
 test("--account でその 1 回だけ主体を変えられる", () => {
@@ -68,7 +67,7 @@ test("--account でその 1 回だけ主体を変えられる", () => {
     "gcloud compute instances create web-2 --zone=asia-northeast1-a --account=dev@example.com",
   );
   expect(s.text).toContain("Required 'compute.instances.create' permission");
-  expect(s.world.session.principal).toBe("owner@example.com");
+  expect(World.currentPrincipal(s.world)).toEqual(Option.some("owner@example.com"));
 });
 
 test("API 未有効化と権限不足が同時なら API 未有効化（E-007）が先に出る", () => {

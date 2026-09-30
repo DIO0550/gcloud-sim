@@ -3,10 +3,13 @@
 import { type ReactElement, useEffect, useState } from "react";
 
 import { Engine } from "@/engine";
-import type { World } from "@/engine/domains/world";
-import { Simulator, type SimulatorIo } from "@/features/simulator";
+import {
+  describeImportFailure,
+  Simulator,
+  type SimulatorIo,
+  type SimulatorStart,
+} from "@/features/simulator";
 import { Clock } from "@/libs/clock";
-import { Logger } from "@/libs/logger";
 import { SnapshotFile } from "@/libs/snapshot-file";
 import { createXtermView } from "@/libs/terminal-view";
 import { StorageCapacityBytes, WorldStorage } from "@/libs/world-storage";
@@ -23,14 +26,27 @@ const io: SimulatorIo = {
   capacityBytes: StorageCapacityBytes,
 };
 
-/** 保存があればそれ、無ければ初期 World。壊れていれば理由をログに残して初期 World から始める。 */
-const loadWorld = (): World => {
+/**
+ * 保存があればそれ、無ければ初期 World。読めなければ退避先を添えた注意と一緒に初期 World から始める
+ * （黙ってリセットせず、端末の先頭で知らせる）。
+ */
+const loadStart = (): SimulatorStart => {
   const loaded = WorldStorage.load();
   if (Result.isOk(loaded)) {
-    return Option.unwrapOr(loaded.value, Engine.initialWorld(Clock.now()));
+    return {
+      world: Option.unwrapOr(loaded.value, Engine.initialWorld(Clock.now())),
+      warning: Option.none,
+    };
   }
-  Logger.error("saved world could not be loaded; starting from the initial world", loaded.error);
-  return Engine.initialWorld(Clock.now());
+  const backedUp = Option.isSome(loaded.error.backupKey)
+    ? `読めなかった中身は localStorage の ${loaded.error.backupKey.value} に退避しました。`
+    : "読めなかった中身は退避できませんでした（次の保存で上書きされます）。";
+  return {
+    world: Engine.initialWorld(Clock.now()),
+    warning: Option.some(
+      `gcloud-sim: warning: 保存されていた状態を読めなかったので初期状態から始めます。${describeImportFailure(loaded.error.failure)} ${backedUp}`,
+    ),
+  };
 };
 
 /**
@@ -38,16 +54,16 @@ const loadWorld = (): World => {
  * プレースホルダーを出し、マウント後に読んでから本体を描く（hydration の食い違いを作らない）。
  */
 export const SimulatorLoader = (): ReactElement => {
-  const [world, setWorld] = useState<Option<World>>(Option.none);
+  const [start, setStart] = useState<Option<SimulatorStart>>(Option.none);
   useEffect(() => {
-    setWorld(Option.some(loadWorld()));
+    setStart(Option.some(loadStart()));
   }, []);
-  if (!Option.isSome(world)) {
+  if (!Option.isSome(start)) {
     return (
       <main className="flex h-dvh items-center justify-center text-muted">
         <p>gcloud-sim を読み込んでいます…</p>
       </main>
     );
   }
-  return <Simulator initialWorld={world.value} io={io} />;
+  return <Simulator start={start.value} io={io} />;
 };

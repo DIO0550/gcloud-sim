@@ -69,6 +69,32 @@ test("suspend / resume で SUSPENDED と RUNNING を行き来する", () => {
   expect(instance(resumed.world).status).toBe("RUNNING");
 });
 
+test("suspend → resume では外部 IP を解放せず同じアドレスのまま", () => {
+  const created = run(session(), create);
+  const before = instance(created.world).networkInterfaces[0]?.externalIP;
+  const resumed = run(
+    created,
+    `gcloud compute instances suspend web-1 --zone=${zone}`,
+    `gcloud compute instances resume web-1 --zone=${zone}`,
+  );
+  expect(instance(resumed.world).networkInterfaces[0]?.externalIP).toEqual(before);
+  expect(before?.kind === "ephemeral" && Option.isSome(before.address)).toBe(true);
+});
+
+test("SUSPENDED への suspend と RUNNING への resume は冪等でオペレーションを残さない", () => {
+  const s = run(
+    session(),
+    create,
+    `gcloud compute instances resume web-1 --zone=${zone}`,
+    `gcloud compute instances suspend web-1 --zone=${zone}`,
+    `gcloud compute instances suspend web-1 --zone=${zone}`,
+  );
+  expect(s.text).toContain("Suspending instance(s) web-1...done.");
+  expect(instance(s.world).status).toBe("SUSPENDED");
+  expect(s.world.operations.filter((o) => o.operationType === "suspend")).toHaveLength(1);
+  expect(s.world.operations.filter((o) => o.operationType === "resume")).toHaveLength(0);
+});
+
 test("SUSPENDED への stop は E-014 になる", () => {
   const s = run(
     session(),

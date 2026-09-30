@@ -1,3 +1,4 @@
+import type { JsonRecord } from "@/types/Json";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
@@ -70,6 +71,11 @@ export const RoleName = {
     const isCustom = /^projects\/[a-z][a-z0-9-]*\/roles\/[A-Za-z0-9_.]+$/.test(value);
     return isPredefined || isCustom ? Option.some(value as RoleName) : Option.none;
   },
+
+  /** プロジェクトのカスタムロールか（カタログには無いが受け付ける）。 */
+  isCustom(name: RoleName): boolean {
+    return name.startsWith("projects/");
+  },
 } as const;
 
 const Empty: IamPolicy = Object.freeze({ bindings: [] });
@@ -140,8 +146,7 @@ export const IamPolicy = {
    * @returns 入っていれば真
    */
   hasBinding(policy: IamPolicy, role: RoleName, member: IamMember): boolean {
-    const binding = policy.bindings.find((b) => b.role === role);
-    return binding?.members.includes(member) ?? false;
+    return IamPolicy.membersOf(policy, role).includes(member);
   },
 
   /**
@@ -166,5 +171,14 @@ export const IamPolicy = {
    */
   membersOf(policy: IamPolicy, role: RoleName): readonly IamMember[] {
     return policy.bindings.find((b) => b.role === role)?.members ?? [];
+  },
+
+  /** `get-iam-policy` / `add-iam-policy-binding` が出す API 表現。 */
+  toRecord(policy: IamPolicy): JsonRecord {
+    return {
+      bindings: policy.bindings.map((b) => ({ members: [...b.members], role: b.role })),
+      etag: "BwYEp2z-Xd0=",
+      version: 1,
+    };
   },
 } as const;

@@ -1,7 +1,13 @@
-import { type ReactElement, useState } from "react";
+import { type ReactElement, useMemo, useState } from "react";
 
 import type { World } from "@/engine/domains/world";
-import { Selection, ResourceTree as Tree, type TreeNode } from "@/engine/resource-tree";
+import {
+  type ResourceGroup,
+  Selection,
+  type TreeBadge,
+  type TreeLabel,
+  TreeNode,
+} from "@/engine/resource-tree";
 import { Option } from "@/utils/Option";
 
 type ResourceTreeProps = Readonly<{
@@ -21,6 +27,51 @@ type NodeProps = Readonly<{
   onSelect: (selection: Selection) => void;
   onInsertDescribe: (command: string) => void;
 }>;
+
+/** 種別バッジの綴り（モック 2a の `組織` / `フォルダ` / `PJ` / `請求`）。 */
+const badgeText = (badge: TreeBadge): string => {
+  switch (badge) {
+    case "organization":
+      return "組織";
+    case "folder":
+      return "フォルダ";
+    case "project":
+      return "PJ";
+    case "billing":
+      return "請求";
+    case "none":
+      return "";
+  }
+};
+
+/** リソース種別グループの見出し（モック 2a）。 */
+const groupText = (group: ResourceGroup): string => {
+  switch (group) {
+    case "compute":
+      return "Compute Engine";
+    case "vpc":
+      return "VPC ネットワーク";
+    case "storage":
+      return "Cloud Storage";
+    case "gke":
+      return "Kubernetes Engine";
+    case "run":
+      return "Cloud Run";
+    case "service-accounts":
+      return "サービスアカウント";
+    case "iam":
+      return "IAM";
+  }
+};
+
+const labelText = (label: TreeLabel): string => {
+  switch (label.kind) {
+    case "text":
+      return label.text;
+    case "group":
+      return groupText(label.group);
+  }
+};
 
 const StatusDot = ({ status }: Readonly<{ status: TreeNode["status"] }>): ReactElement => {
   switch (status) {
@@ -51,6 +102,8 @@ const Node = ({
 }: NodeProps): ReactElement => {
   // 組織 → フォルダ → プロジェクト → 種別グループ → リソースまでは開いておき、ネットワーク配下（fw）だけ畳む。
   const [isOpen, setOpen] = useState(depth < 4);
+  const label = labelText(node.label);
+  const badge = badgeText(node.badge);
   const isSelected =
     Option.isSome(selection) &&
     Option.isSome(node.selection) &&
@@ -79,7 +132,7 @@ const Node = ({
             type="button"
             className="w-4 text-xs"
             onClick={() => setOpen((v) => !v)}
-            aria-label={isOpen ? `${node.label} を折りたたむ` : `${node.label} を展開する`}
+            aria-label={isOpen ? `${label} を折りたたむ` : `${label} を展開する`}
             aria-expanded={isOpen}
           >
             {isOpen ? "▾" : "▸"}
@@ -94,18 +147,18 @@ const Node = ({
           onDoubleClick={insert}
           aria-current={isSelected ? "true" : undefined}
         >
-          {node.badge !== "" && (
+          {badge !== "" && (
             <span
               className={`rounded border px-1 text-xs ${isSelected ? "border-white/60" : "border-line text-muted"}`}
             >
-              {node.badge}
+              {badge}
             </span>
           )}
           <StatusDot status={node.status} />
           <span
             className={`truncate font-mono ${isCurrentProject ? "font-bold text-accent" : ""} ${isSelected ? "text-white" : ""}`}
           >
-            {node.label}
+            {label}
           </span>
           {Option.isSome(node.count) && (
             <span className={`text-xs ${isSelected ? "text-white/80" : "text-muted"}`}>
@@ -141,7 +194,8 @@ export const ResourceTree = ({
   onSelect,
   onInsertDescribe,
 }: ResourceTreeProps): ReactElement => {
-  const roots = Tree.fromWorld(world);
+  // 選択やタブの切り替えでは World が変わらないので、ツリーの組み立ては World が変わったときだけ。
+  const roots = useMemo(() => TreeNode.fromWorld(world), [world]);
   return (
     <nav
       aria-label="リソース階層"

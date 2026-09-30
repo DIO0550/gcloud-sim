@@ -1,6 +1,6 @@
-import { CommandFailure } from "@/engine/cli/command-error";
-import { type ApiName, Zone } from "@/engine/domains/catalog";
-import { GcloudConfig } from "@/engine/domains/gcloud-config";
+import { CommandFailure } from "@/engine/cli/command-failure";
+import { type ApiName, Region, Zone } from "@/engine/domains/catalog";
+import { type ConfigProperty, GcloudConfig } from "@/engine/domains/gcloud-config";
 import type { Principal } from "@/engine/domains/principal";
 import type { PolicyTarget, Project } from "@/engine/domains/resource-hierarchy";
 import { World } from "@/engine/domains/world";
@@ -149,15 +149,18 @@ export const OutputMessage = {
   muted: (text: string): OutputMessage => ({ text, tone: "muted" }),
 } as const;
 
-/** 既定の table の 1 列。`path` はレコードのドット区切りパス、`transform` は表示前の加工。 */
+/**
+ * 既定の table の 1 列。`path` はレコードのドット区切りパス、`transform` は表示前の加工
+ * （`basename`: URL の末尾、`join`: 配列を `,` で結ぶ、`flag`: 真なら `true`・偽なら空欄）。
+ */
 export type Column = Readonly<{
   header: string;
   path: string;
-  transform: "none" | "basename" | "join";
+  transform: "none" | "basename" | "join" | "flag";
 }>;
 
 export const Column = {
-  of(header: string, path: string, transform: Column["transform"] = "none"): Column {
+  create(header: string, path: string, transform: Column["transform"] = "none"): Column {
     return { header, path, transform };
   },
 } as const;
@@ -204,16 +207,28 @@ export const CommandOutput = {
 export type CommandOutcome = Readonly<{ world: World; output: CommandOutput }>;
 export type CommandResult = Result<CommandOutcome, CommandFailure>;
 
-/** 実行時の文脈。`projectId` は `--project` か `core/project`。 */
+/**
+ * 実行時の文脈。`projectId` は `--project` か `core/project`。
+ * 主体は持たない。`plain` のコマンド（`auth login` / `config set account`）はアカウント未選択でも
+ * 動くので、主体が要るのは権限を検証した文脈（`AuthorizedContext`）だけ。
+ */
 export type CommandContext = Readonly<{
   world: World;
   now: string;
-  principal: Principal;
   projectId: Option<string>;
 }>;
 
+/** 権限の検証を通った文脈。`principal` は `--account` か `core/account`。 */
+export type AuthorizedContext = CommandContext & Readonly<{ principal: Principal }>;
+
 /** プロジェクトの解決と API・権限の検証を通った文脈。`kind: "project"` の `run` だけが受け取る。 */
-export type ProjectContext = CommandContext & Readonly<{ project: Project }>;
+export type ProjectContext = AuthorizedContext & Readonly<{ project: Project }>;
+
+/** ポリシー対象の解決と権限の検証を通った文脈。`kind: "target"` の `run` だけが受け取る。 */
+export type TargetContext = AuthorizedContext & Readonly<{ target: PolicyTarget }>;
+
+/** `--region` の既定を読むプロパティ。Compute と Cloud Run で別のセクションを見る。 */
+export type RegionProperty = Extract<ConfigProperty, "compute/region" | "run/region">;
 
 type SpecBase = Readonly<{
   path: readonly string[];
@@ -247,7 +262,7 @@ export type CommandSpec =
           ctx: CommandContext,
           args: ParsedArgs,
         ) => Result<PolicyTarget, CommandFailure>;
-        run: (ctx: CommandContext, args: ParsedArgs) => CommandResult;
+        run: (ctx: TargetContext, args: ParsedArgs) => CommandResult;
       }>)
   | (SpecBase &
       Readonly<{ kind: "plain"; run: (ctx: CommandContext, args: ParsedArgs) => CommandResult }>)
@@ -287,13 +302,33 @@ export const CommandContext = {
     const configured = GcloudConfig.get(ctx.world.config, "compute/zone");
     const chosen = Option.or(flag, configured);
     if (!Option.isSome(chosen)) return Result.err(CommandFailure.zoneRequired());
-    const zone = Zone.parse(chosen.value);
-    return Option.isSome(zone)
-      ? Result.ok(zone.value)
-      : Result.err(
-          CommandFailure.notFound(
-            `projects/${Option.unwrapOr(ctx.projectId, "-")}/zones/${chosen.value}`,
-          ),
-        );
+    return Option.toResult(Zone.parse(chosen.value), () =>
+      CommandFailure.notFound(
+        `projects/${Option.unwrapOr(ctx.projectId, "-")}/zones/${chosen.value}`,
+      ),
+    );
+  },
+
+  /**
+   * リージョンを決める（フラグ → 設定のプロパティ → 無ければ E-004）。
+   *
+   * @param ctx 文脈
+   * @param flag `--region` の値
+   * @param property フラグが無いときに読むプロパティ（`compute/region` か `run/region`）
+   * @returns 決まったリージョン。カタログに無ければ E-005
+   */
+  resolveRegion(
+    ctx: CommandContext,
+    flag: Option<string>,
+    property: RegionProperty = "compute/region",
+  ): Result<Region, CommandFailure> {
+    const configured = GcloudConfig.get(ctx.world.config, property);
+    const chosen = Option.or(flag, configured);
+    if (!Option.isSome(chosen)) return Result.err(CommandFailure.regionRequired(property));
+    return Option.toResult(Region.parse(chosen.value), () =>
+      CommandFailure.notFound(
+        `projects/${Option.unwrapOr(ctx.projectId, "-")}/regions/${chosen.value}`,
+      ),
+    );
   },
 } as const;

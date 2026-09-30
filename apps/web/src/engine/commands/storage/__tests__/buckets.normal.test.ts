@@ -119,6 +119,16 @@ test("gsutil mb -l は gcloud storage buckets create と同じ結果になる", 
   );
 });
 
+test("gsutil mb -b は on で均一なバケットレベルのアクセスになり、off ならならず、他は E-003", () => {
+  const on = run(session(), "gsutil mb -b on gs://b-on");
+  expect(Option.unwrap(World.findBucket(on.world, "b-on")).uniformBucketLevelAccess).toBe(true);
+  const off = run(session(), "gsutil mb -b off gs://b-off");
+  expect(Option.unwrap(World.findBucket(off.world, "b-off")).uniformBucketLevelAccess).toBe(false);
+  const bad = run(session(), "gsutil mb -b maybe gs://b-bad");
+  expect(bad.text).toContain("argument -b: Invalid choice: 'maybe'.");
+  expect(World.findBucket(bad.world, "b-bad")).toEqual(Option.none);
+});
+
 test("gsutil ls / cp / rm も同じ World を操作する", () => {
   const s = run(
     session(),

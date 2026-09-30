@@ -5,21 +5,23 @@ import "@xterm/xterm/css/xterm.css";
 import { type ReactElement, useEffect, useRef, useState } from "react";
 
 import type { OutputLine } from "@/engine";
-import { InputLayout, type InputRender } from "@/features/simulator/domains/input-layout";
+import { type DrawnInput, InputLayout } from "@/features/simulator/domains/input-layout";
 import { LineEditor } from "@/features/simulator/domains/line-editor";
-import type { TranscriptEntry } from "@/features/simulator/hooks/use-simulator";
+import type { TranscriptLine } from "@/features/simulator/hooks/use-simulator";
+import { describeError } from "@/libs/json";
 import { Logger } from "@/libs/logger";
 import type { TerminalView, TerminalViewFactory } from "@/libs/terminal-view";
 import { Option } from "@/utils/Option";
 
 type TerminalProps = Readonly<{
-  transcript: readonly TranscriptEntry[];
+  transcript: readonly TranscriptLine[];
   /** 値が変わったら画面を消す */
-  clearEpoch: number;
-  /** 入力行に差し込む文字列（ツリーのダブルクリック） */
-  pendingInsert: Option<Readonly<{ seq: number; text: string }>>;
+  screenClearCount: number;
+  /** 入力行に差し込む文字列（ツリーのダブルクリック）。取り込んだら `onInsertConsumed` を呼ぶ */
+  pendingInsert: Option<string>;
+  onInsertConsumed: () => void;
   onSubmit: (line: string) => void;
-  complete: (line: string) => readonly string[];
+  completionCandidates: (line: string) => readonly string[];
   createView: TerminalViewFactory;
   /** 端末の器の見出し。`configuration: default` のように右上に出す */
   caption: string;
@@ -38,61 +40,69 @@ const Banner: readonly OutputLine[] = [
 ];
 
 /**
- * 端末に対する可変の状態。render では読まず、キー入力と出力の effect の中でだけ触る。
- * `rendered` は描いてある入力行の大きさで、折り返した行を消すのに要る。
+ * 開いた端末に対する可変の状態。render では読まず、キー入力と出力の effect の中でだけ触る。
+ * `drawn` は描いてある入力行の大きさで、折り返した行を消すのに要る。
  */
-type Session = {
+type TerminalHandle = {
   view: TerminalView;
   editor: LineEditor;
-  rendered: Option<InputRender>;
+  drawn: Option<DrawnInput>;
 };
 
-const draw = (session: Session): void => {
-  const redraw = InputLayout.redraw(session.rendered, session.editor, session.view.cols());
-  session.view.write(redraw.sequence);
-  session.rendered = Option.some(redraw.rendered);
+/** 端末を開けたか。開けなければ器の中に理由を出す（xterm は canvas が要る）。 */
+type OpenState =
+  | Readonly<{ kind: "opening" }>
+  | Readonly<{ kind: "open" }>
+  | Readonly<{ kind: "failed"; reason: string }>;
+
+const draw = (handle: TerminalHandle): void => {
+  const redraw = InputLayout.redraw(handle.drawn, handle.editor, handle.view.cols());
+  handle.view.write(redraw.sequence);
+  handle.drawn = Option.some(redraw.rendered);
 };
 
 /** 描いてある入力行を消して行頭に戻る。出力を書く前と、Enter の直後に呼ぶ。 */
-const eraseInput = (session: Session): void => {
-  session.view.write(InputLayout.erase(session.rendered, session.view.cols()));
-  session.rendered = Option.none;
+const eraseInput = (handle: TerminalHandle): void => {
+  handle.view.write(InputLayout.erase(handle.drawn, handle.view.cols()));
+  handle.drawn = Option.none;
 };
 
-const handleData = (session: Session, data: string, callbacks: TerminalProps): void => {
-  const stepped = LineEditor.handle(session.editor, data);
-  session.editor = stepped.editor;
+const handleData = (handle: TerminalHandle, data: string, callbacks: TerminalProps): void => {
+  const stepped = LineEditor.handle(handle.editor, data);
+  handle.editor = stepped.editor;
   for (const effect of stepped.effects) {
     switch (effect.kind) {
-      case "render":
-        draw(session);
+      case "draw":
+        draw(handle);
         break;
       case "submit":
         // 打った行はそのまま残し、次の行から出力を書く。
-        session.view.write("\r\n");
-        session.rendered = Option.none;
+        handle.view.write("\r\n");
+        handle.drawn = Option.none;
         callbacks.onSubmit(effect.line);
         break;
       case "interrupt":
-        session.view.write("^C\r\n");
-        session.rendered = Option.none;
-        draw(session);
+        handle.view.write("^C\r\n");
+        handle.drawn = Option.none;
+        draw(handle);
         break;
       case "clear":
-        session.view.clear();
-        session.rendered = Option.none;
-        draw(session);
+        handle.view.clear();
+        handle.drawn = Option.none;
+        draw(handle);
         break;
       case "complete": {
-        const candidates = callbacks.complete(LineEditor.lineForCompletion(session.editor));
-        const completed = LineEditor.complete(session.editor, candidates);
-        session.editor = completed.editor;
+        const candidates = callbacks.completionCandidates(
+          LineEditor.lineForCompletion(handle.editor),
+        );
+        const completed = LineEditor.complete(handle.editor, candidates);
+        handle.editor = completed.editor;
         if (completed.listing.length > 0) {
-          eraseInput(session);
-          session.view.write(`${InputLayout.Prompt}${completed.editor.buffer}\r\n`);
-          session.view.write(`${completed.listing.join("  ")}\r\n`);
+          eraseInput(handle);
+          handle.view.write(`${InputLayout.Prompt}${completed.editor.buffer}\r\n`);
+          handle.view.write(`${completed.listing.join("  ")}\r\n`);
         }
-        draw(session);
+        draw(handle);
         break;
       }
     }
@@ -101,19 +111,22 @@ const handleData = (session: Session, data: string, callbacks: TerminalProps): v
 
 /**
  * xterm.js の端末。行編集は `LineEditor`（純粋）、折り返しの計算は `InputLayout`（純粋）が持ち、
- * ここはキー入力と出力の配線だけを行う。出力は transcript の差分を書く。
+ * ここはキー入力と出力の配線だけを行う。出力は transcript のうち、まだ書いていない id の行を書く。
  * CLI で打った入力行は既に端末に映っているので書き直さない。
  */
 export const Terminal = (props: TerminalProps): ReactElement => {
-  const { transcript, clearEpoch, pendingInsert, createView, caption } = props;
+  const { transcript, screenClearCount, pendingInsert, onInsertConsumed, createView, caption } =
+    props;
   const containerRef = useRef<HTMLDivElement>(null);
-  const sessionRef = useRef<Option<Session>>(Option.none);
-  const writtenRef = useRef(0);
-  const clearEpochRef = useRef(clearEpoch);
-  const insertSeqRef = useRef(0);
+  const handleRef = useRef<Option<TerminalHandle>>(Option.none);
+  const lastWrittenIdRef = useRef(0);
+  const screenClearCountRef = useRef(screenClearCount);
   const propsRef = useRef(props);
-  propsRef.current = props;
-  const [isReady, setReady] = useState(false);
+  const [openState, setOpenState] = useState<OpenState>({ kind: "opening" });
+
+  useEffect(() => {
+    propsRef.current = props;
+  });
 
   useEffect(() => {
     const container = containerRef.current;
@@ -121,6 +134,7 @@ export const Terminal = (props: TerminalProps): ReactElement => {
     let disposed = false;
     let unsubscribe = (): void => {};
     let opened: Option<TerminalView> = Option.none;
+    let resizeFrame = 0;
     createView(container).then(
       (view) => {
         if (disposed) {
@@ -128,62 +142,74 @@ export const Terminal = (props: TerminalProps): ReactElement => {
           return;
         }
         opened = Option.some(view);
-        const session: Session = { view, editor: LineEditor.create(), rendered: Option.none };
-        sessionRef.current = Option.some(session);
+        const handle: TerminalHandle = { view, editor: LineEditor.create(), drawn: Option.none };
+        handleRef.current = Option.some(handle);
         for (const line of Banner) view.writeLine(line);
-        draw(session);
+        draw(handle);
         view.focus();
-        unsubscribe = view.onData((data) => handleData(session, data, propsRef.current));
-        setReady(true);
+        unsubscribe = view.onData((data) => handleData(handle, data, propsRef.current));
+        setOpenState({ kind: "open" });
       },
-      (error: unknown) => Logger.error("terminal could not be opened", error),
+      (error: unknown) => {
+        Logger.error("terminal could not be opened", error);
+        setOpenState({ kind: "failed", reason: describeError(error) });
+      },
     );
+    // resize は連続して来るので、1 フレームに 1 回だけ列数を計算し直して入力行を描き直す。
     const onResize = (): void => {
-      if (Option.isSome(sessionRef.current)) sessionRef.current.value.view.fit();
+      cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(() => {
+        if (!Option.isSome(handleRef.current)) return;
+        handleRef.current.value.view.fit();
+        draw(handleRef.current.value);
+      });
     };
     window.addEventListener("resize", onResize);
     return () => {
       disposed = true;
       unsubscribe();
+      cancelAnimationFrame(resizeFrame);
       window.removeEventListener("resize", onResize);
       if (Option.isSome(opened)) opened.value.dispose();
-      sessionRef.current = Option.none;
-      writtenRef.current = 0;
+      handleRef.current = Option.none;
+      lastWrittenIdRef.current = 0;
     };
   }, [createView]);
 
-  // transcript の差分を端末へ書き、最後に入力行を描き直す（外部システムとの同期）。
-  useEffect(() => {
-    if (!isReady || !Option.isSome(sessionRef.current)) return;
-    const session = sessionRef.current.value;
-    const pending = transcript.slice(writtenRef.current);
-    if (pending.length === 0) return;
-    if (clearEpochRef.current !== clearEpoch) {
-      clearEpochRef.current = clearEpoch;
-      session.view.clear();
-      session.rendered = Option.none;
-    }
-    eraseInput(session);
-    for (const entry of pending) {
-      const isEchoedAlready = entry.kind === "input" && entry.origin === "cli";
-      if (isEchoedAlready) continue;
-      const text = entry.kind === "input" ? `${InputLayout.Prompt}${entry.text}` : entry.text;
-      session.view.writeLine({ text, tone: entry.tone });
-    }
-    writtenRef.current = transcript.length;
-    draw(session);
-  }, [transcript, clearEpoch, isReady]);
+  const isOpen = openState.kind === "open";
 
-  // ツリーからの挿入。同じ文字列でも seq が変われば入れ直す。
+  // transcript のうち未書き込みの行を端末へ書き、最後に入力行を描き直す（外部システムとの同期）。
   useEffect(() => {
-    if (!isReady || !Option.isSome(pendingInsert) || !Option.isSome(sessionRef.current)) return;
-    if (pendingInsert.value.seq === insertSeqRef.current) return;
-    insertSeqRef.current = pendingInsert.value.seq;
-    const session = sessionRef.current.value;
-    session.editor = LineEditor.replace(session.editor, pendingInsert.value.text);
-    draw(session);
-    session.view.focus();
-  }, [pendingInsert, isReady]);
+    if (!isOpen || !Option.isSome(handleRef.current)) return;
+    const handle = handleRef.current.value;
+    const pending = transcript.filter((line) => line.id > lastWrittenIdRef.current);
+    if (pending.length === 0) return;
+    if (screenClearCountRef.current !== screenClearCount) {
+      screenClearCountRef.current = screenClearCount;
+      handle.view.clear();
+      handle.drawn = Option.none;
+    }
+    eraseInput(handle);
+    for (const line of pending) {
+      const isEchoedAlready = line.kind === "input" && line.origin === "cli";
+      if (isEchoedAlready) continue;
+      const text = line.kind === "input" ? `${InputLayout.Prompt}${line.text}` : line.text;
+      handle.view.writeLine({ text, tone: line.tone });
+    }
+    lastWrittenIdRef.current = pending.at(-1)?.id ?? lastWrittenIdRef.current;
+    draw(handle);
+  }, [transcript, screenClearCount, isOpen]);
+
+  // ツリーからの挿入。取り込んだら消してもらう。消さないと、`isOpen` が変わって effect が
+  // 走り直したときに古い文字列を入力行へ入れ直してしまう。
+  useEffect(() => {
+    if (!isOpen || !Option.isSome(pendingInsert) || !Option.isSome(handleRef.current)) return;
+    const handle = handleRef.current.value;
+    handle.editor = LineEditor.replace(handle.editor, pendingInsert.value);
+    draw(handle);
+    handle.view.focus();
+    onInsertConsumed();
+  }, [pendingInsert, isOpen, onInsertConsumed]);
 
   return (
     <section aria-label="ターミナル" className="flex min-h-0 flex-1 flex-col bg-surface">
@@ -191,7 +217,13 @@ export const Terminal = (props: TerminalProps): ReactElement => {
         <span className="font-mono">bash — gcloud-sim</span>
         <span className="font-mono">{caption}</span>
       </div>
-      <div ref={containerRef} className="min-h-0 flex-1 px-3 py-2" data-testid="terminal-host" />
+      <div ref={containerRef} className="min-h-0 flex-1 px-3 py-2" data-testid="terminal-host">
+        {openState.kind === "failed" && (
+          <p role="alert" className="p-4 text-danger text-sm">
+            ターミナルを開けませんでした（{openState.reason}）。ブラウザを再読み込みしてください。
+          </p>
+        )}
+      </div>
       <div className="flex items-center justify-between border-line border-t px-4 py-1.5 text-muted text-xs">
         <span>↑↓ 履歴　Tab 補完　Ctrl+L クリア</span>
       </div>

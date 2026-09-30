@@ -63,7 +63,7 @@ const assertionLabel = (assertion: Mission["assertions"][number]): string => {
   }
 };
 
-const Detail = ({
+const MissionBrief = ({
   world,
   mission,
   onStart,
@@ -72,10 +72,10 @@ const Detail = ({
 }: Readonly<
   { world: World; mission: Mission } & Pick<MissionPanelProps, "onStart" | "onAbandon" | "onHint">
 >): ReactElement => {
-  const progress = World.findMission(world, mission.id);
+  const progress = World.findMissionProgress(world, mission.id);
   const status = Option.isSome(progress) ? progress.value.status : MissionStatuses.Available;
   const revealed = Option.isSome(progress) ? progress.value.revealedHints : 0;
-  const results = Mission.progressOf(world, mission);
+  const results = Mission.assertionResults(world, mission);
   return (
     <section aria-label={mission.title} className="border-line border-t p-4">
       <div className="mb-2 flex items-center gap-2">
@@ -160,7 +160,7 @@ export const MissionPanel = ({
                 .filter((m) => m.domain === domain)
                 .map((mission) => {
                   const status = Option.unwrapOr(
-                    Option.map(World.findMission(world, mission.id), (p) => p.status),
+                    Option.map(World.findMissionProgress(world, mission.id), (p) => p.status),
                     MissionStatuses.Available,
                   );
                   const isSelected = Option.isSome(selected) && selected.value.id === mission.id;
@@ -183,7 +183,7 @@ export const MissionPanel = ({
         ))}
       </ul>
       {Option.isSome(selected) && (
-        <Detail
+        <MissionBrief
           world={world}
           mission={selected.value}
           onStart={onStart}

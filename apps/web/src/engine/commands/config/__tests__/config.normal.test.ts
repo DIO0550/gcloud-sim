@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 
 import { run, session } from "@/engine/__tests__/setup";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
+import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 
 test("config set project で存在する ID なら警告なしで更新される", () => {
@@ -23,7 +24,7 @@ test("config set project で存在しない ID でも設定は成功し WARNING 
 test("config set account でプリンシパルが切り替わる", () => {
   const s = run(session(), "gcloud config set account dev@example.com");
   expect(s.text).toBe("Updated property [core/account].");
-  expect(s.world.session.principal).toBe("dev@example.com");
+  expect(World.currentPrincipal(s.world)).toEqual(Option.some("dev@example.com"));
 });
 
 test("config set account にメールでない値は E-003 になる", () => {
@@ -84,7 +85,7 @@ test("configurations activate で切り替えると core/account のプリンシ
     "gcloud config set account dev@example.com",
     "gcloud config configurations activate default",
   );
-  expect(s.world.session.principal).toBe("owner@example.com");
+  expect(World.currentPrincipal(s.world)).toEqual(Option.some("owner@example.com"));
 });
 
 test("configurations list は table で出す", () => {
@@ -93,9 +94,16 @@ test("configurations list は table で出す", () => {
   expect(s.lines[1]?.text).toMatch(/^default\s+true\s+owner@example\.com\s+ace-dev-01/);
 });
 
+test("core/account を unset すると主体が無くなり、権限の要るコマンドは選択を促す", () => {
+  const s = run(session(), "gcloud config unset account", "gcloud compute instances list");
+  expect(World.currentPrincipal(s.world)).toEqual(Option.none);
+  expect(s.text).toContain("You do not currently have an active account selected.");
+  expect(run(s, "gcloud config list").text).toContain("project = ace-dev-01");
+});
+
 test("auth login は疑似的にプリンシパルを登録して切り替える", () => {
   const s = run(session(), "gcloud auth login dev@example.com", "gcloud auth list");
-  expect(s.world.session.principal).toBe("dev@example.com");
+  expect(World.currentPrincipal(s.world)).toEqual(Option.some("dev@example.com"));
   expect(s.text).toContain("*       dev@example.com");
   expect(s.text).toContain("        owner@example.com");
 });
