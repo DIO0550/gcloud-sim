@@ -1,0 +1,24 @@
+services:
+  app:
+    build:
+      context: ./node
+      dockerfile: Dockerfile
+    container_name: gcloud-sim
+    # Codex CLI の SQLite をコンテナ内の tmpfs へ逃がす（バインドマウント上だと遅い）
+    tmpfs:
+      - /var/tmp/codex-sqlite:size=1g
+    environment:
+      CODEX_SQLITE_HOME: /var/tmp/codex-sqlite
+    volumes:
+      - ..:/workspace:cached
+    # Next.js の dev サーバ。HMR も同じポートを使うので 1 つでよい。
+    ports:
+      - "4200:4200"
+    # init-firewall.sh が iptables/ipset を操作するために必要な権限
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    # 特権が必要な初期化(firewall)を root のエントリポイントで実行する。
+    # これにより開発ユーザー(vscode)には sudo を付与せずに済む。
+    entrypoint: ["bash", "/workspace/.devcontainer/entrypoint.sh"]
+    command: ["sleep", "infinity"]

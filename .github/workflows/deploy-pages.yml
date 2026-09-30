@@ -1,0 +1,170 @@
+# =============================================================================
+# static export を GitHub Pages へ出す。検査（lint / 型 / テスト）はしない。
+#
+# 検査は ci.yml が持つ。分けてあるのは、見たいものが違い（あちらは「壊れていないか」、
+# こちらは「出せたか」）、必要な権限も違うため。
+#
+# 出し方は「gh-pages ブランチへ push する」方式。Actions から直接デプロイする方式
+# （actions/deploy-pages）から切り替えたのは、PR ごとのプレビューを同じサイトの
+# /pr-preview/pr-<番号>/ に置くため。Pages の配信元はリポジトリにつき 1 つしか選べず、
+# Actions 方式のままでは main のサイトと PR のプレビューを同居させられない。
+#
+# ！！リポジトリ設定を 1 回だけ変える必要がある！！
+#   Settings → Pages → Build and deployment → Source を
+#   「Deploy from a branch」にして、Branch を gh-pages / (root) にする。
+# 切り替えるまで、この workflow が push しても公開内容は変わらない（最後に Actions から
+# 出したものが出続ける）。下の「Verify Pages source」がその状態を見つけて落とす。
+#
+# 注意: main への push では ci.yml と並行して走るので、この workflow 自体は
+# テストの成否を待たない。main を守るのはブランチ保護（CI を必須チェックにする）側の役目。
+#
+# 使う Action は GitHub 公式（actions/*）だけに絞り、すべてコミット SHA で固定する。
+# パッケージマネージャは pnpm だけ。pnpm 自体は corepack が package.json の
+# packageManager（ハッシュ付きで固定）から入れる。
+# =============================================================================
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# gh-pages ブランチへ push する。Pages の設定を読むのに pages: read も要る。
+permissions:
+  contents: write
+  pages: read
+
+# デプロイを重ねない。走行中のものは打ち切らない（途中で止めると公開内容が半端になる）。
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+env:
+  PAGES_BRANCH: gh-pages
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # gh-pages へ push するので認証情報を残す（ci.yml は push しないので消している）。
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      # setup-node が Node を差し替えた後に有効化する（先に有効化しても shim が PATH から消える）。
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Resolve pnpm store path
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore pnpm store
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
+
+      # --frozen-lockfile はロックファイルのズレを弾くだけでなく、載っている各バージョンが
+      # クールタイム（7 日）を満たしているかも検査する。期限内の版が紛れ込んでいればここで落ちる。
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # ビルドの中で Google Fonts からフォントを取り込む（layout.tsx の next/font/google）。
+      # ここは一過性で落ちることがあり、落ちると @font-face 372 件がまとめて
+      # 「Module not found: @vercel/turbopack-next/internal/font/google/font」になる。
+      # コードやデータの問題ではないので、前の試行の残り（.next と out）を捨てて取り直す。
+      # out を消すのは、deploy がここを cp でマージして公開するため。
+      # 3 回とも駄目なら本当に壊れているとみなして落とす。
+      - name: Build
+        run: |
+          for attempt in 1 2 3; do
+            if pnpm build; then
+              exit 0
+            fi
+            echo "::warning::ビルドに失敗した（${attempt} 回目）。取り直して再試行する"
+            rm -rf apps/web/.next apps/web/out
+            sleep $((attempt * 10))
+          done
+          echo "::error::3 回試してビルドが通らなかった"
+          exit 1
+
+      - name: Publish to gh-pages
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          published=false
+          for attempt in 1 2 3 4 5; do
+            git worktree remove --force /tmp/pages 2>/dev/null || true
+
+            if git fetch --depth 1 origin "+refs/heads/${PAGES_BRANCH}:refs/remotes/origin/${PAGES_BRANCH}" 2>/dev/null; then
+              git worktree add --detach /tmp/pages "origin/${PAGES_BRANCH}"
+            else
+              git worktree add --detach /tmp/pages
+              git -C /tmp/pages rm -rf --quiet . || true
+            fi
+
+            # main のサイトはルートに出す。PR のプレビューと見た目の差分のぶんは残す。
+            find /tmp/pages -mindepth 1 -maxdepth 1 \
+              ! -name pr-preview ! -name visual-regression ! -name visual-baseline \
+              ! -name .git -exec rm -rf {} +
+            cp -r apps/web/out/. /tmp/pages/
+            # Jekyll に通させない。Next.js の出力は _next/ を使うが、Jekyll は
+            # _ で始まるものを配信しないため、これが無いと JS と CSS が 404 になる。
+            touch /tmp/pages/.nojekyll
+
+            cd /tmp/pages
+            # 履歴は持たない。サイト 1 回分が 14MB あり、積み上げるとリポジトリが太り続ける。
+            # 作り直す前に前の試行のブランチを消す（残っていると --orphan が名前で衝突する）。
+            git branch -D pages 2>/dev/null || true
+            git checkout --quiet --orphan pages
+            git add -A
+            git commit --quiet -m "deploy ${SHA}" || true
+            if git push --force origin "HEAD:${PAGES_BRANCH}"; then
+              published=true
+              break
+            fi
+            echo "push できなかった（${attempt} 回目）。取り直して再試行する"
+            cd "$GITHUB_WORKSPACE"
+            sleep $((attempt * 3))
+          done
+          cd "$GITHUB_WORKSPACE"
+          [ "$published" = "true" ]
+
+      # 配信元がブランチになっていないと、push しても公開内容は変わらない。
+      # 黙って古いサイトが出続けるのが一番困るので、ここで気づけるようにする。
+      - name: Verify Pages source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! config=$(gh api "repos/${GITHUB_REPOSITORY}/pages" 2>/dev/null); then
+            echo "Pages の設定を読めなかった（まだ有効になっていないかもしれない）。"
+            echo "Settings → Pages → Source を「Deploy from a branch」にして、"
+            echo "Branch を ${PAGES_BRANCH} / (root) にすること。"
+            exit 1
+          fi
+          branch=$(printf '%s' "$config" | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{const p=JSON.parse(s);console.log(`${p.build_type ?? ""}:${p.source?.branch ?? ""}:${p.source?.path ?? ""}`)})')
+          echo "今の配信元: ${branch}"
+          case "$branch" in
+            legacy:${PAGES_BRANCH}:/) echo "配信元は ${PAGES_BRANCH} / (root)。問題なし。" ;;
+            *)
+              echo "::error::公開先が ${PAGES_BRANCH} / (root) になっていない（今: ${branch}）。"
+              echo "::error::Settings → Pages → Build and deployment → Source を「Deploy from a branch」、"
+              echo "::error::Branch を ${PAGES_BRANCH} / (root) にすると、この push の内容が公開される。"
+              echo "::error::切り替え方式にしてから最初の 1 回はここで必ず落ちる（想定どおり）。"
+              echo "::error::設定を変えたあと、この workflow を Re-run すれば緑になる。"
+              exit 1
+              ;;
+          esac

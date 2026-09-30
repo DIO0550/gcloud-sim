@@ -1,0 +1,98 @@
+# =============================================================================
+# lint / 型 / テスト / ビルドの検査。デプロイはしない。
+#
+# デプロイ（deploy-pages.yml）とは別の workflow にしてある。見たいものが違い
+# （こちらは「壊れていないか」、あちらは「出せたか」）、必要な権限も違うため。
+# こちらは contents: read だけで済む。
+#
+# セットアップ（checkout / Node / corepack / キャッシュ / install）は
+# deploy-pages.yml と同じ内容が並ぶが、共通化はしていない。まとめるには
+# ローカルの composite action を挟むことになり、1 ファイルを読めば何が動くか
+# 分かる状態のほうを優先した。片方を直したらもう片方も直す。
+# =============================================================================
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 同じ ref で新しい push が来たら、古いほうは打ち切ってよい。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # corepack が pnpm を取りに行くときの確認プロンプトを出さない（CI では答えられない）。
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # 以降のステップに認証情報を残さない。ここでは push しない。
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      # setup-node が Node を差し替えた後に有効化する（先に有効化しても shim が PATH から消える）。
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Resolve pnpm store path
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore pnpm store
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
+
+      # --frozen-lockfile はロックファイルのズレを弾くだけでなく、載っている各バージョンが
+      # クールタイム（7 日）を満たしているかも検査する。期限内の版が紛れ込んでいればここで落ちる。
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Check
+        run: pnpm check
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      # 出力は使わない。ビルドが通ることだけ見る。
+      # ビルドの中で Google Fonts からフォントを取り込む（layout.tsx の next/font/google）。
+      # ここは一過性で落ちることがあり、落ちると @font-face 372 件がまとめて
+      # 「Module not found: @vercel/turbopack-next/internal/font/google/font」になる。
+      # コードやデータの問題ではないので、前の試行の残り（.next と out）を捨てて取り直す。
+      # out を消すのは、deploy がここを cp でマージして公開するため。
+      # 3 回とも駄目なら本当に壊れているとみなして落とす。
+      - name: Build
+        run: |
+          for attempt in 1 2 3; do
+            if pnpm build; then
+              exit 0
+            fi
+            echo "::warning::ビルドに失敗した（${attempt} 回目）。取り直して再試行する"
+            rm -rf apps/web/.next apps/web/out
+            sleep $((attempt * 10))
+          done
+          echo "::error::3 回試してビルドが通らなかった"
+          exit 1

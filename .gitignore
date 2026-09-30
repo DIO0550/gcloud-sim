@@ -141,3 +141,16 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# devcontainer
+.devcontainer/.init-done
+.devcontainer/.codex/
+
+# Next.js が生成する型定義（ビルド時に作られるので追跡しない）
+next-env.d.ts
+
+# 見た目の差分（VRT）の出力。撮った PNG とレポートは commit しない
+# （CI で撮ったぶんは gh-pages ブランチに置く。README の「見た目の差分」を参照）
+visual-actual/
+visual-baseline/
+visual-report/
