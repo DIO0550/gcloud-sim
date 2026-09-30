@@ -15,7 +15,7 @@ import {
   invalidName,
   listCommand,
 } from "@/engine/commands/compute/shared";
-import { alreadyExists, CommonFlags, projectCommand } from "@/engine/commands/shared";
+import { alreadyExists, Candidates, CommonFlags, projectCommand } from "@/engine/commands/shared";
 import {
   BackendProtocols,
   BackendService,
@@ -291,8 +291,11 @@ export const LoadBalancingCommands: readonly CommandSpec[] = [
       ...ScopeFlags,
       Flag.string("backend-service", "The target backend service that receives the traffic.", {
         required: true,
+        candidates: Candidates.backendServices,
       }),
-      Flag.string("address", "The name of a reserved address to use (ephemeral if omitted)."),
+      Flag.string("address", "The name of a reserved address to use (ephemeral if omitted).", {
+        candidates: Candidates.addresses,
+      }),
       Flag.string("ports", "The ports or port range, e.g. 80 or 8080-8090 (default 80)."),
       Flag.enum(
         "load-balancing-scheme",

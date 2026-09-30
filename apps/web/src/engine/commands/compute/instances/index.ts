@@ -27,6 +27,7 @@ import {
 } from "@/engine/commands/compute/shared";
 import {
   alreadyExists,
+  Candidates,
   CommonFlags,
   instanceOperation,
   projectCommand,
@@ -150,7 +151,13 @@ const transitionCommand = (transition: InstanceTransition): CommandSpec => {
   return projectCommand({
     path: ["gcloud", "compute", "instances", transition],
     summary: `${verbs.progressive.replace(/ing$/, "")} a virtual machine instance.`,
-    positionals: [Positional.required("INSTANCE_NAME", "Name of the instance to operate on.")],
+    positionals: [
+      Positional.required(
+        "INSTANCE_NAME",
+        "Name of the instance to operate on.",
+        Candidates.instances,
+      ),
+    ],
     flags: [CommonFlags.zone, CommonFlags.async],
     permission: `compute.instances.${transition}`,
     requiredApis: [ComputeApi],
@@ -438,10 +445,12 @@ export const InstanceCommands: readonly CommandSpec[] = [
       Flag.string(
         "machine-type",
         "Specifies the machine type used for the instances (default: e2-medium).",
+        { candidates: Candidates.machineTypes },
       ),
       Flag.string(
         "image-family",
         "The image family for the operating system that the boot disk will be initialized with.",
+        { candidates: Candidates.imageFamilies },
       ),
       Flag.string(
         "image-project",
@@ -450,13 +459,18 @@ export const InstanceCommands: readonly CommandSpec[] = [
       Flag.string(
         "network",
         "Specifies the network that the VM instances are a part of (default: default).",
+        { candidates: Candidates.networks },
       ),
-      Flag.string("subnet", "Specifies the subnet that the VM instances are a part of."),
+      Flag.string("subnet", "Specifies the subnet that the VM instances are a part of.", {
+        candidates: Candidates.subnets,
+      }),
       Flag.list(
         "tags",
         "Specifies a list of tags to apply to the instance, used by firewall rules.",
       ),
-      Flag.string("service-account", "A service account email address to attach to the instance."),
+      Flag.string("service-account", "A service account email address to attach to the instance.", {
+        candidates: Candidates.serviceAccounts,
+      }),
       Flag.list(
         "scopes",
         "Access scopes for the service account (aliases such as cloud-platform, storage-ro, or 'default').",
@@ -500,7 +514,13 @@ export const InstanceCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "compute", "instances", "describe"],
     summary: "Describe a virtual machine instance.",
-    positionals: [Positional.required("INSTANCE_NAME", "Name of the instance to describe.")],
+    positionals: [
+      Positional.required(
+        "INSTANCE_NAME",
+        "Name of the instance to describe.",
+        Candidates.instances,
+      ),
+    ],
     flags: [CommonFlags.zone],
     permission: "compute.instances.get",
     requiredApis: [ComputeApi],
@@ -514,7 +534,9 @@ export const InstanceCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "compute", "instances", "delete"],
     summary: "Delete Compute Engine virtual machine instances.",
-    positionals: [Positional.required("INSTANCE_NAME", "Name of the instance to delete.")],
+    positionals: [
+      Positional.required("INSTANCE_NAME", "Name of the instance to delete.", Candidates.instances),
+    ],
     flags: [
       CommonFlags.zone,
       Flag.enum("keep-disks", "Disks to keep after deletion.", ["all", "boot", "data"]),
@@ -549,7 +571,13 @@ export const InstanceCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "compute", "instances", "add-tags"],
     summary: "Add tags to Compute Engine virtual machine instances.",
-    positionals: [Positional.required("INSTANCE_NAME", "Name of the instance to operate on.")],
+    positionals: [
+      Positional.required(
+        "INSTANCE_NAME",
+        "Name of the instance to operate on.",
+        Candidates.instances,
+      ),
+    ],
     flags: [
       CommonFlags.zone,
       Flag.list("tags", "Specifies strings to be attached to the instance.", { required: true }),
@@ -568,7 +596,13 @@ export const InstanceCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "compute", "instances", "add-metadata"],
     summary: "Add or update instance metadata.",
-    positionals: [Positional.required("INSTANCE_NAME", "Name of the instance to operate on.")],
+    positionals: [
+      Positional.required(
+        "INSTANCE_NAME",
+        "Name of the instance to operate on.",
+        Candidates.instances,
+      ),
+    ],
     flags: [
       CommonFlags.zone,
       Flag.keyvalue("metadata", "The metadata key/value pairs to add, e.g. enable-oslogin=TRUE.", {
@@ -589,11 +623,18 @@ export const InstanceCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "compute", "instances", "set-machine-type"],
     summary: "Set machine type for Compute Engine virtual machines (the instance must be stopped).",
-    positionals: [Positional.required("INSTANCE_NAME", "Name of the instance to operate on.")],
+    positionals: [
+      Positional.required(
+        "INSTANCE_NAME",
+        "Name of the instance to operate on.",
+        Candidates.instances,
+      ),
+    ],
     flags: [
       CommonFlags.zone,
       Flag.string("machine-type", "Specifies the machine type used for the instance.", {
         required: true,
+        candidates: Candidates.machineTypes,
       }),
     ],
     permission: "compute.instances.setMachineType",
@@ -616,10 +657,19 @@ export const InstanceCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "compute", "instances", "attach-disk"],
     summary: "Attach a disk to an instance.",
-    positionals: [Positional.required("INSTANCE_NAME", "Name of the instance to operate on.")],
+    positionals: [
+      Positional.required(
+        "INSTANCE_NAME",
+        "Name of the instance to operate on.",
+        Candidates.instances,
+      ),
+    ],
     flags: [
       CommonFlags.zone,
-      Flag.string("disk", "The name of the disk to attach to the instance.", { required: true }),
+      Flag.string("disk", "The name of the disk to attach to the instance.", {
+        required: true,
+        candidates: Candidates.disks,
+      }),
       Flag.string("device-name", "An optional name to display the disk name in the guest OS."),
       Flag.enum("mode", "Specifies the mode of the disk.", ["ro", "rw"]),
     ],
@@ -630,7 +680,13 @@ export const InstanceCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "compute", "ssh"],
     summary: "SSH into a virtual machine instance (checks the connection prerequisites only).",
-    positionals: [Positional.required("[USER@]INSTANCE", "Specifies the instance to SSH into.")],
+    positionals: [
+      Positional.required(
+        "[USER@]INSTANCE",
+        "Specifies the instance to SSH into.",
+        Candidates.instances,
+      ),
+    ],
     flags: [
       ...SshFlags,
       Flag.string("command", "A command to run on the virtual machine."),

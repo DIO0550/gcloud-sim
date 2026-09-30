@@ -60,8 +60,12 @@ const Ready: ShellState = Object.freeze({ kind: "ready" });
 
 /** すべてのコマンドが受けるフラグ。`--help` は ArgParser が先に見る。 */
 const GlobalFlags: readonly FlagSpec[] = [
-  Flag.string("project", "The Google Cloud project ID to use for this invocation."),
-  Flag.string("account", "Google Cloud user account to use for invocation."),
+  Flag.string("project", "The Google Cloud project ID to use for this invocation.", {
+    candidates: (world) => World.activeProjects(world).map((p) => p.projectId),
+  }),
+  Flag.string("account", "Google Cloud user account to use for invocation.", {
+    candidates: (world) => world.session.accounts,
+  }),
   Flag.string(
     "format",
     "Set the format for printing command output resources (json, yaml, value(FIELDS), table(FIELDS)).",

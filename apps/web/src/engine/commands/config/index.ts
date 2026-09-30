@@ -8,7 +8,7 @@ import {
   ParsedArgs,
   Positional,
 } from "@/engine/cli/command-spec";
-import { plainCommand } from "@/engine/commands/shared";
+import { Candidates, plainCommand } from "@/engine/commands/shared";
 import { CliComponent, CliVersion } from "@/engine/domains/catalog";
 import { ConfigProperty, ConfigurationName, GcloudConfig } from "@/engine/domains/gcloud-config";
 import { Principal } from "@/engine/domains/principal";
@@ -69,6 +69,7 @@ export const ConfigCommands: readonly CommandSpec[] = [
       Positional.required(
         "PROPERTY",
         "Property to be set. Note that SECTION/ is optional while referring to properties in the core section (e.g. project, account, compute/zone).",
+        Candidates.configProperties,
       ),
       Positional.required("VALUE", "Value to be set."),
     ],
@@ -110,7 +111,9 @@ export const ConfigCommands: readonly CommandSpec[] = [
   plainCommand({
     path: ["gcloud", "config", "unset"],
     summary: "Unset a Google Cloud CLI property.",
-    positionals: [Positional.required("PROPERTY", "Property to be unset.")],
+    positionals: [
+      Positional.required("PROPERTY", "Property to be unset.", Candidates.configProperties),
+    ],
     run: (ctx, args) => {
       const raw = ParsedArgs.requiredPositional(args, 0);
       const property = ConfigProperty.parse(raw);
@@ -126,7 +129,13 @@ export const ConfigCommands: readonly CommandSpec[] = [
       plainCommand({
         path: ["gcloud", "config", name],
         summary: "Print the value of a Google Cloud CLI property.",
-        positionals: [Positional.required("PROPERTY", "The property to be fetched.")],
+        positionals: [
+          Positional.required(
+            "PROPERTY",
+            "The property to be fetched.",
+            Candidates.configProperties,
+          ),
+        ],
         run: (ctx, args) => {
           const raw = ParsedArgs.requiredPositional(args, 0);
           const property = ConfigProperty.parse(raw);

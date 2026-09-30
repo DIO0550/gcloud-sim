@@ -21,7 +21,7 @@ import {
   requireFirewallRule,
   requireNetwork,
 } from "@/engine/commands/compute/shared";
-import { alreadyExists, CommonFlags, projectCommand } from "@/engine/commands/shared";
+import { alreadyExists, Candidates, CommonFlags, projectCommand } from "@/engine/commands/shared";
 import { Region } from "@/engine/domains/catalog";
 import {
   Direction,
@@ -403,7 +403,9 @@ export const NetworkingCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "compute", "networks", "describe"],
     summary: "Describe a Compute Engine network.",
-    positionals: [Positional.required("NAME", "Name of the network to describe.")],
+    positionals: [
+      Positional.required("NAME", "Name of the network to describe.", Candidates.networks),
+    ],
     permission: "compute.networks.get",
     requiredApis: [ComputeApi],
     run: (ctx, args) =>
@@ -415,7 +417,9 @@ export const NetworkingCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "compute", "networks", "delete"],
     summary: "Delete a Compute Engine network.",
-    positionals: [Positional.required("NAME", "Name of the network to delete.")],
+    positionals: [
+      Positional.required("NAME", "Name of the network to delete.", Candidates.networks),
+    ],
     destructive: true,
     permission: "compute.networks.delete",
     requiredApis: [ComputeApi],
@@ -440,7 +444,10 @@ export const NetworkingCommands: readonly CommandSpec[] = [
     summary: "Define a subnet for a network in custom subnet mode.",
     positionals: [Positional.required("NAME", "Name of the subnetwork to create.")],
     flags: [
-      Flag.string("network", "The network to which the subnetwork belongs.", { required: true }),
+      Flag.string("network", "The network to which the subnetwork belongs.", {
+        required: true,
+        candidates: Candidates.networks,
+      }),
       Flag.string("range", "The IP space allocated to this subnetwork in CIDR format.", {
         required: true,
       }),
@@ -468,9 +475,15 @@ export const NetworkingCommands: readonly CommandSpec[] = [
     flags: [
       Flag.string("network", "The name of the network in the current project to be peered.", {
         required: true,
+        candidates: Candidates.networks,
       }),
-      Flag.string("peer-network", "The name of the network to be peered with.", { required: true }),
-      Flag.string("peer-project", "The project of the peer network (default: current project)."),
+      Flag.string("peer-network", "The name of the network to be peered with.", {
+        required: true,
+        candidates: Candidates.networks,
+      }),
+      Flag.string("peer-project", "The project of the peer network (default: current project).", {
+        candidates: Candidates.projects,
+      }),
       Flag.boolean("export-custom-routes", "Export custom routes to the peer network."),
       Flag.boolean("import-custom-routes", "Import custom routes from the peer network."),
     ],
@@ -483,7 +496,9 @@ export const NetworkingCommands: readonly CommandSpec[] = [
     summary: "Create a Compute Engine firewall rule.",
     positionals: [Positional.required("NAME", "Name of the firewall rule to create.")],
     flags: [
-      Flag.string("network", "The network to which this rule is attached (default: default)."),
+      Flag.string("network", "The network to which this rule is attached (default: default).", {
+        candidates: Candidates.networks,
+      }),
       Flag.list(
         "allow",
         "A list of protocols and ports whose traffic will be allowed, e.g. tcp:80,tcp:443,icmp.",
@@ -527,7 +542,13 @@ export const NetworkingCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "compute", "firewall-rules", "describe"],
     summary: "Describe a Compute Engine firewall rule.",
-    positionals: [Positional.required("NAME", "Name of the firewall rule to describe.")],
+    positionals: [
+      Positional.required(
+        "NAME",
+        "Name of the firewall rule to describe.",
+        Candidates.firewallRules,
+      ),
+    ],
     permission: "compute.firewalls.get",
     requiredApis: [ComputeApi],
     run: (ctx, args) =>
@@ -539,7 +560,9 @@ export const NetworkingCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "compute", "firewall-rules", "delete"],
     summary: "Delete Compute Engine firewall rules.",
-    positionals: [Positional.required("NAME", "Name of the firewall rule to delete.")],
+    positionals: [
+      Positional.required("NAME", "Name of the firewall rule to delete.", Candidates.firewallRules),
+    ],
     destructive: true,
     permission: "compute.firewalls.delete",
     requiredApis: [ComputeApi],
@@ -582,7 +605,10 @@ export const NetworkingCommands: readonly CommandSpec[] = [
     summary: "Create a Compute Engine router.",
     positionals: [Positional.required("NAME", "Name of the router to create.")],
     flags: [
-      Flag.string("network", "The network for this router.", { required: true }),
+      Flag.string("network", "The network for this router.", {
+        required: true,
+        candidates: Candidates.networks,
+      }),
       CommonFlags.region,
       Flag.integer("asn", "The BGP autonomous system number (default 64512)."),
     ],

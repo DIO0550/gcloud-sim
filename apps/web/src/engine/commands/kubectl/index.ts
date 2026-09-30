@@ -13,7 +13,7 @@ import {
   type PositionalSpec,
   type ProjectContext,
 } from "@/engine/cli/command-spec";
-import { projectCommand } from "@/engine/commands/shared";
+import { Candidates, projectCommand } from "@/engine/commands/shared";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import {
   KubeDeployment,
@@ -722,7 +722,7 @@ const TypePositional = Positional.required(
   "TYPE[/NAME]",
   "Resource type, e.g. pods, deployment/web.",
 );
-const NamePositional = Positional.optional("NAME", "Resource name.");
+const NamePositional = Positional.optional("NAME", "Resource name.", Candidates.kubeDeployments);
 
 /** kubectl はコンテキストのクラスタで判定するので、どのコマンドも container の権限と API を要求する。 */
 type KubectlSeed = Readonly<{

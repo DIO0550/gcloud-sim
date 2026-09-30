@@ -13,6 +13,7 @@ import {
 } from "@/engine/cli/command-spec";
 import {
   alreadyExists,
+  Candidates,
   iamBindingCommands,
   parseBinding,
   projectCommand,
@@ -247,14 +248,20 @@ const PublicAccessPreventionFlag = Flag.boolean(
   "Sets public access prevention to enforced.",
 );
 
-const UrlPositional = Positional.required("URL", "The URL of the bucket (gs://BUCKET).");
+const UrlPositional = Positional.required(
+  "URL",
+  "The URL of the bucket (gs://BUCKET).",
+  Candidates.buckets,
+);
 const ObjectUrlPositional = Positional.required(
   "URL",
   "The gs:// URL of the object or bucket to delete.",
+  Candidates.buckets,
 );
 const ListPositional = Positional.optional(
   "URL",
   "The URL to list (gs://BUCKET[/PREFIX]). Lists buckets when omitted.",
+  Candidates.buckets,
 );
 const CopyPositionals = [
   Positional.required("SOURCE", "The source path or gs:// URL."),

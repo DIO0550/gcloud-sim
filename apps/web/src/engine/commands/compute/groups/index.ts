@@ -22,6 +22,7 @@ import {
 } from "@/engine/commands/compute/shared";
 import {
   alreadyExists,
+  Candidates,
   CommonFlags,
   instanceOperation,
   projectCommand,
@@ -364,7 +365,10 @@ export const GroupCommands: readonly CommandSpec[] = [
     flags: [
       CommonFlags.zone,
       CommonFlags.region,
-      Flag.string("template", "Specifies the instance template to use.", { required: true }),
+      Flag.string("template", "Specifies the instance template to use.", {
+        required: true,
+        candidates: Candidates.instanceTemplates,
+      }),
       Flag.integer("size", "The initial number of instances in the group.", { required: true }),
       Flag.string(
         "base-instance-name",
@@ -386,7 +390,9 @@ export const GroupCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "compute", "instance-groups", "managed", "set-autoscaling"],
     summary: "Set autoscaling parameters of a managed instance group.",
-    positionals: [Positional.required("NAME", "Name of the managed instance group.")],
+    positionals: [
+      Positional.required("NAME", "Name of the managed instance group.", Candidates.instanceGroups),
+    ],
     flags: [
       CommonFlags.zone,
       CommonFlags.region,

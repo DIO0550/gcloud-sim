@@ -65,19 +65,20 @@ test("知らないツール名は command not found になる", () => {
 });
 
 test("Tab 補完はコマンド名を前方一致で返す", () => {
-  expect(Engine.completionCandidates("gcloud compu")).toEqual(["compute"]);
-  expect(Engine.completionCandidates("gcloud compute inst")).toEqual([
+  const world = session().world;
+  expect(Engine.completionCandidates(world, "gcloud compu")).toEqual(["compute"]);
+  expect(Engine.completionCandidates(world, "gcloud compute inst")).toEqual([
     "instance-groups",
     "instance-templates",
     "instances",
   ]);
-  expect(Engine.completionCandidates("gcloud compute instances ")).toContain("create");
+  expect(Engine.completionCandidates(world, "gcloud compute instances ")).toContain("create");
 });
 
 test("Tab 補完は - で始まる語にフラグ名を返す", () => {
-  expect(Engine.completionCandidates("gcloud compute instances create web-1 --mach")).toEqual([
-    "--machine-type",
-  ]);
+  expect(
+    Engine.completionCandidates(session().world, "gcloud compute instances create web-1 --mach"),
+  ).toEqual(["--machine-type"]);
 });
 
 test("登録されているコマンドのパスは重複しない", () => {

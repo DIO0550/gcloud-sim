@@ -68,7 +68,10 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
   );
   const submitFromUi = (line: string): void =>
     dispatch({ type: "submitted", line, now: io.now(), origin: "ui" });
-  const completionCandidates = useCallback((line: string) => Engine.completionCandidates(line), []);
+  const completionCandidates = useCallback(
+    (line: string) => Engine.completionCandidates(world, line),
+    [world],
+  );
   const insertConsumed = useCallback(() => dispatch({ type: "insertConsumed" }), [dispatch]);
 
   const importFile = async (file: File): Promise<void> => {

@@ -11,7 +11,7 @@ import {
   Positional,
   type ProjectContext,
 } from "@/engine/cli/command-spec";
-import { alreadyExists, CommonFlags, projectCommand } from "@/engine/commands/shared";
+import { alreadyExists, Candidates, CommonFlags, projectCommand } from "@/engine/commands/shared";
 import {
   SqlDatabaseVersion,
   SqlDatabaseVersions,
@@ -209,7 +209,9 @@ export const SqlCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "sql", "instances", "create"],
     summary: "Create a new Cloud SQL instance.",
-    positionals: [Positional.required("INSTANCE", "Cloud SQL instance ID.")],
+    positionals: [
+      Positional.required("INSTANCE", "Cloud SQL instance ID.", Candidates.sqlInstances),
+    ],
     flags: [
       Flag.enum(
         "database-version",
@@ -256,7 +258,9 @@ export const SqlCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "sql", "instances", "describe"],
     summary: "Display configuration and metadata about a Cloud SQL instance.",
-    positionals: [Positional.required("INSTANCE", "Cloud SQL instance ID.")],
+    positionals: [
+      Positional.required("INSTANCE", "Cloud SQL instance ID.", Candidates.sqlInstances),
+    ],
     permission: "cloudsql.instances.get",
     requiredApis: [SqlApi],
     run: (ctx, args) =>
@@ -268,7 +272,9 @@ export const SqlCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "sql", "instances", "delete"],
     summary: "Delete a Cloud SQL instance.",
-    positionals: [Positional.required("INSTANCE", "Cloud SQL instance ID.")],
+    positionals: [
+      Positional.required("INSTANCE", "Cloud SQL instance ID.", Candidates.sqlInstances),
+    ],
     destructive: true,
     permission: "cloudsql.instances.delete",
     requiredApis: [SqlApi],
@@ -348,7 +354,7 @@ export const PubsubCommands: readonly CommandSpec[] = [
       Flag.string(
         "topic",
         "The name of the topic from which this subscription is receiving messages.",
-        { required: true },
+        { required: true, candidates: Candidates.topics },
       ),
       Flag.integer(
         "ack-deadline",

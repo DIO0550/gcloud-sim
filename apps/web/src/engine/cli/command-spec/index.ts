@@ -10,6 +10,12 @@ import { Result } from "@/utils/Result";
 
 export type { JsonRecord, JsonValue } from "@/types/Json";
 
+/**
+ * Tab 補完の候補を World から引く関数（TBD-009）。`projectId` は `--project` か `core/project`。
+ * 候補が World に依らないもの（ゾーン等）は引数を読まない。
+ */
+export type CandidateSource = (world: World, projectId: Option<string>) => readonly string[];
+
 type FlagBase = Readonly<{
   name: string;
   description: string;
@@ -18,9 +24,9 @@ type FlagBase = Readonly<{
   aliases: readonly string[];
 }>;
 
-/** フラグの型。`enum` だけが `choices` を持ち、`boolean` だけが `--no-` を受ける。 */
+/** フラグの型。`enum` だけが `choices` を持ち、`boolean` だけが `--no-` を受ける。`string` は補完の候補を持てる。 */
 export type FlagSpec =
-  | (FlagBase & Readonly<{ kind: "string" }>)
+  | (FlagBase & Readonly<{ kind: "string"; candidates: Option<CandidateSource> }>)
   | (FlagBase & Readonly<{ kind: "boolean" }>)
   | (FlagBase & Readonly<{ kind: "enum"; choices: readonly string[] }>)
   | (FlagBase & Readonly<{ kind: "list" }>)
@@ -32,6 +38,7 @@ export type PositionalSpec = Readonly<{
   description: string;
   required: boolean;
   variadic: boolean;
+  candidates: Option<CandidateSource>;
 }>;
 
 export type FlagValue =
@@ -47,7 +54,12 @@ export type ParsedArgs = Readonly<{
   flags: Readonly<Record<string, FlagValue>>;
 }>;
 
-type FlagOptions = Readonly<{ required?: boolean; aliases?: readonly string[] }>;
+type FlagOptions = Readonly<{
+  required?: boolean;
+  aliases?: readonly string[];
+  /** `string` だけが持てる補完の候補 */
+  candidates?: CandidateSource;
+}>;
 
 const base = (name: string, description: string, options: FlagOptions): FlagBase => ({
   name,
@@ -58,7 +70,11 @@ const base = (name: string, description: string, options: FlagOptions): FlagBase
 
 export const Flag = {
   string(name: string, description: string, options: FlagOptions = {}): FlagSpec {
-    return { kind: "string", ...base(name, description, options) };
+    return {
+      kind: "string",
+      candidates: Option.fromNullable(options.candidates),
+      ...base(name, description, options),
+    };
   },
   boolean(name: string, description: string, options: FlagOptions = {}): FlagSpec {
     return { kind: "boolean", ...base(name, description, options) };
@@ -83,14 +99,32 @@ export const Flag = {
 } as const;
 
 export const Positional = {
-  required(name: string, description: string): PositionalSpec {
-    return { name, description, required: true, variadic: false };
+  required(name: string, description: string, candidates?: CandidateSource): PositionalSpec {
+    return {
+      name,
+      description,
+      required: true,
+      variadic: false,
+      candidates: Option.fromNullable(candidates),
+    };
   },
-  optional(name: string, description: string): PositionalSpec {
-    return { name, description, required: false, variadic: false };
+  optional(name: string, description: string, candidates?: CandidateSource): PositionalSpec {
+    return {
+      name,
+      description,
+      required: false,
+      variadic: false,
+      candidates: Option.fromNullable(candidates),
+    };
   },
-  variadic(name: string, description: string): PositionalSpec {
-    return { name, description, required: true, variadic: true };
+  variadic(name: string, description: string, candidates?: CandidateSource): PositionalSpec {
+    return {
+      name,
+      description,
+      required: true,
+      variadic: true,
+      candidates: Option.fromNullable(candidates),
+    };
   },
 } as const;
 

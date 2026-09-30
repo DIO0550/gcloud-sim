@@ -12,7 +12,7 @@ import {
   Positional,
   type ProjectContext,
 } from "@/engine/cli/command-spec";
-import { projectCommand } from "@/engine/commands/shared";
+import { Candidates, projectCommand } from "@/engine/commands/shared";
 import { FunctionRuntime, FunctionRuntimes } from "@/engine/domains/catalog";
 import { SampleFile } from "@/engine/domains/sample-files";
 import {
@@ -303,13 +303,14 @@ const setTraffic = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
 const FunctionRegionFlag = Flag.string(
   "region",
   "The Cloud region for the function. Overrides the default functions/region property.",
+  { candidates: Candidates.regions },
 );
 
 export const FunctionsCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "functions", "deploy"],
     summary: "Create or update a Google Cloud Function.",
-    positionals: [Positional.required("NAME", "ID of the function.")],
+    positionals: [Positional.required("NAME", "ID of the function.", Candidates.functions)],
     flags: [
       FunctionRegionFlag,
       Flag.enum(
@@ -325,6 +326,7 @@ export const FunctionsCommands: readonly CommandSpec[] = [
       Flag.string(
         "trigger-topic",
         "Name of Pub/Sub topic. Every message published in this topic will trigger function execution.",
+        { candidates: Candidates.topics },
       ),
       Flag.string(
         "entry-point",
@@ -356,7 +358,7 @@ export const FunctionsCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "functions", "describe"],
     summary: "Display details of a Google Cloud Function.",
-    positionals: [Positional.required("NAME", "ID of the function.")],
+    positionals: [Positional.required("NAME", "ID of the function.", Candidates.functions)],
     flags: [FunctionRegionFlag],
     permission: "cloudfunctions.functions.get",
     requiredApis: [FunctionsApi],
@@ -369,7 +371,7 @@ export const FunctionsCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "functions", "delete"],
     summary: "Delete a Google Cloud Function.",
-    positionals: [Positional.required("NAME", "ID of the function.")],
+    positionals: [Positional.required("NAME", "ID of the function.", Candidates.functions)],
     flags: [FunctionRegionFlag],
     destructive: true,
     permission: "cloudfunctions.functions.delete",
@@ -385,7 +387,7 @@ export const FunctionsCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "functions", "call"],
     summary: "Trigger execution of a Google Cloud Function.",
-    positionals: [Positional.required("NAME", "ID of the function.")],
+    positionals: [Positional.required("NAME", "ID of the function.", Candidates.functions)],
     flags: [
       FunctionRegionFlag,
       Flag.string("data", "JSON string with data that will be passed to the function."),

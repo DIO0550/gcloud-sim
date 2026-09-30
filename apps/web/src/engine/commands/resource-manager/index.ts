@@ -12,6 +12,7 @@ import {
 } from "@/engine/cli/command-spec";
 import {
   alreadyExists,
+  Candidates,
   iamBindingCommands,
   plainCommand,
   targetCommand,
@@ -104,7 +105,13 @@ export const ProjectCommands: readonly CommandSpec[] = [
   targetCommand({
     path: ["gcloud", "projects", "describe"],
     summary: "Show metadata for a project.",
-    positionals: [Positional.required("PROJECT_ID", "ID for the project you want to describe.")],
+    positionals: [
+      Positional.required(
+        "PROJECT_ID",
+        "ID for the project you want to describe.",
+        Candidates.projects,
+      ),
+    ],
     permission: "resourcemanager.projects.get",
     resolveTarget: projectTarget,
     run: (ctx, args) =>
@@ -177,7 +184,13 @@ export const ProjectCommands: readonly CommandSpec[] = [
   targetCommand({
     path: ["gcloud", "projects", "delete"],
     summary: "Delete a project.",
-    positionals: [Positional.required("PROJECT_ID", "ID for the project you want to delete.")],
+    positionals: [
+      Positional.required(
+        "PROJECT_ID",
+        "ID for the project you want to delete.",
+        Candidates.projects,
+      ),
+    ],
     destructive: true,
     permission: "resourcemanager.projects.delete",
     resolveTarget: projectTarget,
@@ -226,7 +239,7 @@ export const ProjectCommands: readonly CommandSpec[] = [
   }),
   ...iamBindingCommands({
     group: ["gcloud", "projects"],
-    positional: Positional.required("PROJECT_ID", "ID of the project."),
+    positional: Positional.required("PROJECT_ID", "ID of the project.", Candidates.projects),
     label: (target) => `project [${target.id}]`,
     resolveTarget: (ctx, args) => {
       const id = ParsedArgs.requiredPositional(args, 0);

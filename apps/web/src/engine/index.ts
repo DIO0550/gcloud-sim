@@ -54,18 +54,23 @@ export const Engine = {
   },
 
   /**
-   * Tab 補完の候補（TBD-009: コマンド名とフラグ名まで）。
+   * Tab 補完の候補（TBD-009: コマンド名・フラグ名・フラグの値・リソース名）。
    *
+   * @param world 候補を引く World（VM 名・バケット名などはここから出る）
    * @param line 入力途中の行
    * @returns 最後の語を置き換える候補
    */
-  completionCandidates(line: string): readonly string[] {
+  completionCandidates(world: World, line: string): readonly string[] {
     const endsWithSpace = /\s$/.test(line);
     const tokens = Tokenizer.tokenize(line);
     if (!Result.isOk(tokens)) return [];
     const confirmed = endsWithSpace ? tokens.value : tokens.value.slice(0, -1);
     const partial = endsWithSpace ? "" : (tokens.value.at(-1) ?? "");
-    return CommandRegistry.complete(registry, confirmed, partial, Shell.GlobalFlags);
+    return CommandRegistry.complete(
+      registry,
+      { tokens: confirmed, partial, world },
+      Shell.GlobalFlags,
+    );
   },
 
   /**

@@ -11,7 +11,7 @@ import {
   Positional,
   type ProjectContext,
 } from "@/engine/cli/command-spec";
-import { alreadyExists, CommonFlags, projectCommand } from "@/engine/commands/shared";
+import { alreadyExists, Candidates, CommonFlags, projectCommand } from "@/engine/commands/shared";
 import { DefaultMachineType, MachineType, type Region, type Zone } from "@/engine/domains/catalog";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import {
@@ -166,7 +166,9 @@ export const ContainerCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "container", "clusters", "describe"],
     summary: "Describe an existing cluster for running containers.",
-    positionals: [Positional.required("NAME", "The name of the cluster to describe.")],
+    positionals: [
+      Positional.required("NAME", "The name of the cluster to describe.", Candidates.clusters),
+    ],
     flags: LocationFlags,
     permission: "container.clusters.get",
     requiredApis: [ContainerApi],
@@ -179,7 +181,9 @@ export const ContainerCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "container", "clusters", "delete"],
     summary: "Delete an existing cluster for running containers.",
-    positionals: [Positional.required("NAME", "The name of the cluster to delete.")],
+    positionals: [
+      Positional.required("NAME", "The name of the cluster to delete.", Candidates.clusters),
+    ],
     flags: [...LocationFlags, CommonFlags.async],
     destructive: true,
     permission: "container.clusters.delete",
@@ -196,7 +200,13 @@ export const ContainerCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "container", "clusters", "get-credentials"],
     summary: "Fetch credentials for a running cluster (updates kubeconfig, simulated).",
-    positionals: [Positional.required("NAME", "The name of the cluster to get credentials for.")],
+    positionals: [
+      Positional.required(
+        "NAME",
+        "The name of the cluster to get credentials for.",
+        Candidates.clusters,
+      ),
+    ],
     flags: [
       ...LocationFlags,
       Flag.boolean(
@@ -224,7 +234,9 @@ export const ContainerCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "container", "clusters", "resize"],
     summary: "Resizes an existing cluster for running containers.",
-    positionals: [Positional.required("NAME", "The name of the cluster to resize.")],
+    positionals: [
+      Positional.required("NAME", "The name of the cluster to resize.", Candidates.clusters),
+    ],
     flags: [
       ...LocationFlags,
       Flag.integer("num-nodes", "Target number of nodes in the cluster.", { required: true }),
@@ -258,7 +270,9 @@ export const ContainerCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "container", "clusters", "upgrade"],
     summary: "Upgrade the Kubernetes version of an existing container cluster.",
-    positionals: [Positional.required("NAME", "The name of the cluster to upgrade.")],
+    positionals: [
+      Positional.required("NAME", "The name of the cluster to upgrade.", Candidates.clusters),
+    ],
     flags: [
       ...LocationFlags,
       Flag.boolean("master", "Upgrade the cluster's master to the latest supported version."),
@@ -293,7 +307,10 @@ export const ContainerCommands: readonly CommandSpec[] = [
     positionals: [Positional.required("NAME", "The name of the node pool to create.")],
     flags: [
       ...LocationFlags,
-      Flag.string("cluster", "The cluster to add the node pool to.", { required: true }),
+      Flag.string("cluster", "The cluster to add the node pool to.", {
+        required: true,
+        candidates: Candidates.clusters,
+      }),
       Flag.string("machine-type", "The type of machine to use for nodes (default e2-medium)."),
       Flag.integer(
         "num-nodes",
@@ -358,7 +375,10 @@ export const ContainerCommands: readonly CommandSpec[] = [
     summary: "List node pools in a running cluster.",
     flags: [
       ...LocationFlags,
-      Flag.string("cluster", "The cluster to list node pools for.", { required: true }),
+      Flag.string("cluster", "The cluster to list node pools for.", {
+        required: true,
+        candidates: Candidates.clusters,
+      }),
     ],
     permission: "container.clusters.get",
     requiredApis: [ContainerApi],
@@ -397,6 +417,7 @@ const RunColumns = [
 const RunRegionFlag = Flag.string(
   "region",
   "Region in which the resource can be found. Overrides the default run/region property.",
+  { candidates: Candidates.regions },
 );
 
 const PlatformFlag = Flag.enum(
@@ -501,7 +522,7 @@ export const RunCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "run", "services", "describe"],
     summary: "Obtain details about a given service.",
-    positionals: [Positional.required("SERVICE", "ID of the service.")],
+    positionals: [Positional.required("SERVICE", "ID of the service.", Candidates.runServices)],
     flags: [RunRegionFlag, PlatformFlag],
     permission: "run.services.get",
     requiredApis: [RunApi],
@@ -514,7 +535,7 @@ export const RunCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "run", "services", "delete"],
     summary: "Delete a service.",
-    positionals: [Positional.required("SERVICE", "ID of the service.")],
+    positionals: [Positional.required("SERVICE", "ID of the service.", Candidates.runServices)],
     flags: [RunRegionFlag, PlatformFlag],
     destructive: true,
     permission: "run.services.delete",

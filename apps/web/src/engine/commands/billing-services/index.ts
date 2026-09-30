@@ -11,7 +11,7 @@ import {
   Positional,
   type TargetContext,
 } from "@/engine/cli/command-spec";
-import { plainCommand, projectCommand, targetCommand } from "@/engine/commands/shared";
+import { Candidates, plainCommand, projectCommand, targetCommand } from "@/engine/commands/shared";
 import { Budget } from "@/engine/domains/billing-budget";
 import { ApiService } from "@/engine/domains/catalog";
 import { BillingAccount, type PolicyTarget, Project } from "@/engine/domains/resource-hierarchy";
@@ -67,7 +67,13 @@ export const BillingCommands: readonly CommandSpec[] = [
   plainCommand({
     path: ["gcloud", "billing", "accounts", "describe"],
     summary: "Show metadata for a billing account.",
-    positionals: [Positional.required("ACCOUNT_ID", "Specify a billing account ID.")],
+    positionals: [
+      Positional.required(
+        "ACCOUNT_ID",
+        "Specify a billing account ID.",
+        Candidates.billingAccounts,
+      ),
+    ],
     run: (ctx, args) => {
       const id = ParsedArgs.requiredPositional(args, 0);
       return Result.map(
@@ -84,7 +90,7 @@ export const BillingCommands: readonly CommandSpec[] = [
   targetCommand({
     path: ["gcloud", "billing", "projects", "describe"],
     summary: "Show detailed billing information for a project.",
-    positionals: [Positional.required("PROJECT_ID", "Specify a project ID.")],
+    positionals: [Positional.required("PROJECT_ID", "Specify a project ID.", Candidates.projects)],
     permission: "billing.resourceAssociations.list",
     resolveTarget: projectArgTarget,
     run: (ctx) =>
@@ -96,8 +102,13 @@ export const BillingCommands: readonly CommandSpec[] = [
   targetCommand({
     path: ["gcloud", "billing", "projects", "link"],
     summary: "Link a project with a billing account.",
-    positionals: [Positional.required("PROJECT_ID", "Specify a project ID.")],
-    flags: [Flag.string("billing-account", "Specify a billing account ID.", { required: true })],
+    positionals: [Positional.required("PROJECT_ID", "Specify a project ID.", Candidates.projects)],
+    flags: [
+      Flag.string("billing-account", "Specify a billing account ID.", {
+        required: true,
+        candidates: Candidates.billingAccounts,
+      }),
+    ],
     permission: "billing.resourceAssociations.create",
     resolveTarget: projectArgTarget,
     run: (ctx, args) => {
@@ -124,7 +135,7 @@ export const BillingCommands: readonly CommandSpec[] = [
   targetCommand({
     path: ["gcloud", "billing", "projects", "unlink"],
     summary: "Unlink a project from its billing account.",
-    positionals: [Positional.required("PROJECT_ID", "Specify a project ID.")],
+    positionals: [Positional.required("PROJECT_ID", "Specify a project ID.", Candidates.projects)],
     permission: "billing.resourceAssociations.delete",
     resolveTarget: projectArgTarget,
     run: (ctx) =>
@@ -243,6 +254,7 @@ export const BudgetCommands: readonly CommandSpec[] = [
     flags: [
       Flag.string("billing-account", "The billing account ID the budget belongs to.", {
         required: true,
+        candidates: Candidates.billingAccounts,
       }),
       Flag.string("display-name", "The display name of the budget.", { required: true }),
       Flag.string("budget-amount", "The amount of the budget, e.g. 100000JPY.", { required: true }),
@@ -259,7 +271,12 @@ export const BudgetCommands: readonly CommandSpec[] = [
   targetCommand({
     path: ["gcloud", "billing", "budgets", "list"],
     summary: "List budgets for a billing account.",
-    flags: [Flag.string("billing-account", "The billing account ID.", { required: true })],
+    flags: [
+      Flag.string("billing-account", "The billing account ID.", {
+        required: true,
+        candidates: Candidates.billingAccounts,
+      }),
+    ],
     permission: "billing.budgets.list",
     resolveTarget: billingAccountTarget,
     run: (ctx, args) =>
@@ -281,6 +298,7 @@ export const ServiceCommands: readonly CommandSpec[] = [
       Positional.variadic(
         "SERVICE",
         "The names of the services to enable, e.g. compute.googleapis.com.",
+        Candidates.apis,
       ),
     ],
     flags: [
@@ -316,7 +334,9 @@ export const ServiceCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "services", "disable"],
     summary: "Disable a service for the current project.",
-    positionals: [Positional.variadic("SERVICE", "The names of the services to disable.")],
+    positionals: [
+      Positional.variadic("SERVICE", "The names of the services to disable.", Candidates.apis),
+    ],
     flags: [
       Flag.boolean(
         "force",

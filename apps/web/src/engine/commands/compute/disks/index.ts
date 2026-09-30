@@ -24,6 +24,7 @@ import {
 } from "@/engine/commands/compute/shared";
 import {
   alreadyExists,
+  Candidates,
   instanceOperation,
   projectCommand,
   recordOperation,
@@ -175,6 +176,7 @@ const resizeDisk = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
 const DiskZoneFlag = Flag.string(
   "zone",
   "Zone of the disk. Overrides the default compute/zone property.",
+  { candidates: Candidates.zones },
 );
 
 export const DiskCommands: readonly CommandSpec[] = [
@@ -211,7 +213,9 @@ export const DiskCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "compute", "disks", "snapshot"],
     summary: "Create snapshots of Compute Engine persistent disks.",
-    positionals: [Positional.required("DISK_NAME", "Name of the disk to snapshot.")],
+    positionals: [
+      Positional.required("DISK_NAME", "Name of the disk to snapshot.", Candidates.disks),
+    ],
     flags: [
       DiskZoneFlag,
       Flag.string("snapshot-names", "Name of the snapshot to create (one disk at a time).", {
@@ -233,7 +237,9 @@ export const DiskCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "compute", "disks", "resize"],
     summary: "Resize a disk or disks (larger only).",
-    positionals: [Positional.required("DISK_NAME", "Name of the disk to resize.")],
+    positionals: [
+      Positional.required("DISK_NAME", "Name of the disk to resize.", Candidates.disks),
+    ],
     flags: [
       DiskZoneFlag,
       Flag.string("size", "New size of the disk, e.g. 100GB.", { required: true }),
@@ -247,7 +253,10 @@ export const DiskCommands: readonly CommandSpec[] = [
     summary: "Create a Compute Engine snapshot from a disk.",
     positionals: [Positional.required("SNAPSHOT_NAME", "Name of the snapshot to create.")],
     flags: [
-      Flag.string("source-disk", "Source disk used to create the snapshot.", { required: true }),
+      Flag.string("source-disk", "Source disk used to create the snapshot.", {
+        required: true,
+        candidates: Candidates.disks,
+      }),
       Flag.string("source-disk-zone", "Zone of the source disk."),
       DiskZoneFlag,
     ],

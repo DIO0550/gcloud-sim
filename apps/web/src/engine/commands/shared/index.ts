@@ -1,6 +1,7 @@
 import { CommandFailure } from "@/engine/cli/command-failure";
 import {
   type AuthorizedContext,
+  type CandidateSource,
   type CommandContext,
   CommandOutput,
   type CommandResult,
@@ -14,23 +15,128 @@ import {
   type TargetContext,
   type TargetResolver,
 } from "@/engine/cli/command-spec";
-import type { ApiName, Zone } from "@/engine/domains/catalog";
+import {
+  type ApiName,
+  ApiService,
+  MachineType,
+  PublicImage,
+  Region,
+  type Zone,
+  Zone as ZoneCatalog,
+} from "@/engine/domains/catalog";
 import { Instance } from "@/engine/domains/compute";
+import { ConfigProperty } from "@/engine/domains/gcloud-config";
 import { IamMember, IamPolicy, RoleName } from "@/engine/domains/iam-policy";
 import { Operation, type OperationType } from "@/engine/domains/operation";
 import type { Principal } from "@/engine/domains/principal";
 import { PolicyTarget } from "@/engine/domains/resource-hierarchy";
-import { RoleCatalog } from "@/engine/domains/role-catalog";
+import { CustomRole, RoleCatalog } from "@/engine/domains/role-catalog";
+import { ServiceAccount } from "@/engine/domains/service-account";
 import { type AlreadyExists, type PolicyRejected, World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
+/** プロジェクトが決まっているときだけ World の集合から引く候補。 */
+const inProject =
+  (pick: (world: World, projectId: string) => readonly string[]): CandidateSource =>
+  (world, projectId) =>
+    Option.isSome(projectId) ? pick(world, projectId.value) : [];
+
+/**
+ * Tab 補完の候補（TBD-009）。位置引数と `string` のフラグの定義に付ける。
+ * World に依るものはプロジェクトの集合から、依らないものはカタログから引く。
+ */
+export const Candidates = {
+  zones: (): readonly string[] => ZoneCatalog.all(),
+  regions: (): readonly string[] => Region.all(),
+  machineTypes: (): readonly string[] => MachineType.all().map((m) => m.name),
+  imageFamilies: (): readonly string[] => [...new Set(PublicImage.all().map((i) => i.family))],
+  apis: (): readonly string[] => ApiService.all().map((a) => a.name),
+  configProperties: (): readonly string[] => ConfigProperty.all(),
+  projects: ((world) =>
+    World.activeProjects(world).map((p) => p.projectId)) satisfies CandidateSource,
+  accounts: ((world) => world.session.accounts) satisfies CandidateSource,
+  billingAccounts: ((world) => world.billingAccounts.map((b) => b.id)) satisfies CandidateSource,
+  folders: ((world) => world.folders.map((f) => f.id)) satisfies CandidateSource,
+  instances: inProject((world, projectId) =>
+    World.instancesOf(world, projectId).map((i) => i.name),
+  ),
+  networks: inProject((world, projectId) => World.networksOf(world, projectId).map((n) => n.name)),
+  subnets: inProject((world, projectId) => World.subnetsOf(world, projectId).map((s) => s.name)),
+  firewallRules: inProject((world, projectId) =>
+    World.firewallRulesOf(world, projectId).map((r) => r.name),
+  ),
+  disks: inProject((world, projectId) => [
+    ...World.disksOf(world, projectId).map((d) => d.name),
+    ...World.instancesOf(world, projectId).flatMap((i) => i.disks.map((d) => d.deviceName)),
+  ]),
+  /** `gs://` 付きで返す（打ちかけの語が `gs://b` の形なので） */
+  buckets: inProject((world, projectId) =>
+    World.bucketsOf(world, projectId).map((b) => `gs://${b.name}`),
+  ),
+  clusters: inProject((world, projectId) => World.clustersOf(world, projectId).map((c) => c.name)),
+  runServices: inProject((world, projectId) =>
+    World.runServicesOf(world, projectId).map((s) => s.name),
+  ),
+  serviceAccounts: inProject((world, projectId) => {
+    const project = World.findProject(world, projectId);
+    const own = World.serviceAccountsOf(world, projectId).map((s) => s.email);
+    return Option.isSome(project)
+      ? [ServiceAccount.defaultComputeEmail(project.value.projectNumber), ...own]
+      : own;
+  }),
+  /** `user:` / `serviceAccount:` を付けたメンバー。ログイン済みのアカウントと SA から */
+  members: inProject((world, projectId) => [
+    ...world.session.accounts.map((a) => `user:${a}`),
+    ...World.serviceAccountsOf(world, projectId).map((s) => `serviceAccount:${s.email}`),
+    "allUsers",
+    "allAuthenticatedUsers",
+  ]),
+  /** カタログのロールと、そのプロジェクトのカスタムロール */
+  roles: ((world, projectId) => [
+    ...RoleCatalog.all().map((r) => r.name),
+    ...(Option.isSome(projectId)
+      ? World.customRolesOf(world, projectId.value).map(CustomRole.name)
+      : []),
+  ]) satisfies CandidateSource,
+  instanceTemplates: inProject((world, projectId) =>
+    World.namedOf(world, "instanceTemplates", projectId).map((t) => t.name),
+  ),
+  instanceGroups: inProject((world, projectId) =>
+    World.namedOf(world, "instanceGroups", projectId).map((g) => g.name),
+  ),
+  healthChecks: inProject((world, projectId) =>
+    World.namedOf(world, "healthChecks", projectId).map((h) => h.name),
+  ),
+  backendServices: inProject((world, projectId) =>
+    World.namedOf(world, "backendServices", projectId).map((b) => b.name),
+  ),
+  addresses: inProject((world, projectId) =>
+    World.namedOf(world, "addresses", projectId).map((a) => a.name),
+  ),
+  functions: inProject((world, projectId) =>
+    World.namedOf(world, "functions", projectId).map((f) => f.name),
+  ),
+  sqlInstances: inProject((world, projectId) =>
+    World.namedOf(world, "sqlInstances", projectId).map((i) => i.name),
+  ),
+  topics: inProject((world, projectId) =>
+    World.namedOf(world, "pubsubTopics", projectId).map((t) => t.name),
+  ),
+  kubeDeployments: inProject((world, projectId) =>
+    world.kubeDeployments.filter((d) => d.projectId === projectId).map((d) => d.name),
+  ),
+} as const;
+
 /** 複数のサービスが同じ綴りで受けるフラグ。 */
 export const CommonFlags = {
-  zone: Flag.string("zone", "Zone of the resource. Overrides the default compute/zone property."),
+  zone: Flag.string("zone", "Zone of the resource. Overrides the default compute/zone property.", {
+    candidates: Candidates.zones,
+  }),
   region: Flag.string(
     "region",
     "Region of the resource. Overrides the default compute/region property.",
+    { candidates: Candidates.regions },
   ),
   async: Flag.boolean(
     "async",
@@ -39,10 +145,11 @@ export const CommonFlags = {
   member: Flag.string(
     "member",
     "The principal to add the binding for. Should be of the form user|group|serviceAccount:email or domain:domain.",
-    { required: true },
+    { required: true, candidates: Candidates.members },
   ),
   role: Flag.string("role", "The role name to assign to the principal (e.g. roles/viewer).", {
     required: true,
+    candidates: Candidates.roles,
   }),
 } as const;
 

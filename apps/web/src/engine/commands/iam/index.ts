@@ -13,6 +13,7 @@ import {
 } from "@/engine/cli/command-spec";
 import {
   alreadyExists,
+  Candidates,
   iamBindingCommands,
   plainCommand,
   projectCommand,
@@ -214,7 +215,13 @@ export const IamCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "iam", "service-accounts", "describe"],
     summary: "Show metadata for a service account from a project.",
-    positionals: [Positional.required("SERVICE_ACCOUNT", "The service account email to describe.")],
+    positionals: [
+      Positional.required(
+        "SERVICE_ACCOUNT",
+        "The service account email to describe.",
+        Candidates.serviceAccounts,
+      ),
+    ],
     permission: "iam.serviceAccounts.get",
     run: (ctx, args) => {
       const email = ParsedArgs.requiredPositional(args, 0);
@@ -232,7 +239,13 @@ export const IamCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "iam", "service-accounts", "delete"],
     summary: "Delete a service account from a project.",
-    positionals: [Positional.required("SERVICE_ACCOUNT", "The service account email to delete.")],
+    positionals: [
+      Positional.required(
+        "SERVICE_ACCOUNT",
+        "The service account email to delete.",
+        Candidates.serviceAccounts,
+      ),
+    ],
     destructive: true,
     permission: "iam.serviceAccounts.delete",
     run: (ctx, args) => {
@@ -375,7 +388,11 @@ export const IamCommands: readonly CommandSpec[] = [
   }),
   ...iamBindingCommands({
     group: ["gcloud", "iam", "service-accounts"],
-    positional: Positional.required("SERVICE_ACCOUNT", "The service account email."),
+    positional: Positional.required(
+      "SERVICE_ACCOUNT",
+      "The service account email.",
+      Candidates.serviceAccounts,
+    ),
     label: (target) => `serviceAccount [${target.id}]`,
     resolveTarget: serviceAccountTarget,
     permissions: {

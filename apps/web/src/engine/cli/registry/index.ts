@@ -1,5 +1,11 @@
 import { CommandFailure } from "@/engine/cli/command-failure";
-import type { CommandSpec, FlagSpec } from "@/engine/cli/command-spec";
+import type {
+  CandidateSource,
+  CommandSpec,
+  FlagSpec,
+  PositionalSpec,
+} from "@/engine/cli/command-spec";
+import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
@@ -51,6 +57,56 @@ const exactSpec = (registry: CommandRegistry, path: readonly string[]): Option<C
   Option.fromNullable(
     registry.specs.find((spec) => spec.path.length === path.length && startsWith(spec.path, path)),
   );
+
+/** 補完の依頼。`tokens` は確定した語（ツール名を含む）、`partial` は打ちかけの最後の語。 */
+export type CompletionRequest = Readonly<{
+  tokens: readonly string[];
+  partial: string;
+  world: World;
+}>;
+
+const findFlag = (flags: readonly FlagSpec[], name: string): Option<FlagSpec> =>
+  Option.fromNullable(flags.find((f) => f.name === name));
+
+/** `--project=P` / `--project P` の値。 */
+const flagValueIn = (tokens: readonly string[], name: string): string | undefined => {
+  const index = tokens.findIndex((t) => t === `--${name}` || t.startsWith(`--${name}=`));
+  if (index === -1) return undefined;
+  const token = tokens[index] as string;
+  return token.includes("=") ? token.slice(token.indexOf("=") + 1) : tokens[index + 1];
+};
+
+/**
+ * 確定した引数のうち位置引数の数。`--flag value` の value は数えない
+ * （boolean 以外のフラグの直後で `=` の無いものは値）。
+ */
+const positionalCount = (rest: readonly string[], flags: readonly FlagSpec[]): number => {
+  let count = 0;
+  let expectsValue = false;
+  for (const token of rest) {
+    if (expectsValue) {
+      expectsValue = false;
+      continue;
+    }
+    if (token.startsWith("-")) {
+      const flag = findFlag(flags, token.replace(/^--?/, "").replace(/=.*$/, ""));
+      expectsValue = Option.isSome(flag) && flag.value.kind !== "boolean" && !token.includes("=");
+      continue;
+    }
+    count += 1;
+  }
+  return count;
+};
+
+/** n 番目の位置引数の定義。末尾が可変長ならそれ以降はすべて末尾。 */
+const positionalAt = (
+  positionals: readonly PositionalSpec[],
+  index: number,
+): Option<PositionalSpec> => {
+  const last = positionals.at(-1);
+  if (index < positionals.length) return Option.fromNullable(positionals[index]);
+  return last?.variadic === true ? Option.some(last) : Option.none;
+};
 
 const flagHelp = (flag: FlagSpec): string => {
   const value =
@@ -167,35 +223,75 @@ export const CommandRegistry = {
   },
 
   /**
-   * 入力途中の行に対する Tab 補完の候補（TBD-009: コマンド名とフラグ名まで）。
+   * 入力途中の行に対する Tab 補完の候補（TBD-009: コマンド名・フラグ名・フラグの値・位置引数）。
+   * 値と位置引数の候補は定義が持つ `candidates` を World で評価する。
    *
    * @param registry 登録簿
-   * @param tokens 確定したトークン（ツール名を含む）
-   * @param partial 打ちかけの最後の語
+   * @param request 確定したトークン（ツール名を含む）・打ちかけの最後の語・World
    * @param globalFlags すべてのコマンドが受けるフラグ
-   * @returns `partial` で始まる候補
+   * @returns `partial` で始まる候補（フラグの値なら `--name=値` の形）
    */
   complete(
     registry: CommandRegistry,
-    tokens: readonly string[],
-    partial: string,
+    request: CompletionRequest,
     globalFlags: readonly FlagSpec[],
   ): readonly string[] {
+    const { tokens, partial, world } = request;
     if (tokens.length === 0) {
       const tools = [...new Set(registry.specs.map((s) => s.path[0] as string))].toSorted();
       return tools.filter((t) => t.startsWith(partial));
     }
     const resolved = CommandRegistry.resolve(registry, tokens);
-    if (Result.isOk(resolved) && partial.startsWith("-")) {
-      const spec = resolved.value.spec;
-      const own = spec.kind === "not-implemented" ? [] : spec.flags;
-      return [...own, ...globalFlags]
+    if (!Result.isOk(resolved) || resolved.value.spec.kind === "not-implemented") {
+      const prefix = tokens.filter((t) => !t.startsWith("-"));
+      return childrenOf(registry, prefix).filter((c) => c.startsWith(partial));
+    }
+    const spec = resolved.value.spec;
+    const flags = [...spec.flags, ...globalFlags];
+    const projectId = Option.or(
+      Option.fromNullable(flagValueIn(tokens, "project")),
+      World.currentProjectId(world),
+    );
+    const evaluate = (candidates: Option<CandidateSource>, prefix: string): readonly string[] =>
+      Option.isSome(candidates)
+        ? candidates
+            .value(world, projectId)
+            .filter((c) => c.startsWith(prefix))
+            .toSorted()
+        : [];
+    const eq = partial.indexOf("=");
+    if (partial.startsWith("--") && eq !== -1) {
+      const flag = findFlag(flags, partial.slice(2, eq));
+      const candidates = Option.flatMap(flag, (f) =>
+        f.kind === "string" ? f.candidates : Option.none,
+      );
+      return evaluate(candidates, partial.slice(eq + 1)).map(
+        (c) => `${partial.slice(0, eq + 1)}${c}`,
+      );
+    }
+    if (partial.startsWith("-")) {
+      return flags
         .map((f) => `--${f.name}`)
         .filter((f) => f.startsWith(partial))
         .toSorted();
     }
-    const prefix = tokens.filter((t) => !t.startsWith("-"));
-    return childrenOf(registry, prefix).filter((c) => c.startsWith(partial));
+    const previous = resolved.value.rest.at(-1);
+    const awaitingValueOf =
+      previous?.startsWith("--") && !previous.includes("=")
+        ? findFlag(flags, previous.slice(2))
+        : Option.none;
+    if (Option.isSome(awaitingValueOf) && awaitingValueOf.value.kind !== "boolean") {
+      return evaluate(
+        awaitingValueOf.value.kind === "string" ? awaitingValueOf.value.candidates : Option.none,
+        partial,
+      );
+    }
+    const index = positionalCount(resolved.value.rest, flags);
+    const positional = positionalAt(spec.positionals, index);
+    return evaluate(
+      Option.flatMap(positional, (p) => p.candidates),
+      partial,
+    );
   },
 
   /** 実装済みかどうかに関わらず、登録されているコマンドのパス。docs とテストが数える。 */
