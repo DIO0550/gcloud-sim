@@ -141,7 +141,13 @@ test("gsutil ls / cp / rm も同じ World を操作する", () => {
   expect(removed.text).toBe("");
 });
 
-test("gsutil iam ch は未実装として案内する", () => {
-  const s = run(session(), "gsutil iam ch allUsers:objectViewer gs://b-1");
-  expect(s.text).toContain("gcloud-sim: command not implemented yet: gsutil iam ch");
+test("gsutil iam ch は短縮したロール名を roles/storage. に補ってバインディングを足す", () => {
+  const s = run(
+    session(),
+    "gcloud storage buckets create gs://b-1",
+    "gsutil iam ch allUsers:objectViewer gs://b-1",
+    "gcloud storage buckets get-iam-policy gs://b-1",
+  );
+  expect(s.text).toContain("role: roles/storage.objectViewer");
+  expect(s.text).toContain("- allUsers");
 });

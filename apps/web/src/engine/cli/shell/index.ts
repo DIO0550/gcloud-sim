@@ -88,14 +88,21 @@ const lines = (text: string, tone: OutputLine["tone"]): readonly OutputLine[] =>
 const messageLines = (messages: readonly OutputMessage[]): readonly OutputLine[] =>
   messages.flatMap((m) => lines(m.text, m.tone));
 
+/** kubectl は `ERROR: (tool.command)` の接頭辞を付けず、本文（`error:` / `Error from server`）をそのまま出す。 */
 const failureLines = (
   spec: Option<CommandSpec>,
   failure: CommandFailure,
 ): readonly OutputLine[] => {
   const prefix = Option.isSome(spec) ? `(${CommandSpec.dottedPath(spec.value)})` : "(gcloud)";
+  const isKubectl = Option.isSome(spec) && spec.value.path[0] === "kubectl";
   const head = CommandFailure.isSimulatorOwn(failure)
     ? lines(`gcloud-sim: ${failure.message}`, "error")
-    : lines(`ERROR: ${prefix} ${failure.message}`, "error");
+    : isKubectl
+      ? lines(
+          failure.message.replace(/^(?!error:|Error from server|The connection)/, "error: "),
+          "error",
+        )
+      : lines(`ERROR: ${prefix} ${failure.message}`, "error");
   const hints = failure.hints.flatMap((h) => lines(`gcloud-sim: ${h}`, "hint"));
   return [...head, ...hints];
 };
@@ -257,10 +264,12 @@ const execute = (
     ]);
   }
 
+  const projectFlag = ParsedArgs.string(args.value, "project");
   const ctx: CommandContext = {
     world,
     now: input.now,
-    projectId: Option.or(ParsedArgs.string(args.value, "project"), World.currentProjectId(world)),
+    projectId: Option.or(projectFlag, World.currentProjectId(world)),
+    projectFlag,
   };
   const outcome = runSpec(spec, ctx, args.value);
   if (!Result.isOk(outcome))

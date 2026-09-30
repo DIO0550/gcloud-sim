@@ -1,5 +1,6 @@
 import { CommandFailure } from "@/engine/cli/command-failure";
 import type { FlagSpec, FlagValue, ParsedArgs, PositionalSpec } from "@/engine/cli/command-spec";
+import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
 type Scan = Readonly<{
@@ -9,8 +10,10 @@ type Scan = Readonly<{
   onlyPositionals: boolean;
 }>;
 
-const findSpec = (specs: readonly FlagSpec[], token: string): FlagSpec | undefined =>
-  specs.find((spec) => `--${spec.name}` === token || spec.aliases.includes(token));
+const findSpec = (specs: readonly FlagSpec[], token: string): Option<FlagSpec> =>
+  Option.fromNullable(
+    specs.find((spec) => `--${spec.name}` === token || spec.aliases.includes(token)),
+  );
 
 const convert = (spec: FlagSpec, raw: string): Result<FlagValue, CommandFailure> => {
   const flag = `--${spec.name}`;
@@ -74,22 +77,26 @@ const stepFlag = (
   const inline = eq === -1 ? undefined : token.slice(eq + 1);
 
   if (name.startsWith("--no-")) {
-    const spec = findSpec(specs, `--${name.slice("--no-".length)}`);
-    if (spec?.kind === "boolean") {
+    const negated = Option.filter(
+      findSpec(specs, `--${name.slice("--no-".length)}`),
+      (spec) => spec.kind === "boolean",
+    );
+    if (Option.isSome(negated)) {
       return Result.ok({
-        scan: withFlag(scan, spec, { kind: "boolean", value: false }),
+        scan: withFlag(scan, negated.value, { kind: "boolean", value: false }),
         consumed: 1,
       });
     }
   }
 
-  const spec = findSpec(specs, name);
-  if (spec === undefined) {
+  const found = findSpec(specs, name);
+  if (!Option.isSome(found)) {
     return Result.ok({
       scan: { ...scan, unrecognized: [...scan.unrecognized, name] },
       consumed: 1,
     });
   }
+  const spec = found.value;
   if (spec.kind === "boolean") {
     const converted =
       inline === undefined

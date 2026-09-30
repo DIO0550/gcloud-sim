@@ -1,6 +1,7 @@
 import type { BucketLocation, StorageClass } from "@/engine/domains/catalog";
 import { IamPolicy } from "@/engine/domains/iam-policy";
 import type { JsonRecord } from "@/types/Json";
+import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
 export type StorageObject = Readonly<{
@@ -8,7 +9,18 @@ export type StorageObject = Readonly<{
   size: number;
   contentType: string;
   updated: string;
+  /** `objects update --storage-class` で変えたもの。無ければバケットの既定 */
+  storageClass: Option<StorageClass>;
 }>;
+
+/** ライフサイクルの 1 ルール（`gsutil lifecycle set` / `buckets update --lifecycle-file`）。 */
+export type LifecycleRule = Readonly<{
+  action: Readonly<{ type: "Delete" } | { type: "SetStorageClass"; storageClass: string }>;
+  condition: Readonly<{ age: number }>;
+}>;
+
+/** レガシー ACL の 1 件（`gsutil acl ch`）。均一なバケットレベルのアクセスでは持てない（E-013）。 */
+export type AclEntry = Readonly<{ entity: string; role: "READER" | "WRITER" | "OWNER" }>;
 
 export type Bucket = Readonly<{
   projectId: string;
@@ -17,6 +29,9 @@ export type Bucket = Readonly<{
   storageClass: StorageClass;
   uniformBucketLevelAccess: boolean;
   publicAccessPrevention: boolean;
+  versioning: boolean;
+  lifecycleRules: readonly LifecycleRule[];
+  acl: readonly AclEntry[];
   iamPolicy: IamPolicy;
   objects: readonly StorageObject[];
   timeCreated: string;
@@ -92,9 +107,74 @@ export const Bucket = {
     return Result.map(BucketName.parse(seed.name), (name) => ({
       ...seed,
       name,
+      versioning: false,
+      lifecycleRules: [],
+      acl: [],
       iamPolicy: IamPolicy.Empty,
       objects: [],
     }));
+  },
+
+  withVersioning(bucket: Bucket, versioning: boolean): Bucket {
+    return { ...bucket, versioning };
+  },
+
+  withLifecycleRules(bucket: Bucket, lifecycleRules: readonly LifecycleRule[]): Bucket {
+    return { ...bucket, lifecycleRules };
+  },
+
+  withStorageClass(bucket: Bucket, storageClass: StorageClass): Bucket {
+    return { ...bucket, storageClass };
+  },
+
+  withAccessSettings(
+    bucket: Bucket,
+    settings: Readonly<{
+      uniformBucketLevelAccess: Option<boolean>;
+      publicAccessPrevention: Option<boolean>;
+    }>,
+  ): Bucket {
+    return {
+      ...bucket,
+      uniformBucketLevelAccess: Option.unwrapOr(
+        settings.uniformBucketLevelAccess,
+        bucket.uniformBucketLevelAccess,
+      ),
+      publicAccessPrevention: Option.unwrapOr(
+        settings.publicAccessPrevention,
+        bucket.publicAccessPrevention,
+      ),
+    };
+  },
+
+  /**
+   * レガシー ACL を足す。均一なバケットレベルのアクセスが有効なら拒む（設計書 6.2 Bucket / E-013）。
+   *
+   * @param bucket 元
+   * @param entry 足す ACL
+   * @returns 足したバケット。UBLA が有効なら理由
+   */
+  withAcl(bucket: Bucket, entry: AclEntry): Result<Bucket, string> {
+    if (bucket.uniformBucketLevelAccess) {
+      return Result.err(
+        `Cannot use ACLs on bucket gs://${bucket.name}: uniform bucket-level access is enabled. Use IAM (gcloud storage buckets add-iam-policy-binding) instead.`,
+      );
+    }
+    const others = bucket.acl.filter((a) => a.entity !== entry.entity);
+    return Result.ok({ ...bucket, acl: [...others, entry] });
+  },
+
+  /** オブジェクトの API 表現（`objects describe` / `ls -L`）。 */
+  objectRecord(bucket: Bucket, object: StorageObject): JsonRecord {
+    return {
+      name: object.name,
+      bucket: bucket.name,
+      size: String(object.size),
+      contentType: object.contentType,
+      storageClass: Option.unwrapOr(object.storageClass, bucket.storageClass),
+      updated: object.updated,
+      selfLink: `https://www.googleapis.com/storage/v1/b/${bucket.name}/o/${encodeURIComponent(object.name)}`,
+    };
   },
 
   withObject(bucket: Bucket, object: StorageObject): Bucket {
@@ -118,6 +198,10 @@ export const Bucket = {
       iamConfiguration: {
         uniformBucketLevelAccess: { enabled: bucket.uniformBucketLevelAccess },
         publicAccessPrevention: bucket.publicAccessPrevention ? "enforced" : "inherited",
+      },
+      versioning: { enabled: bucket.versioning },
+      lifecycle: {
+        rule: bucket.lifecycleRules.map((r) => ({ action: r.action, condition: r.condition })),
       },
       timeCreated: bucket.timeCreated,
       projectNumber: bucket.projectId,

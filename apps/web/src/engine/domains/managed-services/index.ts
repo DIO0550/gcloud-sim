@@ -1,6 +1,7 @@
 import type { MachineTypeName, Region, Zone } from "@/engine/domains/catalog";
 import { ResourceName } from "@/engine/domains/compute";
 import type { JsonRecord } from "@/types/Json";
+import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
 /** GKE クラスタ。ゾーン クラスタかリージョン クラスタか（`--zone` / `--region`）。 */
@@ -15,8 +16,9 @@ export type GkeCluster = Readonly<{
   currentMasterVersion: string;
 }>;
 
-/** 収録している唯一のマスターバージョン。`--cluster-version` は受けない（DJ-005）。 */
+/** 作成時のマスターバージョンと、`upgrade` で上がる先。`--cluster-version` は受けない（DJ-005）。 */
 const MasterVersion = "1.31.5-gke.1068000";
+const NextMasterVersion = "1.32.2-gke.1182000";
 
 /** `GkeCluster.create` に渡す材料。Autopilot はノード数を持たない。 */
 export type GkeClusterSeed = Readonly<{
@@ -45,6 +47,37 @@ export const GkeCluster = {
       machineType: seed.machineType,
       currentMasterVersion: MasterVersion,
     }));
+  },
+
+  /**
+   * ノード数を替える（`clusters resize`）。Autopilot はノード数を持たないので拒む。
+   *
+   * @param cluster 元
+   * @param nodeCount 新しいノード数（0 以上）
+   * @returns 替えたクラスタ。Autopilot か負なら理由
+   */
+  withNodeCount(cluster: GkeCluster, nodeCount: number): Result<GkeCluster, string> {
+    if (cluster.autopilot) {
+      return Result.err(
+        `Cluster ${cluster.name} is an Autopilot cluster; node count is managed by GKE and cannot be resized.`,
+      );
+    }
+    if (nodeCount < 0) return Result.err(`Invalid value for [--num-nodes]: ${nodeCount}.`);
+    return Result.ok({ ...cluster, nodeCount });
+  },
+
+  /**
+   * マスターを次の版へ上げる（`clusters upgrade --master`）。収録している版は 1 つ先まで。
+   *
+   * @param cluster 元
+   * @returns 上げたクラスタ。既に最新なら理由
+   */
+  upgraded(cluster: GkeCluster): Result<GkeCluster, string> {
+    return cluster.currentMasterVersion === MasterVersion
+      ? Result.ok({ ...cluster, currentMasterVersion: NextMasterVersion })
+      : Result.err(
+          `Cluster ${cluster.name} is already on the latest available version (${cluster.currentMasterVersion}).`,
+        );
   },
 
   selfLink(cluster: GkeCluster): string {
@@ -105,6 +138,70 @@ export const CloudRunService = {
       region: service.region,
       allowUnauthenticated: service.allowUnauthenticated,
       lastDeployedAt: service.lastDeployedAt,
+    };
+  },
+} as const;
+
+/** GKE Standard クラスタのノードプール（`gcloud container node-pools`）。 */
+export type NodePool = Readonly<{
+  projectId: string;
+  cluster: string;
+  name: string;
+  machineType: MachineTypeName;
+  nodeCount: number;
+  diskSizeGb: number;
+  version: string;
+}>;
+
+export const NodePool = {
+  /**
+   * ノードプールを作る。名前の形式はここで検証し、ノード数の既定は 3、ディスクは 100 GB（本物と同じ）。
+   *
+   * @param seed 材料。`version` はクラスタのマスターバージョン
+   * @returns 作ったノードプール。名前の形式が悪ければ理由
+   */
+  create(
+    seed: Readonly<{
+      projectId: string;
+      cluster: string;
+      name: string;
+      machineType: MachineTypeName;
+      nodeCount: Option<number>;
+      diskSizeGb: Option<number>;
+      version: string;
+    }>,
+  ): Result<NodePool, string> {
+    return Result.map(ResourceName.parse(seed.name), (name) => ({
+      projectId: seed.projectId,
+      cluster: seed.cluster,
+      name,
+      machineType: seed.machineType,
+      nodeCount: Option.unwrapOr(seed.nodeCount, 3),
+      diskSizeGb: Option.unwrapOr(seed.diskSizeGb, 100),
+      version: seed.version,
+    }));
+  },
+
+  /** 作成時にクラスタが持つ既定のプール。`node-pools list` に出す（保存しない）。 */
+  defaultPool(cluster: GkeCluster): NodePool {
+    return {
+      projectId: cluster.projectId,
+      cluster: cluster.name,
+      name: "default-pool",
+      machineType: cluster.machineType,
+      nodeCount: cluster.nodeCount,
+      diskSizeGb: 100,
+      version: cluster.currentMasterVersion,
+    };
+  },
+
+  toRecord(pool: NodePool): JsonRecord {
+    return {
+      name: pool.name,
+      config: { machineType: pool.machineType, diskSizeGb: pool.diskSizeGb },
+      initialNodeCount: pool.nodeCount,
+      version: pool.version,
+      status: "RUNNING",
     };
   },
 } as const;

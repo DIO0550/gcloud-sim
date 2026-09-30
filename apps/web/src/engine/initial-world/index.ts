@@ -12,6 +12,7 @@ import { IamPolicy } from "@/engine/domains/iam-policy";
 import { MissionProgress } from "@/engine/domains/mission-progress";
 import type { Principal } from "@/engine/domains/principal";
 import { type Folder, type Project, ProjectStates } from "@/engine/domains/resource-hierarchy";
+import { SampleKeyAccount } from "@/engine/domains/sample-files";
 import type { ServiceAccount } from "@/engine/domains/service-account";
 import type { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
@@ -28,7 +29,8 @@ export const InitialWorldFixture = {
   owner: "owner@example.com" satisfies Principal,
   developer: "dev@example.com" satisfies Principal,
   opsGroup: "group:ops@example.com",
-  webServiceAccount: "web-sa@ace-dev-01.iam.gserviceaccount.com",
+  /** `key.json`（sample-files）が指す SA と同じ */
+  webServiceAccount: SampleKeyAccount,
 } as const;
 
 /** 本物の `default` ネットワークに付いてくる 4 つのルールの材料。 */
@@ -86,6 +88,41 @@ const defaultNetwork = (
     }),
   ),
 });
+
+/**
+ * 初期 World では空で始める集合（Phase 1 の後に足したもの）。Snapshot の v1 → v2 マイグレーションも
+ * 同じ値で埋める（`engine/snapshot`）。
+ */
+export const EmptyCollections = {
+  disks: [],
+  projectMetadata: [],
+  addresses: [],
+  routers: [],
+  peerings: [],
+  healthChecks: [],
+  backendServices: [],
+  forwardingRules: [],
+  instanceTemplates: [],
+  instanceGroups: [],
+  nodePools: [],
+  kubeDeployments: [],
+  kubeServices: [],
+  functions: [],
+  appEngineApps: [],
+  appVersions: [],
+  sqlInstances: [],
+  sqlBackups: [],
+  pubsubTopics: [],
+  pubsubSubscriptions: [],
+  logSinks: [],
+  serviceAccountKeys: [],
+  osLoginKeys: [],
+  kmsKeyRings: [],
+  dnsZones: [],
+  dmDeployments: [],
+  budgets: [],
+  customRoles: [],
+} as const satisfies Partial<World>;
 
 export const InitialWorld = {
   /**
@@ -160,6 +197,7 @@ export const InitialWorld = {
         description: "",
         projectId: f.devProjectId,
         uniqueId: "100000000000000000001",
+        iamPolicy: IamPolicy.Empty,
       },
     ];
     return {
@@ -183,8 +221,9 @@ export const InitialWorld = {
       buckets: [],
       clusters: [],
       runServices: [],
+      ...EmptyCollections,
       config: GcloudConfig.create({ "core/account": f.owner, "core/project": f.devProjectId }),
-      session: { accounts: [f.owner] },
+      session: { accounts: [f.owner], adc: Option.none, components: [] },
       operations: [],
       missions: missionIds.map(MissionProgress.create),
       // フォルダ id は 284100000000 + 通し番号で採番する。固定のフォルダ（…001 / …002）と

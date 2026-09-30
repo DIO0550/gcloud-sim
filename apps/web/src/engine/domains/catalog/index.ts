@@ -212,6 +212,17 @@ const ApiServices = [
   { name: "appengine.googleapis.com", title: "App Engine Admin API", billingRequired: true },
   { name: "pubsub.googleapis.com", title: "Cloud Pub/Sub API", billingRequired: false },
   { name: "bigquery.googleapis.com", title: "BigQuery API", billingRequired: false },
+  {
+    name: "cloudkms.googleapis.com",
+    title: "Cloud Key Management Service (KMS) API",
+    billingRequired: true,
+  },
+  { name: "dns.googleapis.com", title: "Cloud DNS API", billingRequired: true },
+  {
+    name: "deploymentmanager.googleapis.com",
+    title: "Cloud Deployment Manager V2 API",
+    billingRequired: true,
+  },
 ] as const;
 
 export type ApiName = (typeof ApiServices)[number]["name"];
@@ -279,5 +290,117 @@ export const PublicImage = {
 
   all(): readonly PublicImage[] {
     return PublicImages;
+  },
+} as const;
+
+export const FunctionRuntimes = {
+  Nodejs20: "nodejs20",
+  Nodejs22: "nodejs22",
+  Python312: "python312",
+  Python313: "python313",
+  Go122: "go122",
+  Java21: "java21",
+} as const;
+export type FunctionRuntime = ValueOf<typeof FunctionRuntimes>;
+
+export const FunctionRuntime = {
+  /**
+   * `--runtime` の綴りを閉じた型にする。
+   *
+   * @param value ユーザーが打った綴り
+   * @returns 収録しているランタイムならそれ。無ければ `none`
+   */
+  parse(value: string): Option<FunctionRuntime> {
+    return Option.fromNullable(Object.values(FunctionRuntimes).find((r) => r === value));
+  },
+} as const;
+
+export const SqlDatabaseVersions = {
+  Postgres15: "POSTGRES_15",
+  Postgres16: "POSTGRES_16",
+  Mysql80: "MYSQL_8_0",
+  SqlServer2022Standard: "SQLSERVER_2022_STANDARD",
+} as const;
+export type SqlDatabaseVersion = ValueOf<typeof SqlDatabaseVersions>;
+
+export const SqlDatabaseVersion = {
+  /**
+   * `--database-version` の綴りを閉じた型にする。
+   *
+   * @param value ユーザーが打った綴り
+   * @returns 収録している版ならそれ。無ければ `none`
+   */
+  parse(value: string): Option<SqlDatabaseVersion> {
+    return Option.fromNullable(Object.values(SqlDatabaseVersions).find((v) => v === value));
+  },
+} as const;
+
+export const SqlTiers = {
+  F1Micro: "db-f1-micro",
+  G1Small: "db-g1-small",
+  Custom1_3840: "db-custom-1-3840",
+  Custom2_7680: "db-custom-2-7680",
+} as const;
+export type SqlTier = ValueOf<typeof SqlTiers>;
+
+export const SqlTier = {
+  /**
+   * `--tier` の綴りを閉じた型にする。
+   *
+   * @param value ユーザーが打った綴り
+   * @returns 収録しているティアならそれ。無ければ `none`
+   */
+  parse(value: string): Option<SqlTier> {
+    return Option.fromNullable(Object.values(SqlTiers).find((t) => t === value));
+  },
+} as const;
+
+/** `gcloud version` / `components list` が出す SDK の版と収録コンポーネント。 */
+export const CliVersion = "540.0.0";
+
+export const CliComponents = [
+  { id: "gcloud", name: "Google Cloud CLI Core Libraries", status: "Installed", size: "20.5 MiB" },
+  { id: "core", name: "Google Cloud CLI Core Libraries", status: "Installed", size: "20.5 MiB" },
+  { id: "gsutil", name: "Cloud Storage Command Line Tool", status: "Installed", size: "11.3 MiB" },
+  { id: "bq", name: "BigQuery Command Line Tool", status: "Installed", size: "1.7 MiB" },
+  { id: "kubectl", name: "kubectl", status: "Not Installed", size: "< 1 MiB" },
+  {
+    id: "gke-gcloud-auth-plugin",
+    name: "GKE gcloud auth plugin",
+    status: "Not Installed",
+    size: "8.6 MiB",
+  },
+  {
+    id: "app-engine-python",
+    name: "App Engine Python Extensions",
+    status: "Not Installed",
+    size: "4.8 MiB",
+  },
+  { id: "beta", name: "gcloud Beta Commands", status: "Not Installed", size: "< 1 MiB" },
+  { id: "alpha", name: "gcloud Alpha Commands", status: "Not Installed", size: "< 1 MiB" },
+] as const;
+
+export type CliComponentId = (typeof CliComponents)[number]["id"];
+
+export type CliComponent = Readonly<{
+  id: CliComponentId;
+  name: string;
+  status: "Installed" | "Not Installed";
+  size: string;
+}>;
+
+export const CliComponent = {
+  /**
+   * コンポーネント id の綴りを確かめる。
+   *
+   * @param value `kubectl` のような綴り
+   * @returns 収録していればその定義。無ければ `none`
+   */
+  parse(value: string): Option<CliComponent> {
+    return Option.fromNullable(CliComponents.find((c) => c.id === value));
+  },
+
+  all(): readonly CliComponent[] {
+    return CliComponents;
   },
 } as const;

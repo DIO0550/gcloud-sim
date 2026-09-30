@@ -10,7 +10,12 @@ import {
   ParsedArgs,
   Positional,
 } from "@/engine/cli/command-spec";
-import { alreadyExists, iamBindingCommands } from "@/engine/commands/shared";
+import {
+  alreadyExists,
+  iamBindingCommands,
+  plainCommand,
+  targetCommand,
+} from "@/engine/commands/shared";
 import { EffectivePermissions } from "@/engine/domains/effective-permissions";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { Principal } from "@/engine/domains/principal";
@@ -45,10 +50,10 @@ const projectTarget = (
   _ctx: CommandContext,
   args: ParsedArgs,
 ): Result<PolicyTarget, CommandFailure> =>
-  Result.ok({ type: "project", id: Option.unwrapOr(ParsedArgs.positional(args, 0), "") });
+  Result.ok({ type: "project", id: ParsedArgs.requiredPositional(args, 0) });
 
 const requireProjectArg = (ctx: CommandContext, args: ParsedArgs, includeDeleted: boolean) => {
-  const id = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
+  const id = ParsedArgs.requiredPositional(args, 0);
   const project = includeDeleted
     ? World.findProject(ctx.world, id)
     : World.findActiveProject(ctx.world, id);
@@ -80,14 +85,10 @@ const parentFromFlags = (
 const ProjectApiBase = "https://cloudresourcemanager.googleapis.com/v1/projects";
 
 export const ProjectCommands: readonly CommandSpec[] = [
-  {
-    kind: "target",
+  targetCommand({
     path: ["gcloud", "projects", "list"],
     summary: "List projects accessible by the active account.",
-    positionals: [],
-    flags: [],
-    destructive: false,
-    requiredPermissions: [],
+    permissions: [],
     resolveTarget: (ctx) => Result.ok({ type: "organization", id: ctx.world.organization.id }),
     run: (ctx) =>
       Result.ok({
@@ -99,24 +100,20 @@ export const ProjectCommands: readonly CommandSpec[] = [
           ProjectColumns,
         ),
       }),
-  },
-  {
-    kind: "target",
+  }),
+  targetCommand({
     path: ["gcloud", "projects", "describe"],
     summary: "Show metadata for a project.",
     positionals: [Positional.required("PROJECT_ID", "ID for the project you want to describe.")],
-    flags: [],
-    destructive: false,
-    requiredPermissions: ["resourcemanager.projects.get"],
+    permission: "resourcemanager.projects.get",
     resolveTarget: projectTarget,
     run: (ctx, args) =>
       Result.map(requireProjectArg(ctx, args, true), (project) => ({
         world: ctx.world,
         output: CommandOutput.yaml(Project.toRecord(project)),
       })),
-  },
-  {
-    kind: "target",
+  }),
+  targetCommand({
     path: ["gcloud", "projects", "create"],
     summary: "Create a new project.",
     positionals: [Positional.required("PROJECT_ID", "ID for the project you want to create.")],
@@ -130,14 +127,13 @@ export const ProjectCommands: readonly CommandSpec[] = [
       Flag.boolean("set-as-default", "Set newly created project as core/project property."),
       Flag.keyvalue("labels", "List of label KEY=VALUE pairs to add."),
     ],
-    destructive: false,
-    requiredPermissions: ["resourcemanager.projects.create"],
+    permission: "resourcemanager.projects.create",
     resolveTarget: parentFromFlags,
     run: (ctx, args) => {
       const parent = parentFromFlags(ctx, args);
       if (!Result.isOk(parent)) return parent;
       const numbered = World.nextNumber(ctx.world);
-      const projectId = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
+      const projectId = ParsedArgs.requiredPositional(args, 0);
       const created = Result.mapErr(
         Project.create({
           projectId,
@@ -177,15 +173,13 @@ export const ProjectCommands: readonly CommandSpec[] = [
         ),
       });
     },
-  },
-  {
-    kind: "target",
+  }),
+  targetCommand({
     path: ["gcloud", "projects", "delete"],
     summary: "Delete a project.",
     positionals: [Positional.required("PROJECT_ID", "ID for the project you want to delete.")],
-    flags: [],
     destructive: true,
-    requiredPermissions: ["resourcemanager.projects.delete"],
+    permission: "resourcemanager.projects.delete",
     resolveTarget: projectTarget,
     run: (ctx, args) =>
       Result.map(requireProjectArg(ctx, args, false), (project) => ({
@@ -202,15 +196,12 @@ export const ProjectCommands: readonly CommandSpec[] = [
           OutputMessage.plain(`    $ gcloud projects undelete ${project.projectId}`),
         ),
       })),
-  },
-  {
-    kind: "target",
+  }),
+  targetCommand({
     path: ["gcloud", "projects", "undelete"],
     summary: "Undelete a project.",
     positionals: [Positional.required("PROJECT_ID", "ID for the project you want to undelete.")],
-    flags: [],
-    destructive: false,
-    requiredPermissions: ["resourcemanager.projects.undelete"],
+    permission: "resourcemanager.projects.undelete",
     resolveTarget: projectTarget,
     run: (ctx, args) => {
       const project = requireProjectArg(ctx, args, true);
@@ -232,13 +223,13 @@ export const ProjectCommands: readonly CommandSpec[] = [
         ),
       });
     },
-  },
+  }),
   ...iamBindingCommands({
     group: ["gcloud", "projects"],
     positional: Positional.required("PROJECT_ID", "ID of the project."),
     label: (target) => `project [${target.id}]`,
     resolveTarget: (ctx, args) => {
-      const id = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
+      const id = ParsedArgs.requiredPositional(args, 0);
       return Option.isSome(World.findActiveProject(ctx.world, id))
         ? Result.ok({ type: "project", id })
         : Result.err(CommandFailure.notFound(`projects/${id}`));
@@ -254,20 +245,16 @@ const organizationTarget = (
   ctx: CommandContext,
   args: ParsedArgs,
 ): Result<PolicyTarget, CommandFailure> => {
-  const id = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
+  const id = ParsedArgs.requiredPositional(args, 0);
   return id === ctx.world.organization.id
     ? Result.ok({ type: "organization", id })
     : Result.err(CommandFailure.notFound(`organizations/${id}`));
 };
 
 export const OrganizationCommands: readonly CommandSpec[] = [
-  {
-    kind: "plain",
+  plainCommand({
     path: ["gcloud", "organizations", "list"],
     summary: "List organizations accessible by the active account.",
-    positionals: [],
-    flags: [],
-    destructive: false,
     run: (ctx) =>
       Result.ok({
         world: ctx.world,
@@ -280,22 +267,19 @@ export const OrganizationCommands: readonly CommandSpec[] = [
           ],
         ),
       }),
-  },
-  {
-    kind: "target",
+  }),
+  targetCommand({
     path: ["gcloud", "organizations", "describe"],
     summary: "Show metadata for an organization.",
     positionals: [Positional.required("ORGANIZATION_ID", "ID of the organization.")],
-    flags: [],
-    destructive: false,
-    requiredPermissions: ["resourcemanager.organizations.get"],
+    permission: "resourcemanager.organizations.get",
     resolveTarget: organizationTarget,
     run: (ctx) =>
       Result.ok({
         world: ctx.world,
         output: CommandOutput.yaml(Organization.toRecord(ctx.world.organization)),
       }),
-  },
+  }),
   ...iamBindingCommands({
     group: ["gcloud", "organizations"],
     positional: Positional.required("ORGANIZATION_ID", "ID of the organization."),
@@ -312,7 +296,7 @@ const folderTarget = (
   ctx: CommandContext,
   args: ParsedArgs,
 ): Result<PolicyTarget, CommandFailure> => {
-  const id = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
+  const id = ParsedArgs.requiredPositional(args, 0);
   return Option.isSome(World.findFolder(ctx.world, id))
     ? Result.ok({ type: "folder", id })
     : Result.err(CommandFailure.notFound(`folders/${id}`));
@@ -325,16 +309,13 @@ const FolderColumns = [
 ];
 
 export const FolderCommands: readonly CommandSpec[] = [
-  {
-    kind: "plain",
+  plainCommand({
     path: ["gcloud", "resource-manager", "folders", "list"],
     summary: "List folders under a parent.",
-    positionals: [],
     flags: [
       Flag.string("organization", "Organization ID to list folders under."),
       Flag.string("folder", "Folder ID to list folders under."),
     ],
-    destructive: false,
     run: (ctx, args) => {
       const folder = ParsedArgs.string(args, "folder");
       const organization = ParsedArgs.string(args, "organization");
@@ -353,12 +334,10 @@ export const FolderCommands: readonly CommandSpec[] = [
         ),
       });
     },
-  },
-  {
-    kind: "target",
+  }),
+  targetCommand({
     path: ["gcloud", "resource-manager", "folders", "create"],
     summary: "Create a new folder.",
-    positionals: [],
     flags: [
       Flag.string("display-name", "Friendly display name to use for the new folder.", {
         required: true,
@@ -366,8 +345,7 @@ export const FolderCommands: readonly CommandSpec[] = [
       Flag.string("organization", "Organization ID to use as the parent."),
       Flag.string("folder", "Folder ID to use as the parent."),
     ],
-    destructive: false,
-    requiredPermissions: ["resourcemanager.folders.create"],
+    permission: "resourcemanager.folders.create",
     resolveTarget: parentFromFlags,
     run: (ctx, args) => {
       const parent = parentFromFlags(ctx, args);
@@ -392,15 +370,12 @@ export const FolderCommands: readonly CommandSpec[] = [
         }),
       );
     },
-  },
-  {
-    kind: "target",
+  }),
+  targetCommand({
     path: ["gcloud", "resource-manager", "folders", "describe"],
     summary: "Show metadata for a folder.",
     positionals: [Positional.required("FOLDER_ID", "ID of the folder.")],
-    flags: [],
-    destructive: false,
-    requiredPermissions: ["resourcemanager.folders.get"],
+    permission: "resourcemanager.folders.get",
     resolveTarget: folderTarget,
     run: (ctx) =>
       Result.map(
@@ -409,7 +384,7 @@ export const FolderCommands: readonly CommandSpec[] = [
         ),
         (folder) => ({ world: ctx.world, output: CommandOutput.yaml(Folder.toRecord(folder)) }),
       ),
-  },
+  }),
   ...iamBindingCommands({
     group: ["gcloud", "resource-manager", "folders"],
     positional: Positional.required("FOLDER_ID", "ID of the folder."),

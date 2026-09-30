@@ -9,18 +9,26 @@ import {
   ParsedArgs,
   Positional,
   type ProjectContext,
+  type TargetContext,
 } from "@/engine/cli/command-spec";
-import { alreadyExists, iamBindingCommands, projectCommand } from "@/engine/commands/shared";
+import {
+  alreadyExists,
+  iamBindingCommands,
+  parseBinding,
+  projectCommand,
+  targetCommand,
+} from "@/engine/commands/shared";
 import { BucketLocation, StorageClass } from "@/engine/domains/catalog";
 import { IamPolicy } from "@/engine/domains/iam-policy";
 import type { PolicyTarget } from "@/engine/domains/resource-hierarchy";
-import { Bucket, GsUrl, type StorageObject } from "@/engine/domains/storage";
+import { SampleFile } from "@/engine/domains/sample-files";
+import { type AclEntry, Bucket, GsUrl, type StorageObject } from "@/engine/domains/storage";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
 const bucketUrlArg = (args: ParsedArgs): Result<GsUrl, CommandFailure> =>
-  Result.mapErr(GsUrl.parse(Option.unwrapOr(ParsedArgs.positional(args, 0), "")), (m) =>
+  Result.mapErr(GsUrl.parse(ParsedArgs.requiredPositional(args, 0)), (m) =>
     CommandFailure.invalidValue("URL", m),
   );
 
@@ -133,11 +141,12 @@ const objectFromLocal = (path: string, now: string): StorageObject => ({
   size: 1024,
   contentType: "application/octet-stream",
   updated: now,
+  storageClass: Option.none,
 });
 
 const copy = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
-  const source = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
-  const destination = Option.unwrapOr(ParsedArgs.positional(args, 1), "");
+  const source = ParsedArgs.requiredPositional(args, 0);
+  const destination = ParsedArgs.requiredPositional(args, 1);
   const sourceUrl = GsUrl.isGsUrl(source) ? GsUrl.parse(source) : Result.err(source);
   const destinationUrl = GsUrl.isGsUrl(destination)
     ? GsUrl.parse(destination)
@@ -418,14 +427,11 @@ export const GsutilCommands: readonly CommandSpec[] = [
     destructive: true,
     run: remove,
   }),
-  {
-    kind: "target",
+  targetCommand({
     path: ["gsutil", "iam", "get"],
     summary: "Get the IAM policy of a bucket (alias of gcloud storage buckets get-iam-policy).",
     positionals: [UrlPositional],
-    flags: [],
-    destructive: false,
-    requiredPermissions: ["storage.buckets.getIamPolicy"],
+    permission: "storage.buckets.getIamPolicy",
     resolveTarget: bucketTarget,
     run: (ctx) =>
       Result.map(
@@ -434,5 +440,470 @@ export const GsutilCommands: readonly CommandSpec[] = [
         ),
         (policy) => ({ world: ctx.world, output: CommandOutput.yaml(IamPolicy.toRecord(policy)) }),
       ),
-  },
+  }),
+];
+
+/** `--lifecycle-file` / `gsutil lifecycle set FILE` のサンプル。無い名前は本物と同じ no such file。 */
+const lifecycleFile = (path: string) => {
+  const sample = SampleFile.find(path);
+  return Option.isSome(sample) && sample.value.kind === "lifecycle"
+    ? Result.ok(sample.value.rules)
+    : Result.err(
+        CommandFailure.notFoundWith(
+          `[Errno 2] No such file or directory: '${path}'\ngcloud-sim: 使えるサンプルは lifecycle.json / lifecycle-nearline.json です（中身は docs/COMMANDS.md）。`,
+        ),
+      );
+};
+
+const replaceBucket = (ctx: ProjectContext, bucket: Bucket, message: string): CommandResult =>
+  Result.ok({
+    world: World.replaceBucket(ctx.world, bucket),
+    output: CommandOutput.messages(OutputMessage.plain(message)),
+  });
+
+const updateBucket = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+  const url = bucketUrlArg(args);
+  if (!Result.isOk(url)) return url;
+  const bucket = requireBucket(ctx, url.value.bucket);
+  if (!Result.isOk(bucket)) return bucket;
+  const versioning = ParsedArgs.booleanChoice(args, "versioning");
+  const withVersioning = Option.isSome(versioning)
+    ? Bucket.withVersioning(bucket.value, versioning.value)
+    : bucket.value;
+  const lifecyclePath = ParsedArgs.string(args, "lifecycle-file");
+  const rules = Option.isSome(lifecyclePath)
+    ? lifecycleFile(lifecyclePath.value)
+    : Result.ok(withVersioning.lifecycleRules);
+  if (!Result.isOk(rules)) return rules;
+  const withLifecycle = Bucket.withLifecycleRules(withVersioning, rules.value);
+  const rawClass = ParsedArgs.string(args, "default-storage-class");
+  const storageClass = Option.isSome(rawClass)
+    ? Option.toResult(StorageClass.parse(rawClass.value), () =>
+        CommandFailure.invalidValue(
+          "--default-storage-class",
+          `Invalid storage class: ${rawClass.value}`,
+        ),
+      )
+    : Result.ok(withLifecycle.storageClass);
+  if (!Result.isOk(storageClass)) return storageClass;
+  const next = Bucket.withAccessSettings(
+    Bucket.withStorageClass(withLifecycle, storageClass.value),
+    {
+      uniformBucketLevelAccess: ParsedArgs.booleanChoice(args, "uniform-bucket-level-access"),
+      publicAccessPrevention: ParsedArgs.booleanChoice(args, "public-access-prevention"),
+    },
+  );
+  return replaceBucket(ctx, next, `Updating gs://${next.name}/...`);
+};
+
+const updateObject = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+  const url = bucketUrlArg(args);
+  if (!Result.isOk(url)) return url;
+  const bucket = requireBucket(ctx, url.value.bucket);
+  if (!Result.isOk(bucket)) return bucket;
+  const object = bucket.value.objects.find((o) => o.name === url.value.object);
+  if (object === undefined) {
+    return Result.err(
+      CommandFailure.notFoundWith(
+        `The following URLs matched no objects or files:\n-gs://${bucket.value.name}/${url.value.object}`,
+      ),
+    );
+  }
+  const rawClass = ParsedArgs.string(args, "storage-class");
+  const storageClass = Option.isSome(rawClass)
+    ? Result.map(
+        Option.toResult(StorageClass.parse(rawClass.value), () =>
+          CommandFailure.invalidValue(
+            "--storage-class",
+            `Invalid storage class: ${rawClass.value}`,
+          ),
+        ),
+        (c) => Option.some(c),
+      )
+    : Result.ok(object.storageClass);
+  if (!Result.isOk(storageClass)) return storageClass;
+  const contentType = Option.unwrapOr(ParsedArgs.string(args, "content-type"), object.contentType);
+  return replaceBucket(
+    ctx,
+    Bucket.withObject(bucket.value, {
+      ...object,
+      storageClass: storageClass.value,
+      contentType,
+      updated: ctx.now,
+    }),
+    `Updating gs://${bucket.value.name}/${object.name}...`,
+  );
+};
+
+/**
+ * `rsync SRC DST`。gs:// 同士はオブジェクトを写す。ローカル側にはファイルが無いので、
+ * ローカル → gs:// は 0 件、gs:// → ローカルは名前だけ出す。
+ */
+const rsync = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+  const source = ParsedArgs.requiredPositional(args, 0);
+  const destination = ParsedArgs.requiredPositional(args, 1);
+  if (!GsUrl.isGsUrl(source) && !GsUrl.isGsUrl(destination)) {
+    return Result.err(
+      CommandFailure.invalidValue(
+        "DESTINATION",
+        "At least one of SOURCE or DESTINATION must be a gs:// URL. gcloud-sim has no local file system.",
+      ),
+    );
+  }
+  const header = [
+    OutputMessage.plain(`Building synchronization state...`),
+    OutputMessage.plain("Starting synchronization..."),
+  ];
+  if (!GsUrl.isGsUrl(source)) {
+    const destinationUrl = Result.mapErr(GsUrl.parse(destination), (m) =>
+      CommandFailure.invalidValue("DESTINATION", m),
+    );
+    const target = Result.flatMap(destinationUrl, (u) => requireBucket(ctx, u.bucket));
+    if (!Result.isOk(target)) return target;
+    return Result.ok({
+      world: ctx.world,
+      output: CommandOutput.messages(
+        ...header,
+        OutputMessage.hint(
+          "gcloud-sim: ローカルにファイルは無いので、同期したオブジェクトは 0 件です。",
+        ),
+      ),
+    });
+  }
+  const sourceUrl = Result.mapErr(GsUrl.parse(source), (m) =>
+    CommandFailure.invalidValue("SOURCE", m),
+  );
+  if (!Result.isOk(sourceUrl)) return sourceUrl;
+  const sourceBucket = requireBucket(ctx, sourceUrl.value.bucket);
+  if (!Result.isOk(sourceBucket)) return sourceBucket;
+  const prefix = sourceUrl.value.object;
+  const objects = sourceBucket.value.objects.filter((o) => o.name.startsWith(prefix));
+  if (!GsUrl.isGsUrl(destination)) {
+    return Result.ok({
+      world: ctx.world,
+      output: CommandOutput.messages(
+        ...header,
+        ...objects.map((o) =>
+          OutputMessage.plain(
+            `Copying gs://${sourceBucket.value.name}/${o.name} to file://${destination}/${o.name.slice(prefix.length)}`,
+          ),
+        ),
+      ),
+    });
+  }
+  const destinationUrl = Result.mapErr(GsUrl.parse(destination), (m) =>
+    CommandFailure.invalidValue("DESTINATION", m),
+  );
+  if (!Result.isOk(destinationUrl)) return destinationUrl;
+  const destinationBucket = requireBucket(ctx, destinationUrl.value.bucket);
+  if (!Result.isOk(destinationBucket)) return destinationBucket;
+  const targetPrefix = destinationUrl.value.object;
+  const copied = objects.map(
+    (o): StorageObject => ({
+      ...o,
+      name: `${targetPrefix}${o.name.slice(prefix.length)}`,
+      updated: ctx.now,
+    }),
+  );
+  const next = copied.reduce((b, o) => Bucket.withObject(b, o), destinationBucket.value);
+  return Result.ok({
+    world: World.replaceBucket(ctx.world, next),
+    output: CommandOutput.messages(
+      ...header,
+      ...copied.map((o, i) =>
+        OutputMessage.plain(
+          `Copying gs://${sourceBucket.value.name}/${objects[i]?.name ?? ""} to gs://${next.name}/${o.name}`,
+        ),
+      ),
+      OutputMessage.plain(`  Completed files ${copied.length}/${copied.length}`),
+    ),
+  });
+};
+
+const signUrl = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+  const url = bucketUrlArg(args);
+  if (!Result.isOk(url)) return url;
+  const bucket = requireBucket(ctx, url.value.bucket);
+  if (!Result.isOk(bucket)) return bucket;
+  if (!bucket.value.objects.some((o) => o.name === url.value.object)) {
+    return Result.err(
+      CommandFailure.notFoundWith(
+        `The following URLs matched no objects or files:\n-gs://${bucket.value.name}/${url.value.object}`,
+      ),
+    );
+  }
+  const duration = Option.unwrapOr(ParsedArgs.string(args, "duration"), "1h");
+  const seconds = /^(\d+)([smhd])$/.exec(duration);
+  if (seconds === null) {
+    return Result.err(
+      CommandFailure.invalidValue(
+        "--duration",
+        `Invalid value: ${duration}. Expected e.g. 10m, 1h, 7d.`,
+      ),
+    );
+  }
+  const unit: Readonly<Record<string, number>> = { s: 1, m: 60, h: 3600, d: 86400 };
+  const expires = Number(seconds[1]) * (unit[seconds[2] ?? "s"] ?? 1);
+  const signer = Option.unwrapOr(
+    ParsedArgs.string(args, "impersonate-service-account"),
+    ctx.principal,
+  );
+  const signature = [...`${bucket.value.name}/${url.value.object}/${signer}`]
+    .reduce((acc, ch) => (acc * 31 + ch.charCodeAt(0)) >>> 0, 17)
+    .toString(16)
+    .padStart(16, "0");
+  return Result.ok({
+    world: ctx.world,
+    output: CommandOutput.yaml({
+      expiration: new Date(Date.parse(ctx.now) + expires * 1000).toISOString(),
+      http_verb: "GET",
+      resource: `gs://${bucket.value.name}/${url.value.object}`,
+      signed_url: `https://storage.googleapis.com/${bucket.value.name}/${url.value.object}?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=${encodeURIComponent(signer)}&X-Goog-Expires=${expires}&X-Goog-Signature=${signature}`,
+    }),
+  });
+};
+
+/** `gsutil iam ch MEMBER:ROLE gs://B`。ロールの短縮形（`objectViewer`）は `roles/storage.` を補う。 */
+const gsutilIamChange = (ctx: TargetContext, args: ParsedArgs): CommandResult => {
+  const spec = ParsedArgs.requiredPositional(args, 0);
+  const lastColon = spec.lastIndexOf(":");
+  const member = lastColon === -1 ? spec : spec.slice(0, lastColon);
+  const rawRole = lastColon === -1 ? "" : spec.slice(lastColon + 1);
+  const role = rawRole.startsWith("roles/") ? rawRole : `roles/storage.${rawRole}`;
+  const binding = parseBinding(ctx.world, {
+    positionals: [],
+    flags: { member: { kind: "string", value: member }, role: { kind: "string", value: role } },
+  });
+  if (!Result.isOk(binding)) return binding;
+  const policy = Option.toResult(World.findPolicy(ctx.world, ctx.target), () =>
+    CommandFailure.notFoundWith(`gs://${ctx.target.id} bucket does not exist.`),
+  );
+  if (!Result.isOk(policy)) return policy;
+  const remove = ParsedArgs.boolean(args, "d");
+  const next = remove
+    ? IamPolicy.removeBinding(policy.value, binding.value.role, binding.value.member)
+    : Option.some(IamPolicy.addBinding(policy.value, binding.value.role, binding.value.member));
+  if (!Option.isSome(next)) {
+    return Result.err(
+      CommandFailure.notFoundWith(
+        "Policy binding with the specified principal, role, and condition not found!",
+      ),
+    );
+  }
+  const world = Result.mapErr(World.withPolicy(ctx.world, ctx.target, next.value), () =>
+    CommandFailure.notFoundWith(`gs://${ctx.target.id} bucket does not exist.`),
+  );
+  return Result.map(world, (w) => ({
+    world: w,
+    output: CommandOutput.messages(
+      OutputMessage.plain(`Updated IAM policy for gs://${ctx.target.id}.`),
+    ),
+  }));
+};
+
+const gsutilVersioning = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+  const state = ParsedArgs.requiredPositional(args, 0);
+  if (state !== "on" && state !== "off") {
+    return Result.err(CommandFailure.invalidChoice("STATE", state, ["on", "off"]));
+  }
+  const url = Result.mapErr(GsUrl.parse(ParsedArgs.requiredPositional(args, 1)), (m) =>
+    CommandFailure.invalidValue("URL", m),
+  );
+  if (!Result.isOk(url)) return url;
+  const bucket = requireBucket(ctx, url.value.bucket);
+  if (!Result.isOk(bucket)) return bucket;
+  return replaceBucket(
+    ctx,
+    Bucket.withVersioning(bucket.value, state === "on"),
+    `${state === "on" ? "Enabling" : "Suspending"} versioning for gs://${bucket.value.name}/...`,
+  );
+};
+
+const gsutilLifecycle = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+  const rules = lifecycleFile(ParsedArgs.requiredPositional(args, 0));
+  if (!Result.isOk(rules)) return rules;
+  const url = Result.mapErr(GsUrl.parse(ParsedArgs.requiredPositional(args, 1)), (m) =>
+    CommandFailure.invalidValue("URL", m),
+  );
+  if (!Result.isOk(url)) return url;
+  const bucket = requireBucket(ctx, url.value.bucket);
+  if (!Result.isOk(bucket)) return bucket;
+  return replaceBucket(
+    ctx,
+    Bucket.withLifecycleRules(bucket.value, rules.value),
+    `Setting lifecycle configuration on gs://${bucket.value.name}/...`,
+  );
+};
+
+/** `gsutil acl ch -u USER:R gs://B`。`R` は R / W / O（READER / WRITER / OWNER）。 */
+const gsutilAcl = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+  const grant = Option.or(ParsedArgs.string(args, "u"), ParsedArgs.string(args, "g"));
+  if (!Option.isSome(grant)) return Result.err(CommandFailure.mustBeSpecified("-u or -g"));
+  const colon = grant.value.lastIndexOf(":");
+  const entity = colon === -1 ? grant.value : grant.value.slice(0, colon);
+  const roleLetter = colon === -1 ? "" : grant.value.slice(colon + 1).toUpperCase();
+  const roles: Readonly<Record<string, AclEntry["role"]>> = {
+    R: "READER",
+    READ: "READER",
+    W: "WRITER",
+    WRITE: "WRITER",
+    O: "OWNER",
+    FC: "OWNER",
+  };
+  const role = roles[roleLetter];
+  if (role === undefined) {
+    return Result.err(
+      CommandFailure.invalidValue(
+        "-u",
+        `Invalid permission "${roleLetter}". Use R, W or O (e.g. -u user@example.com:R).`,
+      ),
+    );
+  }
+  const url = Result.mapErr(GsUrl.parse(ParsedArgs.requiredPositional(args, 0)), (m) =>
+    CommandFailure.invalidValue("URL", m),
+  );
+  if (!Result.isOk(url)) return url;
+  const bucket = requireBucket(ctx, url.value.bucket);
+  if (!Result.isOk(bucket)) return bucket;
+  const next = Result.mapErr(
+    Bucket.withAcl(bucket.value, { entity, role }),
+    CommandFailure.unsupportedOperation,
+  );
+  return Result.flatMap(next, (b) =>
+    replaceBucket(ctx, b, `Updated ACL on gs://${b.name}/${url.value.object}`),
+  );
+};
+
+export const StorageExtraCommands: readonly CommandSpec[] = [
+  projectCommand({
+    path: ["gcloud", "storage", "buckets", "update"],
+    summary:
+      "Update Cloud Storage buckets (versioning, lifecycle, storage class, access settings).",
+    positionals: [UrlPositional],
+    flags: [
+      Flag.boolean("versioning", "Enable object versioning (--no-versioning to disable)."),
+      Flag.string("lifecycle-file", "Path to a lifecycle configuration file (sample files only)."),
+      Flag.string("default-storage-class", "Default storage class for the bucket."),
+      Flag.boolean(
+        "uniform-bucket-level-access",
+        "Turn uniform bucket-level access on (--no-... to turn off).",
+      ),
+      Flag.boolean(
+        "public-access-prevention",
+        "Enforce public access prevention (--no-... to inherit).",
+      ),
+    ],
+    permission: "storage.buckets.update",
+    run: updateBucket,
+  }),
+  projectCommand({
+    path: ["gcloud", "storage", "objects", "update"],
+    summary: "Update Cloud Storage objects (storage class, content type).",
+    positionals: [Positional.required("URL", "The gs:// URL of the object.")],
+    flags: [
+      Flag.string("storage-class", "Storage class to set on the object."),
+      Flag.string("content-type", "Content type to set on the object."),
+    ],
+    permission: "storage.objects.update",
+    run: updateObject,
+  }),
+  projectCommand({
+    path: ["gcloud", "storage", "rsync"],
+    summary:
+      "Synchronize content of two buckets/directories (objects are copied between gs:// URLs).",
+    positionals: [
+      Positional.required("SOURCE", "The source path or gs:// URL."),
+      Positional.required("DESTINATION", "The destination path or gs:// URL."),
+    ],
+    flags: [
+      Flag.boolean("recursive", "Recursively synchronize.", { aliases: ["-r"] }),
+      Flag.boolean(
+        "delete-unmatched-destination-objects",
+        "Delete extra objects at the destination (accepted, not simulated).",
+      ),
+    ],
+    permission: "storage.objects.create",
+    run: rsync,
+  }),
+  projectCommand({
+    path: ["gcloud", "storage", "sign-url"],
+    summary: "Generate a URL with embedded authentication for an object.",
+    positionals: [Positional.required("URL", "The gs:// URL of the object.")],
+    flags: [
+      Flag.string(
+        "duration",
+        "The duration the signed URL is valid for, e.g. 10m, 1h (default 1h).",
+      ),
+      Flag.string("private-key-file", "The service account key file (accepted, not read)."),
+      Flag.string("impersonate-service-account", "The service account to sign as."),
+    ],
+    permission: "storage.objects.get",
+    run: signUrl,
+  }),
+];
+
+export const GsutilExtraCommands: readonly CommandSpec[] = [
+  targetCommand({
+    path: ["gsutil", "iam", "ch"],
+    summary: "Change a bucket's IAM policy, e.g. gsutil iam ch allUsers:objectViewer gs://BUCKET.",
+    positionals: [
+      Positional.required(
+        "MEMBER:ROLE",
+        "e.g. user:alice@example.com:objectViewer or allUsers:objectViewer.",
+      ),
+      UrlPositional,
+    ],
+    flags: [Flag.boolean("d", "Remove the binding instead of adding it.", { aliases: ["-d"] })],
+    permission: "storage.buckets.setIamPolicy",
+    resolveTarget: (ctx, args) =>
+      bucketTarget(ctx, { ...args, positionals: args.positionals.slice(1) }),
+    run: gsutilIamChange,
+  }),
+  projectCommand({
+    path: ["gsutil", "rsync"],
+    summary: "Synchronize content of two buckets/directories (alias of gcloud storage rsync).",
+    positionals: [
+      Positional.required("SOURCE", "The source path or gs:// URL."),
+      Positional.required("DESTINATION", "The destination path or gs:// URL."),
+    ],
+    flags: [
+      Flag.boolean("recursive", "Recursive sync.", { aliases: ["-r"] }),
+      Flag.boolean("d", "Delete extra objects at the destination (accepted, not simulated).", {
+        aliases: ["-d"],
+      }),
+      Flag.boolean("m", "Parallel (ignored).", { aliases: ["-m"] }),
+    ],
+    permission: "storage.objects.create",
+    run: rsync,
+  }),
+  projectCommand({
+    path: ["gsutil", "lifecycle", "set"],
+    summary: "Set lifecycle configuration for a bucket from a file (sample files only).",
+    positionals: [
+      Positional.required("CONFIG_FILE", "Lifecycle configuration JSON, e.g. lifecycle.json."),
+      UrlPositional,
+    ],
+    permission: "storage.buckets.update",
+    run: gsutilLifecycle,
+  }),
+  projectCommand({
+    path: ["gsutil", "versioning", "set"],
+    summary: "Enable or disable versioning for a bucket.",
+    positionals: [Positional.required("STATE", "on or off."), UrlPositional],
+    permission: "storage.buckets.update",
+    run: gsutilVersioning,
+  }),
+  projectCommand({
+    path: ["gsutil", "acl", "ch"],
+    summary: "Change bucket or object ACLs (rejected on buckets with uniform bucket-level access).",
+    positionals: [Positional.required("URL", "The gs:// URL of the bucket or object.")],
+    flags: [
+      Flag.string("u", "Grant a user permission, e.g. -u alice@example.com:R.", {
+        aliases: ["-u"],
+      }),
+      Flag.string("g", "Grant a group permission, e.g. -g ops@example.com:R.", { aliases: ["-g"] }),
+    ],
+    permission: "storage.buckets.update",
+    run: gsutilAcl,
+  }),
 ];

@@ -1,5 +1,6 @@
 import { CommandFailure } from "@/engine/cli/command-failure";
 import {
+  type AuthorizedContext,
   type CommandContext,
   CommandOutput,
   type CommandResult,
@@ -11,8 +12,10 @@ import {
   type PositionalSpec,
   type ProjectContext,
   type TargetContext,
+  type TargetResolver,
 } from "@/engine/cli/command-spec";
 import type { ApiName, Zone } from "@/engine/domains/catalog";
+import { Instance } from "@/engine/domains/compute";
 import { IamMember, IamPolicy, RoleName } from "@/engine/domains/iam-policy";
 import { Operation, type OperationType } from "@/engine/domains/operation";
 import type { Principal } from "@/engine/domains/principal";
@@ -84,7 +87,37 @@ export const recordOperation = (
   return { world: World.withOperation(numbered.world, operation), operation };
 };
 
-const parseBinding = (
+/**
+ * インスタンスを対象にしたオペレーションの材料。compute の各コマンドが同じ形で組む。
+ *
+ * @param instance 対象
+ * @param operationType 種類
+ * @param ctx 実行者と時刻を持つ文脈
+ * @returns `recordOperation` に渡す材料
+ */
+export const instanceOperation = (
+  instance: Instance,
+  operationType: OperationType,
+  ctx: AuthorizedContext,
+): OperationRecordSeed => ({
+  projectId: instance.projectId,
+  operationType,
+  targetLink: Instance.selfLink(instance),
+  targetName: instance.name,
+  zone: Option.some(instance.zone),
+  user: ctx.principal,
+  now: ctx.now,
+});
+
+/**
+ * `--member` / `--role` を検証する。ロールはカタログか World のカスタムロールにあるものだけ。
+ *
+ * @param world カスタムロールを引く World
+ * @param args 引数
+ * @returns メンバーとロール。形式不正・未知のロールは E-009
+ */
+export const parseBinding = (
+  world: World,
   args: ParsedArgs,
 ): Result<Readonly<{ member: IamMember; role: RoleName }>, CommandFailure> => {
   const rawMember = Option.unwrapOr(ParsedArgs.string(args, "member"), "");
@@ -94,7 +127,8 @@ const parseBinding = (
   const role = RoleName.parse(rawRole);
   const isKnown =
     Option.isSome(role) &&
-    (RoleName.isCustom(role.value) || Option.isSome(RoleCatalog.find(role.value)));
+    (Option.isSome(RoleCatalog.find(role.value)) ||
+      Option.isSome(World.findCustomRole(world, role.value)));
   if (!Option.isSome(role) || !isKnown) {
     return Result.err(
       CommandFailure.invalidIamArgument(
@@ -111,7 +145,7 @@ type BindingCommandSeed = Readonly<{
   positional: PositionalSpec;
   /** `project [ace-dev-01]` のような、メッセージに出す綴り */
   label: (target: PolicyTarget) => string;
-  resolveTarget: (ctx: CommandContext, args: ParsedArgs) => Result<PolicyTarget, CommandFailure>;
+  resolveTarget: TargetResolver;
   permissions: Readonly<{ get: string; set: string }>;
 }>;
 
@@ -123,7 +157,7 @@ const requirePolicy = (ctx: TargetContext): Result<IamPolicy, CommandFailure> =>
 const bindingRun =
   (seed: BindingCommandSeed, direction: "add" | "remove") =>
   (ctx: TargetContext, args: ParsedArgs): CommandResult => {
-    const binding = parseBinding(args);
+    const binding = parseBinding(ctx.world, args);
     if (!Result.isOk(binding)) return binding;
     const current = requirePolicy(ctx);
     if (!Result.isOk(current)) return current;
@@ -159,43 +193,36 @@ const bindingRun =
  * @returns 3 つのコマンド定義
  */
 export const iamBindingCommands = (seed: BindingCommandSeed): readonly CommandSpec[] => [
-  {
-    kind: "target",
+  targetCommand({
     path: [...seed.group, "get-iam-policy"],
     summary: "Get the IAM policy for a resource.",
     positionals: [seed.positional],
-    flags: [],
-    destructive: false,
-    requiredPermissions: [seed.permissions.get],
+    permission: seed.permissions.get,
     resolveTarget: seed.resolveTarget,
     run: (ctx) =>
       Result.map(requirePolicy(ctx), (policy) => ({
         world: ctx.world,
         output: CommandOutput.yaml(IamPolicy.toRecord(policy)),
       })),
-  },
-  {
-    kind: "target",
+  }),
+  targetCommand({
     path: [...seed.group, "add-iam-policy-binding"],
     summary: "Add an IAM policy binding to a resource.",
     positionals: [seed.positional],
     flags: [CommonFlags.member, CommonFlags.role],
-    destructive: false,
-    requiredPermissions: [seed.permissions.set],
+    permission: seed.permissions.set,
     resolveTarget: seed.resolveTarget,
     run: bindingRun(seed, "add"),
-  },
-  {
-    kind: "target",
+  }),
+  targetCommand({
     path: [...seed.group, "remove-iam-policy-binding"],
     summary: "Remove an IAM policy binding from a resource.",
     positionals: [seed.positional],
     flags: [CommonFlags.member, CommonFlags.role],
-    destructive: false,
-    requiredPermissions: [seed.permissions.set],
+    permission: seed.permissions.set,
     resolveTarget: seed.resolveTarget,
     run: bindingRun(seed, "remove"),
-  },
+  }),
 ];
 
 /** 未対応コマンドの定義（DJ-005）。 */
@@ -205,32 +232,87 @@ export const notImplemented = (path: readonly string[], summary: string): Comman
   summary,
 });
 
-/** `kind: "project"` の定義の材料。省いた項目は「引数なし・フラグなし・API 検証なし・確認なし」。 */
-export type ProjectCommandSeed = Readonly<{
+/** 3 種の定義に共通の材料。省いた項目は「引数なし・フラグなし・確認なし」。 */
+type SeedBase = Readonly<{
   path: readonly string[];
   summary: string;
   positionals?: readonly PositionalSpec[];
   flags?: readonly FlagSpec[];
-  permission: string;
-  requiredApis?: readonly ApiName[];
   destructive?: boolean;
-  run: (ctx: ProjectContext, args: ParsedArgs) => CommandResult;
 }>;
 
+/** 要求する権限。ほとんどのコマンドは 1 つなので `permission`、複数なら `permissions`。 */
+type Permissioned =
+  | Readonly<{ permission: string; permissions?: never }>
+  | Readonly<{ permissions: readonly string[]; permission?: never }>;
+
+const permissionsOf = (seed: Permissioned): readonly string[] =>
+  seed.permissions === undefined ? [seed.permission] : seed.permissions;
+
+/** `kind: "project"` の定義の材料。API 検証は省ける。 */
+export type ProjectCommandSeed = SeedBase &
+  Permissioned &
+  Readonly<{
+    requiredApis?: readonly ApiName[];
+    run: (ctx: ProjectContext, args: ParsedArgs) => CommandResult;
+  }>;
+
+/** `kind: "target"` の定義の材料。 */
+export type TargetCommandSeed = SeedBase &
+  Permissioned &
+  Readonly<{
+    resolveTarget: TargetResolver;
+    run: (ctx: TargetContext, args: ParsedArgs) => CommandResult;
+  }>;
+
+/** `kind: "plain"` の定義の材料。 */
+export type PlainCommandSeed = SeedBase &
+  Readonly<{ run: (ctx: CommandContext, args: ParsedArgs) => CommandResult }>;
+
+const base = (seed: SeedBase) => ({
+  path: seed.path,
+  summary: seed.summary,
+  positionals: seed.positionals ?? [],
+  flags: seed.flags ?? [],
+  destructive: seed.destructive ?? false,
+});
+
 /**
- * `kind: "project"` の定義を材料から組む。同じ形の定義を並べるモジュール（storage / compute の list 等）が使う。
+ * `kind: "project"` の定義を材料から組む。
  *
  * @param seed 材料
  * @returns コマンド定義
  */
 export const projectCommand = (seed: ProjectCommandSeed): CommandSpec => ({
   kind: "project",
-  path: seed.path,
-  summary: seed.summary,
-  positionals: seed.positionals ?? [],
-  flags: seed.flags ?? [],
-  destructive: seed.destructive ?? false,
-  requiredPermissions: [seed.permission],
+  ...base(seed),
+  requiredPermissions: permissionsOf(seed),
   requiredApis: seed.requiredApis ?? [],
+  run: seed.run,
+});
+
+/**
+ * `kind: "target"` の定義を材料から組む。
+ *
+ * @param seed 材料
+ * @returns コマンド定義
+ */
+export const targetCommand = (seed: TargetCommandSeed): CommandSpec => ({
+  kind: "target",
+  ...base(seed),
+  requiredPermissions: permissionsOf(seed),
+  resolveTarget: seed.resolveTarget,
+  run: seed.run,
+});
+
+/**
+ * `kind: "plain"` の定義を材料から組む。
+ *
+ * @param seed 材料
+ * @returns コマンド定義
+ */
+export const plainCommand = (seed: PlainCommandSeed): CommandSpec => ({
+  kind: "plain",
+  ...base(seed),
   run: seed.run,
 });

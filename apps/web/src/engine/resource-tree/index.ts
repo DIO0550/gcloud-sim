@@ -106,6 +106,8 @@ export const Selection = {
             return Option.some(`gcloud projects get-iam-policy ${t.id}`);
           case "bucket":
             return Option.some(`gcloud storage buckets get-iam-policy gs://${t.id}`);
+          case "service-account":
+            return Option.some(`gcloud iam service-accounts get-iam-policy ${t.id}`);
         }
       }
     }
@@ -287,7 +289,8 @@ export type BindingOrigin =
   | Readonly<{ kind: "organization"; displayName: string }>
   | Readonly<{ kind: "folder"; displayName: string }>
   | Readonly<{ kind: "project"; projectId: string }>
-  | Readonly<{ kind: "bucket"; name: string }>;
+  | Readonly<{ kind: "bucket"; name: string }>
+  | Readonly<{ kind: "service-account"; email: string }>;
 
 /** 継承元を明示したバインディングの 1 行（UC-007: どこから継承されたか）。 */
 export type BindingRow = Readonly<{
@@ -312,6 +315,8 @@ const originOf = (world: World, target: PolicyTarget, grantedAt: PolicyTarget): 
       return { kind: "project", projectId: grantedAt.id };
     case "bucket":
       return { kind: "bucket", name: grantedAt.id };
+    case "service-account":
+      return { kind: "service-account", email: grantedAt.id };
   }
 };
 

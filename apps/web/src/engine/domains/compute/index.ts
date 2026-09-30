@@ -233,6 +233,10 @@ export type Transitioned =
   | Readonly<{ kind: "changed"; instance: Instance }>
   | Readonly<{ kind: "unchanged"; instance: Instance }>;
 
+/** ディスクの縮小を拒む理由（本物と同じ文）。 */
+const shrinkReason = (current: number, requested: number): string =>
+  `Invalid value for field 'sizeGb': '${requested}'. Disk size cannot be decreased (current size: ${current} GB).`;
+
 const selfLink = (instance: Instance): string =>
   `${projectBase(instance.projectId)}/zones/${instance.zone}/instances/${instance.name}`;
 
@@ -305,6 +309,89 @@ export const Instance = {
     return Result.ok({
       kind: "changed",
       instance: { ...instance, status: rule.to, networkInterfaces },
+    });
+  },
+
+  /**
+   * ネットワークタグを足す（`add-tags`）。既にあるタグは重ねない。
+   *
+   * @param instance 元
+   * @param tags 足すタグ
+   * @returns タグを合わせたインスタンス
+   */
+  withTags(instance: Instance, tags: readonly string[]): Instance {
+    return { ...instance, tags: [...new Set([...instance.tags, ...tags])] };
+  },
+
+  /**
+   * メタデータを足す・上書きする（`add-metadata`）。
+   *
+   * @param instance 元
+   * @param entries 足すキーと値
+   * @returns 合わせたインスタンス
+   */
+  withMetadata(instance: Instance, entries: Readonly<Record<string, string>>): Instance {
+    return { ...instance, metadata: { ...instance.metadata, ...entries } };
+  },
+
+  /**
+   * マシンタイプを替える（`set-machine-type`）。停止中（`TERMINATED`）のときだけ替えられる。
+   *
+   * @param instance 元
+   * @param machineType 新しいマシンタイプ
+   * @returns 替えたインスタンス。停止中でなければ今の状態を理由に `err`
+   */
+  withMachineType(
+    instance: Instance,
+    machineType: MachineTypeName,
+  ): Result<Instance, InstanceStatus> {
+    return instance.status === InstanceStatuses.Terminated
+      ? Result.ok({ ...instance, machineType })
+      : Result.err(instance.status);
+  },
+
+  /**
+   * 永続ディスクを非ブートで繋ぐ（`attach-disk`）。
+   *
+   * @param instance 元
+   * @param disk 繋ぐディスク。ゾーンが同じであることは呼び出し側が `Disk` の検索で保証している
+   * @param deviceName ゲストに見せる名前。無ければディスク名
+   * @returns 繋いだインスタンス。同じデバイス名が既にあれば理由
+   */
+  withAttachedDisk(
+    instance: Instance,
+    disk: Disk,
+    deviceName: Option<string>,
+  ): Result<Instance, string> {
+    const name = Option.unwrapOr(deviceName, disk.name);
+    if (instance.disks.some((d) => d.deviceName === name)) {
+      return Result.err(`Disk '${name}' is already attached to instance '${instance.name}'.`);
+    }
+    const attached: AttachedDisk = {
+      deviceName: name,
+      boot: false,
+      sizeGb: disk.sizeGb,
+      type: disk.type,
+      sourceImage: Option.unwrapOr(disk.sourceImage, ""),
+    };
+    return Result.ok({ ...instance, disks: [...instance.disks, attached] });
+  },
+
+  /**
+   * 繋いでいるディスクの大きさを替える（ブートディスクの `disks resize`）。
+   *
+   * @param instance 元
+   * @param deviceName 対象のデバイス名
+   * @param sizeGb 新しい大きさ。縮小は `Disk.resize` と同じく拒む
+   * @returns 替えたインスタンス。そのデバイスが無いか縮小なら理由
+   */
+  withDiskSize(instance: Instance, deviceName: string, sizeGb: number): Result<Instance, string> {
+    const disk = instance.disks.find((d) => d.deviceName === deviceName);
+    if (disk === undefined) return Result.err(`Disk '${deviceName}' is not attached.`);
+    if (sizeGb <= disk.sizeGb) return Result.err(shrinkReason(disk.sizeGb, sizeGb));
+    return Result.ok({
+      ...instance,
+      disks: instance.disks.map((d) => (d.deviceName === deviceName ? { ...d, sizeGb } : d)),
     });
   },
 
@@ -569,7 +656,28 @@ export const ProtocolRule = {
   toText(rule: ProtocolRule): string {
     return rule.ports.length === 0 ? rule.protocol : `${rule.protocol}:${rule.ports.join(",")}`;
   },
+
+  /**
+   * そのプロトコルとポートを含むか。ポート無しはプロトコル全体、`all` はすべて。
+   *
+   * @param rule ルール
+   * @param protocol `tcp` など
+   * @param port ポート番号
+   * @returns 含めば真
+   */
+  covers(rule: ProtocolRule, protocol: string, port: number): boolean {
+    if (rule.protocol !== "all" && rule.protocol !== protocol) return false;
+    if (rule.ports.length === 0) return true;
+    return rule.ports.some((range) => {
+      const [from, to] = range.split("-").map(Number);
+      return from !== undefined && port >= from && port <= (to ?? from);
+    });
+  },
 } as const;
+
+/** RFC1918 の私設範囲か。インターネットからの接続には効かない送信元。 */
+const isPrivateRange = (range: string): boolean =>
+  /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(range);
 
 /** `FirewallRule.create` に渡す材料。省いた値（既定値）は `Option` / 空で受ける。 */
 export type FirewallRuleSeed = Readonly<{
@@ -628,6 +736,37 @@ export const FirewallRule = {
     const tagMatches =
       rule.targetTags.length === 0 || rule.targetTags.some((tag) => instance.tags.includes(tag));
     return sameNetwork && tagMatches;
+  },
+
+  /**
+   * そのインスタンスへの受信を許すか（`compute ssh` の tcp:22 の判定）。無効なルールと EGRESS は見ない。
+   * インターネットからの接続は、送信元の範囲に公開の範囲（`0.0.0.0/0` 等）を含むルールだけが許す
+   * （`default-allow-internal` の `10.128.0.0/9` は内部からの接続にしか効かない）。
+   *
+   * @param rule ルール
+   * @param connection 宛先・プロトコル・ポート・どこから来るか
+   * @returns INGRESS の ALLOW で、対象と送信元に当てはまり、プロトコルとポートを含めば真
+   */
+  allowsIngress(
+    rule: FirewallRule,
+    connection: Readonly<{
+      instance: Instance;
+      protocol: string;
+      port: number;
+      origin: "internet" | "internal";
+    }>,
+  ): boolean {
+    const applicable =
+      !rule.disabled &&
+      rule.direction === Directions.Ingress &&
+      FirewallRule.appliesTo(rule, connection.instance);
+    const reachable =
+      connection.origin === "internal" || rule.sourceRanges.some((range) => !isPrivateRange(range));
+    return (
+      applicable &&
+      reachable &&
+      rule.allowed.some((r) => ProtocolRule.covers(r, connection.protocol, connection.port))
+    );
   },
 
   selfLink(rule: FirewallRule): string {
@@ -691,6 +830,125 @@ export const DiskSnapshot = {
       diskSizeGb: String(snapshot.diskSizeGb),
       status: "READY",
       creationTimestamp: snapshot.creationTimestamp,
+    };
+  },
+} as const;
+
+/** インスタンスから独立した永続ディスク（`gcloud compute disks`）。ブートディスクは `Instance.disks` が持つ。 */
+export type Disk = Readonly<{
+  projectId: string;
+  name: string;
+  zone: Zone;
+  sizeGb: number;
+  type: BootDiskType;
+  /** `--image` で作ったなら元のイメージ。空のディスクは `none` */
+  sourceImage: Option<string>;
+  /** 繋いでいるインスタンスの名前 */
+  users: readonly string[];
+  creationTimestamp: string;
+  id: string;
+}>;
+
+export type DiskSeed = Readonly<{
+  projectId: string;
+  name: string;
+  zone: Zone;
+  sizeGb: number;
+  type: BootDiskType;
+  image: Option<PublicImage>;
+  creationTimestamp: string;
+  sequence: number;
+}>;
+
+export const Disk = {
+  /**
+   * 空か、イメージから初期化した永続ディスクを作る。名前の形式はここで検証する。
+   *
+   * @param seed 材料
+   * @returns 作ったディスク。名前の形式が悪ければ理由
+   */
+  create(seed: DiskSeed): Result<Disk, string> {
+    return Result.map(ResourceName.parse(seed.name), (name) => ({
+      projectId: seed.projectId,
+      name,
+      zone: seed.zone,
+      sizeGb: seed.sizeGb,
+      type: seed.type,
+      sourceImage: Option.map(
+        seed.image,
+        (image) => `projects/${image.project}/global/images/${image.name}`,
+      ),
+      users: [],
+      creationTimestamp: seed.creationTimestamp,
+      id: String(6120000000000000000n + BigInt(seed.sequence)),
+    }));
+  },
+
+  /**
+   * 大きさを替える。大きくする方向だけ（本物と同じ）。
+   *
+   * @param disk 元
+   * @param sizeGb 新しい大きさ
+   * @returns 替えたディスク。今より小さいか同じなら理由
+   */
+  resize(disk: Disk, sizeGb: number): Result<Disk, string> {
+    return sizeGb > disk.sizeGb
+      ? Result.ok({ ...disk, sizeGb })
+      : Result.err(shrinkReason(disk.sizeGb, sizeGb));
+  },
+
+  withUser(disk: Disk, instanceName: string): Disk {
+    return disk.users.includes(instanceName)
+      ? disk
+      : { ...disk, users: [...disk.users, instanceName] };
+  },
+
+  selfLink(disk: Disk): string {
+    return `${projectBase(disk.projectId)}/zones/${disk.zone}/disks/${disk.name}`;
+  },
+
+  toRecord(disk: Disk): JsonRecord {
+    const base = projectBase(disk.projectId);
+    return {
+      id: disk.id,
+      name: disk.name,
+      zone: `${base}/zones/${disk.zone}`,
+      locationScope: "zone",
+      sizeGb: String(disk.sizeGb),
+      type: disk.type,
+      status: "READY",
+      sourceImage: Option.unwrapOr(disk.sourceImage, undefined),
+      users: disk.users.map((u) => `${base}/zones/${disk.zone}/instances/${u}`),
+      creationTimestamp: disk.creationTimestamp,
+      selfLink: Disk.selfLink(disk),
+    };
+  },
+} as const;
+
+/** プロジェクト全体のメタデータ（`project-info add-metadata`）。 */
+export type ProjectMetadata = Readonly<{
+  projectId: string;
+  items: Readonly<Record<string, string>>;
+}>;
+
+export const ProjectMetadata = {
+  empty(projectId: string): ProjectMetadata {
+    return { projectId, items: {} };
+  },
+
+  withItems(metadata: ProjectMetadata, entries: Readonly<Record<string, string>>): ProjectMetadata {
+    return { ...metadata, items: { ...metadata.items, ...entries } };
+  },
+
+  toRecord(metadata: ProjectMetadata): JsonRecord {
+    return {
+      name: metadata.projectId,
+      commonInstanceMetadata: {
+        kind: "compute#metadata",
+        items: Object.entries(metadata.items).map(([key, value]) => ({ key, value })),
+      },
+      defaultServiceAccount: "",
+      selfLink: projectBase(metadata.projectId),
     };
   },
 } as const;

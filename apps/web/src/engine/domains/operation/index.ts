@@ -11,6 +11,11 @@ export const OperationTypes = {
   Suspend: "suspend",
   Resume: "resume",
   CreateSnapshot: "createSnapshot",
+  SetTags: "setTags",
+  SetMetadata: "setMetadata",
+  SetMachineType: "setMachineType",
+  AttachDisk: "attachDisk",
+  Resize: "resize",
 } as const;
 export type OperationType = ValueOf<typeof OperationTypes>;
 

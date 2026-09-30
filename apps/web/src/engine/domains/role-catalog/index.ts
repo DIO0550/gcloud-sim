@@ -1,5 +1,7 @@
 import type { RoleName } from "@/engine/domains/iam-policy";
+import type { JsonRecord } from "@/types/Json";
 import { Option } from "@/utils/Option";
+import { Result } from "@/utils/Result";
 
 /** 事前定義ロール。含む権限は本物の部分集合（DJ-006, TBD-006）。 */
 export type Role = Readonly<{
@@ -34,6 +36,31 @@ const ComputeInstancePermissions = [
   "compute.subnetworks.useExternalIp",
   "compute.globalOperations.list",
   "compute.zoneOperations.list",
+  "compute.instances.osLogin",
+  "compute.instances.attachDisk",
+  "compute.instances.setMachineType",
+  "compute.disks.get",
+  "compute.disks.update",
+  "compute.disks.use",
+  "compute.instanceTemplates.create",
+  "compute.instanceTemplates.list",
+  "compute.instanceGroupManagers.create",
+  "compute.instanceGroupManagers.list",
+  "compute.instanceGroupManagers.update",
+  "compute.autoscalers.create",
+  "compute.projects.get",
+  "compute.projects.setCommonInstanceMetadata",
+] as const;
+
+const ComputeLoadBalancerPermissions = [
+  "compute.healthChecks.create",
+  "compute.healthChecks.list",
+  "compute.backendServices.create",
+  "compute.backendServices.list",
+  "compute.forwardingRules.create",
+  "compute.forwardingRules.list",
+  "compute.addresses.create",
+  "compute.addresses.list",
 ] as const;
 
 const ComputeNetworkPermissions = [
@@ -53,6 +80,11 @@ const ComputeNetworkPermissions = [
   "compute.firewalls.list",
   "compute.firewalls.update",
   "compute.regions.list",
+  "compute.routers.create",
+  "compute.routers.list",
+  "compute.networks.addPeering",
+  "compute.networks.updatePeering",
+  ...ComputeLoadBalancerPermissions,
 ] as const;
 
 const ComputeViewPermissions = [
@@ -128,6 +160,13 @@ const ServiceAccountPermissions = [
   "iam.serviceAccounts.get",
   "iam.serviceAccounts.list",
   "iam.serviceAccounts.update",
+  "iam.serviceAccounts.getIamPolicy",
+  "iam.serviceAccounts.setIamPolicy",
+] as const;
+
+const ServiceAccountKeyPermissions = [
+  "iam.serviceAccountKeys.create",
+  "iam.serviceAccountKeys.list",
 ] as const;
 
 const ServiceUsagePermissions = [
@@ -143,6 +182,8 @@ const BillingPermissions = [
   "billing.resourceAssociations.create",
   "billing.resourceAssociations.delete",
   "billing.resourceAssociations.list",
+  "billing.budgets.create",
+  "billing.budgets.list",
 ] as const;
 
 const ContainerPermissions = [
@@ -152,6 +193,32 @@ const ContainerPermissions = [
   "container.clusters.list",
   "container.clusters.getCredentials",
   "container.clusters.update",
+  "container.deployments.create",
+  "container.deployments.delete",
+  "container.deployments.get",
+  "container.deployments.list",
+  "container.deployments.update",
+  "container.services.create",
+  "container.services.get",
+  "container.services.list",
+  "container.pods.get",
+  "container.pods.list",
+] as const;
+
+const ContainerDeveloperPermissions = [
+  "container.clusters.get",
+  "container.clusters.list",
+  "container.clusters.getCredentials",
+  "container.deployments.create",
+  "container.deployments.delete",
+  "container.deployments.get",
+  "container.deployments.list",
+  "container.deployments.update",
+  "container.services.create",
+  "container.services.get",
+  "container.services.list",
+  "container.pods.get",
+  "container.pods.list",
 ] as const;
 
 const RunPermissions = [
@@ -161,6 +228,60 @@ const RunPermissions = [
   "run.services.list",
   "run.services.update",
   "run.services.setIamPolicy",
+] as const;
+
+const FunctionsPermissions = [
+  "cloudfunctions.functions.create",
+  "cloudfunctions.functions.update",
+  "cloudfunctions.functions.delete",
+  "cloudfunctions.functions.get",
+  "cloudfunctions.functions.list",
+  "cloudfunctions.functions.call",
+] as const;
+
+const AppEnginePermissions = [
+  "appengine.applications.create",
+  "appengine.applications.get",
+  "appengine.versions.create",
+  "appengine.versions.list",
+  "appengine.services.update",
+] as const;
+
+const CloudSqlPermissions = [
+  "cloudsql.instances.create",
+  "cloudsql.instances.delete",
+  "cloudsql.instances.get",
+  "cloudsql.instances.list",
+  "cloudsql.backupRuns.create",
+] as const;
+
+const PubsubPermissions = [
+  "pubsub.topics.create",
+  "pubsub.topics.list",
+  "pubsub.topics.get",
+  "pubsub.subscriptions.create",
+] as const;
+
+const LoggingPermissions = [
+  "logging.logEntries.list",
+  "logging.logs.list",
+  "logging.sinks.create",
+  "logging.sinks.list",
+] as const;
+
+const MonitoringPermissions = [
+  "monitoring.timeSeries.list",
+  "monitoring.dashboards.list",
+  "monitoring.alertPolicies.list",
+] as const;
+
+const KmsPermissions = ["cloudkms.keyRings.create", "cloudkms.keyRings.list"] as const;
+
+const DnsPermissions = ["dns.managedZones.create", "dns.managedZones.list"] as const;
+
+const DeploymentManagerPermissions = [
+  "deploymentmanager.deployments.create",
+  "deploymentmanager.deployments.list",
 ] as const;
 
 const ViewerPermissions = [
@@ -186,7 +307,37 @@ const ViewerPermissions = [
   "run.services.get",
   "run.services.list",
   "logging.logEntries.list",
+  "logging.logs.list",
+  "logging.sinks.list",
   "monitoring.timeSeries.list",
+  "monitoring.dashboards.list",
+  "monitoring.alertPolicies.list",
+  "cloudfunctions.functions.get",
+  "cloudfunctions.functions.list",
+  "appengine.applications.get",
+  "appengine.versions.list",
+  "cloudsql.instances.get",
+  "cloudsql.instances.list",
+  "pubsub.topics.list",
+  "pubsub.topics.get",
+  "cloudkms.keyRings.list",
+  "dns.managedZones.list",
+  "deploymentmanager.deployments.list",
+  "compute.instanceTemplates.list",
+  "compute.instanceGroupManagers.list",
+  "compute.addresses.list",
+  "compute.routers.list",
+  "compute.healthChecks.list",
+  "compute.backendServices.list",
+  "compute.forwardingRules.list",
+  "compute.projects.get",
+  "compute.disks.get",
+  "container.deployments.get",
+  "container.deployments.list",
+  "container.services.get",
+  "container.services.list",
+  "container.pods.get",
+  "container.pods.list",
 ] as const;
 
 const EditorPermissions = [
@@ -195,9 +346,19 @@ const EditorPermissions = [
   ...ComputeNetworkPermissions,
   ...StorageAdminPermissions,
   ...ServiceAccountPermissions,
+  ...ServiceAccountKeyPermissions,
   ...ServiceUsagePermissions,
   ...ContainerPermissions,
   ...RunPermissions,
+  ...FunctionsPermissions,
+  ...AppEnginePermissions,
+  ...CloudSqlPermissions,
+  ...PubsubPermissions,
+  ...LoggingPermissions,
+  ...MonitoringPermissions,
+  ...KmsPermissions,
+  ...DnsPermissions,
+  ...DeploymentManagerPermissions,
   "resourcemanager.projects.update",
 ] as const;
 
@@ -209,6 +370,7 @@ const OwnerPermissions = [
   ...BillingPermissions,
   "iam.roles.create",
   "iam.roles.delete",
+  "iam.roles.update",
   "storage.buckets.setIamPolicy",
 ] as const;
 
@@ -318,6 +480,11 @@ const Roles: readonly Role[] = [
   role("roles/storage.objectViewer", "Storage Object Viewer", StorageObjectViewPermissions),
   role("roles/storage.objectUser", "Storage Object User", StorageObjectAdminPermissions),
   role("roles/iam.serviceAccountAdmin", "Service Account Admin", ServiceAccountPermissions),
+  role("roles/iam.serviceAccountKeyAdmin", "Service Account Key Admin", [
+    ...ServiceAccountKeyPermissions,
+    "iam.serviceAccounts.get",
+    "iam.serviceAccounts.list",
+  ]),
   role("roles/iam.serviceAccountUser", "Service Account User", [
     "iam.serviceAccounts.actAs",
     "iam.serviceAccounts.get",
@@ -343,11 +510,7 @@ const Roles: readonly Role[] = [
     "iam.roles.update",
   ]),
   role("roles/container.admin", "Kubernetes Engine Admin", ContainerPermissions),
-  role("roles/container.developer", "Kubernetes Engine Developer", [
-    "container.clusters.get",
-    "container.clusters.list",
-    "container.clusters.getCredentials",
-  ]),
+  role("roles/container.developer", "Kubernetes Engine Developer", ContainerDeveloperPermissions),
   role("roles/container.viewer", "Kubernetes Engine Viewer", [
     "container.clusters.get",
     "container.clusters.list",
@@ -361,10 +524,160 @@ const Roles: readonly Role[] = [
     "run.services.update",
   ]),
   role("roles/run.invoker", "Cloud Run Invoker", ["run.routes.invoke"]),
-  role("roles/logging.viewer", "Logs Viewer", ["logging.logEntries.list"]),
-  role("roles/logging.admin", "Logging Admin", ["logging.logEntries.list", "logging.sinks.create"]),
-  role("roles/monitoring.viewer", "Monitoring Viewer", ["monitoring.timeSeries.list"]),
+  role("roles/logging.viewer", "Logs Viewer", ["logging.logEntries.list", "logging.logs.list"]),
+  role("roles/logging.admin", "Logging Admin", LoggingPermissions),
+  role("roles/logging.configWriter", "Logs Configuration Writer", [
+    "logging.sinks.create",
+    "logging.sinks.list",
+  ]),
+  role("roles/monitoring.viewer", "Monitoring Viewer", MonitoringPermissions),
+  role("roles/cloudfunctions.developer", "Cloud Functions Developer", FunctionsPermissions),
+  role("roles/cloudfunctions.invoker", "Cloud Functions Invoker", [
+    "cloudfunctions.functions.call",
+  ]),
+  role("roles/cloudfunctions.viewer", "Cloud Functions Viewer", [
+    "cloudfunctions.functions.get",
+    "cloudfunctions.functions.list",
+  ]),
+  role("roles/appengine.appAdmin", "App Engine Admin", AppEnginePermissions),
+  role("roles/appengine.deployer", "App Engine Deployer", [
+    "appengine.applications.get",
+    "appengine.versions.create",
+    "appengine.versions.list",
+  ]),
+  role("roles/cloudsql.admin", "Cloud SQL Admin", CloudSqlPermissions),
+  role("roles/cloudsql.editor", "Cloud SQL Editor", [
+    "cloudsql.instances.get",
+    "cloudsql.instances.list",
+    "cloudsql.backupRuns.create",
+  ]),
+  role("roles/cloudsql.viewer", "Cloud SQL Viewer", [
+    "cloudsql.instances.get",
+    "cloudsql.instances.list",
+  ]),
+  role("roles/pubsub.admin", "Pub/Sub Admin", PubsubPermissions),
+  role("roles/pubsub.editor", "Pub/Sub Editor", PubsubPermissions),
+  role("roles/pubsub.viewer", "Pub/Sub Viewer", ["pubsub.topics.list", "pubsub.topics.get"]),
+  role("roles/cloudkms.admin", "Cloud KMS Admin", KmsPermissions),
+  role("roles/dns.admin", "DNS Administrator", DnsPermissions),
+  role("roles/deploymentmanager.editor", "Deployment Manager Editor", DeploymentManagerPermissions),
+  role("roles/billing.costsManager", "Billing Account Costs Manager", [
+    "billing.accounts.get",
+    "billing.accounts.list",
+    "billing.budgets.create",
+    "billing.budgets.list",
+  ]),
+  role("roles/compute.loadBalancerAdmin", "Compute Load Balancer Admin", [
+    ...ComputeLoadBalancerPermissions,
+    "compute.instanceGroupManagers.list",
+  ]),
 ];
+
+/**
+ * プロジェクトのカスタムロール（`gcloud iam roles create --project`）。World に保存し、
+ * `EffectivePermissions` はカタログとこれの両方から権限を展開する。
+ */
+export type CustomRole = Readonly<{
+  projectId: string;
+  /** `projects/P/roles/ID` の ID 部分 */
+  roleId: string;
+  title: string;
+  description: string;
+  includedPermissions: readonly string[];
+  stage: "GA" | "BETA" | "ALPHA" | "DISABLED";
+  etag: string;
+}>;
+
+export const CustomRole = {
+  /**
+   * カスタムロールを作る。ID は `[a-zA-Z0-9_.]{3,64}`、権限はカタログに載っているものだけ
+   * （収録外は判定できず許可に倒れるので、載っていない綴りは本物と同じく INVALID_ARGUMENT にする）。
+   *
+   * @param seed 材料
+   * @returns 作ったロール。ID の形式か権限の綴りが悪ければ理由
+   */
+  create(
+    seed: Readonly<{
+      projectId: string;
+      roleId: string;
+      title: Option<string>;
+      description: Option<string>;
+      includedPermissions: readonly string[];
+      stage: Option<CustomRole["stage"]>;
+    }>,
+  ): Result<CustomRole, string> {
+    if (!/^[A-Za-z0-9_.]{3,64}$/.test(seed.roleId)) {
+      return Result.err(
+        `INVALID_ARGUMENT: The role id ${seed.roleId} is invalid. Role IDs must be 3-64 characters of [a-zA-Z0-9_.].`,
+      );
+    }
+    const unknown = seed.includedPermissions.find((p) => !KnownPermissions.has(p));
+    if (unknown !== undefined) {
+      return Result.err(
+        `INVALID_ARGUMENT: Permission ${unknown} is not valid for this resource (gcloud-sim knows only the permissions in its role catalog).`,
+      );
+    }
+    return Result.ok({
+      projectId: seed.projectId,
+      roleId: seed.roleId,
+      title: Option.unwrapOr(seed.title, seed.roleId),
+      description: Option.unwrapOr(seed.description, "Created on gcloud-sim"),
+      includedPermissions: unique(seed.includedPermissions),
+      stage: Option.unwrapOr(seed.stage, "GA"),
+      etag: "BwYCustom0=",
+    });
+  },
+
+  /** `projects/P/roles/ID` の綴り。バインディングの `role` に入る。 */
+  name(role: CustomRole): RoleName {
+    return `projects/${role.projectId}/roles/${role.roleId}`;
+  },
+
+  /**
+   * 名前からプロジェクトと ID を取り出す。
+   *
+   * @param name `projects/P/roles/ID`
+   * @returns プロジェクトと ID。事前定義ロールの綴りなら `none`
+   */
+  parseName(name: RoleName): Option<Readonly<{ projectId: string; roleId: string }>> {
+    const match = /^projects\/([^/]+)\/roles\/([^/]+)$/.exec(name);
+    return match === null
+      ? Option.none
+      : Option.some({ projectId: match[1] ?? "", roleId: match[2] ?? "" });
+  },
+
+  /**
+   * 事前定義ロールを写して作る（`roles copy`）。権限はそのまま、タイトルに元の名前を付ける。
+   *
+   * @param source 元のロール
+   * @param destination 写し先のプロジェクトと ID
+   * @returns 作ったロール。ID の形式が悪ければ理由
+   */
+  fromRole(
+    source: Role,
+    destination: Readonly<{ projectId: string; roleId: string }>,
+  ): Result<CustomRole, string> {
+    return CustomRole.create({
+      projectId: destination.projectId,
+      roleId: destination.roleId,
+      title: Option.some(source.title),
+      description: Option.some(`Copied from ${source.name}`),
+      includedPermissions: source.includedPermissions,
+      stage: Option.none,
+    });
+  },
+
+  toRecord(role: CustomRole): JsonRecord {
+    return {
+      name: CustomRole.name(role),
+      title: role.title,
+      description: role.description,
+      includedPermissions: [...role.includedPermissions],
+      stage: role.stage,
+      etag: role.etag,
+    };
+  },
+} as const;
 
 const KnownPermissions: ReadonlySet<string> = new Set(Roles.flatMap((r) => r.includedPermissions));
 

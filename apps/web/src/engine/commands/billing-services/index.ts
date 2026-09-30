@@ -3,6 +3,7 @@ import {
   Column,
   type CommandContext,
   CommandOutput,
+  type CommandResult,
   type CommandSpec,
   Flag,
   OutputMessage,
@@ -10,6 +11,8 @@ import {
   Positional,
   type TargetContext,
 } from "@/engine/cli/command-spec";
+import { plainCommand, projectCommand, targetCommand } from "@/engine/commands/shared";
+import { Budget } from "@/engine/domains/billing-budget";
 import { ApiService } from "@/engine/domains/catalog";
 import { BillingAccount, type PolicyTarget, Project } from "@/engine/domains/resource-hierarchy";
 import { World } from "@/engine/domains/world";
@@ -36,7 +39,7 @@ const projectArgTarget = (
   ctx: CommandContext,
   args: ParsedArgs,
 ): Result<PolicyTarget, CommandFailure> => {
-  const id = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
+  const id = ParsedArgs.requiredPositional(args, 0);
   return Option.isSome(World.findActiveProject(ctx.world, id))
     ? Result.ok({ type: "project", id })
     : Result.err(CommandFailure.notFound(`projects/${id}`));
@@ -49,13 +52,9 @@ const targetProject = (ctx: TargetContext): Result<Project, CommandFailure> =>
   );
 
 export const BillingCommands: readonly CommandSpec[] = [
-  {
-    kind: "plain",
+  plainCommand({
     path: ["gcloud", "billing", "accounts", "list"],
     summary: "List all active billing accounts.",
-    positionals: [],
-    flags: [],
-    destructive: false,
     run: (ctx) =>
       Result.ok({
         world: ctx.world,
@@ -64,16 +63,13 @@ export const BillingCommands: readonly CommandSpec[] = [
           BillingColumns,
         ),
       }),
-  },
-  {
-    kind: "plain",
+  }),
+  plainCommand({
     path: ["gcloud", "billing", "accounts", "describe"],
     summary: "Show metadata for a billing account.",
     positionals: [Positional.required("ACCOUNT_ID", "Specify a billing account ID.")],
-    flags: [],
-    destructive: false,
     run: (ctx, args) => {
-      const id = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
+      const id = ParsedArgs.requiredPositional(args, 0);
       return Result.map(
         Option.toResult(World.findBillingAccount(ctx.world, id), () =>
           CommandFailure.notFound(`billingAccounts/${id}`),
@@ -84,30 +80,25 @@ export const BillingCommands: readonly CommandSpec[] = [
         }),
       );
     },
-  },
-  {
-    kind: "target",
+  }),
+  targetCommand({
     path: ["gcloud", "billing", "projects", "describe"],
     summary: "Show detailed billing information for a project.",
     positionals: [Positional.required("PROJECT_ID", "Specify a project ID.")],
-    flags: [],
-    destructive: false,
-    requiredPermissions: ["billing.resourceAssociations.list"],
+    permission: "billing.resourceAssociations.list",
     resolveTarget: projectArgTarget,
     run: (ctx) =>
       Result.map(targetProject(ctx), (project) => ({
         world: ctx.world,
         output: CommandOutput.yaml(billingInfo(project)),
       })),
-  },
-  {
-    kind: "target",
+  }),
+  targetCommand({
     path: ["gcloud", "billing", "projects", "link"],
     summary: "Link a project with a billing account.",
     positionals: [Positional.required("PROJECT_ID", "Specify a project ID.")],
     flags: [Flag.string("billing-account", "Specify a billing account ID.", { required: true })],
-    destructive: false,
-    requiredPermissions: ["billing.resourceAssociations.create"],
+    permission: "billing.resourceAssociations.create",
     resolveTarget: projectArgTarget,
     run: (ctx, args) => {
       const project = targetProject(ctx);
@@ -129,15 +120,12 @@ export const BillingCommands: readonly CommandSpec[] = [
         output: CommandOutput.yaml(billingInfo(linked)),
       });
     },
-  },
-  {
-    kind: "target",
+  }),
+  targetCommand({
     path: ["gcloud", "billing", "projects", "unlink"],
     summary: "Unlink a project from its billing account.",
     positionals: [Positional.required("PROJECT_ID", "Specify a project ID.")],
-    flags: [],
-    destructive: false,
-    requiredPermissions: ["billing.resourceAssociations.delete"],
+    permission: "billing.resourceAssociations.delete",
     resolveTarget: projectArgTarget,
     run: (ctx) =>
       Result.map(targetProject(ctx), (project) => {
@@ -147,7 +135,7 @@ export const BillingCommands: readonly CommandSpec[] = [
           output: CommandOutput.yaml(billingInfo(unlinked)),
         };
       }),
-  },
+  }),
 ];
 
 const serviceRecord = (project: Project, service: ApiService) => ({
@@ -175,9 +163,118 @@ const parseServices = (args: ParsedArgs): Result<readonly ApiService[], CommandF
     ),
   );
 
+const BudgetColumns = [
+  Column.create("NAME", "name", "basename"),
+  Column.create("DISPLAY_NAME", "displayName"),
+  Column.create("AMOUNT", "amount.specifiedAmount.units"),
+  Column.create("CURRENCY", "amount.specifiedAmount.currencyCode"),
+];
+
+/** `--billing-account` の請求アカウント。無ければ E-005。 */
+const billingAccountFlag = (ctx: CommandContext, args: ParsedArgs) => {
+  const id = Option.unwrapOr(ParsedArgs.string(args, "billing-account"), "");
+  return Option.toResult(World.findBillingAccount(ctx.world, id), () =>
+    CommandFailure.notFound(`billingAccounts/${id}`),
+  );
+};
+
+const billingAccountTarget = (
+  ctx: CommandContext,
+  args: ParsedArgs,
+): Result<PolicyTarget, CommandFailure> =>
+  Result.map(billingAccountFlag(ctx, args), () => ({
+    type: "organization",
+    id: ctx.world.organization.id,
+  }));
+
+const createBudget = (ctx: TargetContext, args: ParsedArgs): CommandResult => {
+  const account = billingAccountFlag(ctx, args);
+  if (!Result.isOk(account)) return account;
+  const rawAmount = Option.unwrapOr(ParsedArgs.string(args, "budget-amount"), "");
+  const amountMatch = /^(\d+(?:\.\d+)?)([A-Za-z]{3})?$/.exec(rawAmount);
+  const amount = amountMatch === null ? Number.NaN : Number(amountMatch[1]);
+  if (!Number.isFinite(amount)) {
+    return Result.err(
+      CommandFailure.invalidValue(
+        "--budget-amount",
+        `Invalid value: ${rawAmount}. Expected a number such as 100000JPY.`,
+      ),
+    );
+  }
+  const thresholds = ParsedArgs.list(args, "threshold-rule").map((rule) =>
+    Number(rule.replace(/^percent=/, "")),
+  );
+  if (thresholds.some((t) => !Number.isFinite(t))) {
+    return Result.err(
+      CommandFailure.invalidValue("--threshold-rule", "Expected percent=0.5 (repeatable)."),
+    );
+  }
+  const projectIds = ParsedArgs.list(args, "filter-projects").map((p) =>
+    p.replace(/^projects\//, ""),
+  );
+  const unknownProject = projectIds.find((p) => !World.hasProjectId(ctx.world, p));
+  if (unknownProject !== undefined)
+    return Result.err(CommandFailure.notFound(`projects/${unknownProject}`));
+  const numbered = World.nextNumber(ctx.world);
+  const budget = Result.mapErr(
+    Budget.create({
+      billingAccountId: account.value.id,
+      displayName: Option.unwrapOr(ParsedArgs.string(args, "display-name"), ""),
+      amount,
+      thresholds,
+      projectIds,
+      createTime: ctx.now,
+      sequence: numbered.number,
+    }),
+    (m) => CommandFailure.invalidValue("--display-name", m),
+  );
+  return Result.map(budget, (b) => ({
+    world: World.withBudget(numbered.world, b),
+    output: CommandOutput.yaml(Budget.toRecord(b), [
+      OutputMessage.plain(`Created budget [${b.name}].`),
+    ]),
+  }));
+};
+
+export const BudgetCommands: readonly CommandSpec[] = [
+  targetCommand({
+    path: ["gcloud", "billing", "budgets", "create"],
+    summary: "Create a budget for a billing account.",
+    flags: [
+      Flag.string("billing-account", "The billing account ID the budget belongs to.", {
+        required: true,
+      }),
+      Flag.string("display-name", "The display name of the budget.", { required: true }),
+      Flag.string("budget-amount", "The amount of the budget, e.g. 100000JPY.", { required: true }),
+      Flag.list(
+        "threshold-rule",
+        "Rules that trigger alerts, e.g. percent=0.5 (repeatable; default 0.5,0.9,1.0).",
+      ),
+      Flag.list("filter-projects", "Project IDs the budget applies to (default: all projects)."),
+    ],
+    permission: "billing.budgets.create",
+    resolveTarget: billingAccountTarget,
+    run: createBudget,
+  }),
+  targetCommand({
+    path: ["gcloud", "billing", "budgets", "list"],
+    summary: "List budgets for a billing account.",
+    flags: [Flag.string("billing-account", "The billing account ID.", { required: true })],
+    permission: "billing.budgets.list",
+    resolveTarget: billingAccountTarget,
+    run: (ctx, args) =>
+      Result.map(billingAccountFlag(ctx, args), (account) => ({
+        world: ctx.world,
+        output: CommandOutput.table(
+          World.budgetsOf(ctx.world, account.id).map(Budget.toRecord),
+          BudgetColumns,
+        ),
+      })),
+  }),
+];
+
 export const ServiceCommands: readonly CommandSpec[] = [
-  {
-    kind: "project",
+  projectCommand({
     path: ["gcloud", "services", "enable"],
     summary: "Enable a service for consumption for a project.",
     positionals: [
@@ -192,9 +289,7 @@ export const ServiceCommands: readonly CommandSpec[] = [
         "Return immediately, without waiting for the operation in progress to complete.",
       ),
     ],
-    destructive: false,
-    requiredPermissions: ["serviceusage.services.enable"],
-    requiredApis: [],
+    permission: "serviceusage.services.enable",
     run: (ctx, args) => {
       const services = parseServices(args);
       if (!Result.isOk(services)) return services;
@@ -217,9 +312,8 @@ export const ServiceCommands: readonly CommandSpec[] = [
         ),
       });
     },
-  },
-  {
-    kind: "project",
+  }),
+  projectCommand({
     path: ["gcloud", "services", "disable"],
     summary: "Disable a service for the current project.",
     positionals: [Positional.variadic("SERVICE", "The names of the services to disable.")],
@@ -229,9 +323,7 @@ export const ServiceCommands: readonly CommandSpec[] = [
         "If specified, the disable call will proceed even if there are enabled services which depend on the service to be disabled.",
       ),
     ],
-    destructive: false,
-    requiredPermissions: ["serviceusage.services.disable"],
-    requiredApis: [],
+    permission: "serviceusage.services.disable",
     run: (ctx, args) => {
       const services = parseServices(args);
       if (!Result.isOk(services)) return services;
@@ -248,19 +340,15 @@ export const ServiceCommands: readonly CommandSpec[] = [
         ),
       });
     },
-  },
-  {
-    kind: "project",
+  }),
+  projectCommand({
     path: ["gcloud", "services", "list"],
     summary: "List services for a project.",
-    positionals: [],
     flags: [
       Flag.boolean("enabled", "(DEFAULT) Return the services which the project has enabled."),
       Flag.boolean("available", "Return the services available to the project to enable."),
     ],
-    destructive: false,
-    requiredPermissions: ["serviceusage.services.list"],
-    requiredApis: [],
+    permission: "serviceusage.services.list",
     run: (ctx, args) => {
       const available = ParsedArgs.boolean(args, "available");
       const services = ApiService.all().filter(
@@ -274,5 +362,5 @@ export const ServiceCommands: readonly CommandSpec[] = [
         ),
       });
     },
-  },
+  }),
 ];

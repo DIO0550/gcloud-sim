@@ -14,7 +14,8 @@ export type ParentRef =
 export type PolicyTarget =
   | ParentRef
   | Readonly<{ type: "project"; id: string }>
-  | Readonly<{ type: "bucket"; id: string }>;
+  | Readonly<{ type: "bucket"; id: string }>
+  | Readonly<{ type: "service-account"; id: string }>;
 
 export const PolicyTarget = {
   /**
@@ -33,6 +34,8 @@ export const PolicyTarget = {
         return `projects/${target.id}`;
       case "bucket":
         return `buckets/${target.id}`;
+      case "service-account":
+        return `serviceAccounts/${target.id}`;
     }
   },
 

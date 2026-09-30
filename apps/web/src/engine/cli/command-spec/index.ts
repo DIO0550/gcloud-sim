@@ -131,6 +131,19 @@ export const ParsedArgs = {
     return Option.fromNullable(args.positionals[index]);
   },
 
+  /**
+   * `Positional.required` で宣言した位置引数。ArgParser が存在を検証した後の値なので `string` で返す。
+   * 宣言していない index を渡すのはプログラミングエラーで、そのときは空文字（ドメインの `parse` が
+   * 形式不正として弾く）。
+   *
+   * @param args 検証済みの引数
+   * @param index 位置引数の番号
+   * @returns その位置の値
+   */
+  requiredPositional(args: ParsedArgs, index: number): string {
+    return args.positionals[index] ?? "";
+  },
+
   has(args: ParsedArgs, name: string): boolean {
     return name in args.flags;
   },
@@ -216,6 +229,8 @@ export type CommandContext = Readonly<{
   world: World;
   now: string;
   projectId: Option<string>;
+  /** `--project` で明示されたか（`core/project` からの解決と区別したいコマンドが読む） */
+  projectFlag: Option<string>;
 }>;
 
 /** 権限の検証を通った文脈。`principal` は `--account` か `core/account`。 */
@@ -227,8 +242,17 @@ export type ProjectContext = AuthorizedContext & Readonly<{ project: Project }>;
 /** ポリシー対象の解決と権限の検証を通った文脈。`kind: "target"` の `run` だけが受け取る。 */
 export type TargetContext = AuthorizedContext & Readonly<{ target: PolicyTarget }>;
 
-/** `--region` の既定を読むプロパティ。Compute と Cloud Run で別のセクションを見る。 */
-export type RegionProperty = Extract<ConfigProperty, "compute/region" | "run/region">;
+/** `--region` の既定を読むプロパティ。Compute / Cloud Run / Functions で別のセクションを見る。 */
+export type RegionProperty = Extract<
+  ConfigProperty,
+  "compute/region" | "run/region" | "functions/region"
+>;
+
+/** `kind: "target"` のコマンドが引数からポリシー対象を決める関数。 */
+export type TargetResolver = (
+  ctx: CommandContext,
+  args: ParsedArgs,
+) => Result<PolicyTarget, CommandFailure>;
 
 type SpecBase = Readonly<{
   path: readonly string[];
@@ -258,10 +282,7 @@ export type CommandSpec =
       Readonly<{
         kind: "target";
         requiredPermissions: readonly string[];
-        resolveTarget: (
-          ctx: CommandContext,
-          args: ParsedArgs,
-        ) => Result<PolicyTarget, CommandFailure>;
+        resolveTarget: TargetResolver;
         run: (ctx: TargetContext, args: ParsedArgs) => CommandResult;
       }>)
   | (SpecBase &
@@ -314,7 +335,7 @@ export const CommandContext = {
    *
    * @param ctx 文脈
    * @param flag `--region` の値
-   * @param property フラグが無いときに読むプロパティ（`compute/region` か `run/region`）
+   * @param property フラグが無いときに読むプロパティ（`compute/region` / `run/region` / `functions/region`）
    * @returns 決まったリージョン。カタログに無ければ E-005
    */
   resolveRegion(

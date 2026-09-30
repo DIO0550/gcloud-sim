@@ -41,9 +41,13 @@ const Section = ({
   </section>
 );
 
-const roleTitle = (role: RoleName): string =>
+/** ロールの表示名。カタログに無ければ World のカスタムロール、それも無ければ名前そのまま。 */
+const roleTitle = (world: World, role: RoleName): string =>
   Option.unwrapOr(
-    Option.map(RoleCatalog.find(role), (r) => r.title),
+    Option.or(
+      Option.map(RoleCatalog.find(role), (r) => r.title),
+      Option.map(World.findCustomRole(world, role), (r) => r.title),
+    ),
     role,
   );
 
@@ -62,6 +66,8 @@ const originText = (origin: BindingOrigin): string => {
           return "このプロジェクト";
         case "bucket":
           return "このバケット";
+        case "service-account":
+          return "このサービスアカウント";
       }
       break;
     case "organization":
@@ -72,6 +78,8 @@ const originText = (origin: BindingOrigin): string => {
       return `プロジェクト ${origin.projectId}`;
     case "bucket":
       return `バケット ${origin.name}`;
+    case "service-account":
+      return `サービスアカウント ${origin.email}`;
   }
 };
 
@@ -112,7 +120,7 @@ const PolicyTable = ({
             <tr key={`${row.member}/${row.role}/${origin}`} className="border-line border-t">
               <td className="break-all py-1.5 pr-2 font-mono text-xs">{memberLabel(row.member)}</td>
               <td className="py-1.5 pr-2">
-                {roleTitle(row.role)}
+                {roleTitle(world, row.role)}
                 <span className="block font-mono text-muted text-xs">{row.role}</span>
               </td>
               <td

@@ -1,8 +1,10 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
 
-import { Engine } from "@/engine";
-import { run, session } from "@/engine/__tests__/setup";
+import { Engine, Shell } from "@/engine";
+import { Now, run, session } from "@/engine/__tests__/setup";
+import { CommandRegistry } from "@/engine/cli/registry";
+import { notImplemented } from "@/engine/commands/shared";
 
 test("綴りの近いコマンドは Invalid choice と Did you mean を出す", () => {
   const s = run(session(), "gcloud compute instances creat web-1");
@@ -41,9 +43,20 @@ test("--help はヘルプを出して World を変えない", () => {
 });
 
 test("未実装のコマンドは gcloud-sim 接頭辞のメッセージになり ERROR: では始まらない", () => {
-  const s = run(session(), "gcloud functions deploy hello");
-  expect(s.text).toContain("gcloud-sim: command not implemented yet: gcloud functions deploy");
-  expect(s.text).not.toContain("ERROR:");
+  const registry = CommandRegistry.create([
+    ...Engine.registry.specs,
+    notImplemented(["gcloud", "future", "thing"], "A command gcloud-sim does not have yet."),
+  ]);
+  const result = Shell.submit({
+    world: session().world,
+    state: Shell.Ready,
+    line: "gcloud future thing",
+    now: Now,
+    registry,
+  });
+  const text = result.lines.map((l) => l.text).join("\n");
+  expect(text).toContain("gcloud-sim: command not implemented yet: gcloud future thing");
+  expect(text).not.toContain("ERROR:");
 });
 
 test("知らないツール名は command not found になる", () => {

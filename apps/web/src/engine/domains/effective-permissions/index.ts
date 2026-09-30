@@ -37,7 +37,7 @@ export const EffectivePermissions = {
    * @param world 元
    * @param subject 主体（`user:` / `serviceAccount:` 形式）
    * @param target 権限を評価するリソース
-   * @returns 継承元付きのロールと、カタログで展開した権限の集合
+   * @returns 継承元付きのロールと、カタログと World のカスタムロールで展開した権限の集合
    */
   resolve(world: World, subject: IamMember, target: PolicyTarget): EffectivePermissions {
     const grants = World.ancestry(world, target).flatMap((ancestor) => {
@@ -47,8 +47,11 @@ export const EffectivePermissions = {
     });
     const permissions = new Set(
       grants.flatMap((grant) => {
-        const role = RoleCatalog.find(grant.role);
-        return Option.isSome(role) ? role.value.includedPermissions : [];
+        const role = Option.or(
+          Option.map(RoleCatalog.find(grant.role), (r) => r.includedPermissions),
+          Option.map(World.findCustomRole(world, grant.role), (r) => r.includedPermissions),
+        );
+        return Option.unwrapOr(role, []);
       }),
     );
     return { subject, target, grants, permissions };

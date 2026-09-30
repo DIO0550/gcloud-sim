@@ -1,12 +1,15 @@
+import { IamPolicy } from "@/engine/domains/iam-policy";
 import type { JsonRecord } from "@/types/Json";
 import { Result } from "@/utils/Result";
 
+/** サービスアカウント。自身もポリシーを持つ（`service-accounts add-iam-policy-binding` の対象）。 */
 export type ServiceAccount = Readonly<{
   email: string;
   displayName: string;
   description: string;
   projectId: string;
   uniqueId: string;
+  iamPolicy: IamPolicy;
 }>;
 
 export const ServiceAccount = {
@@ -38,7 +41,12 @@ export const ServiceAccount = {
       description: seed.description,
       projectId: seed.projectId,
       uniqueId: seed.uniqueId,
+      iamPolicy: IamPolicy.Empty,
     });
+  },
+
+  withPolicy(account: ServiceAccount, iamPolicy: IamPolicy): ServiceAccount {
+    return { ...account, iamPolicy };
   },
 
   /** `NAME@PROJECT.iam.gserviceaccount.com` の綴り。 */

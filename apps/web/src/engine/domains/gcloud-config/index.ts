@@ -9,6 +9,7 @@ export const ConfigProperties = {
   Zone: "compute/zone",
   Region: "compute/region",
   RunRegion: "run/region",
+  FunctionsRegion: "functions/region",
   ContainerCluster: "container/cluster",
 } as const;
 export type ConfigProperty = ValueOf<typeof ConfigProperties>;
