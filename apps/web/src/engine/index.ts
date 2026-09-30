@@ -1,5 +1,5 @@
 import { CommandRegistry } from "@/engine/cli/registry";
-import { type OutputLine, Shell, type ShellState } from "@/engine/cli/shell";
+import { type ExecutionOutcome, type OutputLine, Shell, type ShellState } from "@/engine/cli/shell";
 import { Tokenizer } from "@/engine/cli/tokenizer";
 import { AllCommands } from "@/engine/commands";
 import type { World } from "@/engine/domains/world";
@@ -26,6 +26,8 @@ export type ExecuteResult = Readonly<{
   clearsScreen: boolean;
   /** 今回の実行でクリアしたミッション（UC-006 ステップ 3 の祝福に使う） */
   completed: readonly Mission[];
+  /** 成否。Console ビューが赤帯や一覧への遷移を決めるのに使う */
+  outcome: ExecutionOutcome;
 }>;
 
 export const Engine = {
@@ -50,6 +52,7 @@ export const Engine = {
       lines: [...submitted.lines, ...celebration],
       clearsScreen: submitted.clearsScreen,
       completed: evaluated.completed,
+      outcome: submitted.outcome,
     };
   },
 
@@ -107,4 +110,4 @@ export const Engine = {
   },
 } as const;
 
-export { type OutputLine, Shell, type ShellState };
+export { type ExecutionOutcome, type OutputLine, Shell, type ShellState };

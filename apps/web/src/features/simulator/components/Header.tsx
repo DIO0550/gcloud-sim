@@ -2,18 +2,32 @@ import type { ReactElement } from "react";
 
 import type { World } from "@/engine/domains/world";
 import { World as WorldOps } from "@/engine/domains/world";
+import { type View, Views } from "@/features/simulator/hooks/use-simulator";
 import { Option } from "@/utils/Option";
 
 type HeaderProps = Readonly<{
   world: World;
+  view: View;
+  onViewChange: (view: View) => void;
   onProjectChange: (projectId: string) => void;
   onPrincipalChange: (principal: string) => void;
   onOpenSettings: () => void;
 }>;
 
+const viewText = (view: View): string => {
+  switch (view) {
+    case "cli":
+      return "CLI";
+    case "console":
+      return "Console";
+  }
+};
+
 /** 画面上部: 名前・非公式の注記・CLI/Console の切り替え・プロジェクト・プリンシパル・設定。 */
 export const Header = ({
   world,
+  view,
+  onViewChange,
   onProjectChange,
   onPrincipalChange,
   onOpenSettings,
@@ -31,20 +45,17 @@ export const Header = ({
       </span>
       <fieldset className="ml-4 flex rounded-lg border border-line bg-canvas p-0.5 text-sm">
         <legend className="sr-only">表示</legend>
-        <span
-          className="rounded-md bg-surface px-3 py-1 font-semibold shadow-sm"
-          aria-current="page"
-        >
-          CLI
-        </span>
-        <button
-          type="button"
-          className="px-3 py-1 text-muted"
-          disabled
-          title="Console ビューは Phase 2 で有効になります"
-        >
-          Console
-        </button>
+        {Object.values(Views).map((v) => (
+          <button
+            key={v}
+            type="button"
+            aria-pressed={view === v}
+            className={`rounded-md px-3 py-1 ${view === v ? "bg-surface font-semibold shadow-sm" : "text-muted"}`}
+            onClick={() => onViewChange(v)}
+          >
+            {viewText(v)}
+          </button>
+        ))}
       </fieldset>
       <div className="ml-auto flex items-center gap-3 text-sm">
         <label className="flex items-center gap-2 rounded-lg border border-line px-3 py-1.5">

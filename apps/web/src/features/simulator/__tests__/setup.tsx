@@ -52,6 +52,7 @@ export type Harness = Readonly<{
   terminal: FakeTerminal;
   saved: World[];
   downloads: string[];
+  copied: string[];
   io: SimulatorIo;
 }>;
 
@@ -65,6 +66,7 @@ export const harness = (options: HarnessOptions = {}): Harness => {
   const terminal = fakeTerminal();
   const saved: World[] = [];
   const downloads: string[] = [];
+  const copied: string[] = [];
   const io: SimulatorIo = {
     now: () => Now,
     save: (world) => {
@@ -78,10 +80,13 @@ export const harness = (options: HarnessOptions = {}): Harness => {
     readFile:
       options.readResult ?? (async () => Result.err({ kind: "malformed", reason: "not used" })),
     confirm: () => options.confirmAnswer ?? true,
+    copy: (text) => {
+      copied.push(text);
+    },
     createTerminalView: async () => terminal.view,
     capacityBytes: 5 * 1024 * 1024,
   };
-  return { terminal, saved, downloads, io };
+  return { terminal, saved, downloads, copied, io };
 };
 
 export const renderSimulator = (

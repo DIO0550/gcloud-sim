@@ -48,12 +48,23 @@ export type ShellInput = Readonly<{
   registry: CommandRegistry;
 }>;
 
+/**
+ * 1 行の実行がどう終わったか。Console ビューはこれを見て「一覧へ戻る」「赤帯を出す」「API を
+ * 有効にするボタンを出す」を決める（出力行の綴りは判定に使わない）。
+ */
+export type ExecutionOutcome =
+  | Readonly<{ kind: "succeeded" }>
+  | Readonly<{ kind: "failed"; failure: CommandFailure }>
+  | Readonly<{ kind: "confirming" }>
+  | Readonly<{ kind: "none" }>;
+
 export type ShellResult = Readonly<{
   world: World;
   state: ShellState;
   lines: readonly OutputLine[];
   /** `clear` が打たれた。UI は画面を消す */
   clearsScreen: boolean;
+  outcome: ExecutionOutcome;
 }>;
 
 const Ready: ShellState = Object.freeze({ kind: "ready" });
@@ -111,12 +122,16 @@ const failureLines = (
   return [...head, ...hints];
 };
 
+const Succeeded: ExecutionOutcome = Object.freeze({ kind: "succeeded" as const });
+const NoOutcome: ExecutionOutcome = Object.freeze({ kind: "none" as const });
+const failed = (failure: CommandFailure): ExecutionOutcome => ({ kind: "failed", failure });
+
 const result = (
   world: World,
   state: ShellState,
   output: readonly OutputLine[],
-  clearsScreen = false,
-): ShellResult => ({ world, state, lines: output, clearsScreen });
+  outcome: ExecutionOutcome = NoOutcome,
+): ShellResult => ({ world, state, lines: output, clearsScreen: false, outcome });
 
 const listOptions = (args: ParsedArgs): Result<ListOptions, CommandFailure> => {
   const format = OutputFormat.parse(ParsedArgs.string(args, "format"));
@@ -225,7 +240,7 @@ const execute = (
   const { world, registry } = input;
   const resolved = CommandRegistry.resolve(registry, tokens);
   if (!Result.isOk(resolved))
-    return result(world, Ready, failureLines(Option.none, resolved.error));
+    return result(world, Ready, failureLines(Option.none, resolved.error), failed(resolved.error));
   const { spec, rest, releaseTrack } = resolved.value;
   const trackWarning = Option.isSome(releaseTrack)
     ? [
@@ -243,29 +258,41 @@ const execute = (
     ]);
   }
   if (spec.kind === "not-implemented") {
-    return result(world, Ready, [
-      ...trackWarning,
-      ...failureLines(Option.some(spec), CommandFailure.notImplemented(spec.path)),
-    ]);
+    const failure = CommandFailure.notImplemented(spec.path);
+    return result(
+      world,
+      Ready,
+      [...trackWarning, ...failureLines(Option.some(spec), failure)],
+      failed(failure),
+    );
   }
 
   const args = ArgParser.parse(rest, [...spec.flags, ...GlobalFlags], spec.positionals);
   if (!Result.isOk(args))
-    return result(world, Ready, [...trackWarning, ...failureLines(Option.some(spec), args.error)]);
+    return result(
+      world,
+      Ready,
+      [...trackWarning, ...failureLines(Option.some(spec), args.error)],
+      failed(args.error),
+    );
 
   const options = listOptions(args.value);
   if (!Result.isOk(options))
-    return result(world, Ready, [
-      ...trackWarning,
-      ...failureLines(Option.some(spec), options.error),
-    ]);
+    return result(
+      world,
+      Ready,
+      [...trackWarning, ...failureLines(Option.some(spec), options.error)],
+      failed(options.error),
+    );
 
   const quiet = forceQuiet || ParsedArgs.boolean(args.value, "quiet");
   if (spec.destructive && !quiet) {
-    return result(world, { kind: "confirming", tokens }, [
-      ...trackWarning,
-      line("Do you want to continue (Y/n)?", "plain"),
-    ]);
+    return result(
+      world,
+      { kind: "confirming", tokens },
+      [...trackWarning, line("Do you want to continue (Y/n)?", "plain")],
+      { kind: "confirming" },
+    );
   }
 
   const projectFlag = ParsedArgs.string(args.value, "project");
@@ -277,14 +304,18 @@ const execute = (
   };
   const outcome = runSpec(spec, ctx, args.value);
   if (!Result.isOk(outcome))
-    return result(world, Ready, [
-      ...trackWarning,
-      ...failureLines(Option.some(spec), outcome.error),
-    ]);
-  return result(outcome.value.world, Ready, [
-    ...trackWarning,
-    ...outputLines(outcome.value.output, options.value),
-  ]);
+    return result(
+      world,
+      Ready,
+      [...trackWarning, ...failureLines(Option.some(spec), outcome.error)],
+      failed(outcome.error),
+    );
+  return result(
+    outcome.value.world,
+    Ready,
+    [...trackWarning, ...outputLines(outcome.value.output, options.value)],
+    Succeeded,
+  );
 };
 
 const answerConfirmation = (input: ShellInput, tokens: readonly string[]): ShellResult => {
@@ -292,7 +323,9 @@ const answerConfirmation = (input: ShellInput, tokens: readonly string[]): Shell
   if (answer === "" || answer === "y" || answer === "yes") return execute(input, tokens, true);
   if (answer === "n" || answer === "no")
     return result(input.world, Ready, [line("ERROR: (gcloud) Aborted by user.", "error")]);
-  return result(input.world, input.state, [line("Please enter 'y' or 'n':  ", "plain")]);
+  return result(input.world, input.state, [line("Please enter 'y' or 'n':  ", "plain")], {
+    kind: "confirming",
+  });
 };
 
 export const Shell = {
@@ -319,7 +352,7 @@ export const Shell = {
     }
     const first = tokens.value[0];
     if (first === undefined) return result(input.world, Ready, []);
-    if (first === "clear") return result(input.world, Ready, [], true);
+    if (first === "clear") return { ...result(input.world, Ready, []), clearsScreen: true };
     const knownTools = new Set(input.registry.specs.map((s) => s.path[0]));
     if (!knownTools.has(first)) {
       return result(input.world, Ready, [line(`bash: ${first}: command not found`, "error")]);

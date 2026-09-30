@@ -14,11 +14,13 @@ import { PropertiesPanel } from "@/features/simulator/components/PropertiesPanel
 import { ResourceTree } from "@/features/simulator/components/ResourceTree";
 import { SettingsDialog } from "@/features/simulator/components/SettingsDialog";
 import { Terminal } from "@/features/simulator/components/Terminal";
+import { type ConsoleActions, ConsoleView } from "@/features/simulator/features/console";
 import {
   type PanelTab,
   PanelTabs,
   type SimulatorStart,
   useSimulator,
+  Views,
 } from "@/features/simulator/hooks/use-simulator";
 import { describeImportFailure } from "@/features/simulator/utils/import-failure-message";
 import type { TerminalViewFactory } from "@/libs/terminal-view";
@@ -32,6 +34,8 @@ export type SimulatorIo = Readonly<{
   download: (world: World, now: string) => void;
   readFile: (file: File) => Promise<Result<World, ImportFailure>>;
   confirm: (message: string) => boolean;
+  /** クリップボードへ書く（Console の「同等のコマンドライン」のコピー） */
+  copy: (text: string) => void;
   createTerminalView: TerminalViewFactory;
   capacityBytes: number;
 }>;
@@ -95,91 +99,128 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
   };
 
   const counts = Mission.counts(world);
+  const isConsole = state.view === Views.Console;
+  const consoleActions: ConsoleActions = {
+    submit: ({ line, note, next }) =>
+      dispatch({ type: "consoleSubmitted", line, now: io.now(), note, next }),
+    insert: (line) => dispatch({ type: "insertRequested", text: line }),
+    copy: io.copy,
+    confirm: io.confirm,
+    changeScreen: (screen) => dispatch({ type: "consoleScreenChanged", screen }),
+  };
+  // Console でも端末は同じ位置に置いたまま（下のドロワーになる）。別の位置に描くと端末が作り直され、
+  // 打った行の映りが消える。
   return (
     <div className="flex h-dvh flex-col bg-canvas text-ink">
       <Header
         world={world}
+        view={state.view}
+        onViewChange={(view) => dispatch({ type: "viewChanged", view })}
         onProjectChange={(projectId) => submitFromUi(`gcloud config set project ${projectId}`)}
         onPrincipalChange={(principal) => submitFromUi(`gcloud config set account ${principal}`)}
         onOpenSettings={() => dispatch({ type: "settingsToggled", open: true })}
       />
-      <div className="grid min-h-0 flex-1 grid-cols-[19rem_minmax(0,1fr)_29rem]">
-        <ResourceTree
-          world={world}
-          selection={state.selection}
-          currentProjectId={WorldOps.currentProjectId(world)}
-          onSelect={(selection) => dispatch({ type: "selected", selection })}
-          onInsertDescribe={(command) => dispatch({ type: "insertRequested", text: command })}
-        />
-        <Terminal
-          transcript={state.transcript}
-          screenClearCount={state.screenClearCount}
-          pendingInsert={state.pendingInsert}
-          onInsertConsumed={insertConsumed}
-          onSubmit={submit}
-          completionCandidates={completionCandidates}
-          createView={io.createTerminalView}
-          caption={`configuration: ${world.config.activeConfiguration}`}
-        />
-        <aside className="flex min-h-0 flex-col border-line border-l bg-surface" aria-label="詳細">
-          <div className="flex border-line border-b" role="tablist">
-            {Tabs.map(({ tab, label }) => (
-              <button
-                key={tab}
-                type="button"
-                role="tab"
-                aria-selected={state.panelTab === tab}
-                className={`px-4 py-3 text-sm ${state.panelTab === tab ? "border-accent border-b-2 font-semibold" : "text-muted"}`}
-                onClick={() => dispatch({ type: "tabChanged", tab })}
-              >
-                {label(`${counts.completed}/${counts.total}`)}
-              </button>
-            ))}
-          </div>
-          {Option.isSome(state.celebration) && (
-            <div
-              className="flex items-center justify-between bg-ok-soft px-4 py-2 text-ok-ink text-sm"
-              role="status"
-            >
-              <span>✓ ミッションクリア「{state.celebration.value.title}」</span>
-              <button
-                type="button"
-                className="text-xs underline"
-                onClick={() => dispatch({ type: "celebrationDismissed" })}
-              >
-                閉じる
-              </button>
-            </div>
+      <div
+        className={`grid min-h-0 flex-1 ${isConsole ? "grid-cols-[minmax(0,1fr)]" : "grid-cols-[19rem_minmax(0,1fr)_29rem]"}`}
+      >
+        {!isConsole && (
+          <ResourceTree
+            world={world}
+            selection={state.selection}
+            currentProjectId={WorldOps.currentProjectId(world)}
+            onSelect={(selection) => dispatch({ type: "selected", selection })}
+            onInsertDescribe={(command) => dispatch({ type: "insertRequested", text: command })}
+          />
+        )}
+        <div className="flex min-h-0 flex-col">
+          {isConsole && (
+            <ConsoleView
+              world={world}
+              screen={state.consoleScreen}
+              outcome={Option.map(state.consoleOutcome, (o) => o.outcome)}
+              actions={consoleActions}
+              onOutcomeDismiss={() => dispatch({ type: "consoleOutcomeCleared" })}
+            />
           )}
-          <div className="min-h-0 flex-1 overflow-auto">
-            {state.panelTab === PanelTabs.Properties && (
-              <PropertiesPanel
-                world={world}
-                selection={state.selection}
-                onInsert={(command) => dispatch({ type: "insertRequested", text: command })}
-              />
-            )}
-            {state.panelTab === PanelTabs.Missions && (
-              <MissionPanel
-                world={world}
-                missions={Engine.missions()}
-                selectedId={state.selectedMissionId}
-                onSelect={(id) => dispatch({ type: "missionSelected", id })}
-                onStart={(id) => dispatch({ type: "missionStarted", id })}
-                onAbandon={(id) => dispatch({ type: "missionAbandoned", id })}
-                onHint={(id) => dispatch({ type: "hintRevealed", id })}
-              />
-            )}
-            {state.panelTab === PanelTabs.Log && (
-              <ChangeLog world={world} transcript={state.transcript} />
-            )}
-          </div>
-          <p
-            className={`border-line border-t px-4 py-1.5 text-xs ${saveState.kind === "saved" ? "text-muted" : "text-danger"}`}
+          <div
+            className={isConsole ? "flex h-64 shrink-0 flex-col border-line border-t" : "contents"}
           >
-            {saveState.kind === "saved" ? "● 自動保存済み" : `● 保存に失敗: ${saveState.reason}`}
-          </p>
-        </aside>
+            <Terminal
+              transcript={state.transcript}
+              screenClearCount={state.screenClearCount}
+              pendingInsert={state.pendingInsert}
+              onInsertConsumed={insertConsumed}
+              onSubmit={submit}
+              completionCandidates={completionCandidates}
+              createView={io.createTerminalView}
+              caption={`configuration: ${world.config.activeConfiguration}`}
+            />
+          </div>
+        </div>
+        {!isConsole && (
+          <aside
+            className="flex min-h-0 flex-col border-line border-l bg-surface"
+            aria-label="詳細"
+          >
+            <div className="flex border-line border-b" role="tablist">
+              {Tabs.map(({ tab, label }) => (
+                <button
+                  key={tab}
+                  type="button"
+                  role="tab"
+                  aria-selected={state.panelTab === tab}
+                  className={`px-4 py-3 text-sm ${state.panelTab === tab ? "border-accent border-b-2 font-semibold" : "text-muted"}`}
+                  onClick={() => dispatch({ type: "tabChanged", tab })}
+                >
+                  {label(`${counts.completed}/${counts.total}`)}
+                </button>
+              ))}
+            </div>
+            {Option.isSome(state.celebration) && (
+              <div
+                className="flex items-center justify-between bg-ok-soft px-4 py-2 text-ok-ink text-sm"
+                role="status"
+              >
+                <span>✓ ミッションクリア「{state.celebration.value.title}」</span>
+                <button
+                  type="button"
+                  className="text-xs underline"
+                  onClick={() => dispatch({ type: "celebrationDismissed" })}
+                >
+                  閉じる
+                </button>
+              </div>
+            )}
+            <div className="min-h-0 flex-1 overflow-auto">
+              {state.panelTab === PanelTabs.Properties && (
+                <PropertiesPanel
+                  world={world}
+                  selection={state.selection}
+                  onInsert={(command) => dispatch({ type: "insertRequested", text: command })}
+                />
+              )}
+              {state.panelTab === PanelTabs.Missions && (
+                <MissionPanel
+                  world={world}
+                  missions={Engine.missions()}
+                  selectedId={state.selectedMissionId}
+                  onSelect={(id) => dispatch({ type: "missionSelected", id })}
+                  onStart={(id) => dispatch({ type: "missionStarted", id })}
+                  onAbandon={(id) => dispatch({ type: "missionAbandoned", id })}
+                  onHint={(id) => dispatch({ type: "hintRevealed", id })}
+                />
+              )}
+              {state.panelTab === PanelTabs.Log && (
+                <ChangeLog world={world} transcript={state.transcript} />
+              )}
+            </div>
+            <p
+              className={`border-line border-t px-4 py-1.5 text-xs ${saveState.kind === "saved" ? "text-muted" : "text-danger"}`}
+            >
+              {saveState.kind === "saved" ? "● 自動保存済み" : `● 保存に失敗: ${saveState.reason}`}
+            </p>
+          </aside>
+        )}
       </div>
       {state.settingsOpen && (
         <SettingsDialog

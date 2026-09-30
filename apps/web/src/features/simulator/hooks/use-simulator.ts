@@ -1,21 +1,35 @@
 import { useReducer } from "react";
 
-import { Engine, type OutputLine, Shell, type ShellState } from "@/engine";
+import { Engine, type ExecutionOutcome, type OutputLine, Shell, type ShellState } from "@/engine";
 import type { World } from "@/engine/domains/world";
 import type { Mission } from "@/engine/missions";
 import type { Selection } from "@/engine/resource-tree";
+import { type ConsoleScreen, ConsoleScreens } from "@/features/simulator/features/console";
 import type { ValueOf } from "@/types/ValueOf";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
-/** ターミナルに流れた 1 行。`ui` 由来はグレーで出す（UC-008 の「グレー表示で記録」を CLI 画面でも使う）。 */
+/**
+ * ターミナルに流れた 1 行。どこから来たか（打った / ヘッダー等の UI / Console のフォーム）を持ち、
+ * `cli` 以外はグレーで出す（UC-008 の「グレー表示で記録」）。
+ */
 export type TranscriptLine = Readonly<{
   id: number;
-  kind: "input" | "output";
-  origin: "cli" | "ui";
+  kind: "input" | "output" | "note";
+  origin: "cli" | "ui" | "console";
   text: string;
   tone: OutputLine["tone"];
 }>;
+
+/** CLI と Console のどちらを出しているか（ヘッダーの切り替え）。 */
+export const Views = { Cli: "cli", Console: "console" } as const;
+export type View = ValueOf<typeof Views>;
+
+/**
+ * Console のフォームから流したコマンドの結果。成功なら一覧へ戻り、失敗ならフォームに赤帯を出す
+ * （UC-008 例外フロー）。`line` は何を流したか。
+ */
+export type ConsoleOutcome = Readonly<{ line: string; outcome: ExecutionOutcome }>;
 
 /** 保存しておく行数の上限。超えた分は古いものから捨てる（端末側は id で差分を取るので消えても困らない）。 */
 export const TranscriptLimit = 2000;
@@ -49,10 +63,25 @@ export type SimulatorState = Readonly<{
   /** 直近でクリアしたミッション。パネルの通知に使う */
   celebration: Option<Mission>;
   saveState: SaveState;
+  view: View;
+  consoleScreen: ConsoleScreen;
+  consoleOutcome: Option<ConsoleOutcome>;
 }>;
 
 export type SimulatorAction =
-  | Readonly<{ type: "submitted"; line: string; now: string; origin: TranscriptLine["origin"] }>
+  | Readonly<{ type: "submitted"; line: string; now: string; origin: "cli" | "ui" }>
+  | Readonly<{
+      type: "consoleSubmitted";
+      line: string;
+      now: string;
+      /** 端末に `# Console: ...` として先に出す説明 */
+      note: string;
+      /** 成功したら移る画面（フォーム → 一覧） */
+      next: Option<ConsoleScreen>;
+    }>
+  | Readonly<{ type: "viewChanged"; view: View }>
+  | Readonly<{ type: "consoleScreenChanged"; screen: ConsoleScreen }>
+  | Readonly<{ type: "consoleOutcomeCleared" }>
   | Readonly<{ type: "selected"; selection: Selection }>
   | Readonly<{ type: "insertRequested"; text: string }>
   | Readonly<{ type: "insertConsumed" }>
@@ -114,28 +143,44 @@ export const initialSimulatorState = (start: SimulatorStart): SimulatorState => 
     screenClearCount: 0,
     celebration: Option.none,
     saveState: { kind: "saved", bytes: 0 },
+    view: Views.Cli,
+    consoleScreen: ConsoleScreens.VmList,
+    consoleOutcome: Option.none,
   };
   return Option.isSome(start.warning) ? append(state, [uiWarning(start.warning.value)]) : state;
 };
 
-const submitted = (
+/**
+ * 1 行を shell に通し、入力と出力を transcript に足す。`cli` 以外の由来は出力をグレー（muted）に
+ * する。先頭に `note` があれば `# Console: ...` のコメント行を置く。
+ */
+const executed = (
   state: SimulatorState,
-  action: Extract<SimulatorAction, { type: "submitted" }>,
-): SimulatorState => {
+  seed: Readonly<{
+    line: string;
+    now: string;
+    origin: TranscriptLine["origin"];
+    note: Option<string>;
+  }>,
+): Readonly<{ state: SimulatorState; outcome: ExecutionOutcome }> => {
   const result = Engine.execute({
     world: state.world,
     shell: state.shell,
-    line: action.line,
-    now: action.now,
+    line: seed.line,
+    now: seed.now,
   });
   const outputTone = (tone: OutputLine["tone"]): OutputLine["tone"] =>
-    action.origin === "ui" ? "muted" : tone;
+    seed.origin === "cli" ? tone : "muted";
+  const note: readonly Omit<TranscriptLine, "id">[] = Option.isSome(seed.note)
+    ? [{ kind: "note", origin: seed.origin, text: `# Console: ${seed.note.value}`, tone: "muted" }]
+    : [];
   const lines: readonly Omit<TranscriptLine, "id">[] = [
-    { kind: "input", origin: action.origin, text: action.line, tone: "plain" },
+    ...note,
+    { kind: "input", origin: seed.origin, text: seed.line, tone: "plain" },
     ...result.lines.map(
       (l): Omit<TranscriptLine, "id"> => ({
         kind: "output",
-        origin: action.origin,
+        origin: seed.origin,
         text: l.text,
         tone: outputTone(l.tone),
       }),
@@ -143,11 +188,37 @@ const submitted = (
   ];
   const celebration = Option.fromNullable(result.completed.at(-1));
   return {
-    ...append(state, lines),
-    world: result.world,
-    shell: result.shell,
-    screenClearCount: result.clearsScreen ? state.screenClearCount + 1 : state.screenClearCount,
-    celebration: Option.isSome(celebration) ? celebration : state.celebration,
+    state: {
+      ...append(state, lines),
+      world: result.world,
+      shell: result.shell,
+      screenClearCount: result.clearsScreen ? state.screenClearCount + 1 : state.screenClearCount,
+      celebration: Option.isSome(celebration) ? celebration : state.celebration,
+    },
+    outcome: result.outcome,
+  };
+};
+
+const submitted = (
+  state: SimulatorState,
+  action: Extract<SimulatorAction, { type: "submitted" }>,
+): SimulatorState => executed(state, { ...action, note: Option.none }).state;
+
+const consoleSubmitted = (
+  state: SimulatorState,
+  action: Extract<SimulatorAction, { type: "consoleSubmitted" }>,
+): SimulatorState => {
+  const { state: next, outcome } = executed(state, {
+    line: action.line,
+    now: action.now,
+    origin: "console",
+    note: Option.some(action.note),
+  });
+  const moves = outcome.kind === "succeeded" && Option.isSome(action.next);
+  return {
+    ...next,
+    consoleOutcome: Option.some({ line: action.line, outcome }),
+    consoleScreen: moves && Option.isSome(action.next) ? action.next.value : state.consoleScreen,
   };
 };
 
@@ -190,6 +261,14 @@ export const simulatorReducer = (
   switch (action.type) {
     case "submitted":
       return submitted(state, action);
+    case "consoleSubmitted":
+      return consoleSubmitted(state, action);
+    case "viewChanged":
+      return { ...state, view: action.view, consoleOutcome: Option.none };
+    case "consoleScreenChanged":
+      return { ...state, consoleScreen: action.screen, consoleOutcome: Option.none };
+    case "consoleOutcomeCleared":
+      return { ...state, consoleOutcome: Option.none };
     case "selected":
       return { ...state, selection: Option.some(action.selection), panelTab: PanelTabs.Properties };
     case "insertRequested":
@@ -224,6 +303,7 @@ export const simulatorReducer = (
         selection: Option.none,
         importError: Option.none,
         settingsOpen: false,
+        consoleOutcome: Option.none,
       };
     }
     case "importFailed":

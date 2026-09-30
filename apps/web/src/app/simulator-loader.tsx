@@ -9,6 +9,7 @@ import {
   type SimulatorIo,
   type SimulatorStart,
 } from "@/features/simulator";
+import { Clipboard } from "@/libs/clipboard";
 import { Clock } from "@/libs/clock";
 import { SnapshotFile } from "@/libs/snapshot-file";
 import { createXtermView } from "@/libs/terminal-view";
@@ -22,6 +23,7 @@ const io: SimulatorIo = {
   download: SnapshotFile.download,
   readFile: SnapshotFile.read,
   confirm: (message) => window.confirm(message),
+  copy: Clipboard.copy,
   createTerminalView: createXtermView,
   capacityBytes: StorageCapacityBytes,
 };

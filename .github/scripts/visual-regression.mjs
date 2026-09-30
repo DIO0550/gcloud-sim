@@ -301,6 +301,21 @@ const clickByText = (text) => {
   return { ok: true };
 };
 
+/** ラベルの付いた入力欄に値を入れる（React が拾うように native の setter を通す）。 */
+const fillByLabel = ([label, value]) => {
+  const labels = [...document.querySelectorAll("label")];
+  const target = labels.find((l) => (l.querySelector("span")?.textContent ?? "").trim() === label);
+  const input = target?.querySelector("input, select, textarea");
+  if (!input) {
+    return { ok: false, found: labels.map((l) => (l.textContent ?? "").trim()).slice(0, 40) };
+  }
+  const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), "value")?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+  return { ok: true };
+};
+
 const documentSize = () => ({
   width: document.documentElement.scrollWidth,
   height: document.documentElement.scrollHeight,
@@ -523,8 +538,24 @@ const applyStep = async (cdp, step, name) => {
     await sleep(step.wait);
     return;
   }
-  if (step.click === undefined) throw new Error(`${name}: 知らない手順 ${JSON.stringify(step)}`);
-  const result = await run(cdp, clickByText, step.click);
+  if (step.type !== undefined) {
+    // xterm はフォーカスした textarea へ入力を流すので、キー入力として打つ。
+    await run(cdp, () => document.querySelector(".xterm-helper-textarea")?.focus());
+    await cdp.send("Input.insertText", { text: step.type });
+    await cdp.send("Input.dispatchKeyEvent", {
+      type: "keyDown",
+      key: "Enter",
+      code: "Enter",
+      text: "\r",
+    });
+    await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter" });
+    await sleep(200);
+    return;
+  }
+  const action = step.fill !== undefined ? fillByLabel : clickByText;
+  const argument = step.fill ?? step.click;
+  if (argument === undefined) throw new Error(`${name}: 知らない手順 ${JSON.stringify(step)}`);
+  const result = await run(cdp, action, argument);
   if (!result.ok) {
     throw new Error(
       `${name}: ${JSON.stringify(step)} を実行できない。画面にあるもの: ${result.found.join(" / ")}`,
