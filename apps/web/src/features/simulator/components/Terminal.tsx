@@ -8,6 +8,7 @@ import type { OutputLine } from "@/engine";
 import { type DrawnInput, InputLayout } from "@/features/simulator/domains/input-layout";
 import { LineEditor } from "@/features/simulator/domains/line-editor";
 import type { TranscriptLine } from "@/features/simulator/hooks/use-simulator";
+import { ElementSize } from "@/libs/element-size";
 import { describeError } from "@/libs/json";
 import { Logger } from "@/libs/logger";
 import type { TerminalView, TerminalViewFactory } from "@/libs/terminal-view";
@@ -155,7 +156,8 @@ export const Terminal = (props: TerminalProps): ReactElement => {
         setOpenState({ kind: "failed", reason: describeError(error) });
       },
     );
-    // resize は連続して来るので、1 フレームに 1 回だけ列数を計算し直して入力行を描き直す。
+    // 大きさの変化は連続して来るので、1 フレームに 1 回だけ列数を計算し直して入力行を描き直す。
+    // 見張るのは window ではなく置き場の要素。Console へ切り替えると window はそのままで置き場だけが縮む。
     const onResize = (): void => {
       cancelAnimationFrame(resizeFrame);
       resizeFrame = requestAnimationFrame(() => {
@@ -164,12 +166,12 @@ export const Terminal = (props: TerminalProps): ReactElement => {
         draw(handleRef.current.value);
       });
     };
-    window.addEventListener("resize", onResize);
+    const unobserve = ElementSize.observe(container, onResize);
     return () => {
       disposed = true;
       unsubscribe();
       cancelAnimationFrame(resizeFrame);
-      window.removeEventListener("resize", onResize);
+      unobserve();
       if (Option.isSome(opened)) opened.value.dispose();
       handleRef.current = Option.none;
       lastWrittenIdRef.current = 0;
@@ -217,7 +219,13 @@ export const Terminal = (props: TerminalProps): ReactElement => {
         <span className="font-mono">bash — gcloud-sim</span>
         <span className="font-mono">{caption}</span>
       </div>
-      <div ref={containerRef} className="min-h-0 flex-1 px-3 py-2" data-testid="terminal-host">
+      {/* overflow-hidden: xterm は入力用の textarea をカーソル行の位置に絶対配置で置く。置き場が縮んだ直後は
+          前の行数の位置に残るので、はみ出しを切らないと文書の高さが伸びて画面全体がスクロールする。 */}
+      <div
+        ref={containerRef}
+        className="min-h-0 flex-1 overflow-hidden px-3 py-2"
+        data-testid="terminal-host"
+      >
         {openState.kind === "failed" && (
           <p role="alert" className="p-4 text-danger text-sm">
             ターミナルを開けませんでした（{openState.reason}）。ブラウザを再読み込みしてください。

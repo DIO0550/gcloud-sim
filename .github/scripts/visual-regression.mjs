@@ -301,11 +301,11 @@ const clickByText = (text) => {
   return { ok: true };
 };
 
-/** ラベルの付いた入力欄に値を入れる（React が拾うように native の setter を通す）。 */
+/** ラベルの付いた入力欄（`<label for>` で結んだもの）に値を入れる。React が拾うように native の setter を通す。 */
 const fillByLabel = ([label, value]) => {
   const labels = [...document.querySelectorAll("label")];
-  const target = labels.find((l) => (l.querySelector("span")?.textContent ?? "").trim() === label);
-  const input = target?.querySelector("input, select, textarea");
+  const target = labels.find((l) => (l.textContent ?? "").trim() === label);
+  const input = target?.control;
   if (!input) {
     return { ok: false, found: labels.map((l) => (l.textContent ?? "").trim()).slice(0, 40) };
   }
