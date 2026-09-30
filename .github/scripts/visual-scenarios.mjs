@@ -36,7 +36,12 @@ export const FROZEN_TIME = Date.UTC(2026, 0, 1, 12, 0, 0);
 export const SCENARIOS = [
   {
     name: "home",
-    label: "トップ",
-    steps: [],
+    label: "CLI 画面（初期 World）",
+    steps: [{ wait: 800 }],
+  },
+  {
+    name: "settings",
+    label: "設定ダイアログ",
+    steps: [{ wait: 800 }, { click: "設定" }, { wait: 300 }],
   },
 ];

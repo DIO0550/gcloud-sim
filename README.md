@@ -1,6 +1,12 @@
 # gcloud-sim
 
-GitHub Pages で公開するサイト（Next.js）。
+ブラウザだけで動く **gcloud CLI の学習用エミュレータ**。Google Cloud Associate Cloud Engineer（ACE）の
+出題範囲に出る `gcloud` / `gcloud storage` / `gsutil` の操作を、課金なし・アカウントなしで
+「打ったら結果が返る」形で体験する。
+
+> **Google 非公式の学習用ツールです。** 本物の Google Cloud には一切接続せず、データは
+> ブラウザの localStorage にだけ保存し、外部へ送信しません。`gcloud auth login` は疑似で、
+> 任意のメールをプリンシパルとして登録するだけです。
 
 **公開ページ: <https://dio0550.github.io/gcloud-sim/>**
 
@@ -8,8 +14,25 @@ GitHub Pages で公開するサイト（Next.js）。
 作って上の URL へ出す。PR には**そのブランチのサイトを触れるプレビュー**が
 `…/gcloud-sim/pr-preview/pr-<番号>/` に出る（詳しくは「[CI とデプロイ](#ci-とデプロイ)」）。
 
+## できること（Phase 1）
+
+- **ターミナル**（xterm.js）: 本物準拠の出力とエラー。Tab 補完（コマンド名・フラグ名）、↑↓ 履歴、
+  Ctrl+L、`--help`、`--format=json|yaml|value(...)`、`--filter`
+- **IAM の継承**: `gcloud config set account` でプリンシパルを切り替え、権限不足の
+  `PERMISSION_DENIED` を体験し、組織 / フォルダ / プロジェクトのどこにロールを付ければ通るかを
+  試行錯誤できる。エラーの下に `gcloud-sim: hint:` で「その権限を含むロール」を出す
+- **リソースツリー**: 組織 → フォルダ → プロジェクト → リソース。クリックでプロパティと
+  IAM の継承元、ダブルクリックで `describe` を入力行に挿入
+- **ミッション**: 11 本（ACE の 5 ドメイン）。状態に対するアサーションでクリア判定する
+  （コマンドの文字列一致ではない）
+- **保存**: コマンドごとに localStorage へ自動保存。設定から JSON の export / import / リセット
+
+対応コマンドの一覧と、基準にした gcloud のバージョン、IAM 判定の範囲（収録外の権限は許可に倒す）は
+[`docs/COMMANDS.md`](docs/COMMANDS.md)。設計は [`docs/design.md`](docs/design.md)、UI 案は
+[`docs/ui/`](docs/ui/)。Console 風 GUI（Phase 2）は未実装で、ヘッダーの切り替えは無効になっている。
+
 開発の土台（ツール・CI・デプロイ・開発環境）は [exam-prep](https://github.com/DIO0550/exam-prep) から
-持ってきたもの。画面はまだ無い。
+持ってきたもの。
 
 ## 構成
 
@@ -19,13 +42,23 @@ pnpm workspace。アプリは `apps/` 配下、アプリ間で共有するもの
 ```
 apps/web/          Next.js 16（App Router / TypeScript / Tailwind v4）
   src/app/         ルーティングとページ。色トークンは globals.css の @theme
+  src/engine/      エミュレータ本体。React・DOM・I/O に依存しない純粋 TS（テストが確かめる）
+    domains/       World とリソースのドメインオブジェクト（型 + 同名コンパニオン）
+    cli/           tokenizer / 引数の解釈 / フォーマッタ / 登録簿 / shell（確認プロンプト）
+    commands/      CommandSpec の定義（サービスごと）
+    missions/      ミッション定義とアサーション
+    snapshot/      export / import の形と検証
+  src/features/simulator/  画面（ヘッダー / ツリー / ターミナル / 右ペイン / 設定）と reducer
+  src/libs/        境界: localStorage・ファイル・時計・xterm.js のラップ
   src/base-path.ts basePath の唯一の定義（next.config.ts と public/ 参照の両方が使う）
-  vitest.config.ts テスト設定（jsdom + Testing Library）
+  vitest.config.ts テスト設定（jsdom + Testing Library。engine のテストは node 環境）
+docs/              設計書・対応コマンド・UI 案
 biome.json         lint / format（リポジトリ全体を 1 つの設定で見る）
 pnpm-workspace.yaml workspace とクールタイムの設定
 ```
 
-画面のまとまりは `apps/web/src/features/<名前>/`（`components/` / `hooks/` など）に置いていく想定。
+依存の向きは `app → features → engine(commands → cli → domains) ← libs`。実行時依存は
+Next.js / React / Tailwind と xterm.js（`@xterm/xterm` + `@xterm/addon-fit`）だけ。
 
 ## コマンド
 

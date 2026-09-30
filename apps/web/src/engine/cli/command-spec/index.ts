@@ -1,0 +1,299 @@
+import { CommandFailure } from "@/engine/cli/command-error";
+import { type ApiName, Zone } from "@/engine/domains/catalog";
+import { GcloudConfig } from "@/engine/domains/gcloud-config";
+import type { Principal } from "@/engine/domains/principal";
+import type { PolicyTarget, Project } from "@/engine/domains/resource-hierarchy";
+import { World } from "@/engine/domains/world";
+import type { JsonRecord } from "@/types/Json";
+import { Option } from "@/utils/Option";
+import { Result } from "@/utils/Result";
+
+export type { JsonRecord, JsonValue } from "@/types/Json";
+
+type FlagBase = Readonly<{
+  name: string;
+  description: string;
+  required: boolean;
+  /** `-q` のような短縮形。tokenizer ではなく引数解釈で展開する */
+  aliases: readonly string[];
+}>;
+
+/** フラグの型。`enum` だけが `choices` を持ち、`boolean` だけが `--no-` を受ける。 */
+export type FlagSpec =
+  | (FlagBase & Readonly<{ kind: "string" }>)
+  | (FlagBase & Readonly<{ kind: "boolean" }>)
+  | (FlagBase & Readonly<{ kind: "enum"; choices: readonly string[] }>)
+  | (FlagBase & Readonly<{ kind: "list" }>)
+  | (FlagBase & Readonly<{ kind: "keyvalue" }>)
+  | (FlagBase & Readonly<{ kind: "integer" }>);
+
+export type PositionalSpec = Readonly<{
+  name: string;
+  description: string;
+  required: boolean;
+  variadic: boolean;
+}>;
+
+export type FlagValue =
+  | Readonly<{ kind: "string"; value: string }>
+  | Readonly<{ kind: "boolean"; value: boolean }>
+  | Readonly<{ kind: "list"; value: readonly string[] }>
+  | Readonly<{ kind: "keyvalue"; value: Readonly<Record<string, string>> }>
+  | Readonly<{ kind: "integer"; value: number }>;
+
+/** 検証を通った引数。フラグは `--` を落とした名前で引く。 */
+export type ParsedArgs = Readonly<{
+  positionals: readonly string[];
+  flags: Readonly<Record<string, FlagValue>>;
+}>;
+
+type FlagOptions = Readonly<{ required?: boolean; aliases?: readonly string[] }>;
+
+const base = (name: string, description: string, options: FlagOptions): FlagBase => ({
+  name,
+  description,
+  required: options.required ?? false,
+  aliases: options.aliases ?? [],
+});
+
+export const Flag = {
+  string(name: string, description: string, options: FlagOptions = {}): FlagSpec {
+    return { kind: "string", ...base(name, description, options) };
+  },
+  boolean(name: string, description: string, options: FlagOptions = {}): FlagSpec {
+    return { kind: "boolean", ...base(name, description, options) };
+  },
+  enum(
+    name: string,
+    description: string,
+    choices: readonly string[],
+    options: FlagOptions = {},
+  ): FlagSpec {
+    return { kind: "enum", choices, ...base(name, description, options) };
+  },
+  list(name: string, description: string, options: FlagOptions = {}): FlagSpec {
+    return { kind: "list", ...base(name, description, options) };
+  },
+  keyvalue(name: string, description: string, options: FlagOptions = {}): FlagSpec {
+    return { kind: "keyvalue", ...base(name, description, options) };
+  },
+  integer(name: string, description: string, options: FlagOptions = {}): FlagSpec {
+    return { kind: "integer", ...base(name, description, options) };
+  },
+} as const;
+
+export const Positional = {
+  required(name: string, description: string): PositionalSpec {
+    return { name, description, required: true, variadic: false };
+  },
+  optional(name: string, description: string): PositionalSpec {
+    return { name, description, required: false, variadic: false };
+  },
+  variadic(name: string, description: string): PositionalSpec {
+    return { name, description, required: true, variadic: true };
+  },
+} as const;
+
+export const ParsedArgs = {
+  string(args: ParsedArgs, name: string): Option<string> {
+    const flag = args.flags[name];
+    return flag?.kind === "string" ? Option.some(flag.value) : Option.none;
+  },
+
+  /** 無指定は `false`。`--no-x` も `false`。 */
+  boolean(args: ParsedArgs, name: string): boolean {
+    const flag = args.flags[name];
+    return flag?.kind === "boolean" ? flag.value : false;
+  },
+
+  /** `--x` / `--no-x` のどちらが打たれたか。どちらも無ければ `none`。 */
+  booleanChoice(args: ParsedArgs, name: string): Option<boolean> {
+    const flag = args.flags[name];
+    return flag?.kind === "boolean" ? Option.some(flag.value) : Option.none;
+  },
+
+  list(args: ParsedArgs, name: string): readonly string[] {
+    const flag = args.flags[name];
+    return flag?.kind === "list" ? flag.value : [];
+  },
+
+  keyvalue(args: ParsedArgs, name: string): Readonly<Record<string, string>> {
+    const flag = args.flags[name];
+    return flag?.kind === "keyvalue" ? flag.value : {};
+  },
+
+  integer(args: ParsedArgs, name: string): Option<number> {
+    const flag = args.flags[name];
+    return flag?.kind === "integer" ? Option.some(flag.value) : Option.none;
+  },
+
+  positional(args: ParsedArgs, index: number): Option<string> {
+    return Option.fromNullable(args.positionals[index]);
+  },
+
+  has(args: ParsedArgs, name: string): boolean {
+    return name in args.flags;
+  },
+} as const;
+
+/** 出力行の調子。UI が色に対応させる。 */
+export type MessageTone = "plain" | "success" | "warning" | "hint" | "muted";
+
+export type OutputMessage = Readonly<{ text: string; tone: MessageTone }>;
+
+export const OutputMessage = {
+  plain: (text: string): OutputMessage => ({ text, tone: "plain" }),
+  success: (text: string): OutputMessage => ({ text, tone: "success" }),
+  warning: (text: string): OutputMessage => ({ text, tone: "warning" }),
+  hint: (text: string): OutputMessage => ({ text, tone: "hint" }),
+  muted: (text: string): OutputMessage => ({ text, tone: "muted" }),
+} as const;
+
+/** 既定の table の 1 列。`path` はレコードのドット区切りパス、`transform` は表示前の加工。 */
+export type Column = Readonly<{
+  header: string;
+  path: string;
+  transform: "none" | "basename" | "join";
+}>;
+
+export const Column = {
+  of(header: string, path: string, transform: Column["transform"] = "none"): Column {
+    return { header, path, transform };
+  },
+} as const;
+
+/**
+ * コマンドが返す結果（設計書 DJ-009: 文字列ではなく結果オブジェクトを返し、Formatter が整形する）。
+ * `defaultFormat` が `none` のレコードは `--format` を付けたときだけ出す。
+ */
+export type CommandOutput = Readonly<{
+  messages: readonly OutputMessage[];
+  records: readonly JsonRecord[];
+  columns: readonly Column[];
+  defaultFormat: "table" | "yaml" | "none";
+  trailing: readonly OutputMessage[];
+}>;
+
+export const CommandOutput = {
+  messages(...messages: readonly OutputMessage[]): CommandOutput {
+    return { messages, records: [], columns: [], defaultFormat: "none", trailing: [] };
+  },
+
+  table(
+    records: readonly JsonRecord[],
+    columns: readonly Column[],
+    messages: readonly OutputMessage[] = [],
+  ): CommandOutput {
+    return { messages, records, columns, defaultFormat: "table", trailing: [] };
+  },
+
+  yaml(record: JsonRecord, messages: readonly OutputMessage[] = []): CommandOutput {
+    return { messages, records: [record], columns: [], defaultFormat: "yaml", trailing: [] };
+  },
+
+  /** 複数レコードを `---` 区切りの YAML で出す（`gcloud storage buckets list` の既定）。 */
+  yamlList(records: readonly JsonRecord[]): CommandOutput {
+    return { messages: [], records, columns: [], defaultFormat: "yaml", trailing: [] };
+  },
+
+  withTrailing(output: CommandOutput, ...trailing: readonly OutputMessage[]): CommandOutput {
+    return { ...output, trailing: [...output.trailing, ...trailing] };
+  },
+} as const;
+
+export type CommandOutcome = Readonly<{ world: World; output: CommandOutput }>;
+export type CommandResult = Result<CommandOutcome, CommandFailure>;
+
+/** 実行時の文脈。`projectId` は `--project` か `core/project`。 */
+export type CommandContext = Readonly<{
+  world: World;
+  now: string;
+  principal: Principal;
+  projectId: Option<string>;
+}>;
+
+/** プロジェクトの解決と API・権限の検証を通った文脈。`kind: "project"` の `run` だけが受け取る。 */
+export type ProjectContext = CommandContext & Readonly<{ project: Project }>;
+
+type SpecBase = Readonly<{
+  path: readonly string[];
+  summary: string;
+  positionals: readonly PositionalSpec[];
+  flags: readonly FlagSpec[];
+  /** delete 等。`--quiet` が無ければ確認プロンプトを挟む（UC-001 代替フロー） */
+  destructive: boolean;
+}>;
+
+/**
+ * コマンド定義（設計書 6.2 CommandSpec）。認可の形で直和にする。
+ * - `project`: 現在のプロジェクトで API と権限を検証してから `run`
+ * - `target`: 引数からポリシー対象を解決して権限を検証してから `run`
+ * - `plain`: 検証なし（config / auth など）
+ * - `not-implemented`: 解決はできるが E-002 を返す（DJ-005）
+ */
+export type CommandSpec =
+  | (SpecBase &
+      Readonly<{
+        kind: "project";
+        requiredPermissions: readonly string[];
+        requiredApis: readonly ApiName[];
+        run: (ctx: ProjectContext, args: ParsedArgs) => CommandResult;
+      }>)
+  | (SpecBase &
+      Readonly<{
+        kind: "target";
+        requiredPermissions: readonly string[];
+        resolveTarget: (
+          ctx: CommandContext,
+          args: ParsedArgs,
+        ) => Result<PolicyTarget, CommandFailure>;
+        run: (ctx: CommandContext, args: ParsedArgs) => CommandResult;
+      }>)
+  | (SpecBase &
+      Readonly<{ kind: "plain"; run: (ctx: CommandContext, args: ParsedArgs) => CommandResult }>)
+  | Readonly<{ kind: "not-implemented"; path: readonly string[]; summary: string }>;
+
+export const CommandSpec = {
+  /** `gcloud.compute.instances.create` のような、エラー接頭辞に出す綴り。 */
+  dottedPath(spec: CommandSpec): string {
+    return spec.path.join(".");
+  },
+} as const;
+
+export const CommandContext = {
+  /**
+   * 対象プロジェクトを引く。`--project` / `core/project` が無ければ E-004、無い ID や
+   * 削除要求済みなら E-005。
+   *
+   * @param ctx 文脈
+   * @returns 操作できるプロジェクト
+   */
+  requireProject(ctx: CommandContext): Result<Project, CommandFailure> {
+    if (!Option.isSome(ctx.projectId)) return Result.err(CommandFailure.projectRequired());
+    const project = World.findActiveProject(ctx.world, ctx.projectId.value);
+    return Option.isSome(project)
+      ? Result.ok(project.value)
+      : Result.err(CommandFailure.notFound(`projects/${ctx.projectId.value}`));
+  },
+
+  /**
+   * ゾーンを決める（UC-003: フラグ → `compute/zone` → 無ければ E-004）。
+   *
+   * @param ctx 文脈
+   * @param flag `--zone` の値
+   * @returns 決まったゾーン。カタログに無ければ E-005
+   */
+  resolveZone(ctx: CommandContext, flag: Option<string>): Result<Zone, CommandFailure> {
+    const configured = GcloudConfig.get(ctx.world.config, "compute/zone");
+    const chosen = Option.or(flag, configured);
+    if (!Option.isSome(chosen)) return Result.err(CommandFailure.zoneRequired());
+    const zone = Zone.parse(chosen.value);
+    return Option.isSome(zone)
+      ? Result.ok(zone.value)
+      : Result.err(
+          CommandFailure.notFound(
+            `projects/${Option.unwrapOr(ctx.projectId, "-")}/zones/${chosen.value}`,
+          ),
+        );
+  },
+} as const;

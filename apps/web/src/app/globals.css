@@ -17,6 +17,16 @@
   --color-accent: #2f5fa8;
   --color-accent-hover: #27508e;
   --color-accent-soft: #eef3fb;
+
+  /* 状態の色。ok = RUNNING / クリア、warn = Owner 以外で操作中・継承、danger = エラー・リセット。 */
+  --color-ok: #1a7f37;
+  --color-ok-ink: #116329;
+  --color-ok-soft: #e8f5ec;
+  --color-warn: #d4a72c;
+  --color-warn-ink: #9a6700;
+  --color-warn-soft: #fff8e1;
+  --color-danger: #b42318;
+  --color-danger-soft: #fdecea;
 }
 
 :root {
