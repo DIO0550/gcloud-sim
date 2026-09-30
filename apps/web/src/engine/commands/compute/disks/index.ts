@@ -12,6 +12,7 @@ import {
   type ProjectContext,
 } from "@/engine/cli/command-spec";
 import {
+  attachedDiskRecord,
   ComputeApi,
   createdTable,
   diskNotFound,
@@ -61,7 +62,7 @@ const snapshotDisk = (
 ): CommandResult => {
   const disk = findZonedDisk(ctx, seed.zone, seed.diskName);
   if (!Option.isSome(disk)) return Result.err(diskNotFound(ctx, seed.zone, seed.diskName));
-  const sizeGb = disk.value.kind === "standalone" ? disk.value.disk.sizeGb : disk.value.sizeGb;
+  const sizeGb = disk.value.disk.sizeGb;
   const snapshot = Result.mapErr(
     DiskSnapshot.create({
       projectId: ctx.project.projectId,
@@ -158,7 +159,7 @@ const resizeDisk = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
         )
       : Result.map(
           Result.mapErr(
-            Instance.withDiskSize(target.instance, target.deviceName, size.value),
+            Instance.withDiskSize(target.instance, target.disk.deviceName, size.value),
             invalid,
           ),
           (i) =>
@@ -170,6 +171,35 @@ const resizeDisk = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   return Result.map(world, (w) => ({
     world: w,
     output: CommandOutput.messages(OutputMessage.plain(`Updated [${selfLink}].`)),
+  }));
+};
+
+/** `disks describe`。独立ディスクはそのまま、インスタンスに繋がったディスクは `disks list` と同じ形で出す。 */
+const describeDisk = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+  const zone = CommandContext.resolveZone(ctx, ParsedArgs.string(args, "zone"));
+  if (!Result.isOk(zone)) return zone;
+  const name = ParsedArgs.requiredPositional(args, 0);
+  const found = findZonedDisk(ctx, zone.value, name);
+  if (!Option.isSome(found)) return Result.err(diskNotFound(ctx, zone.value, name));
+  const target = found.value;
+  const record =
+    target.kind === "standalone"
+      ? Disk.toRecord(target.disk)
+      : attachedDiskRecord(target.instance, target.disk);
+  return Result.ok({ world: ctx.world, output: CommandOutput.yaml(record) });
+};
+
+const describeSnapshot = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+  const name = ParsedArgs.requiredPositional(args, 0);
+  const snapshot = Option.toResult(
+    Option.fromNullable(
+      World.diskSnapshotsOf(ctx.world, ctx.project.projectId).find((s) => s.name === name),
+    ),
+    () => CommandFailure.notFound(`projects/${ctx.project.projectId}/global/snapshots/${name}`),
+  );
+  return Result.map(snapshot, (s) => ({
+    world: ctx.world,
+    output: CommandOutput.yaml(DiskSnapshot.toRecord(s)),
   }));
 };
 
@@ -209,6 +239,17 @@ export const DiskCommands: readonly CommandSpec[] = [
     permission: "compute.disks.create",
     requiredApis: [ComputeApi],
     run: createDisk,
+  }),
+  projectCommand({
+    path: ["gcloud", "compute", "disks", "describe"],
+    summary: "Describe a Compute Engine disk.",
+    positionals: [
+      Positional.required("DISK_NAME", "Name of the disk to describe.", Candidates.disks),
+    ],
+    flags: [DiskZoneFlag],
+    permission: "compute.disks.get",
+    requiredApis: [ComputeApi],
+    run: describeDisk,
   }),
   projectCommand({
     path: ["gcloud", "compute", "disks", "snapshot"],
@@ -282,5 +323,19 @@ export const DiskCommands: readonly CommandSpec[] = [
     columns: SnapshotColumns,
     records: (ctx) =>
       World.diskSnapshotsOf(ctx.world, ctx.project.projectId).map(DiskSnapshot.toRecord),
+  }),
+  projectCommand({
+    path: ["gcloud", "compute", "snapshots", "describe"],
+    summary: "Describe a Compute Engine snapshot.",
+    positionals: [
+      Positional.required(
+        "SNAPSHOT_NAME",
+        "Name of the snapshot to describe.",
+        Candidates.snapshots,
+      ),
+    ],
+    permission: "compute.snapshots.get",
+    requiredApis: [ComputeApi],
+    run: describeSnapshot,
   }),
 ];

@@ -21,7 +21,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（197）
+## 実装済み（215）
 
 ### `gcloud config`
 
@@ -119,6 +119,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 | `gcloud billing projects unlink` | `billing.resourceAssociations.delete` | — | — |
 | `gcloud billing budgets create` | `billing.budgets.create` | — | `--billing-account` `--display-name` `--budget-amount` `--threshold-rule` `--filter-projects` |
 | `gcloud billing budgets list` | `billing.budgets.list` | — | `--billing-account` |
+| `gcloud billing budgets describe` | `billing.budgets.get` | — | `--billing-account` |
 
 ### `gcloud services`
 
@@ -156,16 +157,19 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 | `gcloud compute operations list` | `compute.zoneOperations.list` | `compute.googleapis.com` | — |
 | `gcloud compute disks list` | `compute.disks.list` | `compute.googleapis.com` | — |
 | `gcloud compute disks create` | `compute.disks.create` | `compute.googleapis.com` | `--zone` `--size` `--type` `--image-family` `--image-project` `--image` |
+| `gcloud compute disks describe` | `compute.disks.get` | `compute.googleapis.com` | `--zone` |
 | `gcloud compute disks snapshot` | `compute.disks.createSnapshot` | `compute.googleapis.com` | `--zone` `--snapshot-names` |
 | `gcloud compute disks resize` | `compute.disks.update` | `compute.googleapis.com` | `--zone` `--size` |
 | `gcloud compute snapshots create` | `compute.disks.createSnapshot` | `compute.googleapis.com` | `--source-disk` `--source-disk-zone` `--zone` |
 | `gcloud compute snapshots list` | `compute.snapshots.list` | `compute.googleapis.com` | — |
+| `gcloud compute snapshots describe` | `compute.snapshots.get` | `compute.googleapis.com` | — |
 | `gcloud compute networks create` | `compute.networks.create` | `compute.googleapis.com` | `--subnet-mode` `--bgp-routing-mode` |
 | `gcloud compute networks list` | `compute.networks.list` | `compute.googleapis.com` | — |
 | `gcloud compute networks describe` | `compute.networks.get` | `compute.googleapis.com` | — |
 | `gcloud compute networks delete` | `compute.networks.delete` | `compute.googleapis.com` | — |
 | `gcloud compute networks subnets create` | `compute.subnetworks.create` | `compute.googleapis.com` | `--network` `--range` `--region` `--enable-private-ip-google-access` |
 | `gcloud compute networks subnets list` | `compute.subnetworks.list` | `compute.googleapis.com` | — |
+| `gcloud compute networks subnets describe` | `compute.subnetworks.get` | `compute.googleapis.com` | `--region` |
 | `gcloud compute networks peerings create` | `compute.networks.addPeering` | `compute.googleapis.com` | `--network` `--peer-network` `--peer-project` `--export-custom-routes` `--import-custom-routes` |
 | `gcloud compute firewall-rules create` | `compute.firewalls.create` | `compute.googleapis.com` | `--network` `--allow` `--action` `--rules` `--direction` `--priority` `--source-ranges` `--target-tags` `--destination-ranges` `--disabled` |
 | `gcloud compute firewall-rules list` | `compute.firewalls.list` | `compute.googleapis.com` | — |
@@ -173,18 +177,25 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 | `gcloud compute firewall-rules delete` | `compute.firewalls.delete` | `compute.googleapis.com` | — |
 | `gcloud compute addresses create` | `compute.addresses.create` | `compute.googleapis.com` | `--region` `--global` `--address-type` `--addresses` `--network-tier` |
 | `gcloud compute addresses list` | `compute.addresses.list` | `compute.googleapis.com` | — |
+| `gcloud compute addresses describe` | `compute.addresses.get` | `compute.googleapis.com` | `--region` `--global` |
 | `gcloud compute routers create` | `compute.routers.create` | `compute.googleapis.com` | `--network` `--region` `--asn` |
 | `gcloud compute routers list` | `compute.routers.list` | `compute.googleapis.com` | — |
+| `gcloud compute routers describe` | `compute.routers.get` | `compute.googleapis.com` | `--region` |
 | `gcloud compute health-checks create` | `compute.healthChecks.create` | `compute.googleapis.com` | `--tcp` `--http` `--https` `--port` `--global` |
 | `gcloud compute health-checks list` | `compute.healthChecks.list` | `compute.googleapis.com` | — |
+| `gcloud compute health-checks describe` | `compute.healthChecks.get` | `compute.googleapis.com` | `--global` |
 | `gcloud compute backend-services create` | `compute.backendServices.create` | `compute.googleapis.com` | `--global` `--region` `--protocol` `--health-checks` `--load-balancing-scheme` `--timeout` |
 | `gcloud compute backend-services list` | `compute.backendServices.list` | `compute.googleapis.com` | — |
+| `gcloud compute backend-services describe` | `compute.backendServices.get` | `compute.googleapis.com` | `--global` `--region` |
 | `gcloud compute forwarding-rules create` | `compute.forwardingRules.create` | `compute.googleapis.com` | `--global` `--region` `--backend-service` `--address` `--ports` `--load-balancing-scheme` |
 | `gcloud compute forwarding-rules list` | `compute.forwardingRules.list` | `compute.googleapis.com` | — |
+| `gcloud compute forwarding-rules describe` | `compute.forwardingRules.get` | `compute.googleapis.com` | `--global` `--region` |
 | `gcloud compute instance-templates create` | `compute.instanceTemplates.create` | `compute.googleapis.com` | `--machine-type` `--image-family` `--image-project` `--network` `--subnet` `--tags` `--service-account` `--scopes` `--preemptible` `--provisioning-model` `--metadata` `--boot-disk-size` `--boot-disk-type` `--address` |
 | `gcloud compute instance-templates list` | `compute.instanceTemplates.list` | `compute.googleapis.com` | — |
+| `gcloud compute instance-templates describe` | `compute.instanceTemplates.get` | `compute.googleapis.com` | — |
 | `gcloud compute instance-groups managed create` | `compute.instanceGroupManagers.create` | `compute.googleapis.com` | `--zone` `--region` `--template` `--size` `--base-instance-name` |
 | `gcloud compute instance-groups managed list` | `compute.instanceGroupManagers.list` | `compute.googleapis.com` | — |
+| `gcloud compute instance-groups managed describe` | `compute.instanceGroupManagers.get` | `compute.googleapis.com` | `--zone` `--region` |
 | `gcloud compute instance-groups managed set-autoscaling` | `compute.autoscalers.create` | `compute.googleapis.com` | `--zone` `--region` `--max-num-replicas` `--min-num-replicas` `--target-cpu-utilization` `--cool-down-period` |
 
 ### `gcloud storage`
@@ -253,6 +264,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 | `gcloud container clusters upgrade` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--master` `--cluster-version` |
 | `gcloud container node-pools create` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--cluster` `--machine-type` `--num-nodes` `--disk-size` |
 | `gcloud container node-pools list` | `container.clusters.get` | `container.googleapis.com` | `--zone` `--region` `--cluster` |
+| `gcloud container node-pools describe` | `container.clusters.get` | `container.googleapis.com` | `--zone` `--region` `--cluster` |
 
 ### `kubectl`
 
@@ -315,8 +327,10 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 |---|---|---|---|
 | `gcloud pubsub topics create` | `pubsub.topics.create` | `pubsub.googleapis.com` | — |
 | `gcloud pubsub topics list` | `pubsub.topics.list` | `pubsub.googleapis.com` | — |
+| `gcloud pubsub topics describe` | `pubsub.topics.get` | `pubsub.googleapis.com` | — |
 | `gcloud pubsub subscriptions create` | `pubsub.subscriptions.create` | `pubsub.googleapis.com` | `--topic` `--ack-deadline` `--push-endpoint` |
 | `gcloud pubsub subscriptions list` | `pubsub.topics.list` | `pubsub.googleapis.com` | — |
+| `gcloud pubsub subscriptions describe` | `pubsub.subscriptions.get` | `pubsub.googleapis.com` | — |
 
 ### `gcloud logging`
 
@@ -326,6 +340,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 | `gcloud logging logs list` | `logging.logs.list` | `logging.googleapis.com` | — |
 | `gcloud logging sinks create` | `logging.sinks.create` | `logging.googleapis.com` | `--log-filter` |
 | `gcloud logging sinks list` | `logging.sinks.list` | `logging.googleapis.com` | — |
+| `gcloud logging sinks describe` | `logging.sinks.get` | `logging.googleapis.com` | — |
 
 ### `gcloud monitoring`
 
@@ -340,6 +355,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 |---|---|---|---|
 | `gcloud kms keyrings create` | `cloudkms.keyRings.create` | `cloudkms.googleapis.com` | `--location` |
 | `gcloud kms keyrings list` | `cloudkms.keyRings.list` | `cloudkms.googleapis.com` | `--location` |
+| `gcloud kms keyrings describe` | `cloudkms.keyRings.get` | `cloudkms.googleapis.com` | `--location` |
 
 ### `gcloud dns`
 
@@ -347,6 +363,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 |---|---|---|---|
 | `gcloud dns managed-zones create` | `dns.managedZones.create` | `dns.googleapis.com` | `--dns-name` `--description` `--visibility` |
 | `gcloud dns managed-zones list` | `dns.managedZones.list` | `dns.googleapis.com` | — |
+| `gcloud dns managed-zones describe` | `dns.managedZones.get` | `dns.googleapis.com` | — |
 
 ### `gcloud deployment-manager`
 
@@ -354,6 +371,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 |---|---|---|---|
 | `gcloud deployment-manager deployments create` | `deploymentmanager.deployments.create` | `deploymentmanager.googleapis.com` | `--config` `--preview` |
 | `gcloud deployment-manager deployments list` | `deploymentmanager.deployments.list` | `deploymentmanager.googleapis.com` | — |
+| `gcloud deployment-manager deployments describe` | `deploymentmanager.deployments.get` | `deploymentmanager.googleapis.com` | — |
 
 ## 解決はできるが未実装（0）
 

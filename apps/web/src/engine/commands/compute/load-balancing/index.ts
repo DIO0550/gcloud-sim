@@ -15,7 +15,13 @@ import {
   invalidName,
   listCommand,
 } from "@/engine/commands/compute/shared";
-import { alreadyExists, Candidates, CommonFlags, projectCommand } from "@/engine/commands/shared";
+import {
+  alreadyExists,
+  Candidates,
+  CommonFlags,
+  describeNamedCommand,
+  projectCommand,
+} from "@/engine/commands/shared";
 import {
   BackendProtocols,
   BackendService,
@@ -254,6 +260,17 @@ export const LoadBalancingCommands: readonly CommandSpec[] = [
     records: (ctx) =>
       World.namedOf(ctx.world, "healthChecks", ctx.project.projectId).map(HealthCheck.toRecord),
   }),
+  describeNamedCommand({
+    path: ["gcloud", "compute", "health-checks", "describe"],
+    summary: "Display detailed information about a health check.",
+    positional: Positional.required("NAME", "Name of the health check.", Candidates.healthChecks),
+    flags: [Flag.boolean("global", "If provided, the health check is global (default).")],
+    collection: "healthChecks",
+    permission: "compute.healthChecks.get",
+    requiredApis: [ComputeApi],
+    resourcePath: (projectId, name) => `projects/${projectId}/global/healthChecks/${name}`,
+    record: HealthCheck.toRecord,
+  }),
   projectCommand({
     path: ["gcloud", "compute", "backend-services", "create"],
     summary: "Create a backend service.",
@@ -282,6 +299,21 @@ export const LoadBalancingCommands: readonly CommandSpec[] = [
       World.namedOf(ctx.world, "backendServices", ctx.project.projectId).map(
         BackendService.toRecord,
       ),
+  }),
+  describeNamedCommand({
+    path: ["gcloud", "compute", "backend-services", "describe"],
+    summary: "Display detailed information about a backend service.",
+    positional: Positional.required(
+      "NAME",
+      "Name of the backend service.",
+      Candidates.backendServices,
+    ),
+    flags: ScopeFlags,
+    collection: "backendServices",
+    permission: "compute.backendServices.get",
+    requiredApis: [ComputeApi],
+    resourcePath: (projectId, name) => `projects/${projectId}/global/backendServices/${name}`,
+    record: BackendService.toRecord,
   }),
   projectCommand({
     path: ["gcloud", "compute", "forwarding-rules", "create"],
@@ -316,5 +348,20 @@ export const LoadBalancingCommands: readonly CommandSpec[] = [
       World.namedOf(ctx.world, "forwardingRules", ctx.project.projectId).map(
         ForwardingRule.toRecord,
       ),
+  }),
+  describeNamedCommand({
+    path: ["gcloud", "compute", "forwarding-rules", "describe"],
+    summary: "Display detailed information about a forwarding rule.",
+    positional: Positional.required(
+      "NAME",
+      "Name of the forwarding rule.",
+      Candidates.forwardingRules,
+    ),
+    flags: ScopeFlags,
+    collection: "forwardingRules",
+    permission: "compute.forwardingRules.get",
+    requiredApis: [ComputeApi],
+    resourcePath: (projectId, name) => `projects/${projectId}/global/forwardingRules/${name}`,
+    record: ForwardingRule.toRecord,
   }),
 ];

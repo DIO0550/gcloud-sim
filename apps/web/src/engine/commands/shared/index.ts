@@ -8,6 +8,7 @@ import {
   type CommandSpec,
   Flag,
   type FlagSpec,
+  type JsonRecord,
   OutputMessage,
   ParsedArgs,
   type PositionalSpec,
@@ -15,6 +16,7 @@ import {
   type TargetContext,
   type TargetResolver,
 } from "@/engine/cli/command-spec";
+import { Budget } from "@/engine/domains/billing-budget";
 import {
   type ApiName,
   ApiService,
@@ -32,7 +34,13 @@ import type { Principal } from "@/engine/domains/principal";
 import { PolicyTarget } from "@/engine/domains/resource-hierarchy";
 import { CustomRole, RoleCatalog } from "@/engine/domains/role-catalog";
 import { ServiceAccount } from "@/engine/domains/service-account";
-import { type AlreadyExists, type PolicyRejected, World } from "@/engine/domains/world";
+import {
+  type AlreadyExists,
+  type NamedCollection,
+  type NamedItem,
+  type PolicyRejected,
+  World,
+} from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
@@ -126,6 +134,31 @@ export const Candidates = {
   kubeDeployments: inProject((world, projectId) =>
     world.kubeDeployments.filter((d) => d.projectId === projectId).map((d) => d.name),
   ),
+  forwardingRules: inProject((world, projectId) =>
+    World.namedOf(world, "forwardingRules", projectId).map((r) => r.name),
+  ),
+  routers: inProject((world, projectId) =>
+    World.namedOf(world, "routers", projectId).map((r) => r.name),
+  ),
+  subscriptions: inProject((world, projectId) =>
+    World.namedOf(world, "pubsubSubscriptions", projectId).map((s) => s.name),
+  ),
+  logSinks: inProject((world, projectId) =>
+    World.namedOf(world, "logSinks", projectId).map((s) => s.name),
+  ),
+  keyRings: inProject((world, projectId) =>
+    World.namedOf(world, "kmsKeyRings", projectId).map((r) => r.name),
+  ),
+  dnsZones: inProject((world, projectId) =>
+    World.namedOf(world, "dnsZones", projectId).map((z) => z.name),
+  ),
+  dmDeployments: inProject((world, projectId) =>
+    World.namedOf(world, "dmDeployments", projectId).map((d) => d.name),
+  ),
+  snapshots: inProject((world, projectId) =>
+    World.diskSnapshotsOf(world, projectId).map((s) => s.name),
+  ),
+  budgets: ((world) => world.budgets.map(Budget.id)) satisfies CandidateSource,
 } as const;
 
 /** 複数のサービスが同じ綴りで受けるフラグ。 */
@@ -331,6 +364,51 @@ export const iamBindingCommands = (seed: BindingCommandSeed): readonly CommandSp
     run: bindingRun(seed, "remove"),
   }),
 ];
+
+/** `describeNamedCommand` の材料。 */
+export type DescribeNamedSeed<K extends NamedCollection> = Readonly<{
+  path: readonly string[];
+  summary: string;
+  positional: PositionalSpec;
+  /** 受けるだけで引くのには使わないフラグ（`--zone` / `--region` / `--global`） */
+  flags?: readonly FlagSpec[];
+  collection: K;
+  permission: string;
+  requiredApis?: readonly ApiName[];
+  /** E-005 に出す綴り */
+  resourcePath: (projectId: string, name: string) => string;
+  record: (item: NamedItem<K>) => JsonRecord;
+}>;
+
+/**
+ * `(projectId, name)` で引ける集合の 1 件を YAML で出す `describe` を組む。
+ *
+ * @param seed 集合と、出す形
+ * @returns コマンド定義。無ければ E-005
+ */
+export const describeNamedCommand = <K extends NamedCollection>(
+  seed: DescribeNamedSeed<K>,
+): CommandSpec =>
+  projectCommand({
+    path: seed.path,
+    summary: seed.summary,
+    positionals: [seed.positional],
+    flags: seed.flags,
+    permission: seed.permission,
+    requiredApis: seed.requiredApis,
+    run: (ctx, args) => {
+      const projectId = ctx.project.projectId;
+      const name = ParsedArgs.requiredPositional(args, 0);
+      const found = Option.toResult(
+        World.findNamed(ctx.world, seed.collection, { projectId, name }),
+        () => CommandFailure.notFound(seed.resourcePath(projectId, name)),
+      );
+      return Result.map(found, (item) => ({
+        world: ctx.world,
+        output: CommandOutput.yaml(seed.record(item)),
+      }));
+    },
+  });
 
 /** 未対応コマンドの定義（DJ-005）。 */
 export const notImplemented = (path: readonly string[], summary: string): CommandSpec => ({

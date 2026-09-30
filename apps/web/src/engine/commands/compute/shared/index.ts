@@ -13,6 +13,7 @@ import {
 import { projectCommand } from "@/engine/commands/shared";
 import { DefaultImage, PublicImage, Zone } from "@/engine/domains/catalog";
 import {
+  type AttachedDisk,
   BootDiskType,
   BootDiskTypes,
   Disk,
@@ -190,10 +191,10 @@ export const instanceArg = (
   );
 };
 
-/** ゾーン内のディスク。独立ディスクか、どれかのインスタンスのブートディスク。 */
+/** ゾーン内のディスク。独立ディスクか、どれかのインスタンスに繋がったディスク。 */
 export type ZonedDisk =
   | Readonly<{ kind: "standalone"; disk: Disk }>
-  | Readonly<{ kind: "attached"; instance: Instance; deviceName: string; sizeGb: number }>;
+  | Readonly<{ kind: "attached"; instance: Instance; disk: AttachedDisk }>;
 
 export const findZonedDisk = (ctx: ProjectContext, zone: Zone, name: string): Option<ZonedDisk> => {
   const standalone = World.findDisk(ctx.world, ctx.project.projectId, zone, name);
@@ -203,28 +204,29 @@ export const findZonedDisk = (ctx: ProjectContext, zone: Zone, name: string): Op
   );
   const disk = owner?.disks.find((d) => d.deviceName === name);
   return owner !== undefined && disk !== undefined
-    ? Option.some({ kind: "attached", instance: owner, deviceName: name, sizeGb: disk.sizeGb })
+    ? Option.some({ kind: "attached", instance: owner, disk })
     : Option.none;
 };
 
 export const diskNotFound = (ctx: ProjectContext, zone: Zone, name: string): CommandFailure =>
   CommandFailure.notFound(`projects/${ctx.project.projectId}/zones/${zone}/disks/${name}`);
 
+/** インスタンスに繋がったディスクを、独立ディスクと同じ列で出す形。 */
+export const attachedDiskRecord = (instance: Instance, disk: AttachedDisk): JsonRecord => ({
+  name: disk.deviceName,
+  zone: `https://www.googleapis.com/compute/v1/projects/${instance.projectId}/zones/${instance.zone}`,
+  locationScope: "zone",
+  sizeGb: String(disk.sizeGb),
+  type: disk.type,
+  status: "READY",
+  sourceImage: disk.sourceImage,
+  users: [Instance.selfLink(instance)],
+});
+
 /** `disks list` の行。インスタンスのブートディスクと独立ディスクを合わせる。 */
 export const diskRecords = (ctx: ProjectContext): readonly JsonRecord[] => {
   const boot = World.instancesOf(ctx.world, ctx.project.projectId).flatMap((instance) =>
-    instance.disks
-      .filter((d) => d.boot)
-      .map((disk) => ({
-        name: disk.deviceName,
-        zone: `https://www.googleapis.com/compute/v1/projects/${instance.projectId}/zones/${instance.zone}`,
-        locationScope: "zone",
-        sizeGb: String(disk.sizeGb),
-        type: disk.type,
-        status: "READY",
-        sourceImage: disk.sourceImage,
-        users: [Instance.selfLink(instance)],
-      })),
+    instance.disks.filter((d) => d.boot).map((disk) => attachedDiskRecord(instance, disk)),
   );
   const standalone = World.disksOf(ctx.world, ctx.project.projectId).map(Disk.toRecord);
   return [...boot, ...standalone].toSorted((a, b) => String(a.name).localeCompare(String(b.name)));

@@ -21,7 +21,13 @@ import {
   requireFirewallRule,
   requireNetwork,
 } from "@/engine/commands/compute/shared";
-import { alreadyExists, Candidates, CommonFlags, projectCommand } from "@/engine/commands/shared";
+import {
+  alreadyExists,
+  Candidates,
+  CommonFlags,
+  describeNamedCommand,
+  projectCommand,
+} from "@/engine/commands/shared";
 import { Region } from "@/engine/domains/catalog";
 import {
   Direction,
@@ -217,6 +223,23 @@ const createSubnet = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
       ),
     }),
   );
+};
+
+const describeSubnet = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+  const region = CommandContext.resolveRegion(ctx, ParsedArgs.string(args, "region"));
+  if (!Result.isOk(region)) return region;
+  const name = ParsedArgs.requiredPositional(args, 0);
+  const subnet = Option.toResult(
+    World.findSubnet(ctx.world, ctx.project.projectId, region.value, name),
+    () =>
+      CommandFailure.notFound(
+        `projects/${ctx.project.projectId}/regions/${region.value}/subnetworks/${name}`,
+      ),
+  );
+  return Result.map(subnet, (s) => ({
+    world: ctx.world,
+    output: CommandOutput.yaml(Subnet.toRecord(s)),
+  }));
 };
 
 /** 予約アドレスの採番。外部はグローバル / リージョンで系統を分け、内部はサブネット風の値。 */
@@ -469,6 +492,17 @@ export const NetworkingCommands: readonly CommandSpec[] = [
     records: (ctx) => World.subnetsOf(ctx.world, ctx.project.projectId).map(Subnet.toRecord),
   }),
   projectCommand({
+    path: ["gcloud", "compute", "networks", "subnets", "describe"],
+    summary: "Describe a Compute Engine subnetwork.",
+    positionals: [
+      Positional.required("NAME", "Name of the subnetwork to describe.", Candidates.subnets),
+    ],
+    flags: [CommonFlags.region],
+    permission: "compute.subnetworks.get",
+    requiredApis: [ComputeApi],
+    run: describeSubnet,
+  }),
+  projectCommand({
     path: ["gcloud", "compute", "networks", "peerings", "create"],
     summary: "Create a Compute Engine network peering.",
     positionals: [Positional.required("NAME", "Name of the peering to create.")],
@@ -600,6 +634,20 @@ export const NetworkingCommands: readonly CommandSpec[] = [
     records: (ctx) =>
       World.namedOf(ctx.world, "addresses", ctx.project.projectId).map(addressRecord),
   }),
+  describeNamedCommand({
+    path: ["gcloud", "compute", "addresses", "describe"],
+    summary: "Display detailed information about an address.",
+    positional: Positional.required("NAME", "Name of the address.", Candidates.addresses),
+    flags: [
+      CommonFlags.region,
+      Flag.boolean("global", "If provided, it is assumed the address is global."),
+    ],
+    collection: "addresses",
+    permission: "compute.addresses.get",
+    requiredApis: [ComputeApi],
+    resourcePath: (projectId, name) => `projects/${projectId}/regions/-/addresses/${name}`,
+    record: addressRecord,
+  }),
   projectCommand({
     path: ["gcloud", "compute", "routers", "create"],
     summary: "Create a Compute Engine router.",
@@ -623,5 +671,16 @@ export const NetworkingCommands: readonly CommandSpec[] = [
     columns: RouterColumns,
     records: (ctx) =>
       World.namedOf(ctx.world, "routers", ctx.project.projectId).map(Router.toRecord),
+  }),
+  describeNamedCommand({
+    path: ["gcloud", "compute", "routers", "describe"],
+    summary: "Describe a Compute Engine router.",
+    positional: Positional.required("NAME", "Name of the router.", Candidates.routers),
+    flags: [CommonFlags.region],
+    collection: "routers",
+    permission: "compute.routers.get",
+    requiredApis: [ComputeApi],
+    resourcePath: (projectId, name) => `projects/${projectId}/regions/-/routers/${name}`,
+    record: Router.toRecord,
   }),
 ];

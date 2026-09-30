@@ -11,7 +11,13 @@ import {
   Positional,
   type ProjectContext,
 } from "@/engine/cli/command-spec";
-import { alreadyExists, Candidates, CommonFlags, projectCommand } from "@/engine/commands/shared";
+import {
+  alreadyExists,
+  Candidates,
+  CommonFlags,
+  describeNamedCommand,
+  projectCommand,
+} from "@/engine/commands/shared";
 import {
   SqlDatabaseVersion,
   SqlDatabaseVersions,
@@ -346,6 +352,16 @@ export const PubsubCommands: readonly CommandSpec[] = [
         ),
       }),
   }),
+  describeNamedCommand({
+    path: ["gcloud", "pubsub", "topics", "describe"],
+    summary: "Describe a Cloud Pub/Sub topic.",
+    positional: Positional.required("TOPIC", "ID of the topic to describe.", Candidates.topics),
+    collection: "pubsubTopics",
+    permission: "pubsub.topics.get",
+    requiredApis: [PubsubApi],
+    resourcePath: (projectId, name) => `projects/${projectId}/topics/${name}`,
+    record: PubsubTopic.toRecord,
+  }),
   projectCommand({
     path: ["gcloud", "pubsub", "subscriptions", "create"],
     summary: "Create one or more Cloud Pub/Sub subscriptions.",
@@ -385,5 +401,19 @@ export const PubsubCommands: readonly CommandSpec[] = [
           SubscriptionColumns,
         ),
       }),
+  }),
+  describeNamedCommand({
+    path: ["gcloud", "pubsub", "subscriptions", "describe"],
+    summary: "Describe a Cloud Pub/Sub subscription.",
+    positional: Positional.required(
+      "SUBSCRIPTION",
+      "ID of the subscription to describe.",
+      Candidates.subscriptions,
+    ),
+    collection: "pubsubSubscriptions",
+    permission: "pubsub.subscriptions.get",
+    requiredApis: [PubsubApi],
+    resourcePath: (projectId, name) => `projects/${projectId}/subscriptions/${name}`,
+    record: PubsubSubscription.toRecord,
   }),
 ];

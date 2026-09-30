@@ -28,6 +28,7 @@ const ComputeInstancePermissions = [
   "compute.disks.createSnapshot",
   "compute.snapshots.create",
   "compute.snapshots.list",
+  "compute.snapshots.get",
   "compute.zones.list",
   "compute.regions.list",
   "compute.machineTypes.list",
@@ -44,8 +45,10 @@ const ComputeInstancePermissions = [
   "compute.disks.use",
   "compute.instanceTemplates.create",
   "compute.instanceTemplates.list",
+  "compute.instanceTemplates.get",
   "compute.instanceGroupManagers.create",
   "compute.instanceGroupManagers.list",
+  "compute.instanceGroupManagers.get",
   "compute.instanceGroupManagers.update",
   "compute.autoscalers.create",
   "compute.projects.get",
@@ -55,12 +58,16 @@ const ComputeInstancePermissions = [
 const ComputeLoadBalancerPermissions = [
   "compute.healthChecks.create",
   "compute.healthChecks.list",
+  "compute.healthChecks.get",
   "compute.backendServices.create",
   "compute.backendServices.list",
+  "compute.backendServices.get",
   "compute.forwardingRules.create",
   "compute.forwardingRules.list",
+  "compute.forwardingRules.get",
   "compute.addresses.create",
   "compute.addresses.list",
+  "compute.addresses.get",
 ] as const;
 
 const ComputeNetworkPermissions = [
@@ -72,6 +79,7 @@ const ComputeNetworkPermissions = [
   "compute.subnetworks.create",
   "compute.subnetworks.delete",
   "compute.subnetworks.list",
+  "compute.subnetworks.get",
   "compute.subnetworks.use",
   "compute.subnetworks.useExternalIp",
   "compute.firewalls.create",
@@ -82,6 +90,7 @@ const ComputeNetworkPermissions = [
   "compute.regions.list",
   "compute.routers.create",
   "compute.routers.list",
+  "compute.routers.get",
   "compute.networks.addPeering",
   "compute.networks.updatePeering",
   ...ComputeLoadBalancerPermissions,
@@ -91,8 +100,11 @@ const ComputeViewPermissions = [
   "compute.instances.get",
   "compute.instances.list",
   "compute.disks.list",
+  "compute.disks.get",
   "compute.snapshots.list",
+  "compute.snapshots.get",
   "compute.networks.get",
+  "compute.subnetworks.get",
   "compute.networks.list",
   "compute.subnetworks.list",
   "compute.firewalls.get",
@@ -184,6 +196,7 @@ const BillingPermissions = [
   "billing.resourceAssociations.list",
   "billing.budgets.create",
   "billing.budgets.list",
+  "billing.budgets.get",
 ] as const;
 
 const ContainerPermissions = [
@@ -260,6 +273,7 @@ const PubsubPermissions = [
   "pubsub.topics.list",
   "pubsub.topics.get",
   "pubsub.subscriptions.create",
+  "pubsub.subscriptions.get",
 ] as const;
 
 const LoggingPermissions = [
@@ -267,6 +281,7 @@ const LoggingPermissions = [
   "logging.logs.list",
   "logging.sinks.create",
   "logging.sinks.list",
+  "logging.sinks.get",
 ] as const;
 
 const MonitoringPermissions = [
@@ -275,13 +290,22 @@ const MonitoringPermissions = [
   "monitoring.alertPolicies.list",
 ] as const;
 
-const KmsPermissions = ["cloudkms.keyRings.create", "cloudkms.keyRings.list"] as const;
+const KmsPermissions = [
+  "cloudkms.keyRings.create",
+  "cloudkms.keyRings.list",
+  "cloudkms.keyRings.get",
+] as const;
 
-const DnsPermissions = ["dns.managedZones.create", "dns.managedZones.list"] as const;
+const DnsPermissions = [
+  "dns.managedZones.create",
+  "dns.managedZones.list",
+  "dns.managedZones.get",
+] as const;
 
 const DeploymentManagerPermissions = [
   "deploymentmanager.deployments.create",
   "deploymentmanager.deployments.list",
+  "deploymentmanager.deployments.get",
 ] as const;
 
 const ViewerPermissions = [
@@ -309,6 +333,7 @@ const ViewerPermissions = [
   "logging.logEntries.list",
   "logging.logs.list",
   "logging.sinks.list",
+  "logging.sinks.get",
   "monitoring.timeSeries.list",
   "monitoring.dashboards.list",
   "monitoring.alertPolicies.list",
@@ -330,6 +355,17 @@ const ViewerPermissions = [
   "compute.healthChecks.list",
   "compute.backendServices.list",
   "compute.forwardingRules.list",
+  "compute.instanceTemplates.get",
+  "compute.instanceGroupManagers.get",
+  "compute.addresses.get",
+  "compute.routers.get",
+  "compute.healthChecks.get",
+  "compute.backendServices.get",
+  "compute.forwardingRules.get",
+  "cloudkms.keyRings.get",
+  "dns.managedZones.get",
+  "deploymentmanager.deployments.get",
+  "pubsub.subscriptions.get",
   "compute.projects.get",
   "compute.disks.get",
   "container.deployments.get",
@@ -529,6 +565,7 @@ const Roles: readonly Role[] = [
   role("roles/logging.configWriter", "Logs Configuration Writer", [
     "logging.sinks.create",
     "logging.sinks.list",
+    "logging.sinks.get",
   ]),
   role("roles/monitoring.viewer", "Monitoring Viewer", MonitoringPermissions),
   role("roles/cloudfunctions.developer", "Cloud Functions Developer", FunctionsPermissions),
@@ -557,7 +594,11 @@ const Roles: readonly Role[] = [
   ]),
   role("roles/pubsub.admin", "Pub/Sub Admin", PubsubPermissions),
   role("roles/pubsub.editor", "Pub/Sub Editor", PubsubPermissions),
-  role("roles/pubsub.viewer", "Pub/Sub Viewer", ["pubsub.topics.list", "pubsub.topics.get"]),
+  role("roles/pubsub.viewer", "Pub/Sub Viewer", [
+    "pubsub.topics.list",
+    "pubsub.topics.get",
+    "pubsub.subscriptions.get",
+  ]),
   role("roles/cloudkms.admin", "Cloud KMS Admin", KmsPermissions),
   role("roles/dns.admin", "DNS Administrator", DnsPermissions),
   role("roles/deploymentmanager.editor", "Deployment Manager Editor", DeploymentManagerPermissions),
@@ -566,6 +607,7 @@ const Roles: readonly Role[] = [
     "billing.accounts.list",
     "billing.budgets.create",
     "billing.budgets.list",
+    "billing.budgets.get",
   ]),
   role("roles/compute.loadBalancerAdmin", "Compute Load Balancer Admin", [
     ...ComputeLoadBalancerPermissions,

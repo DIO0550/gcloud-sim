@@ -10,7 +10,12 @@ import {
   Positional,
   type ProjectContext,
 } from "@/engine/cli/command-spec";
-import { alreadyExists, projectCommand } from "@/engine/commands/shared";
+import {
+  alreadyExists,
+  Candidates,
+  describeNamedCommand,
+  projectCommand,
+} from "@/engine/commands/shared";
 import { Region } from "@/engine/domains/catalog";
 import { DmDeployment } from "@/engine/domains/deployment-manager";
 import { DnsManagedZone } from "@/engine/domains/dns";
@@ -209,6 +214,33 @@ export const KmsCommands: readonly CommandSpec[] = [
       });
     },
   }),
+  projectCommand({
+    path: ["gcloud", "kms", "keyrings", "describe"],
+    summary: "Get metadata for a keyring.",
+    positionals: [Positional.required("KEYRING", "ID of the keyring.", Candidates.keyRings)],
+    flags: [Flag.string("location", "Location of the keyring.", { required: true })],
+    permission: "cloudkms.keyRings.get",
+    requiredApis: [KmsApi],
+    run: (ctx, args) => {
+      const location = Option.unwrapOr(ParsedArgs.string(args, "location"), "");
+      const name = ParsedArgs.requiredPositional(args, 0);
+      const ring = Option.toResult(
+        Option.fromNullable(
+          World.namedOf(ctx.world, "kmsKeyRings", ctx.project.projectId).find(
+            (r) => r.name === name && r.location === location,
+          ),
+        ),
+        () =>
+          CommandFailure.notFound(
+            `projects/${ctx.project.projectId}/locations/${location}/keyRings/${name}`,
+          ),
+      );
+      return Result.map(ring, (r) => ({
+        world: ctx.world,
+        output: CommandOutput.yaml(KmsKeyRing.toRecord(r)),
+      }));
+    },
+  }),
 ];
 
 export const DnsCommands: readonly CommandSpec[] = [
@@ -242,6 +274,16 @@ export const DnsCommands: readonly CommandSpec[] = [
           ZoneColumns,
         ),
       }),
+  }),
+  describeNamedCommand({
+    path: ["gcloud", "dns", "managed-zones", "describe"],
+    summary: "View the details of a Cloud DNS managed-zone.",
+    positional: Positional.required("ZONE_NAME", "Name of the managed-zone.", Candidates.dnsZones),
+    collection: "dnsZones",
+    permission: "dns.managedZones.get",
+    requiredApis: [DnsApi],
+    resourcePath: (projectId, name) => `projects/${projectId}/managedZones/${name}`,
+    record: DnsManagedZone.toRecord,
   }),
 ];
 
@@ -281,5 +323,19 @@ export const DeploymentManagerCommands: readonly CommandSpec[] = [
           DeploymentColumns,
         ),
       }),
+  }),
+  describeNamedCommand({
+    path: ["gcloud", "deployment-manager", "deployments", "describe"],
+    summary: "Provide information about a deployment.",
+    positional: Positional.required(
+      "DEPLOYMENT_NAME",
+      "Deployment name.",
+      Candidates.dmDeployments,
+    ),
+    collection: "dmDeployments",
+    permission: "deploymentmanager.deployments.get",
+    requiredApis: [DmApi],
+    resourcePath: (projectId, name) => `projects/${projectId}/global/deployments/${name}`,
+    record: DmDeployment.toRecord,
   }),
 ];

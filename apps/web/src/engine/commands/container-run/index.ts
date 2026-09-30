@@ -388,16 +388,55 @@ export const ContainerCommands: readonly CommandSpec[] = [
         positionals: [Option.unwrapOr(ParsedArgs.string(args, "cluster"), "")],
       });
       if (!Result.isOk(cluster)) return cluster;
-      const pools = cluster.value.autopilot
-        ? []
-        : [NodePool.defaultPool(cluster.value), ...World.nodePoolsOf(ctx.world, cluster.value)];
       return Result.ok({
         world: ctx.world,
-        output: CommandOutput.table(pools.map(NodePool.toRecord), NodePoolColumns),
+        output: CommandOutput.table(
+          nodePoolsIncludingDefault(ctx.world, cluster.value).map(NodePool.toRecord),
+          NodePoolColumns,
+        ),
       });
     },
   }),
+  projectCommand({
+    path: ["gcloud", "container", "node-pools", "describe"],
+    summary: "Describe an existing node pool for a cluster.",
+    positionals: [Positional.required("NAME", "The name of the node pool.")],
+    flags: [
+      ...LocationFlags,
+      Flag.string("cluster", "The cluster the node pool belongs to.", {
+        required: true,
+        candidates: Candidates.clusters,
+      }),
+    ],
+    permission: "container.clusters.get",
+    requiredApis: [ContainerApi],
+    run: (ctx, args) => {
+      const cluster = clusterArg(ctx, {
+        ...args,
+        positionals: [Option.unwrapOr(ParsedArgs.string(args, "cluster"), "")],
+      });
+      if (!Result.isOk(cluster)) return cluster;
+      const name = ParsedArgs.requiredPositional(args, 0);
+      const pool = Option.toResult(
+        Option.fromNullable(
+          nodePoolsIncludingDefault(ctx.world, cluster.value).find((p) => p.name === name),
+        ),
+        () =>
+          CommandFailure.notFoundWith(
+            `ResponseError: code=404, message=Not found: projects/${ctx.project.projectId}/locations/${cluster.value.location}/clusters/${cluster.value.name}/nodePools/${name}.`,
+          ),
+      );
+      return Result.map(pool, (p) => ({
+        world: ctx.world,
+        output: CommandOutput.yaml(NodePool.toRecord(p)),
+      }));
+    },
+  }),
 ];
+
+/** クラスタのノードプール。Standard は `default-pool` を先頭に持ち、Autopilot は持たない。 */
+const nodePoolsIncludingDefault = (world: World, cluster: GkeCluster): readonly NodePool[] =>
+  cluster.autopilot ? [] : [NodePool.defaultPool(cluster), ...World.nodePoolsOf(world, cluster)];
 
 const NodePoolColumns = [
   Column.create("NAME", "name"),

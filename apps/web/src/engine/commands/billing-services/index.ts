@@ -288,6 +288,40 @@ export const BudgetCommands: readonly CommandSpec[] = [
         ),
       })),
   }),
+  targetCommand({
+    path: ["gcloud", "billing", "budgets", "describe"],
+    summary: "Describe a budget.",
+    positionals: [
+      Positional.required(
+        "BUDGET",
+        "ID of the budget (the last segment of billingAccounts/A/budgets/ID).",
+        Candidates.budgets,
+      ),
+    ],
+    flags: [
+      Flag.string("billing-account", "The billing account ID the budget belongs to.", {
+        required: true,
+        candidates: Candidates.billingAccounts,
+      }),
+    ],
+    permission: "billing.budgets.get",
+    resolveTarget: billingAccountTarget,
+    run: (ctx, args) => {
+      const account = billingAccountFlag(ctx, args);
+      if (!Result.isOk(account)) return account;
+      const id = ParsedArgs.requiredPositional(args, 0);
+      const budget = Option.toResult(
+        Option.fromNullable(
+          World.budgetsOf(ctx.world, account.value.id).find((b) => Budget.id(b) === id),
+        ),
+        () => CommandFailure.notFound(`billingAccounts/${account.value.id}/budgets/${id}`),
+      );
+      return Result.map(budget, (b) => ({
+        world: ctx.world,
+        output: CommandOutput.yaml(Budget.toRecord(b)),
+      }));
+    },
+  }),
 ];
 
 export const ServiceCommands: readonly CommandSpec[] = [

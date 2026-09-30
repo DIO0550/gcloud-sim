@@ -54,6 +54,11 @@ export const Budget = {
     });
   },
 
+  /** `billingAccounts/A/budgets/ID` の ID 部分。`budgets describe` はこれで引く。 */
+  id(budget: Budget): string {
+    return budget.name.slice(budget.name.lastIndexOf("/") + 1);
+  },
+
   toRecord(budget: Budget): JsonRecord {
     return {
       name: budget.name,

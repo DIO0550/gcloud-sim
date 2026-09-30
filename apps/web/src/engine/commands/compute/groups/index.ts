@@ -24,6 +24,7 @@ import {
   alreadyExists,
   Candidates,
   CommonFlags,
+  describeNamedCommand,
   instanceOperation,
   projectCommand,
   recordOperation,
@@ -358,6 +359,20 @@ export const GroupCommands: readonly CommandSpec[] = [
         InstanceTemplate.toRecord,
       ),
   }),
+  describeNamedCommand({
+    path: ["gcloud", "compute", "instance-templates", "describe"],
+    summary: "Describe a virtual machine instance template.",
+    positional: Positional.required(
+      "NAME",
+      "Name of the instance template.",
+      Candidates.instanceTemplates,
+    ),
+    collection: "instanceTemplates",
+    permission: "compute.instanceTemplates.get",
+    requiredApis: [ComputeApi],
+    resourcePath: (projectId, name) => `projects/${projectId}/global/instanceTemplates/${name}`,
+    record: InstanceTemplate.toRecord,
+  }),
   projectCommand({
     path: ["gcloud", "compute", "instance-groups", "managed", "create"],
     summary: "Create a Compute Engine managed instance group.",
@@ -386,6 +401,22 @@ export const GroupCommands: readonly CommandSpec[] = [
     columns: GroupColumns,
     records: (ctx) =>
       World.namedOf(ctx.world, "instanceGroups", ctx.project.projectId).map(groupRecord),
+  }),
+  describeNamedCommand({
+    path: ["gcloud", "compute", "instance-groups", "managed", "describe"],
+    summary: "Describe a managed instance group.",
+    positional: Positional.required(
+      "NAME",
+      "Name of the managed instance group.",
+      Candidates.instanceGroups,
+    ),
+    flags: [CommonFlags.zone, CommonFlags.region],
+    collection: "instanceGroups",
+    permission: "compute.instanceGroupManagers.get",
+    requiredApis: [ComputeApi],
+    resourcePath: (projectId, name) =>
+      `projects/${projectId}/zones/-/instanceGroupManagers/${name}`,
+    record: groupRecord,
   }),
   projectCommand({
     path: ["gcloud", "compute", "instance-groups", "managed", "set-autoscaling"],
