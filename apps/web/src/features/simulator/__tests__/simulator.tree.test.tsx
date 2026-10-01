@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
 import { run, session } from "@/engine/__tests__/setup";
-import { renderSimulator } from "@/features/simulator/__tests__/setup";
+import { renderSimulator, resourceTree } from "@/features/simulator/__tests__/setup";
 
 const zone = "--zone=asia-northeast1-a";
 
@@ -16,7 +16,7 @@ test("ディスクを選ぶとプロパティに大きさと繋いでいるイ�
     `gcloud compute instances attach-disk web-1 --disk=data-1 ${zone}`,
   );
   const { terminal } = renderSimulator({}, s.world);
-  const tree = screen.getByRole("navigation", { name: "リソース階層" });
+  const tree = resourceTree();
   await user.click(within(tree).getByText("data-1"));
   const details = screen.getByRole("complementary", { name: "詳細" });
   expect(within(details).getByRole("heading", { name: "data-1" })).toBeInTheDocument();
@@ -40,7 +40,7 @@ test("クラスタの下の Deployment を選ぶと Pod の一覧が出る", asy
     "kubectl apply -f deployment.yaml",
   );
   renderSimulator({}, s.world);
-  const tree = screen.getByRole("navigation", { name: "リソース階層" });
+  const tree = resourceTree();
   await user.click(within(tree).getByRole("button", { name: "app を展開する" }));
   await user.click(within(tree).getByText("deploy: web"));
   const details = screen.getByRole("complementary", { name: "詳細" });
@@ -55,7 +55,7 @@ test("予算を選ぶとしきい値が百分率で出る", async () => {
     "gcloud billing budgets create --billing-account=01AB2C-DEF345-6789AB --display-name=dev --budget-amount=100000JPY",
   );
   renderSimulator({}, s.world);
-  const tree = screen.getByRole("navigation", { name: "リソース階層" });
+  const tree = resourceTree();
   await user.click(within(tree).getByText("budget: dev"));
   const details = screen.getByRole("complementary", { name: "詳細" });
   expect(within(details).getByText("50%, 90%, 100%")).toBeInTheDocument();

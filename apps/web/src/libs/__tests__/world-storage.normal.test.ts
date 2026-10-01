@@ -1,11 +1,9 @@
 import { afterEach, expect, test } from "vitest";
 
-import { Engine } from "@/engine";
+import { initialWorld, Now } from "@/engine/__tests__/setup";
 import { StorageKey, WorldStorage } from "@/libs/world-storage";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
-
-const Now = "2026-09-30T14:02:31.000Z";
 
 afterEach(() => {
   localStorage.clear();
@@ -16,7 +14,7 @@ test("保存が無ければ none", () => {
 });
 
 test("save した World を load で読み戻せる", () => {
-  const world = Engine.initialWorld(Now);
+  const world = initialWorld();
   const saved = WorldStorage.save(world, Now);
   expect(Result.isOk(saved)).toBe(true);
   expect(WorldStorage.load()).toEqual(Result.ok(Option.some(world)));

@@ -1,5 +1,6 @@
 import { type ReactElement, type ReactNode, useId } from "react";
 
+import { PrimaryButton, SecondaryButton } from "@/components/Button";
 import type { ExecutionOutcome } from "@/engine";
 import { ErrorCodes } from "@/engine/cli/command-failure";
 import { Option } from "@/utils/Option";
@@ -23,31 +24,7 @@ export const ScreenTitle = ({
   </div>
 );
 
-export const PrimaryButton = (
-  props: Readonly<{ children: ReactNode; onClick: () => void; disabled?: boolean }>,
-): ReactElement => (
-  <button
-    type="button"
-    className="rounded-lg bg-accent px-4 py-2 font-semibold text-sm text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
-    onClick={props.onClick}
-    disabled={props.disabled ?? false}
-  >
-    {props.children}
-  </button>
-);
-
-export const SecondaryButton = (
-  props: Readonly<{ children: ReactNode; onClick: () => void; disabled?: boolean }>,
-): ReactElement => (
-  <button
-    type="button"
-    className="rounded-lg border border-line bg-surface px-3 py-1.5 text-sm hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
-    onClick={props.onClick}
-    disabled={props.disabled ?? false}
-  >
-    {props.children}
-  </button>
-);
+export { PrimaryButton, SecondaryButton };
 
 /**
  * フォームの 1 項目。エラーがあれば項目の直下に出す（UC-008 例外フロー）。

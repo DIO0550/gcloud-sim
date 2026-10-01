@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
-import { renderSimulator, screenText } from "@/features/simulator/__tests__/setup";
+import { renderSimulator, resourceTree, screenText } from "@/features/simulator/__tests__/setup";
 
 const typeLine = async (
   terminal: ReturnType<typeof renderSimulator>["terminal"],
@@ -233,6 +233,6 @@ test("Console に切り替えても端末は消えず、CLI に戻ると同じ�
   const before = terminal.written.length;
   await openConsole(user);
   await user.click(screen.getByRole("button", { name: "CLI" }));
-  expect(screen.getByRole("navigation", { name: "リソース階層" })).toBeInTheDocument();
+  expect(resourceTree()).toBeInTheDocument();
   expect(terminal.written.length).toBe(before);
 });

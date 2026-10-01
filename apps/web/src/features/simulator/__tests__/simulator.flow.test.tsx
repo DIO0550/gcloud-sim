@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
-import { renderSimulator, screenText } from "@/features/simulator/__tests__/setup";
+import { renderSimulator, resourceTree, screenText } from "@/features/simulator/__tests__/setup";
 import { Result } from "@/utils/Result";
 
 const typeLine = async (
@@ -21,7 +21,7 @@ test("コマンドを打つと出力が端末に出て、リソースツリー�
       "Created [https://www.googleapis.com/compute/v1/projects/ace-dev-01/zones/asia-northeast1-a/instances/web-1].",
     ),
   );
-  const tree = screen.getByRole("navigation", { name: "リソース階層" });
+  const tree = resourceTree();
   expect(within(tree).getByText("web-1")).toBeInTheDocument();
   expect(within(tree).getByText("Compute Engine")).toBeInTheDocument();
 });
@@ -63,7 +63,7 @@ test("ツリーをクリックするとプロパティに中身が出て、descr
     "gcloud compute instances create web-1 --zone=asia-northeast1-a --tags=http-server",
   );
   await waitFor(() => expect(screenText(terminal)).toContain("Created ["));
-  const tree = screen.getByRole("navigation", { name: "リソース階層" });
+  const tree = resourceTree();
   await user.click(within(tree).getByText("web-1"));
   const details = screen.getByRole("complementary", { name: "詳細" });
   expect(within(details).getByRole("heading", { name: "web-1" })).toBeInTheDocument();
@@ -84,7 +84,7 @@ test("IAM のプロパティにはフォルダから継承したロールが継�
     "gcloud resource-manager folders add-iam-policy-binding 284100000001 --member=user:dev@example.com --role=roles/compute.instanceAdmin.v1",
   );
   await waitFor(() => expect(screenText(terminal)).toContain("Updated IAM policy for folder"));
-  const tree = screen.getByRole("navigation", { name: "リソース階層" });
+  const tree = resourceTree();
   // IAM の行はプロジェクトごとにある。名前順で先頭が ace-dev-01。
   await user.click(within(tree).getAllByText("IAM")[0] as HTMLElement);
   const table = screen.getByRole("table", { name: "IAM ポリシー" });
@@ -152,18 +152,10 @@ test("設定のリセットで初期状態に戻る", async () => {
   const user = userEvent.setup();
   const { terminal } = renderSimulator();
   await typeLine(terminal, "gcloud compute instances create web-1 --zone=asia-northeast1-a");
-  await waitFor(() =>
-    expect(
-      within(screen.getByRole("navigation", { name: "リソース階層" })).getByText("web-1"),
-    ).toBeInTheDocument(),
-  );
+  await waitFor(() => expect(within(resourceTree()).getByText("web-1")).toBeInTheDocument());
   await user.click(screen.getByRole("button", { name: "設定" }));
   await user.click(screen.getByRole("button", { name: "リセット" }));
-  await waitFor(() =>
-    expect(
-      within(screen.getByRole("navigation", { name: "リソース階層" })).queryByText("web-1"),
-    ).not.toBeInTheDocument(),
-  );
+  await waitFor(() => expect(within(resourceTree()).queryByText("web-1")).not.toBeInTheDocument());
   expect(screenText(terminal)).toContain("初期状態に戻しました");
 });
 
@@ -171,16 +163,10 @@ test("確認で拒否するとリセットされない", async () => {
   const user = userEvent.setup();
   const { terminal } = renderSimulator({ confirmAnswer: false });
   await typeLine(terminal, "gcloud compute instances create web-1 --zone=asia-northeast1-a");
-  await waitFor(() =>
-    expect(
-      within(screen.getByRole("navigation", { name: "リソース階層" })).getByText("web-1"),
-    ).toBeInTheDocument(),
-  );
+  await waitFor(() => expect(within(resourceTree()).getByText("web-1")).toBeInTheDocument());
   await user.click(screen.getByRole("button", { name: "設定" }));
   await user.click(screen.getByRole("button", { name: "リセット" }));
-  expect(
-    within(screen.getByRole("navigation", { name: "リソース階層" })).getByText("web-1"),
-  ).toBeInTheDocument();
+  expect(within(resourceTree()).getByText("web-1")).toBeInTheDocument();
 });
 
 test("インポートに失敗すると E-011 が出て状態は変わらない", async () => {
@@ -189,11 +175,7 @@ test("インポートに失敗すると E-011 が出て状態は変わらない"
     readResult: async () => Result.err({ kind: "unsupportedVersion", version: "9" }),
   });
   await typeLine(terminal, "gcloud compute instances create web-1 --zone=asia-northeast1-a");
-  await waitFor(() =>
-    expect(
-      within(screen.getByRole("navigation", { name: "リソース階層" })).getByText("web-1"),
-    ).toBeInTheDocument(),
-  );
+  await waitFor(() => expect(within(resourceTree()).getByText("web-1")).toBeInTheDocument());
   await user.click(screen.getByRole("button", { name: "設定" }));
   await user.upload(
     screen.getByLabelText("JSON を選択"),
@@ -204,9 +186,7 @@ test("インポートに失敗すると E-011 が出て状態は変わらない"
       "schemaVersion 9 は未対応です。現在の状態は変更していません。",
     ),
   );
-  expect(
-    within(screen.getByRole("navigation", { name: "リソース階層" })).getByText("web-1"),
-  ).toBeInTheDocument();
+  expect(within(resourceTree()).getByText("web-1")).toBeInTheDocument();
 });
 
 test("エクスポートを押すとダウンロードが呼ばれる", async () => {

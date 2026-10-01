@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 
+import { SectionHeading } from "@/components/SectionHeading";
 import type { IamMember, RoleName } from "@/engine/domains/iam-policy";
 import type { PolicyTarget } from "@/engine/domains/resource-hierarchy";
 import { RoleCatalog } from "@/engine/domains/role-catalog";
@@ -28,7 +29,7 @@ export const Section = ({
   rows,
 }: Readonly<{ title: string; rows: readonly Row[] }>): ReactElement => (
   <section className="mb-4">
-    <h4 className="mb-1 font-semibold text-muted text-xs">{title}</h4>
+    <SectionHeading>{title}</SectionHeading>
     <dl className="grid grid-cols-[9rem_1fr] gap-x-3 gap-y-1 text-sm">
       {rows.map((row) => (
         <div key={row.label} className="contents">
@@ -142,9 +143,7 @@ export const IamSection = ({
   target,
 }: Readonly<{ world: World; target: PolicyTarget }>): ReactElement => (
   <>
-    <h4 className="mb-1 font-semibold text-muted text-xs">
-      {target.type === "organization" ? "IAM" : "IAM（継承を含む）"}
-    </h4>
+    <SectionHeading>{target.type === "organization" ? "IAM" : "IAM（継承を含む）"}</SectionHeading>
     <PolicyTable world={world} target={target} />
   </>
 );

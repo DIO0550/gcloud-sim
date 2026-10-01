@@ -1,5 +1,6 @@
 import { type ReactElement, useRef } from "react";
 
+import { SecondaryButton } from "@/components/Button";
 import type { World } from "@/engine/domains/world";
 import { SchemaVersion, Snapshot } from "@/engine/snapshot";
 import { Option } from "@/utils/Option";
@@ -106,13 +107,9 @@ export const SettingsDialog = ({
               <p className="mt-2 break-all font-mono text-muted text-xs">
                 {Snapshot.fileName(now)}
               </p>
-              <button
-                type="button"
-                className="mt-3 rounded border border-line px-3 py-1.5 text-sm hover:bg-canvas"
-                onClick={onExport}
-              >
+              <SecondaryButton className="mt-3" onClick={onExport}>
                 ダウンロード
-              </button>
+              </SecondaryButton>
             </section>
             <section className="rounded-lg border border-line p-4">
               <h3 className="font-semibold">インポート</h3>

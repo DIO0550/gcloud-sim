@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 
+import { SectionHeading } from "@/components/SectionHeading";
 import type { World } from "@/engine/domains/world";
 import type { TranscriptLine } from "@/features/simulator/hooks/use-simulator";
 
@@ -31,9 +32,9 @@ export const ChangeLog = ({ world, transcript }: ChangeLogProps): ReactElement =
     .slice(0, 50);
   return (
     <div className="p-4">
-      <h4 className="mb-2 font-semibold text-muted text-xs">
+      <SectionHeading className="mb-2">
         オペレーション（{world.operations.length} 件）
-      </h4>
+      </SectionHeading>
       {operations.length === 0 ? (
         <p className="mb-4 text-muted text-sm">
           まだありません。VM を作成・停止するとここに残ります。
@@ -50,7 +51,7 @@ export const ChangeLog = ({ world, transcript }: ChangeLogProps): ReactElement =
           ))}
         </ul>
       )}
-      <h4 className="mb-2 font-semibold text-muted text-xs">コマンド履歴</h4>
+      <SectionHeading className="mb-2">コマンド履歴</SectionHeading>
       {inputs.length === 0 ? (
         <p className="text-muted text-sm">まだありません。</p>
       ) : (

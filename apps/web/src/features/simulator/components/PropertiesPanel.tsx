@@ -1,5 +1,7 @@
 import type { ReactElement } from "react";
 
+import { SecondaryButton } from "@/components/Button";
+import { Pill } from "@/components/Pill";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { World } from "@/engine/domains/world";
 import { TreeSelection } from "@/engine/resource-tree";
@@ -309,30 +311,20 @@ export const PropertiesPanel = ({
       <div className="mb-1 flex items-center gap-2">
         <h3 className="font-bold font-mono text-lg">{titleOf(selection.value)}</h3>
         {Option.isSome(status) && (
-          <span
-            className={`rounded px-1.5 py-0.5 font-mono text-xs ${status.value === "RUNNING" ? "bg-ok-soft text-ok-ink" : "bg-canvas text-muted"}`}
-          >
+          <Pill tone={status.value === "RUNNING" ? "ok" : "muted"} className="font-mono">
             {status.value}
-          </span>
+          </Pill>
         )}
       </div>
       <p className="mb-3 break-all font-mono text-muted text-xs">{kindLabel(selection.value)}</p>
       {Option.isSome(describe) && (
         <div className="mb-4 flex gap-2">
-          <button
-            type="button"
-            className="rounded border border-line px-3 py-1 text-sm hover:bg-canvas"
-            onClick={() => onInsert(describe.value)}
-          >
+          <SecondaryButton onClick={() => onInsert(describe.value)}>
             describe を挿入
-          </button>
-          <button
-            type="button"
-            className="rounded border border-line px-3 py-1 text-sm hover:bg-canvas"
-            onClick={() => onInsert(`${describe.value} --format=json`)}
-          >
+          </SecondaryButton>
+          <SecondaryButton onClick={() => onInsert(`${describe.value} --format=json`)}>
             JSON
-          </button>
+          </SecondaryButton>
         </div>
       )}
       <Body world={world} selection={selection.value} />

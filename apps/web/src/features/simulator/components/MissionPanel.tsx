@@ -1,6 +1,9 @@
 import type { ReactElement } from "react";
 
-import { MissionStatuses } from "@/engine/domains/mission-progress";
+import { PrimaryButton, SecondaryButton } from "@/components/Button";
+import { Pill } from "@/components/Pill";
+import { SectionHeading } from "@/components/SectionHeading";
+import { type MissionStatus, MissionStatuses } from "@/engine/domains/mission-progress";
 import { World } from "@/engine/domains/world";
 import { Mission, MissionDomains } from "@/engine/missions";
 import { Option } from "@/utils/Option";
@@ -15,16 +18,14 @@ type MissionPanelProps = Readonly<{
   onHint: (id: string) => void;
 }>;
 
-const StatusBadge = ({ status }: Readonly<{ status: string }>): ReactElement => {
+const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElement => {
   switch (status) {
     case MissionStatuses.Completed:
-      return <span className="rounded bg-ok-soft px-1.5 py-0.5 text-ok-ink text-xs">クリア</span>;
+      return <Pill tone="ok">クリア</Pill>;
     case MissionStatuses.InProgress:
-      return (
-        <span className="rounded bg-accent-soft px-1.5 py-0.5 text-accent text-xs">挑戦中</span>
-      );
-    default:
-      return <span className="rounded bg-canvas px-1.5 py-0.5 text-muted text-xs">未着手</span>;
+      return <Pill tone="accent">挑戦中</Pill>;
+    case MissionStatuses.Available:
+      return <Pill tone="muted">未着手</Pill>;
   }
 };
 
@@ -104,31 +105,19 @@ const MissionBrief = ({
       )}
       <div className="flex flex-wrap gap-2">
         {status !== MissionStatuses.InProgress && (
-          <button
-            type="button"
-            className="rounded bg-accent px-3 py-1 text-sm text-white hover:bg-accent-hover"
-            onClick={() => onStart(mission.id)}
-          >
+          <PrimaryButton onClick={() => onStart(mission.id)}>
             {status === MissionStatuses.Completed ? "再挑戦" : "開始"}
-          </button>
+          </PrimaryButton>
         )}
         {status === MissionStatuses.InProgress && (
           <>
-            <button
-              type="button"
-              className="rounded border border-line px-3 py-1 text-sm hover:bg-canvas"
+            <SecondaryButton
               onClick={() => onHint(mission.id)}
               disabled={revealed >= mission.hints.length}
             >
               ヒント（{revealed}/{mission.hints.length}）
-            </button>
-            <button
-              type="button"
-              className="rounded border border-line px-3 py-1 text-sm hover:bg-canvas"
-              onClick={() => onAbandon(mission.id)}
-            >
-              中断
-            </button>
+            </SecondaryButton>
+            <SecondaryButton onClick={() => onAbandon(mission.id)}>中断</SecondaryButton>
           </>
         )}
       </div>
@@ -154,7 +143,7 @@ export const MissionPanel = ({
       <ul className="p-2">
         {Object.values(MissionDomains).map((domain) => (
           <li key={domain}>
-            <h4 className="px-2 pt-3 pb-1 font-semibold text-muted text-xs">{domain}</h4>
+            <SectionHeading className="px-2 pt-3 pb-1">{domain}</SectionHeading>
             <ul>
               {missions
                 .filter((m) => m.domain === domain)

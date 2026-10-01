@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
 
-import { LineEditor } from "@/features/simulator/domains/line-editor";
+import { Keys, LineEditor } from "@/features/simulator/domains/line-editor";
 import { Option } from "@/utils/Option";
 
 const type = (editor: LineEditor, text: string): LineEditor =>
@@ -20,7 +20,7 @@ test("Backspace はカーソルの前の 1 文字を消し、先頭では何も�
 });
 
 test("← で戻った位置に挿入できる", () => {
-  const moved = LineEditor.handle(type(LineEditor.create(), "ac"), "\x1b[D").editor;
+  const moved = LineEditor.handle(type(LineEditor.create(), "ac"), Keys.Left).editor;
   expect(type(moved, "b").buffer).toBe("abc");
 });
 
@@ -46,13 +46,13 @@ test("直前と同じ行は履歴に重ねて積まない", () => {
 test("↑ で履歴を遡り、↓ で打ちかけの行に戻る", () => {
   const editor = LineEditor.create(["first", "second"]);
   const drafted = type(editor, "dra");
-  const up1 = LineEditor.handle(drafted, "\x1b[A").editor;
+  const up1 = LineEditor.handle(drafted, Keys.Up).editor;
   expect(up1.buffer).toBe("second");
-  const up2 = LineEditor.handle(up1, "\x1b[A").editor;
+  const up2 = LineEditor.handle(up1, Keys.Up).editor;
   expect(up2.buffer).toBe("first");
-  const up3 = LineEditor.handle(up2, "\x1b[A").editor;
+  const up3 = LineEditor.handle(up2, Keys.Up).editor;
   expect(up3.buffer).toBe("first");
-  const down = LineEditor.handle(LineEditor.handle(up3, "\x1b[B").editor, "\x1b[B").editor;
+  const down = LineEditor.handle(LineEditor.handle(up3, Keys.Down).editor, Keys.Down).editor;
   expect(down.buffer).toBe("dra");
   expect(down.historyIndex).toEqual(Option.none);
 });
@@ -128,7 +128,7 @@ test("貼り付けた制御文字は入力行に入らない", () => {
 });
 
 test("replace はエスケープ列を落とし、履歴を辿っている位置も戻す", () => {
-  const browsing = LineEditor.handle(LineEditor.create(["ls"]), "\x1b[A").editor;
+  const browsing = LineEditor.handle(LineEditor.create(["ls"]), Keys.Up).editor;
   const replaced = LineEditor.replace(browsing, "gcloud\x1b[31m projects list");
   expect(replaced.buffer).toBe("gcloud[31m projects list");
   expect(replaced.historyIndex).toEqual(Option.none);
@@ -145,10 +145,10 @@ test("貼り付けの draw は 1 つにまとまり、送信を挟むと分か�
 
 test("Home / End と Ctrl+U でカーソルと行頭削除が効く", () => {
   const editor = type(LineEditor.create(), "abcd");
-  expect(LineEditor.handle(editor, "\x1b[H").editor.cursor).toBe(0);
+  expect(LineEditor.handle(editor, Keys.Home).editor.cursor).toBe(0);
   expect(
-    LineEditor.handle(LineEditor.handle(editor, "\x1b[H").editor, "\x1b[F").editor.cursor,
+    LineEditor.handle(LineEditor.handle(editor, Keys.Home).editor, Keys.End).editor.cursor,
   ).toBe(4);
-  const moved = LineEditor.handle(LineEditor.handle(editor, "\x1b[D").editor, "\x1b[D").editor;
+  const moved = LineEditor.handle(LineEditor.handle(editor, Keys.Left).editor, Keys.Left).editor;
   expect(LineEditor.handle(moved, "\x15").editor.buffer).toBe("cd");
 });

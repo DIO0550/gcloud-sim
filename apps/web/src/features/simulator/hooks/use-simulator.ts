@@ -120,12 +120,15 @@ const append = (
   };
 };
 
-const uiWarning = (text: string): Omit<TranscriptLine, "id"> => ({
+/** UI 由来の 1 行（ミッション開始・取り込み・保存失敗の知らせ）。 */
+const uiLine = (text: string, tone: TranscriptLine["tone"]): Omit<TranscriptLine, "id"> => ({
   kind: "output",
   origin: "ui",
   text,
-  tone: "warning",
+  tone,
 });
+
+const uiWarning = (text: string): Omit<TranscriptLine, "id"> => uiLine(text, "warning");
 
 /** 起動時の状態を作る。保存があればそれ、無ければ初期 World。 */
 export const initialSimulatorState = (start: SimulatorStart): SimulatorState => {
@@ -228,12 +231,7 @@ const missionStarted = (state: SimulatorState, id: string): SimulatorState => {
     const mission = Engine.missions().find((m) => m.id === id);
     return {
       ...append(state, [
-        {
-          kind: "output",
-          origin: "ui",
-          text: `gcloud-sim: ミッション開始「${mission?.title ?? id}」`,
-          tone: "success",
-        },
+        uiLine(`gcloud-sim: ミッション開始「${mission?.title ?? id}」`, "success"),
       ]),
       world: started.value,
       selectedMissionId: Option.some(id),
@@ -297,7 +295,7 @@ export const simulatorReducer = (
           ? "gcloud-sim: Snapshot を取り込みました。"
           : "gcloud-sim: 初期状態に戻しました。";
       return {
-        ...append(state, [{ kind: "output", origin: "ui", text, tone: "success" }]),
+        ...append(state, [uiLine(text, "success")]),
         world: action.world,
         shell: Shell.Ready,
         selection: Option.none,

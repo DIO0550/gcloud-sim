@@ -3,10 +3,8 @@
 import { type ReactElement, useCallback, useEffect } from "react";
 
 import { Engine } from "@/engine";
-import type { World } from "@/engine/domains/world";
 import { World as WorldOps } from "@/engine/domains/world";
 import { Mission } from "@/engine/missions";
-import type { ImportFailure } from "@/engine/snapshot";
 import { ChangeLog } from "@/features/simulator/components/ChangeLog";
 import { Header } from "@/features/simulator/components/Header";
 import { MissionPanel } from "@/features/simulator/components/MissionPanel";
@@ -23,16 +21,18 @@ import {
   Views,
 } from "@/features/simulator/hooks/use-simulator";
 import { describeImportFailure } from "@/features/simulator/utils/import-failure-message";
+import type { SnapshotFile } from "@/libs/snapshot-file";
 import type { TerminalViewFactory } from "@/libs/terminal-view";
+import type { WorldStorage } from "@/libs/world-storage";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
-/** 保存・ファイル・時計の境界。テストではフェイクを注入する。 */
+/** 保存・ファイル・時計の境界。本物は `libs/` の関数そのもので、テストではフェイクを注入する。 */
 export type SimulatorIo = Readonly<{
   now: () => string;
-  save: (world: World, now: string) => Result<number, Readonly<{ reason: string }>>;
-  download: (world: World, now: string) => void;
-  readFile: (file: File) => Promise<Result<World, ImportFailure>>;
+  save: typeof WorldStorage.save;
+  download: typeof SnapshotFile.download;
+  readFile: typeof SnapshotFile.read;
   confirm: (message: string) => boolean;
   /** クリップボードへ書く（Console の「同等のコマンドライン」のコピー） */
   copy: (text: string) => void;

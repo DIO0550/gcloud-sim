@@ -166,14 +166,13 @@ export const Yaml = {
 
 // --- filter ---
 
+/** 比較演算子。長いものを先に置き、字句解析で `>=` を `>` と `=` に割らない。 */
+const CompareOps = [">=", "<=", "!=", "=", ":", ">", "<"] as const;
+export type CompareOp = (typeof CompareOps)[number];
+
 /** `--filter` の式（設計書 9.2 の簡易版: `=` `!=` `:` `NOT` `AND` `OR`）。 */
 export type FilterExpr =
-  | Readonly<{
-      kind: "compare";
-      path: string;
-      op: "=" | "!=" | ":" | ">" | "<" | ">=" | "<=";
-      value: string;
-    }>
+  | Readonly<{ kind: "compare"; path: string; op: CompareOp; value: string }>
   | Readonly<{ kind: "not"; expr: FilterExpr }>
   | Readonly<{ kind: "and"; left: FilterExpr; right: FilterExpr }>
   | Readonly<{ kind: "or"; left: FilterExpr; right: FilterExpr }>;
@@ -196,6 +195,8 @@ const unquote = (value: string): string =>
     ? value.slice(1, -1)
     : value;
 
+const CompareTokenPattern = new RegExp(`^(-)?([A-Za-z0-9_.[\\]]+)(${CompareOps.join("|")})(.*)$`);
+
 const parseTerm = (cursor: Cursor): Result<Parsed, string> => {
   const token = peek(cursor);
   if (token === undefined) return Result.err("expected an expression");
@@ -211,18 +212,14 @@ const parseTerm = (cursor: Cursor): Result<Parsed, string> => {
       cursor: p.cursor,
     }));
   }
-  const match = /^(-)?([A-Za-z0-9_.[\]]+)(>=|<=|!=|=|:|>|<)(.*)$/.exec(token);
-  if (match === null) return Result.err(`unexpected token [${token}]`);
-  const [, negate, path = "", op, rest = ""] = match;
+  const match = CompareTokenPattern.exec(token);
+  const op = CompareOps.find((candidate) => candidate === match?.[3]);
+  if (match === null || op === undefined) return Result.err(`unexpected token [${token}]`);
+  const [, negate, path = "", , rest = ""] = match;
   const next = rest === "" ? peek(advance(cursor)) : undefined;
   const value = rest === "" ? next : rest;
   if (value === undefined) return Result.err(`expected a value after [${token}]`);
-  const compare: FilterExpr = {
-    kind: "compare",
-    path,
-    op: op as ">=" | "<=" | "!=" | "=" | ":" | ">" | "<",
-    value: unquote(value),
-  };
+  const compare: FilterExpr = { kind: "compare", path, op, value: unquote(value) };
   const after = rest === "" ? advance(advance(cursor)) : advance(cursor);
   return Result.ok({ expr: negate ? { kind: "not", expr: compare } : compare, cursor: after });
 };

@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 
 import { Engine, type OutputLine } from "@/engine";
 import type { World } from "@/engine/domains/world";
@@ -97,6 +97,10 @@ export const renderSimulator = (
   const rendered = render(<Simulator start={{ world, warning: Option.none }} io={h.io} />);
   return { ...h, ...rendered };
 };
+
+/** 左ペインのリソース階層。 */
+export const resourceTree = (): HTMLElement =>
+  screen.getByRole("navigation", { name: "リソース階層" });
 
 /** 端末に書かれたものを 1 つの文字列にする。 */
 export const screenText = (terminal: FakeTerminal): string => terminal.written.join("");

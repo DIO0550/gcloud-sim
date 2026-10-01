@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
 
-import { Engine } from "@/engine";
+import { initialWorld, Now } from "@/engine/__tests__/setup";
 import { World } from "@/engine/domains/world";
 import {
   initialSimulatorState,
@@ -11,9 +11,8 @@ import {
 } from "@/features/simulator/hooks/use-simulator";
 import { Option } from "@/utils/Option";
 
-const Now = "2026-09-30T14:02:31.000Z";
 const start = (): SimulatorState =>
-  initialSimulatorState({ world: Engine.initialWorld(Now), warning: Option.none });
+  initialSimulatorState({ world: initialWorld(), warning: Option.none });
 const submit = (state: SimulatorState, line: string, origin: "cli" | "ui" = "cli") =>
   simulatorReducer(state, { type: "submitted", line, now: Now, origin });
 
@@ -75,7 +74,7 @@ test("挿入要求は端末が取り込むまで残り、取り込むと消え�
 
 test("起動時の注意は transcript の先頭に警告として入る", () => {
   const s = initialSimulatorState({
-    world: Engine.initialWorld(Now),
+    world: initialWorld(),
     warning: Option.some("gcloud-sim: warning: 保存を読めませんでした"),
   });
   expect(s.transcript).toEqual([
@@ -133,7 +132,7 @@ test("World を置き換えると選択と shell 状態がリセットされ設�
     settingsOpen: true,
     selection: Option.some({ kind: "organization" }),
   };
-  const fresh = Engine.initialWorld(Now);
+  const fresh = initialWorld();
   const s = simulatorReducer(dirty, { type: "worldReplaced", world: fresh, reason: "reset" });
   expect(s.world).toBe(fresh);
   expect(s.shell.kind).toBe("ready");

@@ -22,7 +22,7 @@ export type EditorEffect =
 
 export type EditorStep = Readonly<{ editor: LineEditor; effects: readonly EditorEffect[] }>;
 
-const Keys = {
+export const Keys = {
   Enter: "\r",
   Newline: "\n",
   Backspace: "\x7f",
