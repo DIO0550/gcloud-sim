@@ -197,7 +197,7 @@ const createNetwork = (ctx: ProjectContext, args: ParsedArgs): CommandResult => 
 const createSubnet = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   const region = CommandContext.resolveRegion(ctx, ParsedArgs.string(args, "region"));
   if (!Result.isOk(region)) return region;
-  const networkName = Option.unwrapOr(ParsedArgs.string(args, "network"), "");
+  const networkName = ParsedArgs.requiredString(args, "network");
   const network = requireNetwork(ctx, networkName);
   if (!Result.isOk(network)) return network;
   const subnet = Result.mapErr(
@@ -206,7 +206,7 @@ const createSubnet = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
       name: ParsedArgs.requiredPositional(args, 0),
       region: region.value,
       network: networkName,
-      ipCidrRange: Option.unwrapOr(ParsedArgs.string(args, "range"), ""),
+      ipCidrRange: ParsedArgs.requiredString(args, "range"),
       privateIpGoogleAccess: ParsedArgs.boolean(args, "enable-private-ip-google-access"),
     }),
     (m) => CommandFailure.invalidValue(m.includes("ipCidrRange") ? "--range" : "NAME", m),
@@ -289,24 +289,17 @@ const createAddress = (ctx: ProjectContext, args: ParsedArgs): CommandResult => 
       world,
       output: createdTable(
         Address.selfLink(address.value),
-        addressRecord(address.value),
+        Address.toRecord(address.value),
         AddressColumns,
       ),
     }),
   );
 };
 
-const addressRecord = (address: Address): JsonRecord => ({
-  ...Address.toRecord(address),
-  purpose: "",
-  network: "",
-  subnetwork: "",
-});
-
 const createRouter = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   const region = CommandContext.resolveRegion(ctx, ParsedArgs.string(args, "region"));
   if (!Result.isOk(region)) return region;
-  const networkName = Option.unwrapOr(ParsedArgs.string(args, "network"), "");
+  const networkName = ParsedArgs.requiredString(args, "network");
   const network = requireNetwork(ctx, networkName);
   if (!Result.isOk(network)) return network;
   const router = Result.mapErr(
@@ -338,14 +331,14 @@ const createRouter = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
 
 /** `--peer-network` の相手。`--peer-project` が無ければ同じプロジェクト。相手のネットワークが無ければ E-005。 */
 const createPeering = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
-  const networkName = Option.unwrapOr(ParsedArgs.string(args, "network"), "");
+  const networkName = ParsedArgs.requiredString(args, "network");
   const network = requireNetwork(ctx, networkName);
   if (!Result.isOk(network)) return network;
   const peerProjectId = Option.unwrapOr(
     ParsedArgs.string(args, "peer-project"),
     ctx.project.projectId,
   );
-  const peerNetwork = Option.unwrapOr(ParsedArgs.string(args, "peer-network"), "");
+  const peerNetwork = ParsedArgs.requiredString(args, "peer-network");
   if (!Option.isSome(World.findNetwork(ctx.world, peerProjectId, peerNetwork))) {
     return Result.err(
       CommandFailure.notFound(`projects/${peerProjectId}/global/networks/${peerNetwork}`),
@@ -632,21 +625,29 @@ export const NetworkingCommands: readonly CommandSpec[] = [
     permission: "compute.addresses.list",
     columns: AddressColumns,
     records: (ctx) =>
-      World.namedOf(ctx.world, "addresses", ctx.project.projectId).map(addressRecord),
+      World.namedOf(ctx.world, "addresses", ctx.project.projectId).map(Address.toRecord),
   }),
   describeNamedCommand({
     path: ["gcloud", "compute", "addresses", "describe"],
     summary: "Display detailed information about an address.",
-    positional: Positional.required("NAME", "Name of the address.", Candidates.addresses),
+    positional: { name: "NAME", description: "Name of the address." },
     flags: [
       CommonFlags.region,
       Flag.boolean("global", "If provided, it is assumed the address is global."),
     ],
+    locate: (ctx, args) =>
+      ParsedArgs.boolean(args, "global")
+        ? Result.ok("global")
+        : CommandContext.resolveRegion(ctx, ParsedArgs.string(args, "region")),
     collection: "addresses",
     permission: "compute.addresses.get",
     requiredApis: [ComputeApi],
-    resourcePath: (projectId, name) => `projects/${projectId}/regions/-/addresses/${name}`,
-    record: addressRecord,
+    resourcePath: (ref) => {
+      const location = Option.unwrapOr(ref.location, "-");
+      const scope = location === "global" ? "global" : `regions/${location}`;
+      return `projects/${ref.projectId}/${scope}/addresses/${ref.name}`;
+    },
+    record: Address.toRecord,
   }),
   projectCommand({
     path: ["gcloud", "compute", "routers", "create"],
@@ -675,12 +676,14 @@ export const NetworkingCommands: readonly CommandSpec[] = [
   describeNamedCommand({
     path: ["gcloud", "compute", "routers", "describe"],
     summary: "Describe a Compute Engine router.",
-    positional: Positional.required("NAME", "Name of the router.", Candidates.routers),
+    positional: { name: "NAME", description: "Name of the router." },
     flags: [CommonFlags.region],
+    locate: (ctx, args) => CommandContext.resolveRegion(ctx, ParsedArgs.string(args, "region")),
     collection: "routers",
     permission: "compute.routers.get",
     requiredApis: [ComputeApi],
-    resourcePath: (projectId, name) => `projects/${projectId}/regions/-/routers/${name}`,
+    resourcePath: (ref) =>
+      `projects/${ref.projectId}/regions/${Option.unwrapOr(ref.location, "-")}/routers/${ref.name}`,
     record: Router.toRecord,
   }),
 ];

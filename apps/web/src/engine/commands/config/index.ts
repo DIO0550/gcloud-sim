@@ -468,10 +468,7 @@ export const AuthCommands: readonly CommandSpec[] = [
       Flag.string("key-file", "Path to the private key file, e.g. key.json.", { required: true }),
     ],
     run: (ctx, args) => {
-      const account = keyFileAccount(
-        ctx.world,
-        Option.unwrapOr(ParsedArgs.string(args, "key-file"), ""),
-      );
+      const account = keyFileAccount(ctx.world, ParsedArgs.requiredString(args, "key-file"));
       if (!Result.isOk(account)) return account;
       const given = ParsedArgs.positional(args, 0);
       if (Option.isSome(given) && given.value !== account.value) {

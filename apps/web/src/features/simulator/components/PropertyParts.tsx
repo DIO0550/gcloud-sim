@@ -1,12 +1,11 @@
 import type { ReactElement } from "react";
 
 import { SectionHeading } from "@/components/SectionHeading";
-import type { IamMember, RoleName } from "@/engine/domains/iam-policy";
+import type { IamMember } from "@/engine/domains/iam-policy";
 import type { PolicyTarget } from "@/engine/domains/resource-hierarchy";
-import { RoleCatalog } from "@/engine/domains/role-catalog";
 import { World } from "@/engine/domains/world";
-import { type BindingOrigin, BindingRow, type TreeSelection } from "@/engine/resource-tree";
-import { Option } from "@/utils/Option";
+import { BindingRow, type TreeSelection } from "@/engine/resource-tree";
+import { originText } from "@/features/simulator/features/console";
 
 /** プロパティパネルの本体が受け取るもの。選択の種類ごとに中身の型が絞られる。 */
 export type SelectionProps<K extends TreeSelection["kind"]> = Readonly<{
@@ -45,47 +44,7 @@ export const NotFound = ({ what }: Readonly<{ what: string }>): ReactElement => 
   <p className="text-muted text-sm">{what} は見つかりません（削除されました）。</p>
 );
 
-/** ロールの表示名。カタログに無ければ World のカスタムロール、それも無ければ名前そのまま。 */
-export const roleTitle = (world: World, role: RoleName): string =>
-  Option.unwrapOr(
-    Option.or(
-      Option.map(RoleCatalog.find(role), (r) => r.title),
-      Option.map(World.findCustomRole(world, role), (r) => r.title),
-    ),
-    role,
-  );
-
 const memberLabel = (member: IamMember): string => member.replace(/^user:/, "");
-
-/** 継承元の綴り（モック s2: `組織 example.com` / `フォルダ dev` / `このプロジェクト`）。 */
-const originText = (origin: BindingOrigin): string => {
-  switch (origin.kind) {
-    case "self":
-      switch (origin.target.type) {
-        case "organization":
-          return "この組織";
-        case "folder":
-          return "このフォルダ";
-        case "project":
-          return "このプロジェクト";
-        case "bucket":
-          return "このバケット";
-        case "service-account":
-          return "このサービスアカウント";
-      }
-      break;
-    case "organization":
-      return `組織 ${origin.displayName}`;
-    case "folder":
-      return `フォルダ ${origin.displayName}`;
-    case "project":
-      return `プロジェクト ${origin.projectId}`;
-    case "bucket":
-      return `バケット ${origin.name}`;
-    case "service-account":
-      return `サービスアカウント ${origin.email}`;
-  }
-};
 
 /** IAM の表（モック s2: プリンシパル・ロール・継承元）。 */
 const PolicyTable = ({
@@ -121,7 +80,7 @@ const PolicyTable = ({
             <tr key={`${row.member}/${row.role}/${origin}`} className="border-line border-t">
               <td className="break-all py-1.5 pr-2 font-mono text-xs">{memberLabel(row.member)}</td>
               <td className="py-1.5 pr-2">
-                {roleTitle(world, row.role)}
+                {World.roleTitle(world, row.role)}
                 <span className="block font-mono text-muted text-xs">{row.role}</span>
               </td>
               <td

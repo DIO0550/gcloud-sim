@@ -114,7 +114,7 @@ export const BillingCommands: readonly CommandSpec[] = [
     run: (ctx, args) => {
       const project = targetProject(ctx);
       if (!Result.isOk(project)) return project;
-      const accountId = Option.unwrapOr(ParsedArgs.string(args, "billing-account"), "");
+      const accountId = ParsedArgs.requiredString(args, "billing-account");
       const account = World.findBillingAccount(ctx.world, accountId);
       if (!Option.isSome(account))
         return Result.err(CommandFailure.notFound(`billingAccounts/${accountId}`));
@@ -183,7 +183,7 @@ const BudgetColumns = [
 
 /** `--billing-account` の請求アカウント。無ければ E-005。 */
 const billingAccountFlag = (ctx: CommandContext, args: ParsedArgs) => {
-  const id = Option.unwrapOr(ParsedArgs.string(args, "billing-account"), "");
+  const id = ParsedArgs.requiredString(args, "billing-account");
   return Option.toResult(World.findBillingAccount(ctx.world, id), () =>
     CommandFailure.notFound(`billingAccounts/${id}`),
   );
@@ -201,7 +201,7 @@ const billingAccountTarget = (
 const createBudget = (ctx: TargetContext, args: ParsedArgs): CommandResult => {
   const account = billingAccountFlag(ctx, args);
   if (!Result.isOk(account)) return account;
-  const rawAmount = Option.unwrapOr(ParsedArgs.string(args, "budget-amount"), "");
+  const rawAmount = ParsedArgs.requiredString(args, "budget-amount");
   const amountMatch = /^(\d+(?:\.\d+)?)([A-Za-z]{3})?$/.exec(rawAmount);
   const amount = amountMatch === null ? Number.NaN : Number(amountMatch[1]);
   if (!Number.isFinite(amount)) {
@@ -230,7 +230,7 @@ const createBudget = (ctx: TargetContext, args: ParsedArgs): CommandResult => {
   const budget = Result.mapErr(
     Budget.create({
       billingAccountId: account.value.id,
-      displayName: Option.unwrapOr(ParsedArgs.string(args, "display-name"), ""),
+      displayName: ParsedArgs.requiredString(args, "display-name"),
       amount,
       thresholds,
       projectIds,

@@ -1,46 +1,47 @@
 import { type ReactElement, useState } from "react";
 
-import { DefaultImage, MachineType, PublicImage, Zone } from "@/engine/domains/catalog";
+import { MachineType, PublicImage, Zone } from "@/engine/domains/catalog";
 import {
+  BootDiskType,
   BootDiskTypes,
   ExternalIp,
   type Instance,
+  Instance as InstanceOps,
+  ProvisioningModel,
   ProvisioningModels,
 } from "@/engine/domains/compute";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { ServiceAccount } from "@/engine/domains/service-account";
 import { World } from "@/engine/domains/world";
 import {
-  DataTable,
   EquivalentCommandPanel,
   Field,
-  inputClass,
-  OutcomeBanner,
+  InputClass,
   PrimaryButton,
+  ResourceTable,
   ScreenTitle,
   SecondaryButton,
-} from "@/features/simulator/features/console/components/parts";
+} from "@/features/simulator/features/console/components/ConsoleParts";
 import { ConsoleScreens } from "@/features/simulator/features/console/domains/console-screen";
 import {
-  EnableApiCommand,
   type VmAction,
   VmAction as VmActionOps,
   VmCreateForm,
 } from "@/features/simulator/features/console/domains/equivalent-command";
+import { useCreateForm } from "@/features/simulator/features/console/hooks/use-create-form";
 import type { ScreenProps } from "@/features/simulator/features/console/types/screen-props";
 import { Option } from "@/utils/Option";
 
-/** 操作ボタンの綴り（UI 案 2b）。 */
+/** 操作ボタンの綴り（UI 案 2b: 停止中でも一時停止中でも「開始 / 再開」の 1 つ）。 */
 const actionText = (action: VmAction): string => {
   switch (action) {
     case "start":
+    case "resume":
       return "開始 / 再開";
     case "stop":
       return "停止";
     case "suspend":
       return "一時停止";
-    case "resume":
-      return "再開";
     case "delete":
       return "削除";
     case "ssh":
@@ -48,29 +49,28 @@ const actionText = (action: VmAction): string => {
   }
 };
 
-const StatusDot = ({ status }: Readonly<{ status: Instance["status"] }>): ReactElement => (
+const StatusDot = ({ instance }: Readonly<{ instance: Instance }>): ReactElement => (
   <span className="flex items-center gap-1.5">
     <span
       role="img"
-      aria-label={status}
-      className={`inline-block h-2 w-2 rounded-full ${status === "RUNNING" ? "bg-ok" : "bg-line"}`}
+      aria-label={instance.status}
+      className={`inline-block h-2 w-2 rounded-full ${InstanceOps.isRunning(instance) ? "bg-ok" : "bg-line"}`}
     />
-    <span className="text-xs">{status}</span>
+    <span className="text-xs">{instance.status}</span>
   </span>
 );
 
 /** Compute Engine › VM インスタンス（UI 案 2b）。選んだ VM に対する操作は CLI のコマンドとして流す。 */
-export const VmListScreen = (props: ScreenProps): ReactElement => {
-  const { world, projectId, actions } = props;
+export const VmListScreen = ({ world, project, handlers }: ScreenProps): ReactElement => {
   const [selectedName, setSelectedName] = useState<Option<string>>(Option.none);
-  const instances = World.instancesOf(world, projectId);
+  const instances = World.instancesOf(world, project.projectId);
   const selected = Option.flatMap(selectedName, (name) =>
     Option.fromNullable(instances.find((i) => i.name === name)),
   );
   const perform = (action: VmAction, instance: Instance): void => {
     const isDelete = action === "delete";
-    if (isDelete && !actions.confirm(`${instance.name} を削除しますか？`)) return;
-    actions.submit({
+    if (isDelete && !handlers.confirm(`${instance.name} を削除しますか？`)) return;
+    handlers.submit({
       line: VmActionOps.toCommand(action, instance),
       note: `${actionText(action)} (${instance.name})`,
       next: Option.none,
@@ -81,22 +81,11 @@ export const VmListScreen = (props: ScreenProps): ReactElement => {
       <ScreenTitle
         eyebrow="Compute Engine"
         title="VM インスタンス"
-        actions={
-          <PrimaryButton onClick={() => actions.changeScreen(ConsoleScreens.VmCreate)}>
+        trailing={
+          <PrimaryButton onClick={() => handlers.changeScreen(ConsoleScreens.VmCreate)}>
             インスタンスを作成
           </PrimaryButton>
         }
-      />
-      <OutcomeBanner
-        outcome={props.outcome}
-        onEnableApi={() =>
-          actions.submit({
-            line: EnableApiCommand.toCommand("compute.googleapis.com", projectId),
-            note: "Compute Engine API を有効にする",
-            next: Option.none,
-          })
-        }
-        onDismiss={props.onOutcomeDismiss}
       />
       {Option.isSome(selected) && (
         <div className="mb-3 flex items-center gap-2 rounded-lg border border-line bg-canvas px-3 py-2 text-sm">
@@ -109,7 +98,7 @@ export const VmListScreen = (props: ScreenProps): ReactElement => {
           ))}
         </div>
       )}
-      <DataTable
+      <ResourceTable
         label="VM インスタンス"
         rows={instances}
         keyOf={(i) => `${i.zone}/${i.name}`}
@@ -128,7 +117,7 @@ export const VmListScreen = (props: ScreenProps): ReactElement => {
               />
             ),
           },
-          { header: "状態", cell: (i) => <StatusDot status={i.status} /> },
+          { header: "状態", cell: (i) => <StatusDot instance={i} /> },
           { header: "名前", cell: (i) => <span className="font-mono">{i.name}</span> },
           { header: "ゾーン", cell: (i) => <span className="font-mono">{i.zone}</span> },
           {
@@ -162,54 +151,48 @@ const zoneOf = (world: World): Zone =>
   );
 
 /** Compute Engine › インスタンスを作成（UI 案 2c / s1）。入力のたびに同等のコマンドを出す。 */
-export const VmCreateScreen = (props: ScreenProps): ReactElement => {
-  const { world, projectId, actions } = props;
-  const project = World.findProject(world, projectId);
-  const defaultAccount = Option.isSome(project)
-    ? ServiceAccount.defaultComputeEmail(project.value.projectNumber)
-    : "default";
-  const [form, setForm] = useState<VmCreateForm>(() =>
-    VmCreateForm.initial({ zone: zoneOf(world), serviceAccount: defaultAccount }),
+export const VmCreateScreen = ({ world, project, handlers }: ScreenProps): ReactElement => {
+  const projectId = project.projectId;
+  const defaultAccount = ServiceAccount.defaultComputeEmail(project.projectNumber);
+  const editor = useCreateForm(
+    VmCreateForm,
+    () => VmCreateForm.create({ zone: zoneOf(world), serviceAccount: defaultAccount }),
+    true,
   );
-  const [submitted, setSubmitted] = useState(false);
-  const errors = submitted ? VmCreateForm.validate(form) : {};
+  if (!Option.isSome(editor.form)) return <span className="hidden" />;
+  const form = editor.form.value;
+  const { set, errors } = editor;
   const command = VmCreateForm.toCommand(form, projectId);
-  const set = <K extends keyof VmCreateForm>(key: K, value: VmCreateForm[K]): void =>
-    setForm((f) => ({ ...f, [key]: value }));
   const accounts = [
     defaultAccount,
     ...World.serviceAccountsOf(world, projectId).map((s) => s.email),
   ];
   const images = PublicImage.all();
   const create = (): void => {
-    setSubmitted(true);
-    if (!VmCreateForm.isValid(form)) return;
-    actions.submit({
+    const valid = editor.submit();
+    if (!Option.isSome(valid)) return;
+    handlers.submit({
       line: command,
-      note: `インスタンスを作成 (${form.name})`,
+      note: `インスタンスを作成 (${valid.value.name})`,
       next: Option.some(ConsoleScreens.VmList),
     });
+  };
+  /** 選択肢に無い値は無視して今の値を保つ（select は選択肢しか出さないので、届くのは選択肢だけ）。 */
+  const setParsed = <K extends keyof VmCreateForm>(
+    key: K,
+    parsed: Option<VmCreateForm[K]>,
+  ): void => {
+    if (Option.isSome(parsed)) set(key, parsed.value);
   };
   return (
     <div>
       <ScreenTitle eyebrow="Compute Engine › VM インスタンス" title="インスタンスを作成" />
-      <OutcomeBanner
-        outcome={props.outcome}
-        onEnableApi={() =>
-          actions.submit({
-            line: EnableApiCommand.toCommand("compute.googleapis.com", projectId),
-            note: "Compute Engine API を有効にする",
-            next: Option.none,
-          })
-        }
-        onDismiss={props.onOutcomeDismiss}
-      />
       <div className="grid max-w-3xl grid-cols-2 gap-4">
         <Field label="名前" error={errors.name}>
           {(id) => (
             <input
               id={id}
-              className={inputClass}
+              className={InputClass}
               value={form.name}
               onChange={(e) => set("name", e.target.value)}
             />
@@ -219,9 +202,9 @@ export const VmCreateScreen = (props: ScreenProps): ReactElement => {
           {(id) => (
             <select
               id={id}
-              className={inputClass}
+              className={InputClass}
               value={form.zone}
-              onChange={(e) => set("zone", Option.unwrapOr(Zone.parse(e.target.value), form.zone))}
+              onChange={(e) => setParsed("zone", Zone.parse(e.target.value))}
             >
               {Zone.all().map((z) => (
                 <option key={z} value={z}>
@@ -235,9 +218,14 @@ export const VmCreateScreen = (props: ScreenProps): ReactElement => {
           {(id) => (
             <select
               id={id}
-              className={inputClass}
+              className={InputClass}
               value={form.machineType}
-              onChange={(e) => set("machineType", e.target.value)}
+              onChange={(e) =>
+                setParsed(
+                  "machineType",
+                  Option.map(MachineType.parse(e.target.value), (m) => m.name),
+                )
+              }
             >
               {MachineType.all().map((m) => (
                 <option key={m.name} value={m.name}>
@@ -251,15 +239,15 @@ export const VmCreateScreen = (props: ScreenProps): ReactElement => {
           {(id) => (
             <select
               id={id}
-              className={inputClass}
+              className={InputClass}
               value={form.provisioningModel}
               onChange={(e) =>
-                set("provisioningModel", e.target.value === "SPOT" ? "SPOT" : "STANDARD")
+                setParsed("provisioningModel", ProvisioningModel.parse(e.target.value))
               }
             >
               {Object.values(ProvisioningModels).map((m) => (
                 <option key={m} value={m}>
-                  {m === "SPOT" ? "Spot" : "標準"}
+                  {m === ProvisioningModels.Spot ? "Spot" : "標準"}
                 </option>
               ))}
             </select>
@@ -269,12 +257,14 @@ export const VmCreateScreen = (props: ScreenProps): ReactElement => {
           {(id) => (
             <select
               id={id}
-              className={inputClass}
+              className={InputClass}
               value={`${form.imageProject}/${form.imageFamily}`}
               onChange={(e) => {
-                const image =
-                  images.find((i) => `${i.project}/${i.family}` === e.target.value) ?? DefaultImage;
-                setForm((f) => ({ ...f, imageFamily: image.family, imageProject: image.project }));
+                const image = images.find((i) => `${i.project}/${i.family}` === e.target.value);
+                if (image !== undefined) {
+                  set("imageFamily", image.family);
+                  set("imageProject", image.project);
+                }
               }}
             >
               {images.map((i) => (
@@ -290,19 +280,19 @@ export const VmCreateScreen = (props: ScreenProps): ReactElement => {
             {(id) => (
               <input
                 id={id}
-                className={inputClass}
+                className={InputClass}
                 value={form.bootDiskSize}
                 onChange={(e) => set("bootDiskSize", e.target.value)}
               />
             )}
           </Field>
-          <Field label="種類" error={errors.bootDiskType}>
+          <Field label="種類">
             {(id) => (
               <select
                 id={id}
-                className={inputClass}
+                className={InputClass}
                 value={form.bootDiskType}
-                onChange={(e) => set("bootDiskType", e.target.value)}
+                onChange={(e) => setParsed("bootDiskType", BootDiskType.parse(e.target.value))}
               >
                 {Object.values(BootDiskTypes).map((t) => (
                   <option key={t} value={t}>
@@ -313,11 +303,11 @@ export const VmCreateScreen = (props: ScreenProps): ReactElement => {
             )}
           </Field>
         </div>
-        <Field label="サービスアカウント">
+        <Field label="サービス アカウント">
           {(id) => (
             <select
               id={id}
-              className={inputClass}
+              className={InputClass}
               value={form.serviceAccount}
               onChange={(e) => set("serviceAccount", e.target.value)}
             >
@@ -329,11 +319,11 @@ export const VmCreateScreen = (props: ScreenProps): ReactElement => {
             </select>
           )}
         </Field>
-        <Field label="アクセススコープ">
+        <Field label="アクセス スコープ">
           {(id) => (
             <select
               id={id}
-              className={inputClass}
+              className={InputClass}
               value={form.scopes}
               onChange={(e) =>
                 set("scopes", e.target.value === "cloud-platform" ? "cloud-platform" : "default")
@@ -344,11 +334,11 @@ export const VmCreateScreen = (props: ScreenProps): ReactElement => {
             </select>
           )}
         </Field>
-        <Field label="ネットワークタグ" hint="カンマ区切り（例: http-server,https-server）">
+        <Field label="ネットワーク タグ" hint="カンマ区切り（例: http-server,https-server）">
           {(id) => (
             <input
               id={id}
-              className={inputClass}
+              className={InputClass}
               value={form.tags}
               onChange={(e) => set("tags", e.target.value)}
             />
@@ -358,7 +348,7 @@ export const VmCreateScreen = (props: ScreenProps): ReactElement => {
           {(id) => (
             <select
               id={id}
-              className={inputClass}
+              className={InputClass}
               value={form.externalIp ? "ephemeral" : "none"}
               onChange={(e) => set("externalIp", e.target.value === "ephemeral")}
             >
@@ -368,10 +358,10 @@ export const VmCreateScreen = (props: ScreenProps): ReactElement => {
           )}
         </Field>
       </div>
-      <EquivalentCommandPanel command={command} onCopy={actions.copy} onInsert={actions.insert} />
+      <EquivalentCommandPanel command={command} onCopy={handlers.copy} onInsert={handlers.insert} />
       <div className="mt-4 flex gap-2">
         <PrimaryButton onClick={create}>作成</PrimaryButton>
-        <SecondaryButton onClick={() => actions.changeScreen(ConsoleScreens.VmList)}>
+        <SecondaryButton onClick={() => handlers.changeScreen(ConsoleScreens.VmList)}>
           キャンセル
         </SecondaryButton>
       </div>

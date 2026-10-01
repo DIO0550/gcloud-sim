@@ -323,7 +323,7 @@ export const ContainerCommands: readonly CommandSpec[] = [
     run: (ctx, args) => {
       const cluster = clusterArg(ctx, {
         ...args,
-        positionals: [Option.unwrapOr(ParsedArgs.string(args, "cluster"), "")],
+        positionals: [ParsedArgs.requiredString(args, "cluster")],
       });
       if (!Result.isOk(cluster)) return cluster;
       if (cluster.value.autopilot) {
@@ -385,7 +385,7 @@ export const ContainerCommands: readonly CommandSpec[] = [
     run: (ctx, args) => {
       const cluster = clusterArg(ctx, {
         ...args,
-        positionals: [Option.unwrapOr(ParsedArgs.string(args, "cluster"), "")],
+        positionals: [ParsedArgs.requiredString(args, "cluster")],
       });
       if (!Result.isOk(cluster)) return cluster;
       return Result.ok({
@@ -413,7 +413,7 @@ export const ContainerCommands: readonly CommandSpec[] = [
     run: (ctx, args) => {
       const cluster = clusterArg(ctx, {
         ...args,
-        positionals: [Option.unwrapOr(ParsedArgs.string(args, "cluster"), "")],
+        positionals: [ParsedArgs.requiredString(args, "cluster")],
       });
       if (!Result.isOk(cluster)) return cluster;
       const name = ParsedArgs.requiredPositional(args, 0);
@@ -485,7 +485,7 @@ const deploy = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
       projectId: ctx.project.projectId,
       name,
       region: region.value,
-      image: Option.unwrapOr(ParsedArgs.string(args, "image"), ""),
+      image: ParsedArgs.requiredString(args, "image"),
       allowUnauthenticated: Option.unwrapOr(
         ParsedArgs.booleanChoice(args, "allow-unauthenticated"),
         Option.isSome(existing) ? existing.value.allowUnauthenticated : false,

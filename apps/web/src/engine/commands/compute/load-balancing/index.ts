@@ -20,6 +20,7 @@ import {
   Candidates,
   CommonFlags,
   describeNamedCommand,
+  type NamedRef,
   projectCommand,
 } from "@/engine/commands/shared";
 import {
@@ -152,7 +153,7 @@ const createBackendService = (ctx: ProjectContext, args: ParsedArgs): CommandRes
 const createForwardingRule = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   const scope = resolveScope(ctx, args);
   if (!Result.isOk(scope)) return scope;
-  const backendName = Option.unwrapOr(ParsedArgs.string(args, "backend-service"), "");
+  const backendName = ParsedArgs.requiredString(args, "backend-service");
   const backend = Option.filter(
     World.findNamed(ctx.world, "backendServices", {
       projectId: ctx.project.projectId,
@@ -163,7 +164,7 @@ const createForwardingRule = (ctx: ProjectContext, args: ParsedArgs): CommandRes
   if (!Option.isSome(backend)) {
     return Result.err(
       CommandFailure.notFound(
-        `projects/${ctx.project.projectId}/${LbScope.pathSegment(scope.value)}/backendServices/${backendName}`,
+        `projects/${ctx.project.projectId}/${LbScope.toPath(scope.value)}/backendServices/${backendName}`,
       ),
     );
   }
@@ -174,7 +175,7 @@ const createForwardingRule = (ctx: ProjectContext, args: ParsedArgs): CommandRes
   if (Option.isSome(addressName) && !Option.isSome(reserved)) {
     return Result.err(
       CommandFailure.notFound(
-        `projects/${ctx.project.projectId}/${LbScope.pathSegment(scope.value)}/addresses/${addressName.value}`,
+        `projects/${ctx.project.projectId}/${LbScope.toPath(scope.value)}/addresses/${addressName.value}`,
       ),
     );
   }
@@ -231,6 +232,14 @@ const createForwardingRule = (ctx: ProjectContext, args: ParsedArgs): CommandRes
   );
 };
 
+/** `describe` が引く置き場（`global` / `regions/R`）。 */
+const scopePath = (ctx: ProjectContext, args: ParsedArgs): Result<string, CommandFailure> =>
+  Result.map(resolveScope(ctx, args), LbScope.toPath);
+
+/** E-005 の綴り。置き場は `scopePath` が解決した `global` / `regions/R`。 */
+const locatedPath = (ref: NamedRef, kind: "backendServices" | "forwardingRules"): string =>
+  `projects/${ref.projectId}/${Option.unwrapOr(ref.location, "-")}/${kind}/${ref.name}`;
+
 const ScopeFlags = [
   Flag.boolean("global", "If provided, the resource is global."),
   CommonFlags.region,
@@ -263,12 +272,12 @@ export const LoadBalancingCommands: readonly CommandSpec[] = [
   describeNamedCommand({
     path: ["gcloud", "compute", "health-checks", "describe"],
     summary: "Display detailed information about a health check.",
-    positional: Positional.required("NAME", "Name of the health check.", Candidates.healthChecks),
+    positional: { name: "NAME", description: "Name of the health check." },
     flags: [Flag.boolean("global", "If provided, the health check is global (default).")],
     collection: "healthChecks",
     permission: "compute.healthChecks.get",
     requiredApis: [ComputeApi],
-    resourcePath: (projectId, name) => `projects/${projectId}/global/healthChecks/${name}`,
+    resourcePath: (ref) => `projects/${ref.projectId}/global/healthChecks/${ref.name}`,
     record: HealthCheck.toRecord,
   }),
   projectCommand({
@@ -303,16 +312,13 @@ export const LoadBalancingCommands: readonly CommandSpec[] = [
   describeNamedCommand({
     path: ["gcloud", "compute", "backend-services", "describe"],
     summary: "Display detailed information about a backend service.",
-    positional: Positional.required(
-      "NAME",
-      "Name of the backend service.",
-      Candidates.backendServices,
-    ),
+    positional: { name: "NAME", description: "Name of the backend service." },
     flags: ScopeFlags,
+    locate: scopePath,
     collection: "backendServices",
     permission: "compute.backendServices.get",
     requiredApis: [ComputeApi],
-    resourcePath: (projectId, name) => `projects/${projectId}/global/backendServices/${name}`,
+    resourcePath: (ref) => locatedPath(ref, "backendServices"),
     record: BackendService.toRecord,
   }),
   projectCommand({
@@ -352,16 +358,13 @@ export const LoadBalancingCommands: readonly CommandSpec[] = [
   describeNamedCommand({
     path: ["gcloud", "compute", "forwarding-rules", "describe"],
     summary: "Display detailed information about a forwarding rule.",
-    positional: Positional.required(
-      "NAME",
-      "Name of the forwarding rule.",
-      Candidates.forwardingRules,
-    ),
+    positional: { name: "NAME", description: "Name of the forwarding rule." },
     flags: ScopeFlags,
+    locate: scopePath,
     collection: "forwardingRules",
     permission: "compute.forwardingRules.get",
     requiredApis: [ComputeApi],
-    resourcePath: (projectId, name) => `projects/${projectId}/global/forwardingRules/${name}`,
+    resourcePath: (ref) => locatedPath(ref, "forwardingRules"),
     record: ForwardingRule.toRecord,
   }),
 ];

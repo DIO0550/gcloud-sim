@@ -19,13 +19,23 @@ const openConsole = async (user: ReturnType<typeof userEvent.setup>): Promise<vo
 
 const consoleNav = () => screen.getByRole("navigation", { name: "Console ナビゲーション" });
 
+/** 左ナビの「VM インスタンス」から一覧の「インスタンスを作成」へ（作成画面はナビ項目ではない: UI 案 s1）。 */
+const openVmCreate = async (user: ReturnType<typeof userEvent.setup>): Promise<void> => {
+  await user.click(within(consoleNav()).getByRole("button", { name: "VM インスタンス" }));
+  await user.click(screen.getByRole("button", { name: "インスタンスを作成" }));
+  expect(within(consoleNav()).getByRole("button", { name: "VM インスタンス" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+};
+
 test("Console に切り替えて VM 作成を送信すると、一覧に VM が出て端末に # Console: の行と灰色のコマンドが記録される", async () => {
   const user = userEvent.setup();
   const { terminal } = renderSimulator();
   await openConsole(user);
-  await user.click(within(consoleNav()).getByRole("button", { name: "インスタンスを作成" }));
+  await openVmCreate(user);
   await user.type(screen.getByLabelText("名前"), "web-2");
-  await user.type(screen.getByLabelText("ネットワークタグ"), "http-server");
+  await user.type(screen.getByLabelText("ネットワーク タグ"), "http-server");
   const panel = screen.getByRole("region", { name: "同等のコマンドライン" });
   expect(panel).toHaveTextContent(
     "gcloud compute instances create web-2 --project=ace-dev-01 --zone=asia-northeast1-a --machine-type=e2-small",
@@ -50,7 +60,7 @@ test("Console で作った VM は CLI の list にも見える（同じ World �
   const user = userEvent.setup();
   const { terminal } = renderSimulator();
   await openConsole(user);
-  await user.click(within(consoleNav()).getByRole("button", { name: "インスタンスを作成" }));
+  await openVmCreate(user);
   await user.type(screen.getByLabelText("名前"), "web-3");
   await user.click(screen.getByRole("button", { name: "作成" }));
   await screen.findByRole("table", { name: "VM インスタンス" });
@@ -63,7 +73,7 @@ test("名前の形式が悪いと項目の直下にエラーが出て送信さ�
   const user = userEvent.setup();
   const { terminal } = renderSimulator();
   await openConsole(user);
-  await user.click(within(consoleNav()).getByRole("button", { name: "インスタンスを作成" }));
+  await openVmCreate(user);
   await user.type(screen.getByLabelText("名前"), "Web_2");
   await user.click(screen.getByRole("button", { name: "作成" }));
   expect(screen.getByRole("alert")).toHaveTextContent("Invalid value for field 'resource.name'");
@@ -93,7 +103,7 @@ test("dev@example.com で VM 作成を送ると赤帯に Required ... permission
     expect(screenText(terminal)).toContain("You are now logged in as [dev@example.com]."),
   );
   await openConsole(user);
-  await user.click(within(consoleNav()).getByRole("button", { name: "インスタンスを作成" }));
+  await openVmCreate(user);
   await user.type(screen.getByLabelText("名前"), "web-2");
   await user.click(screen.getByRole("button", { name: "作成" }));
   const alert = await screen.findByRole("alert");
@@ -211,15 +221,15 @@ test("ファイアウォール・バケット・予算の作成も同じ経路�
   );
 });
 
-test("同等のコマンドラインの「コピー」はクリップボードへ、「ターミナルへ」は入力行へ入る", async () => {
+test("同等のコマンドラインの「コピー」はクリップボードへ、「ターミナルに貼り付け」は入力行へ入る", async () => {
   const user = userEvent.setup();
   const { terminal, copied } = renderSimulator();
   await openConsole(user);
-  await user.click(within(consoleNav()).getByRole("button", { name: "インスタンスを作成" }));
+  await openVmCreate(user);
   await user.type(screen.getByLabelText("名前"), "web-2");
   await user.click(screen.getByRole("button", { name: "コピー" }));
   expect(copied[0]).toContain("gcloud compute instances create web-2");
-  await user.click(screen.getByRole("button", { name: "ターミナルへ" }));
+  await user.click(screen.getByRole("button", { name: "ターミナルに貼り付け" }));
   await waitFor(() =>
     expect(terminal.written.at(-1)).toContain("gcloud compute instances create web-2"),
   );

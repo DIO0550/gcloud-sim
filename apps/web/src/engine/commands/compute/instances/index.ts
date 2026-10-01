@@ -29,7 +29,7 @@ import {
   alreadyExists,
   Candidates,
   CommonFlags,
-  instanceOperation,
+  instanceOperationSeed,
   projectCommand,
   recordOperation,
 } from "@/engine/commands/shared";
@@ -113,7 +113,7 @@ const createInstance = (ctx: ProjectContext, args: ParsedArgs): CommandResult =>
   if (!Result.isOk(added)) return added;
   const { world, operation } = recordOperation(
     added.value,
-    instanceOperation(instance.value, OperationTypes.Insert, ctx),
+    instanceOperationSeed(instance.value, OperationTypes.Insert, ctx),
   );
   const output = ParsedArgs.boolean(args, "async")
     ? asyncOutput(operation, "creation", instance.value.name)
@@ -182,7 +182,7 @@ const transitionCommand = (transition: InstanceTransition): CommandSpec => {
       }
       const { world, operation } = recordOperation(
         World.replaceInstance(ctx.world, next),
-        instanceOperation(next, transition, ctx),
+        instanceOperationSeed(next, transition, ctx),
       );
       const output = ParsedArgs.boolean(args, "async")
         ? asyncOutput(operation, transition, next.name)
@@ -203,7 +203,7 @@ const updated = (
 ): CommandResult => {
   const { world } = recordOperation(
     World.replaceInstance(ctx.world, instance),
-    instanceOperation(instance, operationType, ctx),
+    instanceOperationSeed(instance, operationType, ctx),
   );
   return Result.ok({
     world,
@@ -359,7 +359,7 @@ const scp = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
 const attachDisk = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   const instance = instanceArg(ctx, args);
   if (!Result.isOk(instance)) return instance;
-  const diskName = Option.unwrapOr(ParsedArgs.string(args, "disk"), "");
+  const diskName = ParsedArgs.requiredString(args, "disk");
   const found = findZonedDisk(ctx, instance.value.zone, diskName);
   const standalone = Option.flatMap(found, (d) =>
     d.kind === "standalone" ? Option.some(d.disk) : Option.none,
@@ -558,7 +558,7 @@ export const InstanceCommands: readonly CommandSpec[] = [
         );
       const { world, operation } = recordOperation(
         detached,
-        instanceOperation(instance.value, OperationTypes.Delete, ctx),
+        instanceOperationSeed(instance.value, OperationTypes.Delete, ctx),
       );
       const output = ParsedArgs.boolean(args, "async")
         ? asyncOutput(operation, "deletion", instance.value.name)
@@ -761,7 +761,7 @@ export const InstanceCommands: readonly CommandSpec[] = [
       const key = Result.mapErr(
         OsLoginSshKey.create({
           account: ctx.principal,
-          key: Option.unwrapOr(ParsedArgs.string(args, "key"), ""),
+          key: ParsedArgs.requiredString(args, "key"),
           expireTime: Option.none,
         }),
         (m) => CommandFailure.invalidValue("--key", m),

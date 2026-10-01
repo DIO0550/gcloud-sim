@@ -11,6 +11,7 @@ import {
   type JsonRecord,
   OutputMessage,
   ParsedArgs,
+  Positional,
   type PositionalSpec,
   type ProjectContext,
   type TargetContext,
@@ -27,7 +28,7 @@ import {
   Zone as ZoneCatalog,
 } from "@/engine/domains/catalog";
 import { Instance } from "@/engine/domains/compute";
-import { ConfigProperty } from "@/engine/domains/gcloud-config";
+import { ConfigProperty, GcloudConfig } from "@/engine/domains/gcloud-config";
 import { IamMember, IamPolicy, RoleName } from "@/engine/domains/iam-policy";
 import { Operation, type OperationType } from "@/engine/domains/operation";
 import type { Principal } from "@/engine/domains/principal";
@@ -36,6 +37,7 @@ import { CustomRole, RoleCatalog } from "@/engine/domains/role-catalog";
 import { ServiceAccount } from "@/engine/domains/service-account";
 import {
   type AlreadyExists,
+  type LocatedCollection,
   type NamedCollection,
   type NamedItem,
   type PolicyRejected,
@@ -49,6 +51,10 @@ const inProject =
   (pick: (world: World, projectId: string) => readonly string[]): CandidateSource =>
   (world, projectId) =>
     Option.isSome(projectId) ? pick(world, projectId.value) : [];
+
+/** `(projectId, name)` で引ける集合の名前を候補にする。 */
+const named = (key: NamedCollection): CandidateSource =>
+  inProject((world, projectId) => World.namedOf(world, key, projectId).map((item) => item.name));
 
 /**
  * Tab 補完の候補（TBD-009）。位置引数と `string` のフラグの定義に付ける。
@@ -107,57 +113,32 @@ export const Candidates = {
       ? World.customRolesOf(world, projectId.value).map(CustomRole.name)
       : []),
   ]) satisfies CandidateSource,
-  instanceTemplates: inProject((world, projectId) =>
-    World.namedOf(world, "instanceTemplates", projectId).map((t) => t.name),
-  ),
-  instanceGroups: inProject((world, projectId) =>
-    World.namedOf(world, "instanceGroups", projectId).map((g) => g.name),
-  ),
-  healthChecks: inProject((world, projectId) =>
-    World.namedOf(world, "healthChecks", projectId).map((h) => h.name),
-  ),
-  backendServices: inProject((world, projectId) =>
-    World.namedOf(world, "backendServices", projectId).map((b) => b.name),
-  ),
-  addresses: inProject((world, projectId) =>
-    World.namedOf(world, "addresses", projectId).map((a) => a.name),
-  ),
-  functions: inProject((world, projectId) =>
-    World.namedOf(world, "functions", projectId).map((f) => f.name),
-  ),
-  sqlInstances: inProject((world, projectId) =>
-    World.namedOf(world, "sqlInstances", projectId).map((i) => i.name),
-  ),
-  topics: inProject((world, projectId) =>
-    World.namedOf(world, "pubsubTopics", projectId).map((t) => t.name),
-  ),
-  kubeDeployments: inProject((world, projectId) =>
-    world.kubeDeployments.filter((d) => d.projectId === projectId).map((d) => d.name),
-  ),
-  forwardingRules: inProject((world, projectId) =>
-    World.namedOf(world, "forwardingRules", projectId).map((r) => r.name),
-  ),
-  routers: inProject((world, projectId) =>
-    World.namedOf(world, "routers", projectId).map((r) => r.name),
-  ),
-  subscriptions: inProject((world, projectId) =>
-    World.namedOf(world, "pubsubSubscriptions", projectId).map((s) => s.name),
-  ),
-  logSinks: inProject((world, projectId) =>
-    World.namedOf(world, "logSinks", projectId).map((s) => s.name),
-  ),
-  keyRings: inProject((world, projectId) =>
-    World.namedOf(world, "kmsKeyRings", projectId).map((r) => r.name),
-  ),
-  dnsZones: inProject((world, projectId) =>
-    World.namedOf(world, "dnsZones", projectId).map((z) => z.name),
-  ),
-  dmDeployments: inProject((world, projectId) =>
-    World.namedOf(world, "dmDeployments", projectId).map((d) => d.name),
-  ),
-  snapshots: inProject((world, projectId) =>
-    World.diskSnapshotsOf(world, projectId).map((s) => s.name),
-  ),
+  named,
+  instanceTemplates: named("instanceTemplates"),
+  instanceGroups: named("instanceGroups"),
+  healthChecks: named("healthChecks"),
+  backendServices: named("backendServices"),
+  addresses: named("addresses"),
+  functions: named("functions"),
+  sqlInstances: named("sqlInstances"),
+  pubsubTopics: named("pubsubTopics"),
+  pubsubSubscriptions: named("pubsubSubscriptions"),
+  forwardingRules: named("forwardingRules"),
+  routers: named("routers"),
+  logSinks: named("logSinks"),
+  kmsKeyRings: named("kmsKeyRings"),
+  dnsZones: named("dnsZones"),
+  dmDeployments: named("dmDeployments"),
+  diskSnapshots: named("diskSnapshots"),
+  /** kubectl が扱うのは `container/cluster` のクラスタだけなので、候補もそのクラスタのもの */
+  kubeDeployments: inProject((world, projectId) => {
+    const cluster = Option.flatMap(GcloudConfig.get(world.config, "container/cluster"), (name) =>
+      World.findCluster(world, projectId, name),
+    );
+    return Option.isSome(cluster)
+      ? World.kubeDeploymentsOf(world, cluster.value).map((d) => d.name)
+      : [];
+  }),
   budgets: ((world) => world.budgets.map(Budget.id)) satisfies CandidateSource,
 } as const;
 
@@ -235,7 +216,7 @@ export const recordOperation = (
  * @param ctx 実行者と時刻を持つ文脈
  * @returns `recordOperation` に渡す材料
  */
-export const instanceOperation = (
+export const instanceOperationSeed = (
   instance: Instance,
   operationType: OperationType,
   ctx: AuthorizedContext,
@@ -260,16 +241,14 @@ export const parseBinding = (
   world: World,
   args: ParsedArgs,
 ): Result<Readonly<{ member: IamMember; role: RoleName }>, CommandFailure> => {
-  const rawMember = Option.unwrapOr(ParsedArgs.string(args, "member"), "");
-  const rawRole = Option.unwrapOr(ParsedArgs.string(args, "role"), "");
-  const member = Result.mapErr(IamMember.parse(rawMember), CommandFailure.invalidIamArgument);
+  const rawRole = ParsedArgs.requiredString(args, "role");
+  const member = Result.mapErr(
+    IamMember.parse(ParsedArgs.requiredString(args, "member")),
+    CommandFailure.invalidIamArgument,
+  );
   if (!Result.isOk(member)) return member;
-  const role = RoleName.parse(rawRole);
-  const isKnown =
-    Option.isSome(role) &&
-    (Option.isSome(RoleCatalog.find(role.value)) ||
-      Option.isSome(World.findCustomRole(world, role.value)));
-  if (!Option.isSome(role) || !isKnown) {
+  const role = Option.filter(RoleName.parse(rawRole), (name) => World.isKnownRole(world, name));
+  if (!Option.isSome(role)) {
     return Result.err(
       CommandFailure.invalidIamArgument(
         `INVALID_ARGUMENT: Role ${rawRole} is not supported for this resource.`,
@@ -365,49 +344,86 @@ export const iamBindingCommands = (seed: BindingCommandSeed): readonly CommandSp
   }),
 ];
 
-/** `describeNamedCommand` の材料。 */
-export type DescribeNamedSeed<K extends NamedCollection> = Readonly<{
+/** `describe` が引く 1 件の指し方。置き場を持たない集合は `location` が `none`。 */
+export type NamedRef = Readonly<{ projectId: string; name: string; location: Option<string> }>;
+
+type DescribeNamedCommandBase<K extends NamedCollection> = Readonly<{
   path: readonly string[];
   summary: string;
-  positional: PositionalSpec;
-  /** 受けるだけで引くのには使わないフラグ（`--zone` / `--region` / `--global`） */
-  flags?: readonly FlagSpec[];
+  /** 位置引数の名前と説明。候補は集合から導く */
+  positional: Readonly<{ name: string; description: string }>;
   collection: K;
   permission: string;
   requiredApis?: readonly ApiName[];
   /** E-005 に出す綴り */
-  resourcePath: (projectId: string, name: string) => string;
+  resourcePath: (ref: NamedRef) => string;
   record: (item: NamedItem<K>) => JsonRecord;
 }>;
 
 /**
- * `(projectId, name)` で引ける集合の 1 件を YAML で出す `describe` を組む。
+ * `describeNamedCommand` の材料。置き場を持つ集合（`LocatedCollection`）は、`--zone` / `--region` /
+ * `--global` から置き場を解決する `locate` を持ち、違う置き場の同名は見つからない（本物と同じ）。
+ */
+export type DescribeNamedCommandSeed<K extends NamedCollection> = DescribeNamedCommandBase<K> &
+  (
+    | Readonly<{ flags?: readonly FlagSpec[]; locate?: never }>
+    | Readonly<{
+        collection: K & LocatedCollection;
+        flags: readonly FlagSpec[];
+        locate: (ctx: ProjectContext, args: ParsedArgs) => Result<string, CommandFailure>;
+      }>
+  );
+
+const findForDescribe = <K extends NamedCollection>(
+  ctx: ProjectContext,
+  args: ParsedArgs,
+  seed: DescribeNamedCommandSeed<K>,
+): Result<NamedItem<K>, CommandFailure> => {
+  const projectId = ctx.project.projectId;
+  const name = ParsedArgs.requiredPositional(args, 0);
+  if (seed.locate === undefined) {
+    return Option.toResult(World.findNamed(ctx.world, seed.collection, { projectId, name }), () =>
+      CommandFailure.notFound(seed.resourcePath({ projectId, name, location: Option.none })),
+    );
+  }
+  return Result.flatMap(seed.locate(ctx, args), (location) =>
+    Option.toResult(
+      World.findLocated(ctx.world, seed.collection, { projectId, location, name }),
+      () =>
+        CommandFailure.notFound(
+          seed.resourcePath({ projectId, name, location: Option.some(location) }),
+        ),
+    ),
+  );
+};
+
+/**
+ * 名前で引ける集合の 1 件を YAML で出す `describe` を組む。
  *
  * @param seed 集合と、出す形
  * @returns コマンド定義。無ければ E-005
  */
 export const describeNamedCommand = <K extends NamedCollection>(
-  seed: DescribeNamedSeed<K>,
+  seed: DescribeNamedCommandSeed<K>,
 ): CommandSpec =>
   projectCommand({
     path: seed.path,
     summary: seed.summary,
-    positionals: [seed.positional],
+    positionals: [
+      Positional.required(
+        seed.positional.name,
+        seed.positional.description,
+        Candidates.named(seed.collection),
+      ),
+    ],
     flags: seed.flags,
     permission: seed.permission,
     requiredApis: seed.requiredApis,
-    run: (ctx, args) => {
-      const projectId = ctx.project.projectId;
-      const name = ParsedArgs.requiredPositional(args, 0);
-      const found = Option.toResult(
-        World.findNamed(ctx.world, seed.collection, { projectId, name }),
-        () => CommandFailure.notFound(seed.resourcePath(projectId, name)),
-      );
-      return Result.map(found, (item) => ({
+    run: (ctx, args) =>
+      Result.map(findForDescribe(ctx, args, seed), (item) => ({
         world: ctx.world,
         output: CommandOutput.yaml(seed.record(item)),
-      }));
-    },
+      })),
   });
 
 /** 未対応コマンドの定義（DJ-005）。 */

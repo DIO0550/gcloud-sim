@@ -2,7 +2,6 @@ import { Budget } from "@/engine/domains/billing-budget";
 import { Instance } from "@/engine/domains/compute";
 import { type IamMember, IamPolicy, type RoleName } from "@/engine/domains/iam-policy";
 import type { GkeCluster } from "@/engine/domains/managed-services";
-import { NodePool } from "@/engine/domains/managed-services";
 import { type ParentRef, PolicyTarget, type Project } from "@/engine/domains/resource-hierarchy";
 import { World } from "@/engine/domains/world";
 import { TreeSelection } from "@/engine/resource-tree/selection";
@@ -117,7 +116,7 @@ const diskNodes = (world: World, id: string): readonly TreeNode[] => [
   ...World.disksOf(world, id).map((d) =>
     leaf({ kind: "disk", projectId: id, zone: d.zone, name: d.name }, d.name),
   ),
-  ...byName(World.diskSnapshotsOf(world, id)).map((s) =>
+  ...World.diskSnapshotsOf(world, id).map((s) =>
     leaf({ kind: "snapshot", projectId: id, name: s.name }, `snapshot: ${s.name}`),
   ),
 ];
@@ -152,9 +151,12 @@ const loadBalancingNodes = (world: World, id: string): readonly TreeNode[] => [
   ),
 ];
 
-/** ネットワークの下にサブネット・ファイアウォール・ルータを束ねる。 */
+/** ネットワークの下にファイアウォール・サブネット・ルータを束ねる（UI 案 2a の並び: fw が先）。 */
 const networkNodes = (world: World, id: string): readonly TreeNode[] =>
-  byName(World.networksOf(world, id)).map((n) => {
+  World.networksOf(world, id).map((n) => {
+    const firewalls = World.firewallRulesOf(world, id)
+      .filter((r) => r.network === n.name)
+      .map((r) => leaf({ kind: "firewall", projectId: id, name: r.name }, `fw: ${r.name}`));
     const subnets = byName(World.subnetsOf(world, id).filter((s) => s.network === n.name)).map(
       (s) =>
         leaf(
@@ -162,9 +164,6 @@ const networkNodes = (world: World, id: string): readonly TreeNode[] =>
           `subnet: ${s.name} (${s.region})`,
         ),
     );
-    const firewalls = byName(
-      World.firewallRulesOf(world, id).filter((r) => r.network === n.name),
-    ).map((r) => leaf({ kind: "firewall", projectId: id, name: r.name }, `fw: ${r.name}`));
     const routers = World.namedOf(world, "routers", id)
       .filter((r) => r.network === n.name)
       .map((r) =>
@@ -174,21 +173,19 @@ const networkNodes = (world: World, id: string): readonly TreeNode[] =>
         ),
       );
     return leaf({ kind: "network", projectId: id, name: n.name }, n.name, {
-      children: [...subnets, ...firewalls, ...routers],
+      children: [...firewalls, ...subnets, ...routers],
     });
   });
 
 /** クラスタの下にノードプールと、kubectl で作った Deployment / Service を束ねる。 */
 const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[] => {
   const id = cluster.projectId;
-  const pools = cluster.autopilot
-    ? []
-    : [NodePool.defaultPool(cluster), ...World.nodePoolsOf(world, cluster)].map((p) =>
-        leaf(
-          { kind: "node-pool", projectId: id, cluster: cluster.name, name: p.name },
-          `pool: ${p.name}`,
-        ),
-      );
+  const pools = World.nodePoolsWithDefault(world, cluster).map((p) =>
+    leaf(
+      { kind: "node-pool", projectId: id, cluster: cluster.name, name: p.name },
+      `pool: ${p.name}`,
+    ),
+  );
   const deployments = World.kubeDeploymentsOf(world, cluster).map((d) =>
     leaf(
       { kind: "kube-deployment", projectId: id, cluster: cluster.name, name: d.name },
@@ -205,7 +202,7 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
 };
 
 const gkeNodes = (world: World, id: string): readonly TreeNode[] =>
-  byName(World.clustersOf(world, id)).map((c) =>
+  World.clustersOf(world, id).map((c) =>
     leaf({ kind: "cluster", projectId: id, name: c.name }, c.name, {
       children: clusterChildren(world, c),
     }),
@@ -246,7 +243,7 @@ const projectNode = (world: World, project: Project): TreeNode => {
   const buckets = byName(World.bucketsOf(world, id)).map((b) =>
     leaf({ kind: "bucket", name: b.name }, b.name),
   );
-  const runServices = byName(World.runServicesOf(world, id)).map((s) =>
+  const runServices = World.runServicesOf(world, id).map((s) =>
     leaf({ kind: "run-service", projectId: id, name: s.name }, s.name),
   );
   const functions = World.namedOf(world, "functions", id).map((f) =>

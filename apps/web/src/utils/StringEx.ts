@@ -18,4 +18,14 @@ export const StringEx = {
   withoutControlChars(text: string): string {
     return [...text].filter((char) => !isControl(char.codePointAt(0) ?? 0)).join("");
   },
+
+  /**
+   * カンマか空白で区切った並びにする。前後の空白は落とし、空の要素は残さない。
+   *
+   * @param text `a, b  c`
+   * @returns `["a", "b", "c"]`
+   */
+  splitList(text: string): readonly string[] {
+    return text.split(/[\s,]+/).filter((item) => item !== "");
+  },
 } as const;

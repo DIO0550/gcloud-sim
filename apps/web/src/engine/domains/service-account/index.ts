@@ -29,20 +29,28 @@ export const ServiceAccount = {
       uniqueId: string;
     }>,
   ): Result<ServiceAccount, string> {
-    const valid = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(seed.accountId);
-    if (!valid) {
-      return Result.err(
-        `Service account ID [${seed.accountId}] must be between 6 and 30 characters and match the regular expression [a-z]([-a-z0-9]*[a-z0-9])`,
-      );
-    }
-    return Result.ok({
-      email: ServiceAccount.email(seed.accountId, seed.projectId),
+    return Result.map(ServiceAccount.parseAccountId(seed.accountId), (accountId) => ({
+      email: ServiceAccount.email(accountId, seed.projectId),
       displayName: seed.displayName,
       description: seed.description,
       projectId: seed.projectId,
       uniqueId: seed.uniqueId,
       iamPolicy: IamPolicy.Empty,
-    });
+    }));
+  },
+
+  /**
+   * アカウント ID の形式を確かめる。`create` と Console のフォームが同じ規則を使う。
+   *
+   * @param accountId ユーザーが打った ID
+   * @returns 6〜30 文字の `[a-z]([-a-z0-9]*[a-z0-9])` ならそのまま。それ以外は理由
+   */
+  parseAccountId(accountId: string): Result<string, string> {
+    return /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(accountId)
+      ? Result.ok(accountId)
+      : Result.err(
+          `Service account ID [${accountId}] must be between 6 and 30 characters and match the regular expression [a-z]([-a-z0-9]*[a-z0-9])`,
+        );
   },
 
   withPolicy(account: ServiceAccount, iamPolicy: IamPolicy): ServiceAccount {

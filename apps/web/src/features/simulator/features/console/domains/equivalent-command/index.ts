@@ -1,21 +1,38 @@
-import { BucketLocation, type Region, StorageClass, type Zone } from "@/engine/domains/catalog";
+import { Budget } from "@/engine/domains/billing-budget";
 import {
-  BootDiskType,
+  type ApiName,
+  BucketLocation,
+  type MachineTypeName,
+  StorageClass,
+  type Zone,
+} from "@/engine/domains/catalog";
+import {
+  type BootDiskType,
   BootDiskTypes,
+  type Direction,
+  Directions,
   DiskSizeGb,
+  type FirewallAction,
+  FirewallActions,
+  FirewallRule,
   type Instance,
   ProtocolRule,
+  type ProvisioningModel,
   ProvisioningModels,
   ResourceName,
 } from "@/engine/domains/compute";
 import { IamMember, RoleName } from "@/engine/domains/iam-policy";
+import { CustomRole } from "@/engine/domains/role-catalog";
+import { ServiceAccount } from "@/engine/domains/service-account";
 import { BucketName } from "@/engine/domains/storage";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
+import { StringEx } from "@/utils/StringEx";
 
 /**
  * Console のフォームの値を、同じ結果になる gcloud のコマンドラインにする（UC-008 / DJ-011）。
- * Console は World を直接触らず、ここで作った 1 行を CLI と同じ経路で流す。
+ * Console は World を直接触らず、ここで作った 1 行を CLI と同じ経路で流す。項目の検証は
+ * ドメインの `parse*` を呼ぶだけで、規則をここに写さない（CLI と同じ答えになるのが DJ-011 の要求）。
  */
 
 /** 空白や引用符を含む値をシェルの 1 語にする（Tokenizer が読める形）。 */
@@ -25,30 +42,51 @@ const quote = (value: string): string =>
 const flag = (name: string, value: string): string => `--${name}=${quote(value)}`;
 
 /** フォームの項目ごとの入力エラー（UC-008 例外フロー: 項目の直下に出し、送信しない）。 */
-export type FieldErrors<F> = Readonly<Partial<Record<keyof F, string>>>;
+export type FieldErrors<F extends object> = Readonly<Partial<Record<keyof F, string>>>;
 
-const noErrors = <F>(errors: FieldErrors<F>): boolean => Object.keys(errors).length === 0;
+/** 作成フォームのコンパニオンが揃えて持つ形。`useCreateForm` がこれを受ける。 */
+export type CreateFormOps<F extends object> = Readonly<{
+  collectErrors: (form: F) => FieldErrors<F>;
+}>;
+
+export const FieldErrors = {
+  /** エラーの無い状態（送信を試みる前）。 */
+  none<F extends object>(): FieldErrors<F> {
+    const empty: Partial<Record<keyof F, string>> = {};
+    return empty;
+  },
+
+  isEmpty<F extends object>(errors: FieldErrors<F>): boolean {
+    return Object.keys(errors).length === 0;
+  },
+} as const;
 
 /** `Result<_, string>` を項目のエラーにする。 */
 const errorOf = <T>(result: Result<T, string>): Option<string> =>
   Result.isOk(result) ? Option.none : Option.some(result.error);
 
-const collect = <F>(entries: readonly (readonly [keyof F, Option<string>])[]): FieldErrors<F> =>
-  Object.fromEntries(
-    entries.flatMap(([key, error]) => (Option.isSome(error) ? [[key, error.value]] : [])),
-  ) as FieldErrors<F>;
+/** 項目ごとの検証結果から、エラーのある項目だけを集める。 */
+const collect = <F extends object>(
+  entries: readonly (readonly [keyof F, Option<string>])[],
+): FieldErrors<F> => {
+  const errors: Partial<Record<keyof F, string>> = {};
+  for (const [key, error] of entries) {
+    if (Option.isSome(error)) errors[key] = error.value;
+  }
+  return errors;
+};
 
 // --- VM ---
 
 export type VmCreateForm = Readonly<{
   name: string;
   zone: Zone;
-  machineType: string;
-  provisioningModel: "STANDARD" | "SPOT";
+  machineType: MachineTypeName;
+  provisioningModel: ProvisioningModel;
   imageFamily: string;
   imageProject: string;
   bootDiskSize: string;
-  bootDiskType: string;
+  bootDiskType: BootDiskType;
   serviceAccount: string;
   scopes: "default" | "cloud-platform";
   tags: string;
@@ -62,7 +100,7 @@ export const VmCreateForm = {
    * @param seed ゾーンと既定のサービスアカウント（プロジェクトごとに違う）
    * @returns 既定値で埋めたフォーム
    */
-  initial(seed: Readonly<{ zone: Zone; serviceAccount: string }>): VmCreateForm {
+  create(seed: Readonly<{ zone: Zone; serviceAccount: string }>): VmCreateForm {
     return {
       name: "",
       zone: seed.zone,
@@ -79,17 +117,11 @@ export const VmCreateForm = {
     };
   },
 
-  /** 項目ごとの入力エラー。名前は RFC1035、ディスクは `10GB` の形、種類はカタログのもの。 */
-  validate(form: VmCreateForm): FieldErrors<VmCreateForm> {
+  /** 項目ごとの入力エラー。名前は RFC1035、ディスクは `10GB` の形。 */
+  collectErrors(form: VmCreateForm): FieldErrors<VmCreateForm> {
     return collect<VmCreateForm>([
       ["name", errorOf(ResourceName.parse(form.name))],
       ["bootDiskSize", errorOf(DiskSizeGb.parse(form.bootDiskSize))],
-      [
-        "bootDiskType",
-        Option.isSome(BootDiskType.parse(form.bootDiskType))
-          ? Option.none
-          : Option.some(`Unknown disk type: ${form.bootDiskType}`),
-      ],
     ]);
   },
 
@@ -101,10 +133,7 @@ export const VmCreateForm = {
    * @returns `gcloud compute instances create ...` の 1 行
    */
   toCommand(form: VmCreateForm, projectId: string): string {
-    const tags = form.tags
-      .split(",")
-      .map((t) => t.trim())
-      .filter((t) => t !== "");
+    const tags = StringEx.splitList(form.tags);
     const parts = [
       "gcloud compute instances create",
       quote(form.name),
@@ -123,13 +152,9 @@ export const VmCreateForm = {
     ];
     return parts.join(" ");
   },
-
-  isValid(form: VmCreateForm): boolean {
-    return noErrors(VmCreateForm.validate(form));
-  },
 } as const;
 
-/** VM 一覧の操作（UI 案 2b: 開始 / 停止 / 一時停止 / 再開 / 削除 / SSH）。 */
+/** VM 一覧の操作（UI 案 2b: 開始 / 再開 / 停止 / 一時停止 / 削除 / SSH）。 */
 export const VmActions = {
   Start: "start",
   Stop: "stop",
@@ -181,11 +206,11 @@ export const VmAction = {
 export type IamGrantForm = Readonly<{ member: string; role: string }>;
 
 export const IamGrantForm = {
-  initial(): IamGrantForm {
+  create(): IamGrantForm {
     return { member: "", role: "roles/viewer" };
   },
 
-  validate(form: IamGrantForm): FieldErrors<IamGrantForm> {
+  collectErrors(form: IamGrantForm): FieldErrors<IamGrantForm> {
     return collect<IamGrantForm>([
       ["member", errorOf(IamMember.parse(form.member))],
       [
@@ -205,10 +230,6 @@ export const IamGrantForm = {
   removeCommand(binding: Readonly<{ member: string; role: string }>, projectId: string): string {
     return `gcloud projects remove-iam-policy-binding ${projectId} ${flag("member", binding.member)} ${flag("role", binding.role)}`;
   },
-
-  isValid(form: IamGrantForm): boolean {
-    return noErrors(IamGrantForm.validate(form));
-  },
 } as const;
 
 export type ServiceAccountCreateForm = Readonly<{
@@ -218,21 +239,13 @@ export type ServiceAccountCreateForm = Readonly<{
 }>;
 
 export const ServiceAccountCreateForm = {
-  initial(): ServiceAccountCreateForm {
+  create(): ServiceAccountCreateForm {
     return { accountId: "", displayName: "", description: "" };
   },
 
-  validate(form: ServiceAccountCreateForm): FieldErrors<ServiceAccountCreateForm> {
-    const valid = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(form.accountId);
+  collectErrors(form: ServiceAccountCreateForm): FieldErrors<ServiceAccountCreateForm> {
     return collect<ServiceAccountCreateForm>([
-      [
-        "accountId",
-        valid
-          ? Option.none
-          : Option.some(
-              "6〜30 文字の小文字英字・数字・ハイフンで、英字で始まりハイフンで終わらない名前にしてください。",
-            ),
-      ],
+      ["accountId", errorOf(ServiceAccount.parseAccountId(form.accountId))],
     ]);
   },
 
@@ -246,30 +259,21 @@ export const ServiceAccountCreateForm = {
     ];
     return parts.join(" ");
   },
-
-  isValid(form: ServiceAccountCreateForm): boolean {
-    return noErrors(ServiceAccountCreateForm.validate(form));
-  },
 } as const;
 
 export type RoleCreateForm = Readonly<{ roleId: string; title: string; permissions: string }>;
 
 export const RoleCreateForm = {
-  initial(): RoleCreateForm {
+  create(): RoleCreateForm {
     return { roleId: "", title: "", permissions: "" };
   },
 
-  validate(form: RoleCreateForm): FieldErrors<RoleCreateForm> {
+  collectErrors(form: RoleCreateForm): FieldErrors<RoleCreateForm> {
     return collect<RoleCreateForm>([
-      [
-        "roleId",
-        /^[A-Za-z0-9_.]{3,64}$/.test(form.roleId)
-          ? Option.none
-          : Option.some("3〜64 文字の英数字・_・. にしてください。"),
-      ],
+      ["roleId", errorOf(CustomRole.parseRoleId(form.roleId))],
       [
         "permissions",
-        form.permissions.trim() === ""
+        StringEx.splitList(form.permissions).length === 0
           ? Option.some("権限を 1 つ以上入れてください。")
           : Option.none,
       ],
@@ -277,22 +281,14 @@ export const RoleCreateForm = {
   },
 
   toCommand(form: RoleCreateForm, projectId: string): string {
-    const permissions = form.permissions
-      .split(/[\s,]+/)
-      .filter((p) => p !== "")
-      .join(",");
     const parts = [
       "gcloud iam roles create",
       quote(form.roleId),
       flag("project", projectId),
-      flag("permissions", permissions),
+      flag("permissions", StringEx.splitList(form.permissions).join(",")),
       ...(form.title === "" ? [] : [flag("title", form.title)]),
     ];
     return parts.join(" ");
-  },
-
-  isValid(form: RoleCreateForm): boolean {
-    return noErrors(RoleCreateForm.validate(form));
   },
 } as const;
 
@@ -306,22 +302,17 @@ export type BudgetCreateForm = Readonly<{
 }>;
 
 export const BudgetCreateForm = {
-  initial(): BudgetCreateForm {
+  create(): BudgetCreateForm {
     return { displayName: "", amount: "100000", thresholds: [0.5, 0.9, 1], projectIds: [] };
   },
 
-  validate(form: BudgetCreateForm): FieldErrors<BudgetCreateForm> {
+  collectErrors(form: BudgetCreateForm): FieldErrors<BudgetCreateForm> {
     return collect<BudgetCreateForm>([
       [
         "displayName",
         form.displayName.trim() === "" ? Option.some("名前を入れてください。") : Option.none,
       ],
-      [
-        "amount",
-        /^\d+(\.\d+)?$/.test(form.amount) && Number(form.amount) > 0
-          ? Option.none
-          : Option.some("正の数にしてください。"),
-      ],
+      ["amount", errorOf(Budget.parseAmount(form.amount))],
     ]);
   },
 
@@ -336,10 +327,6 @@ export const BudgetCreateForm = {
     ];
     return parts.join(" ");
   },
-
-  isValid(form: BudgetCreateForm): boolean {
-    return noErrors(BudgetCreateForm.validate(form));
-  },
 } as const;
 
 // --- ファイアウォール ---
@@ -347,42 +334,39 @@ export const BudgetCreateForm = {
 export type FirewallCreateForm = Readonly<{
   name: string;
   network: string;
-  direction: "INGRESS" | "EGRESS";
+  direction: Direction;
   priority: string;
   targetTags: string;
   sourceRanges: string;
   protocolsAndPorts: string;
-  action: "ALLOW" | "DENY";
+  action: FirewallAction;
 }>;
 
+/** 入力欄の整数。数字だけの綴りを数にし、それ以外は `none`。 */
+const integerOf = (value: string): Option<number> =>
+  /^\d+$/.test(value) ? Option.some(Number(value)) : Option.none;
+
 export const FirewallCreateForm = {
-  initial(): FirewallCreateForm {
+  create(): FirewallCreateForm {
     return {
       name: "",
       network: "default",
-      direction: "INGRESS",
+      direction: Directions.Ingress,
       priority: "1000",
       targetTags: "",
       sourceRanges: "0.0.0.0/0",
       protocolsAndPorts: "tcp:80",
-      action: "ALLOW",
+      action: FirewallActions.Allow,
     };
   },
 
-  validate(form: FirewallCreateForm): FieldErrors<FirewallCreateForm> {
-    const rules = form.protocolsAndPorts
-      .split(",")
-      .map((r) => r.trim())
-      .filter((r) => r !== "");
+  collectErrors(form: FirewallCreateForm): FieldErrors<FirewallCreateForm> {
+    const rules = StringEx.splitList(form.protocolsAndPorts);
     const badRule = rules.map(ProtocolRule.parse).find((r) => !Result.isOk(r));
+    const priority = Option.toResult(integerOf(form.priority), () => "整数にしてください。");
     return collect<FirewallCreateForm>([
       ["name", errorOf(ResourceName.parse(form.name))],
-      [
-        "priority",
-        /^\d+$/.test(form.priority) && Number(form.priority) <= 65535
-          ? Option.none
-          : Option.some("0〜65535 の整数にしてください。"),
-      ],
+      ["priority", errorOf(Result.flatMap(priority, FirewallRule.parsePriority))],
       [
         "protocolsAndPorts",
         rules.length === 0
@@ -395,12 +379,7 @@ export const FirewallCreateForm = {
   },
 
   toCommand(form: FirewallCreateForm, projectId: string): string {
-    const list = (value: string) =>
-      value
-        .split(",")
-        .map((v) => v.trim())
-        .filter((v) => v !== "")
-        .join(",");
+    const list = (value: string) => StringEx.splitList(value).join(",");
     const rules = list(form.protocolsAndPorts);
     const parts = [
       "gcloud compute firewall-rules create",
@@ -409,7 +388,7 @@ export const FirewallCreateForm = {
       flag("network", form.network),
       flag("direction", form.direction),
       flag("priority", form.priority),
-      ...(form.action === "ALLOW"
+      ...(form.action === FirewallActions.Allow
         ? [flag("allow", rules)]
         : ["--action=DENY", flag("rules", rules)]),
       ...(list(form.sourceRanges) === "" ? [] : [flag("source-ranges", list(form.sourceRanges))]),
@@ -417,24 +396,21 @@ export const FirewallCreateForm = {
     ];
     return parts.join(" ");
   },
-
-  isValid(form: FirewallCreateForm): boolean {
-    return noErrors(FirewallCreateForm.validate(form));
-  },
 } as const;
 
 // --- バケット ---
 
 export type BucketCreateForm = Readonly<{
   name: string;
+  /** 入力欄は自由記述なので、綴りの検証は `collectErrors` が `BucketLocation.parse` で行う */
   location: string;
-  storageClass: string;
+  storageClass: StorageClass;
   uniformAccess: boolean;
   publicAccessPrevention: boolean;
 }>;
 
 export const BucketCreateForm = {
-  initial(): BucketCreateForm {
+  create(): BucketCreateForm {
     return {
       name: "",
       location: "ASIA-NORTHEAST1",
@@ -444,7 +420,7 @@ export const BucketCreateForm = {
     };
   },
 
-  validate(form: BucketCreateForm): FieldErrors<BucketCreateForm> {
+  collectErrors(form: BucketCreateForm): FieldErrors<BucketCreateForm> {
     return collect<BucketCreateForm>([
       ["name", errorOf(BucketName.parse(form.name))],
       [
@@ -452,12 +428,6 @@ export const BucketCreateForm = {
         Option.isSome(BucketLocation.parse(form.location))
           ? Option.none
           : Option.some(`Unknown location: ${form.location}`),
-      ],
-      [
-        "storageClass",
-        Option.isSome(StorageClass.parse(form.storageClass))
-          ? Option.none
-          : Option.some(`Unknown storage class: ${form.storageClass}`),
       ],
     ]);
   },
@@ -474,17 +444,10 @@ export const BucketCreateForm = {
     ];
     return parts.join(" ");
   },
-
-  isValid(form: BucketCreateForm): boolean {
-    return noErrors(BucketCreateForm.validate(form));
-  },
 } as const;
 
 /** `services enable` の 1 行（「API を有効にする」ボタン）。 */
-export const EnableApiCommand = {
-  toCommand(api: string, projectId: string): string {
-    return `gcloud services enable ${api} ${flag("project", projectId)}`;
-  },
-} as const;
+export const enableApiCommand = (api: ApiName, projectId: string): string =>
+  `gcloud services enable ${api} ${flag("project", projectId)}`;
 
-export type { Region };
+export { StorageClass };

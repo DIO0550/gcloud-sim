@@ -1,22 +1,24 @@
 import type { ReactElement } from "react";
 
+import { BudgetsScreen } from "@/features/simulator/features/console/components/BillingScreens";
 import {
   VmCreateScreen,
   VmListScreen,
 } from "@/features/simulator/features/console/components/ComputeScreens";
 import {
+  ClustersScreen,
+  RunServicesScreen,
+} from "@/features/simulator/features/console/components/ContainerScreens";
+import {
   IamScreen,
   RolesScreen,
   ServiceAccountsScreen,
 } from "@/features/simulator/features/console/components/IamScreens";
+import { BucketsScreen } from "@/features/simulator/features/console/components/StorageScreens";
 import {
-  BucketsScreen,
-  BudgetsScreen,
-  ClustersScreen,
   FirewallScreen,
-  RunServicesScreen,
   SubnetsScreen,
-} from "@/features/simulator/features/console/components/OtherScreens";
+} from "@/features/simulator/features/console/components/VpcScreens";
 import type { ConsoleScreen } from "@/features/simulator/features/console/domains/console-screen";
 import type { ScreenProps } from "@/features/simulator/features/console/types/screen-props";
 

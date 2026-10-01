@@ -648,11 +648,8 @@ export const CustomRole = {
       stage: Option<CustomRole["stage"]>;
     }>,
   ): Result<CustomRole, string> {
-    if (!/^[A-Za-z0-9_.]{3,64}$/.test(seed.roleId)) {
-      return Result.err(
-        `INVALID_ARGUMENT: The role id ${seed.roleId} is invalid. Role IDs must be 3-64 characters of [a-zA-Z0-9_.].`,
-      );
-    }
+    const roleId = CustomRole.parseRoleId(seed.roleId);
+    if (!Result.isOk(roleId)) return roleId;
     const unknown = seed.includedPermissions.find((p) => !KnownPermissions.has(p));
     if (unknown !== undefined) {
       return Result.err(
@@ -668,6 +665,20 @@ export const CustomRole = {
       stage: Option.unwrapOr(seed.stage, "GA"),
       etag: "BwYCustom0=",
     });
+  },
+
+  /**
+   * ロール ID の形式を確かめる。`create` と Console のフォームが同じ規則を使う。
+   *
+   * @param roleId ユーザーが打った ID
+   * @returns `[a-zA-Z0-9_.]{3,64}` ならそのまま。それ以外は INVALID_ARGUMENT の理由
+   */
+  parseRoleId(roleId: string): Result<string, string> {
+    return /^[A-Za-z0-9_.]{3,64}$/.test(roleId)
+      ? Result.ok(roleId)
+      : Result.err(
+          `INVALID_ARGUMENT: The role id ${roleId} is invalid. Role IDs must be 3-64 characters of [a-zA-Z0-9_.].`,
+        );
   },
 
   /** `projects/P/roles/ID` の綴り。バインディングの `role` に入る。 */

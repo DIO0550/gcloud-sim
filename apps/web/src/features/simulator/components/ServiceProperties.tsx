@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 
 import { KubePod, KubeService } from "@/engine/domains/kubernetes";
-import { CloudRunService, GkeCluster, NodePool } from "@/engine/domains/managed-services";
+import { CloudRunService, GkeCluster } from "@/engine/domains/managed-services";
 import { AppEngineApp, CloudFunction } from "@/engine/domains/serverless";
 import { World } from "@/engine/domains/world";
 import {
@@ -40,14 +40,11 @@ export const BucketProperties = ({ world, selection }: SelectionProps<"bucket">)
   );
 };
 
-const requireCluster = (world: World, projectId: string, name: string) =>
-  World.findCluster(world, projectId, name);
-
 export const ClusterProperties = ({
   world,
   selection,
 }: SelectionProps<"cluster">): ReactElement => {
-  const cluster = requireCluster(world, selection.projectId, selection.name);
+  const cluster = World.findCluster(world, selection.projectId, selection.name);
   if (!Option.isSome(cluster)) return <NotFound what="クラスタ" />;
   const c = cluster.value;
   return (
@@ -70,22 +67,22 @@ export const NodePoolProperties = ({
   world,
   selection,
 }: SelectionProps<"node-pool">): ReactElement => {
-  const cluster = requireCluster(world, selection.projectId, selection.cluster);
-  if (!Option.isSome(cluster)) return <NotFound what="クラスタ" />;
-  const pool = [
-    NodePool.defaultPool(cluster.value),
-    ...World.nodePoolsOf(world, cluster.value),
-  ].find((p) => p.name === selection.name);
-  if (pool === undefined) return <NotFound what="ノードプール" />;
+  const cluster = World.findCluster(world, selection.projectId, selection.cluster);
+  const pool = Option.flatMap(cluster, (c) =>
+    Option.fromNullable(
+      World.nodePoolsWithDefault(world, c).find((p) => p.name === selection.name),
+    ),
+  );
+  if (!Option.isSome(pool)) return <NotFound what="ノードプール" />;
   return (
     <Section
       title="基本"
       rows={[
-        { label: "cluster", value: pool.cluster },
-        { label: "machineType", value: pool.machineType },
-        { label: "nodeCount", value: String(pool.nodeCount) },
-        { label: "diskSizeGb", value: String(pool.diskSizeGb) },
-        { label: "version", value: pool.version },
+        { label: "cluster", value: pool.value.cluster },
+        { label: "machineType", value: pool.value.machineType },
+        { label: "nodeCount", value: String(pool.value.nodeCount) },
+        { label: "diskSizeGb", value: String(pool.value.diskSizeGb) },
+        { label: "version", value: pool.value.version },
       ]}
     />
   );
@@ -95,7 +92,7 @@ export const KubeDeploymentProperties = ({
   world,
   selection,
 }: SelectionProps<"kube-deployment">): ReactElement => {
-  const cluster = requireCluster(world, selection.projectId, selection.cluster);
+  const cluster = World.findCluster(world, selection.projectId, selection.cluster);
   const deployment = Option.flatMap(cluster, (c) =>
     World.findKubeDeployment(world, c, selection.name),
   );
@@ -128,7 +125,7 @@ export const KubeServiceProperties = ({
   world,
   selection,
 }: SelectionProps<"kube-service">): ReactElement => {
-  const cluster = requireCluster(world, selection.projectId, selection.cluster);
+  const cluster = World.findCluster(world, selection.projectId, selection.cluster);
   const service = Option.flatMap(cluster, (c) => World.findKubeService(world, c, selection.name));
   if (!Option.isSome(service)) return <NotFound what="Service" />;
   const s = service.value;
@@ -347,16 +344,14 @@ export const KeyRingProperties = ({
   world,
   selection,
 }: SelectionProps<"key-ring">): ReactElement => {
-  const ring = World.namedOf(world, "kmsKeyRings", selection.projectId).find(
-    (r) => r.name === selection.name && r.location === selection.location,
-  );
-  if (ring === undefined) return <NotFound what="キーリング" />;
+  const ring = World.findLocated(world, "kmsKeyRings", selection);
+  if (!Option.isSome(ring)) return <NotFound what="キーリング" />;
   return (
     <Section
       title="基本"
       rows={[
-        { label: "location", value: ring.location },
-        { label: "createTime", value: ring.createTime },
+        { label: "location", value: ring.value.location },
+        { label: "createTime", value: ring.value.createTime },
       ]}
     />
   );

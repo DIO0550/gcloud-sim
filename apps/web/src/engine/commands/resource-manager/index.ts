@@ -366,7 +366,7 @@ export const FolderCommands: readonly CommandSpec[] = [
       const numbered = World.nextNumber(ctx.world);
       const folder = Result.mapErr(
         Folder.create({
-          displayName: Option.unwrapOr(ParsedArgs.string(args, "display-name"), ""),
+          displayName: ParsedArgs.requiredString(args, "display-name"),
           parent: parent.value,
           sequence: numbered.number,
         }),

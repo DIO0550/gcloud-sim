@@ -54,6 +54,19 @@ export const Budget = {
     });
   },
 
+  /**
+   * 額の綴りを数にする（`--budget-amount` の通貨を除いた部分と、Console のフォーム）。
+   *
+   * @param raw `100000` / `1500.5` のような綴り
+   * @returns 正の数。数でない・0 以下なら理由
+   */
+  parseAmount(raw: string): Result<number, string> {
+    const amount = /^\d+(\.\d+)?$/.test(raw) ? Number(raw) : Number.NaN;
+    return amount > 0
+      ? Result.ok(amount)
+      : Result.err(`Invalid value for [--budget-amount]: ${raw}. Must be a positive number.`);
+  },
+
   /** `billingAccounts/A/budgets/ID` の ID 部分。`budgets describe` はこれで引く。 */
   id(budget: Budget): string {
     return budget.name.slice(budget.name.lastIndexOf("/") + 1);

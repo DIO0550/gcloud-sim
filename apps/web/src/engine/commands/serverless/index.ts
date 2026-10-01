@@ -15,12 +15,7 @@ import {
 import { Candidates, projectCommand } from "@/engine/commands/shared";
 import { FunctionRuntime, FunctionRuntimes } from "@/engine/domains/catalog";
 import { SampleFile } from "@/engine/domains/sample-files";
-import {
-  AppEngineApp,
-  AppVersion,
-  CloudFunction,
-  TrafficSplits,
-} from "@/engine/domains/serverless";
+import { AppEngineApp, AppVersion, CloudFunction, TrafficSplit } from "@/engine/domains/serverless";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -71,7 +66,7 @@ const deployFunction = (ctx: ProjectContext, args: ParsedArgs): CommandResult =>
     "functions/region",
   );
   if (!Result.isOk(region)) return region;
-  const rawRuntime = Option.unwrapOr(ParsedArgs.string(args, "runtime"), "");
+  const rawRuntime = ParsedArgs.requiredString(args, "runtime");
   const runtime = Option.toResult(FunctionRuntime.parse(rawRuntime), () =>
     CommandFailure.invalidChoice("--runtime", rawRuntime, Object.values(FunctionRuntimes)),
   );
@@ -274,7 +269,7 @@ const setTraffic = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   if (versions.length === 0) {
     return Result.err(CommandFailure.notFoundWith(`Service [${service}] not found.`));
   }
-  const splits = Result.mapErr(TrafficSplits.parse(ParsedArgs.keyvalue(args, "splits")), (m) =>
+  const splits = Result.mapErr(TrafficSplit.parse(ParsedArgs.keyvalue(args, "splits")), (m) =>
     CommandFailure.invalidValue("--splits", m),
   );
   if (!Result.isOk(splits)) return splits;
@@ -326,7 +321,7 @@ export const FunctionsCommands: readonly CommandSpec[] = [
       Flag.string(
         "trigger-topic",
         "Name of Pub/Sub topic. Every message published in this topic will trigger function execution.",
-        { candidates: Candidates.topics },
+        { candidates: Candidates.pubsubTopics },
       ),
       Flag.string(
         "entry-point",

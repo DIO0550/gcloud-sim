@@ -70,7 +70,7 @@ export const SCENARIOS = [
       { wait: 300 },
       { click: "インスタンスを作成" },
       { fill: ["名前", "web-2"] },
-      { fill: ["ネットワークタグ", "http-server"] },
+      { fill: ["ネットワーク タグ", "http-server"] },
       { wait: 300 },
     ],
   },

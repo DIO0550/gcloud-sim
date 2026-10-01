@@ -10,12 +10,7 @@ import {
   Positional,
   type ProjectContext,
 } from "@/engine/cli/command-spec";
-import {
-  alreadyExists,
-  Candidates,
-  describeNamedCommand,
-  projectCommand,
-} from "@/engine/commands/shared";
+import { alreadyExists, describeNamedCommand, projectCommand } from "@/engine/commands/shared";
 import { Region } from "@/engine/domains/catalog";
 import { DmDeployment } from "@/engine/domains/deployment-manager";
 import { DnsManagedZone } from "@/engine/domains/dns";
@@ -48,7 +43,7 @@ const DeploymentColumns = [
 ];
 
 const createKeyRing = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
-  const rawLocation = Option.unwrapOr(ParsedArgs.string(args, "location"), "");
+  const rawLocation = ParsedArgs.requiredString(args, "location");
   const location: Result<KmsKeyRing["location"], CommandFailure> =
     rawLocation === "global"
       ? Result.ok("global")
@@ -81,8 +76,8 @@ const createManagedZone = (ctx: ProjectContext, args: ParsedArgs): CommandResult
     DnsManagedZone.create({
       projectId: ctx.project.projectId,
       name: ParsedArgs.requiredPositional(args, 0),
-      dnsName: Option.unwrapOr(ParsedArgs.string(args, "dns-name"), ""),
-      description: Option.unwrapOr(ParsedArgs.string(args, "description"), ""),
+      dnsName: ParsedArgs.requiredString(args, "dns-name"),
+      description: ParsedArgs.requiredString(args, "description"),
       visibility:
         Option.unwrapOr(ParsedArgs.string(args, "visibility"), "public") === "private"
           ? "private"
@@ -114,7 +109,7 @@ const createManagedZone = (ctx: ProjectContext, args: ParsedArgs): CommandResult
 };
 
 const createDeployment = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
-  const path = Option.unwrapOr(ParsedArgs.string(args, "config"), "");
+  const path = ParsedArgs.requiredString(args, "config");
   const sample = SampleFile.find(path);
   if (!Option.isSome(sample) || sample.value.kind !== "dm-config") {
     return Result.err(
@@ -202,7 +197,7 @@ export const KmsCommands: readonly CommandSpec[] = [
     permission: "cloudkms.keyRings.list",
     requiredApis: [KmsApi],
     run: (ctx, args) => {
-      const location = Option.unwrapOr(ParsedArgs.string(args, "location"), "");
+      const location = ParsedArgs.requiredString(args, "location");
       return Result.ok({
         world: ctx.world,
         output: CommandOutput.table(
@@ -214,32 +209,18 @@ export const KmsCommands: readonly CommandSpec[] = [
       });
     },
   }),
-  projectCommand({
+  describeNamedCommand({
     path: ["gcloud", "kms", "keyrings", "describe"],
     summary: "Get metadata for a keyring.",
-    positionals: [Positional.required("KEYRING", "ID of the keyring.", Candidates.keyRings)],
+    positional: { name: "KEYRING", description: "ID of the keyring." },
     flags: [Flag.string("location", "Location of the keyring.", { required: true })],
+    locate: (_ctx, args) => Result.ok(ParsedArgs.requiredString(args, "location")),
+    collection: "kmsKeyRings",
     permission: "cloudkms.keyRings.get",
     requiredApis: [KmsApi],
-    run: (ctx, args) => {
-      const location = Option.unwrapOr(ParsedArgs.string(args, "location"), "");
-      const name = ParsedArgs.requiredPositional(args, 0);
-      const ring = Option.toResult(
-        Option.fromNullable(
-          World.namedOf(ctx.world, "kmsKeyRings", ctx.project.projectId).find(
-            (r) => r.name === name && r.location === location,
-          ),
-        ),
-        () =>
-          CommandFailure.notFound(
-            `projects/${ctx.project.projectId}/locations/${location}/keyRings/${name}`,
-          ),
-      );
-      return Result.map(ring, (r) => ({
-        world: ctx.world,
-        output: CommandOutput.yaml(KmsKeyRing.toRecord(r)),
-      }));
-    },
+    resourcePath: (ref) =>
+      `projects/${ref.projectId}/locations/${Option.unwrapOr(ref.location, "-")}/keyRings/${ref.name}`,
+    record: KmsKeyRing.toRecord,
   }),
 ];
 
@@ -278,11 +259,11 @@ export const DnsCommands: readonly CommandSpec[] = [
   describeNamedCommand({
     path: ["gcloud", "dns", "managed-zones", "describe"],
     summary: "View the details of a Cloud DNS managed-zone.",
-    positional: Positional.required("ZONE_NAME", "Name of the managed-zone.", Candidates.dnsZones),
+    positional: { name: "ZONE_NAME", description: "Name of the managed-zone." },
     collection: "dnsZones",
     permission: "dns.managedZones.get",
     requiredApis: [DnsApi],
-    resourcePath: (projectId, name) => `projects/${projectId}/managedZones/${name}`,
+    resourcePath: (ref) => `projects/${ref.projectId}/managedZones/${ref.name}`,
     record: DnsManagedZone.toRecord,
   }),
 ];
@@ -327,15 +308,11 @@ export const DeploymentManagerCommands: readonly CommandSpec[] = [
   describeNamedCommand({
     path: ["gcloud", "deployment-manager", "deployments", "describe"],
     summary: "Provide information about a deployment.",
-    positional: Positional.required(
-      "DEPLOYMENT_NAME",
-      "Deployment name.",
-      Candidates.dmDeployments,
-    ),
+    positional: { name: "DEPLOYMENT_NAME", description: "Deployment name." },
     collection: "dmDeployments",
     permission: "deploymentmanager.deployments.get",
     requiredApis: [DmApi],
-    resourcePath: (projectId, name) => `projects/${projectId}/global/deployments/${name}`,
+    resourcePath: (ref) => `projects/${ref.projectId}/global/deployments/${ref.name}`,
     record: DmDeployment.toRecord,
   }),
 ];

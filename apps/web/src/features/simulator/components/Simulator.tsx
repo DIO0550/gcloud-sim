@@ -12,7 +12,7 @@ import { PropertiesPanel } from "@/features/simulator/components/PropertiesPanel
 import { ResourceTree } from "@/features/simulator/components/ResourceTree";
 import { SettingsDialog } from "@/features/simulator/components/SettingsDialog";
 import { Terminal } from "@/features/simulator/components/Terminal";
-import { type ConsoleActions, ConsoleView } from "@/features/simulator/features/console";
+import { type ConsoleHandlers, ConsoleView } from "@/features/simulator/features/console";
 import {
   type PanelTab,
   PanelTabs,
@@ -21,6 +21,7 @@ import {
   Views,
 } from "@/features/simulator/hooks/use-simulator";
 import { describeImportFailure } from "@/features/simulator/utils/import-failure-message";
+import type { Clipboard } from "@/libs/clipboard";
 import type { SnapshotFile } from "@/libs/snapshot-file";
 import type { TerminalViewFactory } from "@/libs/terminal-view";
 import type { WorldStorage } from "@/libs/world-storage";
@@ -34,8 +35,8 @@ export type SimulatorIo = Readonly<{
   download: typeof SnapshotFile.download;
   readFile: typeof SnapshotFile.read;
   confirm: (message: string) => boolean;
-  /** クリップボードへ書く（Console の「同等のコマンドライン」のコピー） */
-  copy: (text: string) => void;
+  /** クリップボードへ書く（Console の「同等のコマンドライン」のコピー）。失敗はその理由 */
+  copy: typeof Clipboard.copy;
   createTerminalView: TerminalViewFactory;
   capacityBytes: number;
 }>;
@@ -100,11 +101,15 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
 
   const counts = Mission.counts(world);
   const isConsole = state.view === Views.Console;
-  const consoleActions: ConsoleActions = {
+  const copy = async (text: string): Promise<void> => {
+    const copied = await io.copy(text);
+    if (!Result.isOk(copied)) dispatch({ type: "copyFailed", reason: copied.error });
+  };
+  const consoleHandlers: ConsoleHandlers = {
     submit: ({ line, note, next }) =>
       dispatch({ type: "consoleSubmitted", line, now: io.now(), note, next }),
     insert: (line) => dispatch({ type: "insertRequested", text: line }),
-    copy: io.copy,
+    copy: (text) => void copy(text),
     confirm: io.confirm,
     changeScreen: (screen) => dispatch({ type: "consoleScreenChanged", screen }),
   };
@@ -138,7 +143,7 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
               world={world}
               screen={state.consoleScreen}
               outcome={Option.map(state.consoleOutcome, (o) => o.outcome)}
-              actions={consoleActions}
+              handlers={consoleHandlers}
               onOutcomeDismiss={() => dispatch({ type: "consoleOutcomeCleared" })}
             />
           )}

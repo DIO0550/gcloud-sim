@@ -773,12 +773,10 @@ const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
       );
     }
     case "customRoleExists": {
-      const role = World.customRolesOf(world, assertion.projectId).find(
-        (r) => r.roleId === assertion.roleId,
-      );
+      const role = World.findCustomRoleById(world, assertion.projectId, assertion.roleId);
       return (
-        role !== undefined &&
-        assertion.permissions.every((p) => role.includedPermissions.includes(p))
+        Option.isSome(role) &&
+        assertion.permissions.every((p) => role.value.includedPermissions.includes(p))
       );
     }
   }

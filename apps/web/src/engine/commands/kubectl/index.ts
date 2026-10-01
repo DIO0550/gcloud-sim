@@ -24,7 +24,7 @@ import {
 } from "@/engine/domains/kubernetes";
 import type { GkeCluster } from "@/engine/domains/managed-services";
 import { SampleFile } from "@/engine/domains/sample-files";
-import { World } from "@/engine/domains/world";
+import { type AlreadyExists, World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
@@ -41,23 +41,30 @@ const refused = (): CommandFailure =>
     "The connection to the server localhost:8080 was refused - did you specify the right host or port?\ngcloud-sim: 先に gcloud container clusters get-credentials CLUSTER でコンテキストを作ってください。",
   );
 
-/** 現在のコンテキストのクラスタ。`container/cluster` が無い・指す先が無ければ refused。 */
-const currentCluster = (ctx: ProjectContext): Result<GkeCluster, CommandFailure> => {
-  const name = GcloudConfig.get(ctx.world.config, "container/cluster");
-  const cluster = Option.flatMap(name, (n) =>
+/** 現在のコンテキストのクラスタ（`container/cluster` が指すもの）。 */
+const currentClusterOf = (ctx: ProjectContext): Option<GkeCluster> =>
+  Option.flatMap(GcloudConfig.get(ctx.world.config, "container/cluster"), (n) =>
     World.findCluster(ctx.world, ctx.project.projectId, n),
   );
-  return Option.toResult(cluster, refused);
-};
+
+/** 現在のコンテキストのクラスタ。`container/cluster` が無い・指す先が無ければ refused。 */
+const currentCluster = (ctx: ProjectContext): Result<GkeCluster, CommandFailure> =>
+  Option.toResult(currentClusterOf(ctx), refused);
 
 const contextName = (cluster: GkeCluster): string =>
   `gke_${cluster.projectId}_${cluster.location}_${cluster.name}`;
 
+/** E-008 を kubectl の綴り（`Error from server (AlreadyExists): deployments.apps "web" already exists`）で。 */
+const kubeAlreadyExists = (failure: AlreadyExists): CommandFailure =>
+  CommandFailure.alreadyExistsWith(
+    `Error from server (AlreadyExists): ${failure.resource} already exists`,
+  );
+
 const notFound = (kind: string, name: string): CommandFailure =>
   CommandFailure.notFoundWith(`Error from server (NotFound): ${kind} "${name}" not found`);
 
-const usage = (message: string): CommandFailure =>
-  CommandFailure.invalidValue("", `error: ${message}`);
+/** kubectl の使い方の誤り（`error: ...` は Shell が頭に付ける）。 */
+const usage = (message: string): CommandFailure => CommandFailure.invalidArgumentWith(message);
 
 /** `deployment`, `deploy`, `deployments`, `deployment/web` の綴りを種別と名前に分ける。 */
 type ResourceRef = Readonly<{
@@ -290,13 +297,11 @@ const createDeployment = (
       replicas: seed.replicas,
       createdAt: ctx.now,
     }),
-    (m) => CommandFailure.invalidValue("", m),
+    usage,
   );
   if (!Result.isOk(deployment)) return deployment;
   return Result.map(
-    Result.mapErr(World.withKubeDeployment(ctx.world, deployment.value), (m) =>
-      CommandFailure.alreadyExists(m),
-    ),
+    Result.mapErr(World.withKubeDeployment(ctx.world, deployment.value), kubeAlreadyExists),
     (world) => ({
       world,
       output: CommandOutput.messages(
@@ -340,14 +345,11 @@ const createService = (
       externalIp: loadBalancerIp(numbered.number),
       createdAt: ctx.now,
     }),
-    (m) => CommandFailure.invalidValue("", m),
+    usage,
   );
   if (!Result.isOk(service)) return service;
   return Result.map(
-    Result.mapErr(
-      World.withKubeService(numbered.world, service.value),
-      CommandFailure.alreadyExists,
-    ),
+    Result.mapErr(World.withKubeService(numbered.world, service.value), kubeAlreadyExists),
     (world) => ({
       world,
       output: CommandOutput.messages(OutputMessage.plain(`service/${service.value.name} exposed`)),
@@ -355,20 +357,24 @@ const createService = (
   );
 };
 
-/** `-f FILE`。サンプル以外は本物と同じ no such file。 */
-const sampleArg = (args: ParsedArgs) => {
-  const path = Option.unwrapOr(ParsedArgs.string(args, "filename"), "");
-  return Option.toResult(SampleFile.find(path), () =>
+/** `-f FILE` のファイル。サンプル以外は本物と同じ no such file。 */
+const sampleFile = (path: string) =>
+  Option.toResult(SampleFile.find(path), () =>
     CommandFailure.notFoundWith(
       `error: the path "${path}" does not exist\ngcloud-sim: 使えるサンプルは ${SampleFile.names().join(" / ")} です（中身は docs/COMMANDS.md）。`,
     ),
   );
-};
+
+/** `-f` が無いときの本物の文言。 */
+const fileRequired = (): CommandFailure => usage("must specify one of -f and -k");
 
 const apply = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   const cluster = currentCluster(ctx);
   if (!Result.isOk(cluster)) return cluster;
-  const file = sampleArg(args);
+  const file = Result.flatMap(
+    Option.toResult(ParsedArgs.string(args, "filename"), fileRequired),
+    sampleFile,
+  );
   if (!Result.isOk(file)) return file;
   const sample = file.value;
   switch (sample.kind) {
@@ -432,12 +438,13 @@ const create = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   const cluster = currentCluster(ctx);
   if (!Result.isOk(cluster)) return cluster;
   if (ParsedArgs.has(args, "filename")) return apply(ctx, args);
-  const type = ParsedArgs.requiredPositional(args, 0);
+  const type = ParsedArgs.positional(args, 0);
   const name = ParsedArgs.positional(args, 1);
-  if (ResourceAliases[type.toLowerCase()] !== "deployment") {
+  if (!Option.isSome(type)) return Result.err(fileRequired());
+  if (ResourceAliases[type.value.toLowerCase()] !== "deployment") {
     return Result.err(
       usage(
-        `unknown command "${type}". gcloud-sim supports "kubectl create deployment NAME --image=IMAGE".`,
+        `unknown command "${type.value}". gcloud-sim supports "kubectl create deployment NAME --image=IMAGE".`,
       ),
     );
   }
@@ -454,16 +461,20 @@ const create = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
 const remove = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   const cluster = currentCluster(ctx);
   if (!Result.isOk(cluster)) return cluster;
-  const fromFile = ParsedArgs.has(args, "filename");
-  const ref = fromFile
-    ? Result.flatMap(sampleArg(args), (sample) =>
+  const file = ParsedArgs.string(args, "filename");
+  const type = ParsedArgs.positional(args, 0);
+  if (!Option.isSome(file) && !Option.isSome(type)) {
+    return Result.err(usage("You must provide one or more resources by argument or filename."));
+  }
+  const ref = Option.isSome(file)
+    ? Result.flatMap(sampleFile(file.value), (sample) =>
         sample.kind === "kube-deployment"
           ? Result.ok<ResourceRef>({ kind: "deployment", name: Option.some(sample.deployment) })
           : sample.kind === "kube-service"
             ? Result.ok<ResourceRef>({ kind: "service", name: Option.some(sample.service) })
             : Result.err(usage(`unable to recognize "${sample.name}": not a Kubernetes manifest`)),
       )
-    : parseResource(ParsedArgs.requiredPositional(args, 0), ParsedArgs.positional(args, 1));
+    : parseResource(Option.unwrapOr(type, ""), ParsedArgs.positional(args, 1));
   if (!Result.isOk(ref)) return ref;
   const name = ref.value.name;
   if (!Option.isSome(name))
@@ -633,10 +644,7 @@ const logs = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
 const config = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   const verb = ParsedArgs.requiredPositional(args, 0);
   const clusters = World.clustersOf(ctx.world, ctx.project.projectId);
-  const currentName = GcloudConfig.get(ctx.world.config, "container/cluster");
-  const current = Option.flatMap(currentName, (n) =>
-    Option.fromNullable(clusters.find((c) => c.name === n)),
-  );
+  const current = currentClusterOf(ctx);
   switch (verb) {
     case "current-context":
       return Option.isSome(current)

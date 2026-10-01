@@ -97,7 +97,7 @@ const createRole = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
 };
 
 const copyRole = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
-  const sourceRaw = Option.unwrapOr(ParsedArgs.string(args, "source"), "");
+  const sourceRaw = ParsedArgs.requiredString(args, "source");
   const sourceName = Option.flatMap(RoleName.parse(sourceRaw), (name) =>
     Option.or(
       RoleCatalog.find(name),
@@ -112,7 +112,7 @@ const copyRole = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   const role = Result.mapErr(
     CustomRole.fromRole(sourceName.value, {
       projectId: Option.unwrapOr(ParsedArgs.string(args, "dest-project"), ctx.project.projectId),
-      roleId: Option.unwrapOr(ParsedArgs.string(args, "destination"), ""),
+      roleId: ParsedArgs.requiredString(args, "destination"),
     }),
     CommandFailure.invalidIamArgument,
   );
@@ -129,7 +129,7 @@ const copyRole = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
 };
 
 const createKey = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
-  const email = Option.unwrapOr(ParsedArgs.string(args, "iam-account"), "");
+  const email = ParsedArgs.requiredString(args, "iam-account");
   if (!Option.isSome(World.findServiceAccount(ctx.world, email))) {
     return Result.err(unknownServiceAccount(email));
   }
@@ -370,7 +370,7 @@ export const IamCommands: readonly CommandSpec[] = [
     ],
     permission: "iam.serviceAccountKeys.list",
     run: (ctx, args) => {
-      const email = Option.unwrapOr(ParsedArgs.string(args, "iam-account"), "");
+      const email = ParsedArgs.requiredString(args, "iam-account");
       if (!Option.isSome(World.findServiceAccount(ctx.world, email))) {
         return Result.err(unknownServiceAccount(email));
       }

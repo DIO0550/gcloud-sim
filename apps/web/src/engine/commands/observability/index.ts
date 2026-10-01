@@ -10,12 +10,7 @@ import {
   Positional,
   type ProjectContext,
 } from "@/engine/cli/command-spec";
-import {
-  alreadyExists,
-  Candidates,
-  describeNamedCommand,
-  projectCommand,
-} from "@/engine/commands/shared";
+import { alreadyExists, describeNamedCommand, projectCommand } from "@/engine/commands/shared";
 import { Freshness, LogEntry, LogNames, LogSink } from "@/engine/domains/observability";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
@@ -175,11 +170,11 @@ export const LoggingCommands: readonly CommandSpec[] = [
   describeNamedCommand({
     path: ["gcloud", "logging", "sinks", "describe"],
     summary: "Display information about a sink.",
-    positional: Positional.required("SINK_NAME", "The name of the sink.", Candidates.logSinks),
+    positional: { name: "SINK_NAME", description: "The name of the sink." },
     collection: "logSinks",
     permission: "logging.sinks.get",
     requiredApis: [LoggingApi],
-    resourcePath: (projectId, name) => `projects/${projectId}/sinks/${name}`,
+    resourcePath: (ref) => `projects/${ref.projectId}/sinks/${ref.name}`,
     record: LogSink.toRecord,
   }),
 ];

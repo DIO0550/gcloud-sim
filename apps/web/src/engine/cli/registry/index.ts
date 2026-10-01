@@ -1,9 +1,10 @@
 import { CommandFailure } from "@/engine/cli/command-failure";
-import type {
-  CandidateSource,
-  CommandSpec,
-  FlagSpec,
-  PositionalSpec,
+import {
+  type CandidateSource,
+  type CommandSpec,
+  Flag,
+  type FlagSpec,
+  type PositionalSpec,
 } from "@/engine/cli/command-spec";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
@@ -65,15 +66,18 @@ export type CompletionRequest = Readonly<{
   world: World;
 }>;
 
-const findFlag = (flags: readonly FlagSpec[], name: string): Option<FlagSpec> =>
-  Option.fromNullable(flags.find((f) => f.name === name));
+/** `--name` か別名（`-o` 等）で定義を引く。`token` は `-` を含む打たれたままの綴り。 */
+const findFlag = (flags: readonly FlagSpec[], token: string): Option<FlagSpec> =>
+  Option.fromNullable(flags.find((f) => `--${f.name}` === token || f.aliases.includes(token)));
 
 /** `--project=P` / `--project P` の値。 */
-const flagValueIn = (tokens: readonly string[], name: string): string | undefined => {
+const flagValueIn = (tokens: readonly string[], name: string): Option<string> => {
   const index = tokens.findIndex((t) => t === `--${name}` || t.startsWith(`--${name}=`));
-  if (index === -1) return undefined;
-  const token = tokens[index] as string;
-  return token.includes("=") ? token.slice(token.indexOf("=") + 1) : tokens[index + 1];
+  const token = tokens[index];
+  if (token === undefined) return Option.none;
+  return token.includes("=")
+    ? Option.some(token.slice(token.indexOf("=") + 1))
+    : Option.fromNullable(tokens[index + 1]);
 };
 
 /**
@@ -89,7 +93,7 @@ const positionalCount = (rest: readonly string[], flags: readonly FlagSpec[]): n
       continue;
     }
     if (token.startsWith("-")) {
-      const flag = findFlag(flags, token.replace(/^--?/, "").replace(/=.*$/, ""));
+      const flag = findFlag(flags, token.replace(/=.*$/, ""));
       expectsValue = Option.isSome(flag) && flag.value.kind !== "boolean" && !token.includes("=");
       continue;
     }
@@ -248,10 +252,7 @@ export const CommandRegistry = {
     }
     const spec = resolved.value.spec;
     const flags = [...spec.flags, ...globalFlags];
-    const projectId = Option.or(
-      Option.fromNullable(flagValueIn(tokens, "project")),
-      World.currentProjectId(world),
-    );
+    const projectId = Option.or(flagValueIn(tokens, "project"), World.currentProjectId(world));
     const evaluate = (candidates: Option<CandidateSource>, prefix: string): readonly string[] =>
       Option.isSome(candidates)
         ? candidates
@@ -261,10 +262,7 @@ export const CommandRegistry = {
         : [];
     const eq = partial.indexOf("=");
     if (partial.startsWith("--") && eq !== -1) {
-      const flag = findFlag(flags, partial.slice(2, eq));
-      const candidates = Option.flatMap(flag, (f) =>
-        f.kind === "string" ? f.candidates : Option.none,
-      );
+      const candidates = Option.flatMap(findFlag(flags, partial.slice(0, eq)), Flag.candidatesOf);
       return evaluate(candidates, partial.slice(eq + 1)).map(
         (c) => `${partial.slice(0, eq + 1)}${c}`,
       );
@@ -277,14 +275,11 @@ export const CommandRegistry = {
     }
     const previous = resolved.value.rest.at(-1);
     const awaitingValueOf =
-      previous?.startsWith("--") && !previous.includes("=")
-        ? findFlag(flags, previous.slice(2))
+      previous?.startsWith("-") && !previous.includes("=")
+        ? findFlag(flags, previous)
         : Option.none;
     if (Option.isSome(awaitingValueOf) && awaitingValueOf.value.kind !== "boolean") {
-      return evaluate(
-        awaitingValueOf.value.kind === "string" ? awaitingValueOf.value.candidates : Option.none,
-        partial,
-      );
+      return evaluate(Flag.candidatesOf(awaitingValueOf.value), partial);
     }
     const index = positionalCount(resolved.value.rest, flags);
     const positional = positionalAt(spec.positionals, index);

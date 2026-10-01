@@ -764,7 +764,8 @@ const snapshotHead = D.object<{ schemaVersion: number; world: unknown }>({
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const emptyPolicy = { bindings: [] };
+/** v1 に無かったサービスアカウントのポリシーの埋め草（JSON の形のまま）。 */
+const EmptyPolicyJson = { bindings: [] };
 
 /**
  * v1 の World の JSON を v2 の形にする。足した集合は空、`session.adc` は無し、
@@ -780,7 +781,7 @@ const migrateV1 = (value: unknown): unknown => {
     : value.session;
   const serviceAccounts = Array.isArray(value.serviceAccounts)
     ? value.serviceAccounts.map((account: unknown) =>
-        isRecord(account) ? { iamPolicy: emptyPolicy, ...account } : account,
+        isRecord(account) ? { iamPolicy: EmptyPolicyJson, ...account } : account,
       )
     : value.serviceAccounts;
   const buckets = Array.isArray(value.buckets)

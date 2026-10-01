@@ -49,7 +49,7 @@ test("ロードバランサの部品と予約アドレスは 1 つのグルー�
   expect(labels(lb?.children ?? [])).toEqual(["hc: hc", "bes: web-bes", "fr: web-fr", "ip: lb-ip"]);
 });
 
-test("ネットワークの下にはサブネット・ファイアウォール・ルータがその順で出る", () => {
+test("ネットワークの下にはファイアウォール・サブネット・ルータがその順で出る（UI 案 2a）", () => {
   const s = run(
     session(),
     "gcloud compute networks create vpc-a --subnet-mode=custom",
@@ -59,8 +59,8 @@ test("ネットワークの下にはサブネット・ファイアウォール�
   );
   const network = find(TreeNode.fromWorld(s.world), "vpc-a");
   expect(labels(network?.children ?? [])).toEqual([
-    "subnet: sub-a (asia-northeast1)",
     "fw: vpc-a-ssh",
+    "subnet: sub-a (asia-northeast1)",
     "router: nat-a",
   ]);
 });

@@ -26,7 +26,7 @@ import { Option } from "@/utils/Option";
 const protocolText = (rules: readonly ProtocolRuleType[]): string =>
   rules.map(ProtocolRule.toText).join(", ") || Absent;
 
-const scopeText = (scope: LbScope): string => LbScope.pathSegment(scope);
+const scopeText = (scope: LbScope): string => LbScope.toPath(scope);
 
 export const InstanceProperties = ({
   world,
@@ -39,7 +39,7 @@ export const InstanceProperties = ({
   const rules = World.firewallRulesOf(world, i.projectId).filter(
     (r) => FirewallRule.appliesTo(r, i) && r.targetTags.length > 0,
   );
-  const operations = world.operations.filter((o) => o.targetLink === Instance.selfLink(i));
+  const operations = World.operationsOfTarget(world, Instance.selfLink(i));
   const metadata = Object.entries(i.metadata);
   const hasDefaultScopes =
     i.scopes.length === DefaultScopes.length && DefaultScopes.every((s) => i.scopes.includes(s));
@@ -142,17 +142,16 @@ export const SnapshotProperties = ({
   world,
   selection,
 }: SelectionProps<"snapshot">): ReactElement => {
-  const snapshot = World.diskSnapshotsOf(world, selection.projectId).find(
-    (s) => s.name === selection.name,
-  );
-  if (snapshot === undefined) return <NotFound what="スナップショット" />;
+  const snapshot = World.findNamed(world, "diskSnapshots", selection);
+  if (!Option.isSome(snapshot)) return <NotFound what="スナップショット" />;
+  const s = snapshot.value;
   return (
     <Section
       title="基本"
       rows={[
-        { label: "sourceDisk", value: `${snapshot.sourceDisk} (${snapshot.sourceZone})` },
-        { label: "diskSizeGb", value: String(snapshot.diskSizeGb) },
-        { label: "creationTimestamp", value: snapshot.creationTimestamp },
+        { label: "sourceDisk", value: `${s.sourceDisk} (${s.sourceZone})` },
+        { label: "diskSizeGb", value: String(s.diskSizeGb) },
+        { label: "creationTimestamp", value: s.creationTimestamp },
       ]}
     />
   );
@@ -278,9 +277,7 @@ export const SubnetProperties = ({ world, selection }: SelectionProps<"subnet">)
   const subnet = World.findSubnet(world, selection.projectId, selection.region, selection.name);
   if (!Option.isSome(subnet)) return <NotFound what="サブネット" />;
   const s = subnet.value;
-  const instances = World.instancesOf(world, selection.projectId).filter((i) =>
-    i.networkInterfaces.some((nic) => nic.subnetwork === s.name),
-  );
+  const instances = World.instancesInSubnet(world, s);
   return (
     <Section
       title="基本"

@@ -19,7 +19,7 @@ export const LbScope = {
   },
 
   /** selfLink の `global` / `regions/R` の部分。 */
-  pathSegment(scope: LbScope): string {
+  toPath(scope: LbScope): string {
     return scope.kind === "global" ? "global" : `regions/${scope.region}`;
   },
 
@@ -154,7 +154,7 @@ export const BackendService = {
   },
 
   selfLink(service: BackendService): string {
-    return `${projectBase(service.projectId)}/${LbScope.pathSegment(service.scope)}/backendServices/${service.name}`;
+    return `${projectBase(service.projectId)}/${LbScope.toPath(service.scope)}/backendServices/${service.name}`;
   },
 
   toRecord(service: BackendService): JsonRecord {
@@ -211,7 +211,7 @@ export const ForwardingRule = {
   },
 
   selfLink(rule: ForwardingRule): string {
-    return `${projectBase(rule.projectId)}/${LbScope.pathSegment(rule.scope)}/forwardingRules/${rule.name}`;
+    return `${projectBase(rule.projectId)}/${LbScope.toPath(rule.scope)}/forwardingRules/${rule.name}`;
   },
 
   toRecord(rule: ForwardingRule): JsonRecord {
@@ -222,7 +222,7 @@ export const ForwardingRule = {
       IPProtocol: rule.ipProtocol,
       portRange: rule.portRange,
       loadBalancingScheme: rule.loadBalancingScheme,
-      target: `${base}/${LbScope.pathSegment(rule.scope)}/backendServices/${rule.backendService}`,
+      target: `${base}/${LbScope.toPath(rule.scope)}/backendServices/${rule.backendService}`,
       region: rule.scope.kind === "region" ? `${base}/regions/${rule.scope.region}` : undefined,
       creationTimestamp: rule.creationTimestamp,
       selfLink: ForwardingRule.selfLink(rule),

@@ -82,6 +82,7 @@ export type SimulatorAction =
   | Readonly<{ type: "viewChanged"; view: View }>
   | Readonly<{ type: "consoleScreenChanged"; screen: ConsoleScreen }>
   | Readonly<{ type: "consoleOutcomeCleared" }>
+  | Readonly<{ type: "copyFailed"; reason: string }>
   | Readonly<{ type: "selected"; selection: TreeSelection }>
   | Readonly<{ type: "insertRequested"; text: string }>
   | Readonly<{ type: "insertConsumed" }>
@@ -217,11 +218,11 @@ const consoleSubmitted = (
     origin: "console",
     note: Option.some(action.note),
   });
-  const moves = outcome.kind === "succeeded" && Option.isSome(action.next);
+  const moveTo = outcome.kind === "succeeded" ? action.next : Option.none;
   return {
     ...next,
     consoleOutcome: Option.some({ line: action.line, outcome }),
-    consoleScreen: moves && Option.isSome(action.next) ? action.next.value : state.consoleScreen,
+    consoleScreen: Option.unwrapOr(moveTo, state.consoleScreen),
   };
 };
 
@@ -267,6 +268,10 @@ export const simulatorReducer = (
       return { ...state, consoleScreen: action.screen, consoleOutcome: Option.none };
     case "consoleOutcomeCleared":
       return { ...state, consoleOutcome: Option.none };
+    case "copyFailed":
+      return append(state, [
+        uiWarning(`gcloud-sim: warning: コピーできませんでした（${action.reason}）`),
+      ]);
     case "selected":
       return { ...state, selection: Option.some(action.selection), panelTab: PanelTabs.Properties };
     case "insertRequested":

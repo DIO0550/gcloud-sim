@@ -72,7 +72,7 @@ test("存在しないフォルダを親に持つプロジェクトは弾かれ�
 test("存在しないプロジェクトに属するインスタンスは弾かれる", () => {
   const world = initialWorld();
   const orphan = { ...world, instances: [{ ...instanceOf(), projectId: "nowhere" }] };
-  expect(failure(orphan)).toBe("instance [ghost-vm] belongs to a missing project");
+  expect(failure(orphan)).toBe("instances [ghost-vm] belongs to a missing project [nowhere]");
 });
 
 test("フォルダ id の重複は弾かれる", () => {

@@ -165,7 +165,7 @@ export const AppVersion = {
 } as const;
 
 /** `--splits=v1=0.5,v2=0.5` の配分。合計が 1（または 100）でなければ拒む。 */
-export const TrafficSplits = {
+export const TrafficSplit = {
   /**
    * 配分を解釈する。値は 0〜1 の割合か 0〜100 のパーセント（合計で判定する）。
    *

@@ -709,12 +709,14 @@ export const FirewallRule = {
         : isIngress
           ? seed.sourceRanges
           : [];
+    const priority = FirewallRule.parsePriority(Option.unwrapOr(seed.priority, 1000));
+    if (!Result.isOk(priority)) return priority;
     return Result.map(ResourceName.parse(seed.name), (name) => ({
       projectId: seed.projectId,
       name,
       network: seed.network,
       direction: seed.direction,
-      priority: Option.unwrapOr(seed.priority, 1000),
+      priority: priority.value,
       sourceRanges,
       destinationRanges: isIngress ? [] : seed.destinationRanges,
       targetTags: seed.targetTags,
@@ -722,6 +724,20 @@ export const FirewallRule = {
       denied: seed.action === FirewallActions.Deny ? seed.rules : [],
       disabled: seed.disabled,
     }));
+  },
+
+  /**
+   * 優先度の値域（本物と同じ 0〜65535 の整数）。`create` と Console のフォームが同じ規則を使う。
+   *
+   * @param value 優先度
+   * @returns 値域内ならそのまま。それ以外は理由
+   */
+  parsePriority(value: number): Result<number, string> {
+    return Number.isInteger(value) && value >= 0 && value <= 65535
+      ? Result.ok(value)
+      : Result.err(
+          `Invalid value for [--priority]: ${value}. Must be an integer between 0 and 65535.`,
+        );
   },
 
   /**

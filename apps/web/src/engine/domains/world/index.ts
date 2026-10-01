@@ -1,5 +1,5 @@
 import type { Budget } from "@/engine/domains/billing-budget";
-import type { ApiName, Zone } from "@/engine/domains/catalog";
+import { type ApiName, type Zone, Zone as ZoneCatalog } from "@/engine/domains/catalog";
 import type {
   Disk,
   DiskSnapshot,
@@ -24,8 +24,13 @@ import { IamPolicy, type RoleName } from "@/engine/domains/iam-policy";
 import type { InstanceTemplate, ManagedInstanceGroup } from "@/engine/domains/instance-groups";
 import type { KmsKeyRing } from "@/engine/domains/kms";
 import type { KubeDeployment, KubeService } from "@/engine/domains/kubernetes";
-import type { BackendService, ForwardingRule, HealthCheck } from "@/engine/domains/load-balancing";
-import type { CloudRunService, GkeCluster, NodePool } from "@/engine/domains/managed-services";
+import {
+  type BackendService,
+  type ForwardingRule,
+  type HealthCheck,
+  LbScope,
+} from "@/engine/domains/load-balancing";
+import { type CloudRunService, type GkeCluster, NodePool } from "@/engine/domains/managed-services";
 import { MissionProgress } from "@/engine/domains/mission-progress";
 import type { LogSink } from "@/engine/domains/observability";
 import { type Operation, OperationHistoryLimit } from "@/engine/domains/operation";
@@ -38,7 +43,7 @@ import {
   PolicyTarget,
   Project,
 } from "@/engine/domains/resource-hierarchy";
-import { CustomRole } from "@/engine/domains/role-catalog";
+import { CustomRole, RoleCatalog } from "@/engine/domains/role-catalog";
 import type { AppEngineApp, AppVersion, CloudFunction } from "@/engine/domains/serverless";
 import { ServiceAccount } from "@/engine/domains/service-account";
 import { Bucket } from "@/engine/domains/storage";
@@ -142,20 +147,116 @@ const sameInProject =
   (item: T): boolean =>
     item.projectId === projectId && item.name === name;
 
-/** `(projectId, name)` で一意に引ける集合のキー。`World` のうち要素がその形を持つ配列だけ。 */
-export type NamedCollection = {
-  [K in keyof World]: World[K] extends readonly (infer T)[]
-    ? T extends { projectId: string; name: string }
-      ? K
-      : never
-    : never;
-}[keyof World];
+/** クラスタに属するもの（ノードプール・kubectl のリソース）の所属判定。 */
+type InCluster = Readonly<{ projectId: string; cluster: string; name: string }>;
+
+const inCluster =
+  (cluster: GkeCluster) =>
+  (item: InCluster): boolean =>
+    item.projectId === cluster.projectId && item.cluster === cluster.name;
+
+const sameInCluster =
+  (target: InCluster) =>
+  (item: InCluster): boolean =>
+    item.projectId === target.projectId &&
+    item.cluster === target.cluster &&
+    item.name === target.name;
+
+/**
+ * `(projectId, name)` で一意に引ける集合のキー。`World` のうち要素がその形を持つ配列だけ。
+ * `projects` は `name` が表示名で同一性は `projectId`、`operations` はリソースではなく履歴なので外す。
+ */
+export type NamedCollection = Exclude<
+  {
+    [K in keyof World]: World[K] extends readonly (infer T)[]
+      ? T extends { projectId: string; name: string }
+        ? K
+        : never
+      : never;
+  }[keyof World],
+  "projects" | "operations"
+>;
 
 /** `NamedCollection` の要素の型。 */
 export type NamedItem<K extends NamedCollection> = World[K][number];
 
 const items = <K extends NamedCollection>(world: World, key: K): readonly NamedItem<K>[] =>
   world[key] as readonly NamedItem<K>[];
+
+/** 名前に加えて置き場（ゾーン・リージョン・global）が同一性に入る集合。 */
+export type LocatedCollection =
+  | "disks"
+  | "subnets"
+  | "addresses"
+  | "routers"
+  | "backendServices"
+  | "forwardingRules"
+  | "instanceGroups"
+  | "functions"
+  | "kmsKeyRings";
+
+/** 置き場の綴り（`asia-northeast1-a` / `regions/asia-northeast1` / `global`）。E-005 の綴りにもそのまま使う。 */
+const LocationOf: { readonly [K in LocatedCollection]: (item: NamedItem<K>) => string } = {
+  disks: (d) => d.zone,
+  subnets: (s) => s.region,
+  addresses: (a) => Option.unwrapOr(a.region, "global"),
+  routers: (r) => r.region,
+  backendServices: (b) => LbScope.toPath(b.scope),
+  forwardingRules: (r) => LbScope.toPath(r.scope),
+  instanceGroups: (g) => g.location,
+  functions: (f) => f.region,
+  kmsKeyRings: (r) => r.location,
+};
+
+const isLocated = (key: NamedCollection): key is LocatedCollection => key in LocationOf;
+
+/** 置き場の綴り。型引数を 1 つに保つのは、`K & LocatedCollection` のまま表を引くと TS が集合ごとの関数の union にして呼べなくなるため。 */
+const locationOf = <K extends LocatedCollection>(key: K, item: NamedItem<K>): string =>
+  LocationOf[key](item);
+
+/**
+ * 集合の中で 1 件を指す綴り。置き場を持つ集合は置き場を含む（同名のディスクが別ゾーンにあってよい）。
+ * `withNamed` の一意性・`replaceNamed` / `withoutNamed` の対象・`validate` の重複検査がこれで揃う。
+ * `isLocated` が狭めるのは `key` だけで `item` は付いてこないので、ここ 1 箇所で結ぶ。
+ */
+const identityOf = <K extends NamedCollection>(key: K, item: NamedItem<K>): string =>
+  isLocated(key)
+    ? `${item.projectId}/${locationOf<LocatedCollection>(key, item as NamedItem<LocatedCollection>)}/${item.name}`
+    : `${item.projectId}/${item.name}`;
+
+/** 実行時に全集合を回すための一覧。型 `NamedCollection` と食い違うと下の型検査で落ちる。 */
+const NamedCollectionKeys = [
+  "instances",
+  "networks",
+  "subnets",
+  "firewallRules",
+  "diskSnapshots",
+  "buckets",
+  "clusters",
+  "runServices",
+  "disks",
+  "addresses",
+  "routers",
+  "peerings",
+  "healthChecks",
+  "backendServices",
+  "forwardingRules",
+  "instanceTemplates",
+  "instanceGroups",
+  "nodePools",
+  "kubeDeployments",
+  "kubeServices",
+  "functions",
+  "sqlInstances",
+  "pubsubTopics",
+  "pubsubSubscriptions",
+  "logSinks",
+  "kmsKeyRings",
+  "dnsZones",
+  "dmDeployments",
+] as const satisfies readonly NamedCollection[];
+type UnlistedCollection = Exclude<NamedCollection, (typeof NamedCollectionKeys)[number]>;
+const _everyNamedCollectionIsListed: UnlistedCollection extends never ? true : never = true;
 
 /**
  * 親を辿って組織まで届くか。同じフォルダに 2 度来たら循環、フォルダの数が上限を超えたら深すぎる。
@@ -214,6 +315,15 @@ export const World = {
       .toSorted((a, b) => a.name.localeCompare(b.name));
   },
 
+  /**
+   * 名前で 1 件を引く。置き場を持つ集合（`LocatedCollection`）では同名が複数ありうるので、
+   * そちらは `findLocated` で引く（ここは置き場を問わない最初の 1 件）。
+   *
+   * @param world 元
+   * @param key 集合
+   * @param ref プロジェクトと名前
+   * @returns 見つかれば要素。無ければ `none`
+   */
   findNamed<K extends NamedCollection>(
     world: World,
     key: K,
@@ -223,13 +333,37 @@ export const World = {
   },
 
   /**
-   * ある集合に足す。`(projectId, name)` が既にあれば E-008 の材料を返す。
+   * 置き場を含めて 1 件を引く。
+   *
+   * @param world 元
+   * @param key 置き場を持つ集合
+   * @param ref プロジェクト・置き場（`LocationOf` と同じ綴り）・名前
+   * @returns 見つかれば要素。無ければ `none`
+   */
+  findLocated<K extends LocatedCollection>(
+    world: World,
+    key: K,
+    ref: Readonly<{ projectId: string; location: string; name: string }>,
+  ): Option<NamedItem<K>> {
+    const identity = `${ref.projectId}/${ref.location}/${ref.name}`;
+    return Option.fromNullable(
+      items(world, key).find((item) => identityOf(key, item) === identity),
+    );
+  },
+
+  /** 置き場を持つ集合の要素の置き場の綴り（`findLocated` の `location` と同じ）。 */
+  locationOf<K extends LocatedCollection>(key: K, item: NamedItem<K>): string {
+    return locationOf(key, item);
+  },
+
+  /**
+   * ある集合に足す。同じ同一性（名前。置き場を持つ集合は置き場 + 名前）が既にあれば E-008 の材料を返す。
    *
    * @param world 元
    * @param key 集合
    * @param item 足す要素
    * @param resource E-008 に出す綴り
-   * @returns 足した World。同名があれば `err`
+   * @returns 足した World。同じものがあれば `err`
    */
   withNamed<K extends NamedCollection>(
     world: World,
@@ -237,27 +371,28 @@ export const World = {
     item: NamedItem<K>,
     resource: string,
   ): Result<World, AlreadyExists> {
-    return addUnique(Option.isSome(World.findNamed(world, key, item)), resource, () => ({
-      ...world,
-      [key]: [...items(world, key), item],
-    }));
+    const identity = identityOf(key, item);
+    const exists = items(world, key).some((existing) => identityOf(key, existing) === identity);
+    return addUnique(exists, resource, () => ({ ...world, [key]: [...items(world, key), item] }));
   },
 
   replaceNamed<K extends NamedCollection>(world: World, key: K, item: NamedItem<K>): World {
+    const identity = identityOf(key, item);
     return {
       ...world,
-      [key]: replaceBy(items(world, key), sameInProject(item.projectId, item.name), item),
+      [key]: replaceBy(
+        items(world, key),
+        (existing) => identityOf(key, existing) === identity,
+        item,
+      ),
     };
   },
 
-  withoutNamed<K extends NamedCollection>(
-    world: World,
-    key: K,
-    ref: Readonly<{ projectId: string; name: string }>,
-  ): World {
+  withoutNamed<K extends NamedCollection>(world: World, key: K, item: NamedItem<K>): World {
+    const identity = identityOf(key, item);
     return {
       ...world,
-      [key]: items(world, key).filter((item) => !sameInProject(ref.projectId, ref.name)(item)),
+      [key]: items(world, key).filter((existing) => identityOf(key, existing) !== identity),
     };
   },
 
@@ -540,6 +675,33 @@ export const World = {
     return Option.fromNullable(world.customRoles.find((r) => CustomRole.name(r) === name));
   },
 
+  findCustomRoleById(world: World, projectId: string, roleId: string): Option<CustomRole> {
+    return Option.fromNullable(
+      world.customRoles.find((r) => r.projectId === projectId && r.roleId === roleId),
+    );
+  },
+
+  /**
+   * ロールの表示名。カタログの事前定義ロールか World のカスタムロール、どちらにも無ければ名前そのまま
+   * （バインディングには存在しないロールの綴りも入りうる）。
+   */
+  roleTitle(world: World, name: RoleName): string {
+    return Option.unwrapOr(
+      Option.or(
+        Option.map(RoleCatalog.find(name), (r) => r.title),
+        Option.map(World.findCustomRole(world, name), (r) => r.title),
+      ),
+      name,
+    );
+  },
+
+  /** カタログにもカスタムロールにもあるか（バインディングに入れてよいロールか）。 */
+  isKnownRole(world: World, name: RoleName): boolean {
+    return (
+      Option.isSome(RoleCatalog.find(name)) || Option.isSome(World.findCustomRole(world, name))
+    );
+  },
+
   withCustomRole(world: World, role: CustomRole): Result<World, AlreadyExists> {
     return addUnique(
       Option.isSome(World.findCustomRole(world, CustomRole.name(role))),
@@ -633,18 +795,15 @@ export const World = {
   },
 
   findSubnet(world: World, projectId: string, region: string, name: string): Option<Subnet> {
-    return Option.fromNullable(
-      world.subnets.find(
-        (s) => s.projectId === projectId && s.region === region && s.name === name,
-      ),
-    );
+    return World.findLocated(world, "subnets", { projectId, location: region, name });
   },
 
   withSubnet(world: World, subnet: Subnet): Result<World, AlreadyExists> {
-    return addUnique(
-      Option.isSome(World.findSubnet(world, subnet.projectId, subnet.region, subnet.name)),
+    return World.withNamed(
+      world,
+      "subnets",
+      subnet,
       `projects/${subnet.projectId}/regions/${subnet.region}/subnetworks/${subnet.name}`,
-      () => ({ ...world, subnets: [...world.subnets, subnet] }),
     );
   },
 
@@ -686,11 +845,22 @@ export const World = {
     return World.namedOf(world, "disks", projectId);
   },
 
-  findDisk(world: World, projectId: string, zone: Zone, name: string): Option<Disk> {
-    return Option.filter(
-      World.findNamed(world, "disks", { projectId, name }),
-      (d) => d.zone === zone,
+  /** サブネットに NIC を持つインスタンス（ゾーンがそのサブネットのリージョンにあるもの）。 */
+  instancesInSubnet(world: World, subnet: Subnet): readonly Instance[] {
+    return World.instancesOf(world, subnet.projectId).filter(
+      (i) =>
+        ZoneCatalog.region(i.zone) === subnet.region &&
+        i.networkInterfaces.some((nic) => nic.subnetwork === subnet.name),
     );
+  },
+
+  /** 対象の selfLink に対するオペレーションの履歴（古い順）。 */
+  operationsOfTarget(world: World, targetLink: string): readonly Operation[] {
+    return world.operations.filter((o) => o.targetLink === targetLink);
+  },
+
+  findDisk(world: World, projectId: string, zone: Zone, name: string): Option<Disk> {
+    return World.findLocated(world, "disks", { projectId, location: zone, name });
   },
 
   /**
@@ -701,22 +871,16 @@ export const World = {
    * @returns 足した World。同じゾーンに同名があれば `err`
    */
   withDisk(world: World, disk: Disk): Result<World, AlreadyExists> {
-    return addUnique(
-      Option.isSome(World.findDisk(world, disk.projectId, disk.zone, disk.name)),
+    return World.withNamed(
+      world,
+      "disks",
+      disk,
       `projects/${disk.projectId}/zones/${disk.zone}/disks/${disk.name}`,
-      () => ({ ...world, disks: [...world.disks, disk] }),
     );
   },
 
   replaceDisk(world: World, disk: Disk): World {
-    return {
-      ...world,
-      disks: replaceBy(
-        world.disks,
-        (d) => d.projectId === disk.projectId && d.zone === disk.zone && d.name === disk.name,
-        disk,
-      ),
-    };
+    return World.replaceNamed(world, "disks", disk);
   },
 
   /** プロジェクト全体のメタデータ。無ければ空。 */
@@ -811,15 +975,18 @@ export const World = {
   },
 
   nodePoolsOf(world: World, cluster: GkeCluster): readonly NodePool[] {
-    return world.nodePools.filter(
-      (p) => p.projectId === cluster.projectId && p.cluster === cluster.name,
-    );
+    return world.nodePools.filter(inCluster(cluster));
+  },
+
+  /** クラスタのノードプール。Standard は `default-pool` を先頭に持ち、Autopilot は 1 つも持たない。 */
+  nodePoolsWithDefault(world: World, cluster: GkeCluster): readonly NodePool[] {
+    return cluster.autopilot
+      ? []
+      : [NodePool.defaultPool(cluster), ...World.nodePoolsOf(world, cluster)];
   },
 
   withNodePool(world: World, pool: NodePool): Result<World, AlreadyExists> {
-    const exists = world.nodePools.some(
-      (p) => p.projectId === pool.projectId && p.cluster === pool.cluster && p.name === pool.name,
-    );
+    const exists = world.nodePools.some(sameInCluster(pool));
     return addUnique(
       exists || pool.name === "default-pool",
       `projects/${pool.projectId}/locations/-/clusters/${pool.cluster}/nodePools/${pool.name}`,
@@ -830,7 +997,7 @@ export const World = {
   /** クラスタの Kubernetes リソース（Deployment）。名前順。 */
   kubeDeploymentsOf(world: World, cluster: GkeCluster): readonly KubeDeployment[] {
     return world.kubeDeployments
-      .filter((d) => d.projectId === cluster.projectId && d.cluster === cluster.name)
+      .filter(inCluster(cluster))
       .toSorted((a, b) => a.name.localeCompare(b.name));
   },
 
@@ -840,49 +1007,29 @@ export const World = {
     );
   },
 
-  withKubeDeployment(world: World, deployment: KubeDeployment): Result<World, string> {
-    const exists = world.kubeDeployments.some(
-      (d) =>
-        d.projectId === deployment.projectId &&
-        d.cluster === deployment.cluster &&
-        d.name === deployment.name,
+  withKubeDeployment(world: World, deployment: KubeDeployment): Result<World, AlreadyExists> {
+    return addUnique(
+      world.kubeDeployments.some(sameInCluster(deployment)),
+      `deployments.apps "${deployment.name}"`,
+      () => ({ ...world, kubeDeployments: [...world.kubeDeployments, deployment] }),
     );
-    return exists
-      ? Result.err(`deployments.apps "${deployment.name}" already exists`)
-      : Result.ok({ ...world, kubeDeployments: [...world.kubeDeployments, deployment] });
   },
 
   replaceKubeDeployment(world: World, deployment: KubeDeployment): World {
     return {
       ...world,
-      kubeDeployments: replaceBy(
-        world.kubeDeployments,
-        (d) =>
-          d.projectId === deployment.projectId &&
-          d.cluster === deployment.cluster &&
-          d.name === deployment.name,
-        deployment,
-      ),
+      kubeDeployments: replaceBy(world.kubeDeployments, sameInCluster(deployment), deployment),
     };
   },
 
   withoutKubeDeployment(world: World, deployment: KubeDeployment): World {
-    return {
-      ...world,
-      kubeDeployments: world.kubeDeployments.filter(
-        (d) =>
-          !(
-            d.projectId === deployment.projectId &&
-            d.cluster === deployment.cluster &&
-            d.name === deployment.name
-          ),
-      ),
-    };
+    const same = sameInCluster(deployment);
+    return { ...world, kubeDeployments: world.kubeDeployments.filter((d) => !same(d)) };
   },
 
   kubeServicesOf(world: World, cluster: GkeCluster): readonly KubeService[] {
     return world.kubeServices
-      .filter((s) => s.projectId === cluster.projectId && s.cluster === cluster.name)
+      .filter(inCluster(cluster))
       .toSorted((a, b) => a.name.localeCompare(b.name));
   },
 
@@ -890,30 +1037,17 @@ export const World = {
     return Option.fromNullable(World.kubeServicesOf(world, cluster).find((s) => s.name === name));
   },
 
-  withKubeService(world: World, service: KubeService): Result<World, string> {
-    const exists = world.kubeServices.some(
-      (s) =>
-        s.projectId === service.projectId &&
-        s.cluster === service.cluster &&
-        s.name === service.name,
+  withKubeService(world: World, service: KubeService): Result<World, AlreadyExists> {
+    return addUnique(
+      world.kubeServices.some(sameInCluster(service)),
+      `services "${service.name}"`,
+      () => ({ ...world, kubeServices: [...world.kubeServices, service] }),
     );
-    return exists
-      ? Result.err(`services "${service.name}" already exists`)
-      : Result.ok({ ...world, kubeServices: [...world.kubeServices, service] });
   },
 
   withoutKubeService(world: World, service: KubeService): World {
-    return {
-      ...world,
-      kubeServices: world.kubeServices.filter(
-        (s) =>
-          !(
-            s.projectId === service.projectId &&
-            s.cluster === service.cluster &&
-            s.name === service.name
-          ),
-      ),
-    };
+    const same = sameInCluster(service);
+    return { ...world, kubeServices: world.kubeServices.filter((s) => !same(s)) };
   },
 
   runServicesOf(world: World, projectId: string): readonly CloudRunService[] {
@@ -1166,20 +1300,71 @@ export const World = {
     if (brokenBilling !== undefined) {
       return Result.err(`project [${brokenBilling.projectId}] links a missing billing account`);
     }
-    const orphanInstance = world.instances.find((i) => !World.hasProjectId(world, i.projectId));
-    if (orphanInstance !== undefined) {
-      return Result.err(`instance [${orphanInstance.name}] belongs to a missing project`);
-    }
-    const orphanDisk = world.disks.find((d) => !World.hasProjectId(world, d.projectId));
-    if (orphanDisk !== undefined) {
-      return Result.err(`disk [${orphanDisk.name}] belongs to a missing project`);
-    }
+    const collections = NamedCollectionKeys.reduce<Result<World, string>>(
+      (acc, key) => Result.flatMap(acc, (w) => validateCollection(w, key)),
+      Result.ok(world),
+    );
+    if (!Result.isOk(collections)) return collections;
     const danglingUser = world.disks.find((d) =>
       d.users.some((u) => !Option.isSome(World.findInstance(world, d.projectId, d.zone, u))),
     );
     if (danglingUser !== undefined) {
       return Result.err(`disk [${danglingUser.name}] is attached to a missing instance`);
     }
-    return Result.ok(world);
+    return validateReferences(world);
   },
 } as const;
+
+/** 1 つの集合の不変条件: 同一性（名前、置き場を持つなら置き場 + 名前）が重複せず、所属プロジェクトがある。 */
+const validateCollection = <K extends NamedCollection>(
+  world: World,
+  key: K,
+): Result<World, string> => {
+  const seen = new Set<string>();
+  for (const item of items(world, key)) {
+    const identity = identityOf(key, item);
+    if (seen.has(identity)) return Result.err(`${key} [${identity}] is duplicated`);
+    seen.add(identity);
+    if (!World.hasProjectId(world, item.projectId)) {
+      return Result.err(`${key} [${item.name}] belongs to a missing project [${item.projectId}]`);
+    }
+  }
+  return Result.ok(world);
+};
+
+/** 集合をまたぐ参照: 購読 → トピック、ノードプールと kubectl のリソース → クラスタ、バックアップ → SQL、予算 → 請求。 */
+const validateReferences = (world: World): Result<World, string> => {
+  const orphanSubscription = world.pubsubSubscriptions.find(
+    (s) =>
+      !Option.isSome(
+        World.findNamed(world, "pubsubTopics", { projectId: s.projectId, name: s.topic }),
+      ),
+  );
+  if (orphanSubscription !== undefined) {
+    return Result.err(`subscription [${orphanSubscription.name}] refers to a missing topic`);
+  }
+  const clusterless = [...world.nodePools, ...world.kubeDeployments, ...world.kubeServices].find(
+    (r) => !Option.isSome(World.findCluster(world, r.projectId, r.cluster)),
+  );
+  if (clusterless !== undefined) {
+    return Result.err(
+      `[${clusterless.name}] belongs to a missing cluster [${clusterless.cluster}]`,
+    );
+  }
+  const orphanBackup = world.sqlBackups.find(
+    (b) =>
+      !Option.isSome(
+        World.findNamed(world, "sqlInstances", { projectId: b.projectId, name: b.instance }),
+      ),
+  );
+  if (orphanBackup !== undefined) {
+    return Result.err(`backup [${orphanBackup.id}] belongs to a missing Cloud SQL instance`);
+  }
+  const orphanBudget = world.budgets.find(
+    (b) => !Option.isSome(World.findBillingAccount(world, b.billingAccountId)),
+  );
+  if (orphanBudget !== undefined) {
+    return Result.err(`budget [${orphanBudget.displayName}] belongs to a missing billing account`);
+  }
+  return Result.ok(world);
+};

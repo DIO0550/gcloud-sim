@@ -164,24 +164,23 @@ export const CustomRoleProperties = ({
   world,
   selection,
 }: SelectionProps<"custom-role">): ReactElement => {
-  const role = World.customRolesOf(world, selection.projectId).find(
-    (r) => r.roleId === selection.roleId,
-  );
-  if (role === undefined) return <NotFound what="ロール" />;
+  const role = World.findCustomRoleById(world, selection.projectId, selection.roleId);
+  if (!Option.isSome(role)) return <NotFound what="ロール" />;
+  const r = role.value;
   return (
     <>
       <Section
         title="基本"
         rows={[
-          { label: "name", value: CustomRole.name(role) },
-          { label: "title", value: role.title },
-          { label: "description", value: role.description || Absent },
-          { label: "stage", value: role.stage },
+          { label: "name", value: CustomRole.name(r) },
+          { label: "title", value: r.title },
+          { label: "description", value: r.description || Absent },
+          { label: "stage", value: r.stage },
         ]}
       />
       <Section
         title="権限"
-        rows={role.includedPermissions.map((p) => ({ label: p.split(".")[0] ?? p, value: p }))}
+        rows={r.includedPermissions.map((p) => ({ label: p.split(".")[0] ?? p, value: p }))}
       />
     </>
   );

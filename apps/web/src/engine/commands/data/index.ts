@@ -122,7 +122,7 @@ const createSqlInstance = (ctx: ProjectContext, args: ParsedArgs): CommandResult
 };
 
 const createBackup = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
-  const instance = sqlInstanceArg(ctx, Option.unwrapOr(ParsedArgs.string(args, "instance"), ""));
+  const instance = sqlInstanceArg(ctx, ParsedArgs.requiredString(args, "instance"));
   if (!Result.isOk(instance)) return instance;
   const numbered = World.nextNumber(ctx.world);
   const backup = SqlBackup.create({
@@ -168,7 +168,7 @@ const createTopic = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
 };
 
 const createSubscription = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
-  const topicName = Option.unwrapOr(ParsedArgs.string(args, "topic"), "");
+  const topicName = ParsedArgs.requiredString(args, "topic");
   const topic = World.findNamed(ctx.world, "pubsubTopics", {
     projectId: ctx.project.projectId,
     name: topicName,
@@ -313,19 +313,16 @@ export const SqlCommands: readonly CommandSpec[] = [
     permission: "cloudsql.instances.get",
     requiredApis: [SqlApi],
     run: (ctx, args) =>
-      Result.map(
-        sqlInstanceArg(ctx, Option.unwrapOr(ParsedArgs.string(args, "instance"), "")),
-        (instance) => ({
-          world: ctx.world,
-          output: CommandOutput.table(
-            World.sqlBackupsOf(ctx.world, ctx.project.projectId, instance.name).map((b) => ({
-              ...SqlBackup.toRecord(b),
-              error: "-",
-            })),
-            BackupColumns,
-          ),
-        }),
-      ),
+      Result.map(sqlInstanceArg(ctx, ParsedArgs.requiredString(args, "instance")), (instance) => ({
+        world: ctx.world,
+        output: CommandOutput.table(
+          World.sqlBackupsOf(ctx.world, ctx.project.projectId, instance.name).map((b) => ({
+            ...SqlBackup.toRecord(b),
+            error: "-",
+          })),
+          BackupColumns,
+        ),
+      })),
   }),
 ];
 
@@ -355,11 +352,11 @@ export const PubsubCommands: readonly CommandSpec[] = [
   describeNamedCommand({
     path: ["gcloud", "pubsub", "topics", "describe"],
     summary: "Describe a Cloud Pub/Sub topic.",
-    positional: Positional.required("TOPIC", "ID of the topic to describe.", Candidates.topics),
+    positional: { name: "TOPIC", description: "ID of the topic to describe." },
     collection: "pubsubTopics",
     permission: "pubsub.topics.get",
     requiredApis: [PubsubApi],
-    resourcePath: (projectId, name) => `projects/${projectId}/topics/${name}`,
+    resourcePath: (ref) => `projects/${ref.projectId}/topics/${ref.name}`,
     record: PubsubTopic.toRecord,
   }),
   projectCommand({
@@ -370,7 +367,7 @@ export const PubsubCommands: readonly CommandSpec[] = [
       Flag.string(
         "topic",
         "The name of the topic from which this subscription is receiving messages.",
-        { required: true, candidates: Candidates.topics },
+        { required: true, candidates: Candidates.pubsubTopics },
       ),
       Flag.integer(
         "ack-deadline",
@@ -405,15 +402,11 @@ export const PubsubCommands: readonly CommandSpec[] = [
   describeNamedCommand({
     path: ["gcloud", "pubsub", "subscriptions", "describe"],
     summary: "Describe a Cloud Pub/Sub subscription.",
-    positional: Positional.required(
-      "SUBSCRIPTION",
-      "ID of the subscription to describe.",
-      Candidates.subscriptions,
-    ),
+    positional: { name: "SUBSCRIPTION", description: "ID of the subscription to describe." },
     collection: "pubsubSubscriptions",
     permission: "pubsub.subscriptions.get",
     requiredApis: [PubsubApi],
-    resourcePath: (projectId, name) => `projects/${projectId}/subscriptions/${name}`,
+    resourcePath: (ref) => `projects/${ref.projectId}/subscriptions/${ref.name}`,
     record: PubsubSubscription.toRecord,
   }),
 ];

@@ -80,8 +80,9 @@ export const harness = (options: HarnessOptions = {}): Harness => {
     readFile:
       options.readResult ?? (async () => Result.err({ kind: "malformed", reason: "not used" })),
     confirm: () => options.confirmAnswer ?? true,
-    copy: (text) => {
+    copy: async (text) => {
       copied.push(text);
+      return Result.ok(undefined);
     },
     createTerminalView: async () => terminal.view,
     capacityBytes: 5 * 1024 * 1024,

@@ -1,3 +1,4 @@
+import { ErrorCodes } from "@/engine/cli/command-failure";
 import { CommandRegistry } from "@/engine/cli/registry";
 import { type ExecutionOutcome, type OutputLine, Shell, type ShellState } from "@/engine/cli/shell";
 import { Tokenizer } from "@/engine/cli/tokenizer";
@@ -110,4 +111,4 @@ export const Engine = {
   },
 } as const;
 
-export { type ExecutionOutcome, type OutputLine, Shell, type ShellState };
+export { ErrorCodes, type ExecutionOutcome, type OutputLine, Shell, type ShellState };

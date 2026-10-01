@@ -96,6 +96,26 @@ export const Flag = {
   integer(name: string, description: string, options: FlagOptions = {}): FlagSpec {
     return { kind: "integer", ...base(name, description, options) };
   },
+
+  /**
+   * Tab 補完に出す値の候補。`enum` は選択肢そのもの、`string` は定義に付けた候補。
+   *
+   * @param flag フラグの定義
+   * @returns 候補の出どころ。語彙が閉じていないフラグは `none`
+   */
+  candidatesOf(flag: FlagSpec): Option<CandidateSource> {
+    switch (flag.kind) {
+      case "enum":
+        return Option.some(() => flag.choices);
+      case "string":
+        return flag.candidates;
+      case "boolean":
+      case "list":
+      case "keyvalue":
+      case "integer":
+        return Option.none;
+    }
+  },
 } as const;
 
 export const Positional = {
@@ -176,6 +196,18 @@ export const ParsedArgs = {
    */
   requiredPositional(args: ParsedArgs, index: number): string {
     return args.positionals[index] ?? "";
+  },
+
+  /**
+   * `{ required: true }` で宣言した文字列フラグ。ArgParser が存在を検証した後の値なので `string` で返す。
+   * 宣言と違う名前を渡すのはプログラミングエラーで、そのときは空文字（`requiredPositional` と同じ扱い）。
+   *
+   * @param args 検証済みの引数
+   * @param name フラグ名
+   * @returns その値
+   */
+  requiredString(args: ParsedArgs, name: string): string {
+    return Option.unwrapOr(ParsedArgs.string(args, name), "");
   },
 
   has(args: ParsedArgs, name: string): boolean {

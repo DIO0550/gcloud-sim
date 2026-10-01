@@ -234,6 +234,11 @@ export type ApiService = Readonly<{
   billingRequired: boolean;
 }>;
 
+/** 名前で引く表。キーは `ApiServices` の全要素から作るので、`ApiName` のどれでも必ず引ける。 */
+const ApiServiceByName = Object.fromEntries(ApiServices.map((api) => [api.name, api])) as Readonly<
+  Record<ApiName, ApiService>
+>;
+
 export const ApiService = {
   /**
    * 綴りが API カタログにあるか確かめる。
@@ -243,6 +248,16 @@ export const ApiService = {
    */
   parse(value: string): Option<ApiService> {
     return Option.fromNullable(ApiServices.find((api) => api.name === value));
+  },
+
+  /**
+   * 閉じた名前からその定義を引く。`ApiName` はカタログから導出した型なので、必ず見つかる。
+   *
+   * @param name カタログの API 名
+   * @returns その API の定義
+   */
+  find(name: ApiName): ApiService {
+    return ApiServiceByName[name];
   },
 
   all(): readonly ApiService[] {

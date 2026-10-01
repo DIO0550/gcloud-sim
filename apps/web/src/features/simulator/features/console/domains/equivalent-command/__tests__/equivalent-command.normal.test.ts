@@ -6,6 +6,7 @@ import { World } from "@/engine/domains/world";
 import {
   BucketCreateForm,
   BudgetCreateForm,
+  FieldErrors,
   FirewallCreateForm,
   IamGrantForm,
   RoleCreateForm,
@@ -15,7 +16,7 @@ import {
 } from "@/features/simulator/features/console/domains/equivalent-command";
 import { Option } from "@/utils/Option";
 
-const initialVm = VmCreateForm.initial({
+const initialVm = VmCreateForm.create({
   zone: "asia-northeast1-a",
   serviceAccount: "481200000001-compute@developer.gserviceaccount.com",
 });
@@ -57,13 +58,15 @@ test("同等のコマンドは実際に CLI で通り、フォームと同じ VM
 });
 
 test("VM の名前・ディスクの綴りはフォーム側で検証し、送信できない", () => {
-  expect(VmCreateForm.validate({ ...initialVm, name: "Web_2" }).name).toContain(
+  expect(VmCreateForm.collectErrors({ ...initialVm, name: "Web_2" }).name).toContain(
     "Invalid value for field 'resource.name'",
   );
   expect(
-    VmCreateForm.validate({ ...initialVm, name: "web-2", bootDiskSize: "ten" }).bootDiskSize,
+    VmCreateForm.collectErrors({ ...initialVm, name: "web-2", bootDiskSize: "ten" }).bootDiskSize,
   ).toContain("Expected a size");
-  expect(VmCreateForm.isValid({ ...initialVm, name: "web-2" })).toBe(true);
+  expect(FieldErrors.isEmpty(VmCreateForm.collectErrors({ ...initialVm, name: "web-2" }))).toBe(
+    true,
+  );
 });
 
 test("VM の操作は状態で出し分け、削除は --quiet を付ける", () => {
@@ -115,7 +118,7 @@ test("IAM の付与と削除、ロール作成、ファイアウォール、バ�
     "gcloud projects remove-iam-policy-binding ace-dev-01 --member=user:dev@example.com --role=roles/viewer",
   );
   expect(
-    IamGrantForm.validate({ member: "dev@example.com", role: "roles/viewer" }).member,
+    IamGrantForm.collectErrors({ member: "dev@example.com", role: "roles/viewer" }).member,
   ).toContain("Member must be of the form");
   expect(
     RoleCreateForm.toCommand(
@@ -131,7 +134,7 @@ test("IAM の付与と削除、ロール作成、ファイアウォール、バ�
   );
   expect(
     FirewallCreateForm.toCommand(
-      { ...FirewallCreateForm.initial(), name: "allow-http", targetTags: "http-server" },
+      { ...FirewallCreateForm.create(), name: "allow-http", targetTags: "http-server" },
       "ace-dev-01",
     ),
   ).toBe(
@@ -140,7 +143,7 @@ test("IAM の付与と削除、ロール作成、ファイアウォール、バ�
   expect(
     FirewallCreateForm.toCommand(
       {
-        ...FirewallCreateForm.initial(),
+        ...FirewallCreateForm.create(),
         name: "deny-all",
         action: "DENY",
         protocolsAndPorts: "all",
@@ -149,20 +152,20 @@ test("IAM の付与と削除、ロール作成、ファイアウォール、バ�
     ),
   ).toContain("--action=DENY --rules=all");
   expect(
-    FirewallCreateForm.validate({
-      ...FirewallCreateForm.initial(),
+    FirewallCreateForm.collectErrors({
+      ...FirewallCreateForm.create(),
       name: "x",
       protocolsAndPorts: "http:80",
     }).protocolsAndPorts,
   ).toContain("Expected PROTOCOL");
   expect(
-    BucketCreateForm.toCommand({ ...BucketCreateForm.initial(), name: "ace-logs" }, "ace-dev-01"),
+    BucketCreateForm.toCommand({ ...BucketCreateForm.create(), name: "ace-logs" }, "ace-dev-01"),
   ).toBe(
     "gcloud storage buckets create gs://ace-logs --project=ace-dev-01 --location=ASIA-NORTHEAST1 --default-storage-class=STANDARD --uniform-bucket-level-access --public-access-prevention",
   );
   expect(
     BudgetCreateForm.toCommand(
-      { ...BudgetCreateForm.initial(), displayName: "Dev budget", projectIds: ["ace-dev-01"] },
+      { ...BudgetCreateForm.create(), displayName: "Dev budget", projectIds: ["ace-dev-01"] },
       "01AB2C-DEF345-6789AB",
     ),
   ).toBe(

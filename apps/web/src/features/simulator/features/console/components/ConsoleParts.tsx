@@ -1,8 +1,7 @@
 import { type ReactElement, type ReactNode, useId } from "react";
 
 import { PrimaryButton, SecondaryButton } from "@/components/Button";
-import type { ExecutionOutcome } from "@/engine";
-import { ErrorCodes } from "@/engine/cli/command-failure";
+import { ErrorCodes, type ExecutionOutcome } from "@/engine";
 import { Option } from "@/utils/Option";
 
 /**
@@ -10,21 +9,21 @@ import { Option } from "@/utils/Option";
  * （既存のトークンだけで組む。本物の Console の配色は模さない: DJ-011）。
  */
 
+export { PrimaryButton, SecondaryButton };
+
 export const ScreenTitle = ({
   eyebrow,
   title,
-  actions,
-}: Readonly<{ eyebrow: string; title: string; actions?: ReactNode }>): ReactElement => (
+  trailing,
+}: Readonly<{ eyebrow: string; title: string; trailing?: ReactNode }>): ReactElement => (
   <div className="mb-4 flex items-end justify-between gap-4">
     <div>
       <p className="text-muted text-xs">{eyebrow}</p>
       <h2 className="font-bold text-xl">{title}</h2>
     </div>
-    {actions !== undefined && <div className="flex gap-2">{actions}</div>}
+    {trailing !== undefined && <div className="flex gap-2">{trailing}</div>}
   </div>
 );
-
-export { PrimaryButton, SecondaryButton };
 
 /**
  * フォームの 1 項目。エラーがあれば項目の直下に出す（UC-008 例外フロー）。
@@ -59,13 +58,13 @@ export const Field = ({
   );
 };
 
-export const inputClass =
+export const InputClass =
   "w-full rounded-lg border border-line bg-surface px-3 py-2 font-mono text-sm focus:border-accent focus:outline-none";
 
 type Column<T> = Readonly<{ header: string; cell: (row: T) => ReactNode; className?: string }>;
 
-/** 一覧の表。行が無ければ `empty` を出す。 */
-export const DataTable = <T,>({
+/** リソースの一覧の表。行が無ければ `empty` を出す。 */
+export const ResourceTable = <T,>({
   label,
   columns,
   rows,
@@ -113,7 +112,7 @@ export const DataTable = <T,>({
   </table>
 );
 
-/** 「同等のコマンドライン」（UI 案 2c / s1）。コピーはクリップボードへ、貼り付けは端末の入力行へ。 */
+/** 「同等のコマンドライン」（UI 案 s1）。コピーはクリップボードへ、貼り付けは端末の入力行へ。 */
 export const EquivalentCommandPanel = ({
   command,
   onCopy,
@@ -131,7 +130,7 @@ export const EquivalentCommandPanel = ({
       <h3 className="font-semibold text-muted text-xs">同等のコマンドライン</h3>
       <div className="flex gap-2">
         <SecondaryButton onClick={() => onCopy(command)}>コピー</SecondaryButton>
-        <SecondaryButton onClick={() => onInsert(command)}>ターミナルへ</SecondaryButton>
+        <SecondaryButton onClick={() => onInsert(command)}>ターミナルに貼り付け</SecondaryButton>
       </div>
     </div>
     <pre className="whitespace-pre-wrap break-all font-mono text-xs">{command}</pre>
@@ -139,10 +138,48 @@ export const EquivalentCommandPanel = ({
 );
 
 /**
- * フォームの送信結果の赤帯（UC-008 例外フロー）。E-007 なら「API を有効にする」ボタンを添える。
- * 成功は一覧へ戻るので帯は出さない。
+ * 一覧の上に開く作成フォームの器（UI 案 s1 の作成ページを、一覧の上の区画に畳んだ形）。
+ * 項目・同等のコマンドライン・作成とキャンセルの並びを 1 つにする。
  */
-export const OutcomeBanner = ({
+export const CreateFormSection = ({
+  label,
+  columns,
+  command,
+  onCopy,
+  onInsert,
+  onSubmit,
+  onCancel,
+  submitLabel,
+  children,
+}: Readonly<{
+  label: string;
+  columns: 2 | 3;
+  command: string;
+  onCopy: (text: string) => void;
+  onInsert: (text: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+  submitLabel: string;
+  children: ReactNode;
+}>): ReactElement => (
+  <section className="mb-4 rounded-lg border border-line bg-surface p-4" aria-label={label}>
+    <div className={columns === 2 ? "grid grid-cols-2 gap-4" : "grid grid-cols-3 gap-4"}>
+      {children}
+    </div>
+    <EquivalentCommandPanel command={command} onCopy={onCopy} onInsert={onInsert} />
+    <div className="mt-3 flex gap-2">
+      <PrimaryButton onClick={onSubmit}>{submitLabel}</PrimaryButton>
+      <SecondaryButton onClick={onCancel}>キャンセル</SecondaryButton>
+    </div>
+  </section>
+);
+
+/**
+ * フォームの送信が失敗したときの赤帯（UC-008 例外フロー）。E-007 なら「API を有効にする」ボタンを添える。
+ * 成功は一覧へ戻るので帯は出さない。失敗でないときも要素を返すのは、コンポーネントの戻り値を
+ * `ReactElement` に固定しているため（`undefined` を返せる型にすると、画面の出し分けで case の抜けが通る）。
+ */
+export const FailureBanner = ({
   outcome,
   onEnableApi,
   onDismiss,

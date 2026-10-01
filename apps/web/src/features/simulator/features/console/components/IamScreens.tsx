@@ -5,28 +5,40 @@ import { CustomRole, RoleCatalog } from "@/engine/domains/role-catalog";
 import { World } from "@/engine/domains/world";
 import { type BindingOrigin, BindingRow } from "@/engine/resource-tree";
 import {
-  DataTable,
-  EquivalentCommandPanel,
+  CreateFormSection,
   Field,
-  inputClass,
-  OutcomeBanner,
+  InputClass,
   PrimaryButton,
+  ResourceTable,
   ScreenTitle,
   SecondaryButton,
-} from "@/features/simulator/features/console/components/parts";
+} from "@/features/simulator/features/console/components/ConsoleParts";
 import {
   IamGrantForm,
   RoleCreateForm,
   ServiceAccountCreateForm,
 } from "@/features/simulator/features/console/domains/equivalent-command";
+import { useCreateForm } from "@/features/simulator/features/console/hooks/use-create-form";
 import type { ScreenProps } from "@/features/simulator/features/console/types/screen-props";
 import { Option } from "@/utils/Option";
 
-/** 継承元の綴り（UI 案 2d / s2）。 */
-const originText = (origin: BindingOrigin): string => {
+/** 継承元の綴り（UI 案 s2: `組織 example.com` / `フォルダ dev`）。自分自身に付いたものは対象ごとの綴り。 */
+export const originText = (origin: BindingOrigin): string => {
   switch (origin.kind) {
     case "self":
-      return "";
+      switch (origin.target.type) {
+        case "organization":
+          return "この組織";
+        case "folder":
+          return "このフォルダ";
+        case "project":
+          return "このプロジェクト";
+        case "bucket":
+          return "このバケット";
+        case "service-account":
+          return "このサービスアカウント";
+      }
+      break;
     case "organization":
       return `組織 ${origin.displayName}`;
     case "folder":
@@ -40,44 +52,31 @@ const originText = (origin: BindingOrigin): string => {
   }
 };
 
-const roleTitle = (world: World, role: RoleName): string =>
-  Option.unwrapOr(
-    Option.or(
-      Option.map(RoleCatalog.find(role), (r) => r.title),
-      Option.map(World.findCustomRole(world, role), (r) => r.title),
-    ),
-    role,
-  );
+type SortKey = "member" | "role";
 
-type ViewBy = "principal" | "role";
-
-/** IAM と管理 › IAM（UI 案 2d / s2）: プリンシパル別 / ロール別、継承の表示、付与と削除。 */
-export const IamScreen = (props: ScreenProps): ReactElement => {
-  const { world, projectId, actions } = props;
-  const [viewBy, setViewBy] = useState<ViewBy>("principal");
+/** IAM と管理 › IAM（UI 案 s2）: 継承元付きの一覧、プリンシパル順 / ロール順、付与と削除。 */
+export const IamScreen = ({ world, project, handlers }: ScreenProps): ReactElement => {
+  const projectId = project.projectId;
+  const [sortKey, setSortKey] = useState<SortKey>("member");
   const [includeInherited, setIncludeInherited] = useState(true);
-  const [granting, setGranting] = useState(false);
-  const [form, setForm] = useState<IamGrantForm>(IamGrantForm.initial);
-  const [submitted, setSubmitted] = useState(false);
+  const editor = useCreateForm(IamGrantForm, IamGrantForm.create);
   const rows = BindingRow.fromWorld(world, { type: "project", id: projectId }).filter(
     (r) => includeInherited || !BindingRow.isInherited(r),
   );
-  const sorted = rows.toSorted((a, b) =>
-    viewBy === "principal" ? a.member.localeCompare(b.member) : a.role.localeCompare(b.role),
-  );
-  const errors = submitted ? IamGrantForm.validate(form) : {};
-  const command = IamGrantForm.toCommand(form, projectId);
+  const sorted = rows.toSorted((a, b) => a[sortKey].localeCompare(b[sortKey]));
   const grant = (): void => {
-    setSubmitted(true);
-    if (!IamGrantForm.isValid(form)) return;
-    actions.submit({ line: command, note: `アクセス権を付与 (${form.member})`, next: Option.none });
-    setGranting(false);
-    setSubmitted(false);
-    setForm(IamGrantForm.initial());
+    const valid = editor.submit();
+    if (!Option.isSome(valid)) return;
+    handlers.submit({
+      line: IamGrantForm.toCommand(valid.value, projectId),
+      note: `アクセス権を付与 (${valid.value.member})`,
+      next: Option.none,
+    });
+    editor.close();
   };
   const remove = (member: IamMember, role: RoleName): void => {
-    if (!actions.confirm(`${member} から ${role} を削除しますか？`)) return;
-    actions.submit({
+    if (!handlers.confirm(`${member} から ${role} を削除しますか？`)) return;
+    handlers.submit({
       line: IamGrantForm.removeCommand({ member, role }, projectId),
       note: `アクセス権を削除 (${member})`,
       next: Option.none,
@@ -88,45 +87,44 @@ export const IamScreen = (props: ScreenProps): ReactElement => {
       <ScreenTitle
         eyebrow="IAM と管理"
         title="IAM"
-        actions={<PrimaryButton onClick={() => setGranting(true)}>アクセス権を付与</PrimaryButton>}
+        trailing={<PrimaryButton onClick={editor.open}>アクセス権を付与</PrimaryButton>}
       />
-      <OutcomeBanner
-        outcome={props.outcome}
-        onEnableApi={() => {}}
-        onDismiss={props.onOutcomeDismiss}
-      />
-      {granting && (
-        <section
-          className="mb-4 rounded-lg border border-line bg-surface p-4"
-          aria-label="アクセス権を付与"
+      {Option.isSome(editor.form) && (
+        <CreateFormSection
+          label="アクセス権を付与"
+          columns={2}
+          command={IamGrantForm.toCommand(editor.form.value, projectId)}
+          onCopy={handlers.copy}
+          onInsert={handlers.insert}
+          onSubmit={grant}
+          onCancel={editor.close}
+          submitLabel="保存"
         >
-          <div className="grid grid-cols-2 gap-4">
-            <Field
-              label="新しいプリンシパル"
-              error={errors.member}
-              hint="user:alice@example.com / serviceAccount:... / group:..."
-            >
-              {(id) => (
-                <input
-                  id={id}
-                  className={inputClass}
-                  value={form.member}
-                  onChange={(e) => setForm((f) => ({ ...f, member: e.target.value }))}
-                />
-              )}
-            </Field>
-            <Field label="ロール" error={errors.role}>
-              {(id) => (
-                <input
-                  id={id}
-                  className={inputClass}
-                  list="console-roles"
-                  value={form.role}
-                  onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
-                />
-              )}
-            </Field>
-          </div>
+          <Field
+            label="新しいプリンシパル"
+            error={editor.errors.member}
+            hint="user:alice@example.com / serviceAccount:... / group:..."
+          >
+            {(id) => (
+              <input
+                id={id}
+                className={InputClass}
+                value={Option.unwrapOr(editor.form, IamGrantForm.create()).member}
+                onChange={(e) => editor.set("member", e.target.value)}
+              />
+            )}
+          </Field>
+          <Field label="ロール" error={editor.errors.role}>
+            {(id) => (
+              <input
+                id={id}
+                className={InputClass}
+                list="console-roles"
+                value={Option.unwrapOr(editor.form, IamGrantForm.create()).role}
+                onChange={(e) => editor.set("role", e.target.value)}
+              />
+            )}
+          </Field>
           <datalist id="console-roles">
             {RoleCatalog.all().map((r) => (
               <option key={r.name} value={r.name}>
@@ -139,31 +137,25 @@ export const IamScreen = (props: ScreenProps): ReactElement => {
               </option>
             ))}
           </datalist>
-          <EquivalentCommandPanel
-            command={command}
-            onCopy={actions.copy}
-            onInsert={actions.insert}
-          />
-          <div className="mt-3 flex gap-2">
-            <PrimaryButton onClick={grant}>保存</PrimaryButton>
-            <SecondaryButton onClick={() => setGranting(false)}>キャンセル</SecondaryButton>
-          </div>
-        </section>
+        </CreateFormSection>
       )}
       <div className="mb-3 flex items-center gap-4 text-sm">
-        <fieldset className="flex rounded-lg border border-line bg-canvas p-0.5">
-          <legend className="sr-only">表示</legend>
-          {(["principal", "role"] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              aria-pressed={viewBy === v}
-              className={`rounded-md px-3 py-1 ${viewBy === v ? "bg-surface font-semibold shadow-sm" : "text-muted"}`}
-              onClick={() => setViewBy(v)}
-            >
-              {v === "principal" ? "プリンシパル別" : "ロール別"}
-            </button>
-          ))}
+        <fieldset className="flex items-center gap-2">
+          <legend className="sr-only">並べ替え</legend>
+          <span className="text-muted text-xs">並べ替え:</span>
+          <span className="flex rounded-lg border border-line bg-canvas p-0.5">
+            {(["member", "role"] as const).map((key) => (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={sortKey === key}
+                className={`rounded-md px-3 py-1 ${sortKey === key ? "bg-surface font-semibold shadow-sm" : "text-muted"}`}
+                onClick={() => setSortKey(key)}
+              >
+                {key === "member" ? "プリンシパル" : "ロール"}
+              </button>
+            ))}
+          </span>
         </fieldset>
         <label className="flex items-center gap-2">
           <input
@@ -174,7 +166,7 @@ export const IamScreen = (props: ScreenProps): ReactElement => {
           継承されたロールを含める
         </label>
       </div>
-      <DataTable
+      <ResourceTable
         label="IAM ポリシー"
         rows={sorted}
         keyOf={(r) => `${r.member}/${r.role}/${originText(r.origin)}`}
@@ -188,19 +180,20 @@ export const IamScreen = (props: ScreenProps): ReactElement => {
             header: "ロール",
             cell: (r) => (
               <>
-                {roleTitle(world, r.role)}
+                {World.roleTitle(world, r.role)}
                 <span className="block font-mono text-muted text-xs">{r.role}</span>
               </>
             ),
           },
           {
-            header: "継承",
-            cell: (r) =>
-              BindingRow.isInherited(r) ? (
-                <span className="text-warn-ink text-xs">{originText(r.origin)}</span>
-              ) : (
-                <span className="text-muted text-xs">このプロジェクト</span>
-              ),
+            header: "継承元",
+            cell: (r) => (
+              <span
+                className={`text-xs ${BindingRow.isInherited(r) ? "text-warn-ink" : "text-muted"}`}
+              >
+                {originText(r.origin)}
+              </span>
+            ),
           },
           {
             header: "",
@@ -221,90 +214,71 @@ export const IamScreen = (props: ScreenProps): ReactElement => {
 };
 
 /** IAM と管理 › サービスアカウント: 一覧と作成。 */
-export const ServiceAccountsScreen = (props: ScreenProps): ReactElement => {
-  const { world, projectId, actions } = props;
-  const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState<ServiceAccountCreateForm>(ServiceAccountCreateForm.initial);
-  const [submitted, setSubmitted] = useState(false);
-  const errors = submitted ? ServiceAccountCreateForm.validate(form) : {};
-  const command = ServiceAccountCreateForm.toCommand(form, projectId);
+export const ServiceAccountsScreen = ({ world, project, handlers }: ScreenProps): ReactElement => {
+  const projectId = project.projectId;
+  const editor = useCreateForm(ServiceAccountCreateForm, ServiceAccountCreateForm.create);
   const create = (): void => {
-    setSubmitted(true);
-    if (!ServiceAccountCreateForm.isValid(form)) return;
-    actions.submit({
-      line: command,
-      note: `サービスアカウントを作成 (${form.accountId})`,
+    const valid = editor.submit();
+    if (!Option.isSome(valid)) return;
+    handlers.submit({
+      line: ServiceAccountCreateForm.toCommand(valid.value, projectId),
+      note: `サービスアカウントを作成 (${valid.value.accountId})`,
       next: Option.none,
     });
-    setCreating(false);
-    setSubmitted(false);
-    setForm(ServiceAccountCreateForm.initial());
+    editor.close();
   };
-  const set = <K extends keyof ServiceAccountCreateForm>(key: K, value: string): void =>
-    setForm((f) => ({ ...f, [key]: value }));
+  const form = Option.unwrapOr(editor.form, ServiceAccountCreateForm.create());
   return (
     <div>
       <ScreenTitle
         eyebrow="IAM と管理"
         title="サービスアカウント"
-        actions={
-          <PrimaryButton onClick={() => setCreating(true)}>サービスアカウントを作成</PrimaryButton>
-        }
+        trailing={<PrimaryButton onClick={editor.open}>サービスアカウントを作成</PrimaryButton>}
       />
-      <OutcomeBanner
-        outcome={props.outcome}
-        onEnableApi={() => {}}
-        onDismiss={props.onOutcomeDismiss}
-      />
-      {creating && (
-        <section
-          className="mb-4 rounded-lg border border-line bg-surface p-4"
-          aria-label="サービスアカウントを作成"
+      {Option.isSome(editor.form) && (
+        <CreateFormSection
+          label="サービスアカウントを作成"
+          columns={3}
+          command={ServiceAccountCreateForm.toCommand(form, projectId)}
+          onCopy={handlers.copy}
+          onInsert={handlers.insert}
+          onSubmit={create}
+          onCancel={editor.close}
+          submitLabel="作成"
         >
-          <div className="grid grid-cols-3 gap-4">
-            <Field label="サービスアカウント ID" error={errors.accountId}>
-              {(id) => (
-                <input
-                  id={id}
-                  className={inputClass}
-                  value={form.accountId}
-                  onChange={(e) => set("accountId", e.target.value)}
-                />
-              )}
-            </Field>
-            <Field label="名前">
-              {(id) => (
-                <input
-                  id={id}
-                  className={inputClass}
-                  value={form.displayName}
-                  onChange={(e) => set("displayName", e.target.value)}
-                />
-              )}
-            </Field>
-            <Field label="説明">
-              {(id) => (
-                <input
-                  id={id}
-                  className={inputClass}
-                  value={form.description}
-                  onChange={(e) => set("description", e.target.value)}
-                />
-              )}
-            </Field>
-          </div>
-          <EquivalentCommandPanel
-            command={command}
-            onCopy={actions.copy}
-            onInsert={actions.insert}
-          />
-          <div className="mt-3 flex gap-2">
-            <PrimaryButton onClick={create}>作成</PrimaryButton>
-            <SecondaryButton onClick={() => setCreating(false)}>キャンセル</SecondaryButton>
-          </div>
-        </section>
+          <Field label="サービスアカウント ID" error={editor.errors.accountId}>
+            {(id) => (
+              <input
+                id={id}
+                className={InputClass}
+                value={form.accountId}
+                onChange={(e) => editor.set("accountId", e.target.value)}
+              />
+            )}
+          </Field>
+          <Field label="名前">
+            {(id) => (
+              <input
+                id={id}
+                className={InputClass}
+                value={form.displayName}
+                onChange={(e) => editor.set("displayName", e.target.value)}
+              />
+            )}
+          </Field>
+          <Field label="説明">
+            {(id) => (
+              <input
+                id={id}
+                className={InputClass}
+                value={form.description}
+                onChange={(e) => editor.set("description", e.target.value)}
+              />
+            )}
+          </Field>
+        </CreateFormSection>
       )}
-      <DataTable
+      <ResourceTable
         label="サービスアカウント"
         rows={World.serviceAccountsOf(world, projectId)}
         keyOf={(s) => s.email}
@@ -321,25 +295,20 @@ export const ServiceAccountsScreen = (props: ScreenProps): ReactElement => {
 };
 
 /** IAM と管理 › ロール: カタログとカスタムロールの一覧、カスタムロールの作成。 */
-export const RolesScreen = (props: ScreenProps): ReactElement => {
-  const { world, projectId, actions } = props;
-  const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState<RoleCreateForm>(RoleCreateForm.initial);
-  const [submitted, setSubmitted] = useState(false);
-  const errors = submitted ? RoleCreateForm.validate(form) : {};
-  const command = RoleCreateForm.toCommand(form, projectId);
+export const RolesScreen = ({ world, project, handlers }: ScreenProps): ReactElement => {
+  const projectId = project.projectId;
+  const editor = useCreateForm(RoleCreateForm, RoleCreateForm.create);
   const create = (): void => {
-    setSubmitted(true);
-    if (!RoleCreateForm.isValid(form)) return;
-    actions.submit({
-      line: command,
-      note: `カスタムロールを作成 (${form.roleId})`,
+    const valid = editor.submit();
+    if (!Option.isSome(valid)) return;
+    handlers.submit({
+      line: RoleCreateForm.toCommand(valid.value, projectId),
+      note: `カスタムロールを作成 (${valid.value.roleId})`,
       next: Option.none,
     });
-    setCreating(false);
-    setSubmitted(false);
-    setForm(RoleCreateForm.initial());
+    editor.close();
   };
+  const form = Option.unwrapOr(editor.form, RoleCreateForm.create());
   const rows = [
     ...World.customRolesOf(world, projectId).map((r) => ({
       name: CustomRole.name(r),
@@ -359,62 +328,52 @@ export const RolesScreen = (props: ScreenProps): ReactElement => {
       <ScreenTitle
         eyebrow="IAM と管理"
         title="ロール"
-        actions={<PrimaryButton onClick={() => setCreating(true)}>ロールを作成</PrimaryButton>}
+        trailing={<PrimaryButton onClick={editor.open}>ロールを作成</PrimaryButton>}
       />
-      <OutcomeBanner
-        outcome={props.outcome}
-        onEnableApi={() => {}}
-        onDismiss={props.onOutcomeDismiss}
-      />
-      {creating && (
-        <section
-          className="mb-4 rounded-lg border border-line bg-surface p-4"
-          aria-label="ロールを作成"
+      {Option.isSome(editor.form) && (
+        <CreateFormSection
+          label="ロールを作成"
+          columns={3}
+          command={RoleCreateForm.toCommand(form, projectId)}
+          onCopy={handlers.copy}
+          onInsert={handlers.insert}
+          onSubmit={create}
+          onCancel={editor.close}
+          submitLabel="作成"
         >
-          <div className="grid grid-cols-3 gap-4">
-            <Field label="ID" error={errors.roleId}>
-              {(id) => (
-                <input
-                  id={id}
-                  className={inputClass}
-                  value={form.roleId}
-                  onChange={(e) => setForm((f) => ({ ...f, roleId: e.target.value }))}
-                />
-              )}
-            </Field>
-            <Field label="タイトル">
-              {(id) => (
-                <input
-                  id={id}
-                  className={inputClass}
-                  value={form.title}
-                  onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                />
-              )}
-            </Field>
-            <Field label="権限" error={errors.permissions} hint="カンマか空白で区切る">
-              {(id) => (
-                <input
-                  id={id}
-                  className={inputClass}
-                  value={form.permissions}
-                  onChange={(e) => setForm((f) => ({ ...f, permissions: e.target.value }))}
-                />
-              )}
-            </Field>
-          </div>
-          <EquivalentCommandPanel
-            command={command}
-            onCopy={actions.copy}
-            onInsert={actions.insert}
-          />
-          <div className="mt-3 flex gap-2">
-            <PrimaryButton onClick={create}>作成</PrimaryButton>
-            <SecondaryButton onClick={() => setCreating(false)}>キャンセル</SecondaryButton>
-          </div>
-        </section>
+          <Field label="ID" error={editor.errors.roleId}>
+            {(id) => (
+              <input
+                id={id}
+                className={InputClass}
+                value={form.roleId}
+                onChange={(e) => editor.set("roleId", e.target.value)}
+              />
+            )}
+          </Field>
+          <Field label="タイトル">
+            {(id) => (
+              <input
+                id={id}
+                className={InputClass}
+                value={form.title}
+                onChange={(e) => editor.set("title", e.target.value)}
+              />
+            )}
+          </Field>
+          <Field label="権限" error={editor.errors.permissions} hint="カンマか空白で区切る">
+            {(id) => (
+              <input
+                id={id}
+                className={InputClass}
+                value={form.permissions}
+                onChange={(e) => editor.set("permissions", e.target.value)}
+              />
+            )}
+          </Field>
+        </CreateFormSection>
       )}
-      <DataTable
+      <ResourceTable
         label="ロール"
         rows={rows}
         keyOf={(r) => r.name}

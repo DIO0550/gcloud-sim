@@ -25,7 +25,7 @@ import {
   Candidates,
   CommonFlags,
   describeNamedCommand,
-  instanceOperation,
+  instanceOperationSeed,
   projectCommand,
   recordOperation,
 } from "@/engine/commands/shared";
@@ -187,7 +187,8 @@ const addMember = (
   const added = Result.mapErr(World.withInstance(numbered.world, instance.value), alreadyExists);
   return Result.map(
     added,
-    (w) => recordOperation(w, instanceOperation(instance.value, OperationTypes.Insert, ctx)).world,
+    (w) =>
+      recordOperation(w, instanceOperationSeed(instance.value, OperationTypes.Insert, ctx)).world,
   );
 };
 
@@ -204,7 +205,7 @@ const resolveLocation = (
 const createGroup = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   const location = resolveLocation(ctx, args);
   if (!Result.isOk(location)) return location;
-  const templateName = Option.unwrapOr(ParsedArgs.string(args, "template"), "");
+  const templateName = ParsedArgs.requiredString(args, "template");
   const template = Option.toResult(
     World.findNamed(ctx.world, "instanceTemplates", {
       projectId: ctx.project.projectId,
@@ -362,15 +363,11 @@ export const GroupCommands: readonly CommandSpec[] = [
   describeNamedCommand({
     path: ["gcloud", "compute", "instance-templates", "describe"],
     summary: "Describe a virtual machine instance template.",
-    positional: Positional.required(
-      "NAME",
-      "Name of the instance template.",
-      Candidates.instanceTemplates,
-    ),
+    positional: { name: "NAME", description: "Name of the instance template." },
     collection: "instanceTemplates",
     permission: "compute.instanceTemplates.get",
     requiredApis: [ComputeApi],
-    resourcePath: (projectId, name) => `projects/${projectId}/global/instanceTemplates/${name}`,
+    resourcePath: (ref) => `projects/${ref.projectId}/global/instanceTemplates/${ref.name}`,
     record: InstanceTemplate.toRecord,
   }),
   projectCommand({
@@ -405,17 +402,14 @@ export const GroupCommands: readonly CommandSpec[] = [
   describeNamedCommand({
     path: ["gcloud", "compute", "instance-groups", "managed", "describe"],
     summary: "Describe a managed instance group.",
-    positional: Positional.required(
-      "NAME",
-      "Name of the managed instance group.",
-      Candidates.instanceGroups,
-    ),
+    positional: { name: "NAME", description: "Name of the managed instance group." },
     flags: [CommonFlags.zone, CommonFlags.region],
+    locate: resolveLocation,
     collection: "instanceGroups",
     permission: "compute.instanceGroupManagers.get",
     requiredApis: [ComputeApi],
-    resourcePath: (projectId, name) =>
-      `projects/${projectId}/zones/-/instanceGroupManagers/${name}`,
+    resourcePath: (ref) =>
+      `projects/${ref.projectId}/${Option.unwrapOr(ref.location, "-")}/instanceGroupManagers/${ref.name}`,
     record: groupRecord,
   }),
   projectCommand({

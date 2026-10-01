@@ -82,6 +82,11 @@ export const CommandFailure = {
     return failure(ErrorCodes.InvalidFlag, `argument ${flag}: ${reason}`);
   },
 
+  /** 引数の誤りを、`argument FLAG:` の形を取らないツール（kubectl）の綴りのまま出す。 */
+  invalidArgumentWith(message: string): CommandFailure {
+    return failure(ErrorCodes.InvalidFlag, message);
+  },
+
   expectedOneArgument(flag: string): CommandFailure {
     return failure(ErrorCodes.InvalidFlag, `argument ${flag}: expected one argument`);
   },
@@ -169,6 +174,11 @@ export const CommandFailure = {
 
   alreadyExists(resource: string): CommandFailure {
     return failure(ErrorCodes.AlreadyExists, `The resource '${resource}' already exists`);
+  },
+
+  /** E-008 を、`The resource ... already exists` の定型ではない本物の文（kubectl 等）で出す。 */
+  alreadyExistsWith(message: string): CommandFailure {
+    return failure(ErrorCodes.AlreadyExists, message);
   },
 
   invalidIamArgument(message: string): CommandFailure {

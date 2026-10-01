@@ -236,13 +236,14 @@ export const LineEditor = {
    * 補完候補を適用する。候補が 1 つなら置き換えて空白を足し、複数なら共通の接頭辞まで進める。
    *
    * @param editor 今の状態
-   * @param candidates 最後の語を置き換える候補
+   * @param raw 最後の語を置き換える候補。リソース名由来なので制御文字は落としてから使う
    * @returns 次の状態と、複数候補のときに端末へ並べる候補
    */
   complete(
     editor: LineEditor,
-    candidates: readonly string[],
+    raw: readonly string[],
   ): Readonly<{ editor: LineEditor; listing: readonly string[] }> {
+    const candidates = raw.map(StringEx.withoutControlChars);
     if (candidates.length === 0) return { editor, listing: [] };
     const start = lastWordStart(editor.buffer.slice(0, editor.cursor));
     const head = editor.buffer.slice(0, start);

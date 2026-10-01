@@ -114,9 +114,9 @@ export const TreeSelection = {
       case "health-check":
         return `hc:${selection.projectId}/${selection.name}`;
       case "backend-service":
-        return `bes:${selection.projectId}/${LbScope.pathSegment(selection.scope)}/${selection.name}`;
+        return `bes:${selection.projectId}/${LbScope.toPath(selection.scope)}/${selection.name}`;
       case "forwarding-rule":
-        return `fr:${selection.projectId}/${LbScope.pathSegment(selection.scope)}/${selection.name}`;
+        return `fr:${selection.projectId}/${LbScope.toPath(selection.scope)}/${selection.name}`;
       case "bucket":
         return `bucket:${selection.name}`;
       case "cluster":

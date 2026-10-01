@@ -1,15 +1,17 @@
-import { Logger } from "@/libs/logger";
+import { Result } from "@/utils/Result";
 
-/** クリップボードへ書く（UC-008 代替フロー「コピー」）。失敗はログに残すだけで、UI は止めない。 */
+/** クリップボードへ書く（UC-008 代替フロー「コピー」）。 */
 export const Clipboard = {
-  copy(text: string): void {
+  /**
+   * @param text 書く文字列
+   * @returns 書けなければその理由（クリップボード API が無い、ブラウザが拒んだ）
+   */
+  async copy(text: string): Promise<Result<void, string>> {
     const clipboard = navigator.clipboard;
-    if (clipboard === undefined) {
-      Logger.error("clipboard is not available", text);
-      return;
-    }
-    clipboard.writeText(text).catch((error: unknown) => {
-      Logger.error("clipboard write failed", error);
-    });
+    if (clipboard === undefined) return Result.err("clipboard is not available");
+    return clipboard.writeText(text).then(
+      () => Result.ok(undefined),
+      (error: unknown) => Result.err(`clipboard write failed: ${String(error)}`),
+    );
   },
 } as const;
