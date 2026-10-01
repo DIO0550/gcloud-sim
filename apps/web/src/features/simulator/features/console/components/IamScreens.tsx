@@ -1,5 +1,5 @@
 import { type ReactElement, useState } from "react";
-
+import { SuggestInput } from "@/components/SuggestInput";
 import type { IamMember, RoleName } from "@/engine/domains/iam-policy";
 import { CustomRole, RoleCatalog } from "@/engine/domains/role-catalog";
 import { World } from "@/engine/domains/world";
@@ -116,27 +116,21 @@ export const IamScreen = ({ world, project, handlers }: ScreenProps): ReactEleme
           </Field>
           <Field label="ロール" error={editor.errors.role}>
             {(id) => (
-              <input
+              <SuggestInput
                 id={id}
                 className={InputClass}
-                list="console-roles"
                 value={Option.unwrapOr(editor.form, IamGrantForm.create()).role}
-                onChange={(e) => editor.set("role", e.target.value)}
+                suggestions={[
+                  ...RoleCatalog.all().map((r) => ({ value: r.name, description: r.title })),
+                  ...World.customRolesOf(world, projectId).map((r) => ({
+                    value: CustomRole.name(r),
+                    description: r.title,
+                  })),
+                ]}
+                onChange={(role) => editor.set("role", role)}
               />
             )}
           </Field>
-          <datalist id="console-roles">
-            {RoleCatalog.all().map((r) => (
-              <option key={r.name} value={r.name}>
-                {r.title}
-              </option>
-            ))}
-            {World.customRolesOf(world, projectId).map((r) => (
-              <option key={r.roleId} value={CustomRole.name(r)}>
-                {r.title}
-              </option>
-            ))}
-          </datalist>
         </CreateFormSection>
       )}
       <div className="mb-3 flex items-center gap-4 text-sm">

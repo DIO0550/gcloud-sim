@@ -81,7 +81,7 @@ export const ConsoleNav = ({ screen, onChange }: ConsoleNavProps): ReactElement 
                 <button
                   type="button"
                   aria-current={item === current ? "page" : undefined}
-                  className={`w-full px-4 py-1.5 text-left text-sm ${item === current ? "border-accent border-l-2 bg-accent-soft font-semibold" : "hover:bg-canvas"}`}
+                  className={`w-full px-4 py-2.5 text-left text-sm ${item === current ? "border-accent border-l-2 bg-accent-soft font-semibold" : "hover:bg-canvas"}`}
                   onClick={() => onChange(item)}
                 >
                   {screenText(item)}

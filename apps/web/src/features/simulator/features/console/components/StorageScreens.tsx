@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
+import { Select } from "@/components/Select";
 
-import { StorageClass, StorageClasses } from "@/engine/domains/catalog";
+import { StorageClasses } from "@/engine/domains/catalog";
 import { World } from "@/engine/domains/world";
 import {
   CreateFormSection,
@@ -29,10 +30,6 @@ export const BucketsScreen = ({ world, project, handlers }: ScreenProps): ReactE
       next: Option.none,
     });
     editor.close();
-  };
-  /** 選択肢に無い値は無視して今の値を保つ（select は選択肢しか出さないので、届くのは選択肢だけ）。 */
-  const setStorageClass = (parsed: Option<StorageClass>): void => {
-    if (Option.isSome(parsed)) editor.set("storageClass", parsed.value);
   };
   return (
     <div>
@@ -74,44 +71,38 @@ export const BucketsScreen = ({ world, project, handlers }: ScreenProps): ReactE
           </Field>
           <Field label="ストレージクラス">
             {(id) => (
-              <select
+              <Select
                 id={id}
-                className={InputClass}
                 value={form.storageClass}
-                onChange={(e) => setStorageClass(StorageClass.parse(e.target.value))}
-              >
-                {Object.values(StorageClasses).map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+                onChange={(c) => editor.set("storageClass", c)}
+                options={Object.values(StorageClasses).map((c) => ({ value: c, label: c }))}
+              />
             )}
           </Field>
           <Field label="アクセス制御">
             {(id) => (
-              <select
+              <Select
                 id={id}
-                className={InputClass}
                 value={form.uniformAccess ? "uniform" : "fine"}
-                onChange={(e) => editor.set("uniformAccess", e.target.value === "uniform")}
-              >
-                <option value="uniform">均一</option>
-                <option value="fine">きめ細かい（ACL）</option>
-              </select>
+                onChange={(v) => editor.set("uniformAccess", v === "uniform")}
+                options={[
+                  { value: "uniform", label: "均一" },
+                  { value: "fine", label: "きめ細かい（ACL）" },
+                ]}
+              />
             )}
           </Field>
           <Field label="公開アクセスの防止">
             {(id) => (
-              <select
+              <Select
                 id={id}
-                className={InputClass}
                 value={form.publicAccessPrevention ? "on" : "off"}
-                onChange={(e) => editor.set("publicAccessPrevention", e.target.value === "on")}
-              >
-                <option value="on">適用する</option>
-                <option value="off">適用しない</option>
-              </select>
+                onChange={(v) => editor.set("publicAccessPrevention", v === "on")}
+                options={[
+                  { value: "on", label: "適用する" },
+                  { value: "off", label: "適用しない" },
+                ]}
+              />
             )}
           </Field>
         </CreateFormSection>

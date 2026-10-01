@@ -1,21 +1,21 @@
 import { type ReactElement, useState } from "react";
 
+import { Select } from "@/components/Select";
+
 import { MachineType, PublicImage, Zone } from "@/engine/domains/catalog";
 import {
-  BootDiskType,
   BootDiskTypes,
   ExternalIp,
   type Instance,
   Instance as InstanceOps,
-  ProvisioningModel,
   ProvisioningModels,
 } from "@/engine/domains/compute";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { ServiceAccount } from "@/engine/domains/service-account";
 import { World } from "@/engine/domains/world";
 import {
-  EquivalentCommandPanel,
   Field,
+  FormWithCommand,
   InputClass,
   PrimaryButton,
   ResourceTable,
@@ -177,194 +177,158 @@ export const VmCreateScreen = ({ world, project, handlers }: ScreenProps): React
       next: Option.some(ConsoleScreens.VmList),
     });
   };
-  /** 選択肢に無い値は無視して今の値を保つ（select は選択肢しか出さないので、届くのは選択肢だけ）。 */
-  const setParsed = <K extends keyof VmCreateForm>(
-    key: K,
-    parsed: Option<VmCreateForm[K]>,
-  ): void => {
-    if (Option.isSome(parsed)) set(key, parsed.value);
-  };
   return (
     <div>
       <ScreenTitle eyebrow="Compute Engine › VM インスタンス" title="インスタンスを作成" />
-      <div className="grid max-w-3xl grid-cols-2 gap-4">
-        <Field label="名前" error={errors.name}>
-          {(id) => (
-            <input
-              id={id}
-              className={InputClass}
-              value={form.name}
-              onChange={(e) => set("name", e.target.value)}
-            />
-          )}
-        </Field>
-        <Field label="ゾーン" hint={`リージョン: ${Zone.region(form.zone)}`}>
-          {(id) => (
-            <select
-              id={id}
-              className={InputClass}
-              value={form.zone}
-              onChange={(e) => setParsed("zone", Zone.parse(e.target.value))}
-            >
-              {Zone.all().map((z) => (
-                <option key={z} value={z}>
-                  {z}
-                </option>
-              ))}
-            </select>
-          )}
-        </Field>
-        <Field label="マシンタイプ" hint="シリーズ: E2 / N2 / N2D / C3 / N1">
-          {(id) => (
-            <select
-              id={id}
-              className={InputClass}
-              value={form.machineType}
-              onChange={(e) =>
-                setParsed(
-                  "machineType",
-                  Option.map(MachineType.parse(e.target.value), (m) => m.name),
-                )
-              }
-            >
-              {MachineType.all().map((m) => (
-                <option key={m.name} value={m.name}>
-                  {m.name}（{m.description}）
-                </option>
-              ))}
-            </select>
-          )}
-        </Field>
-        <Field label="プロビジョニング モデル">
-          {(id) => (
-            <select
-              id={id}
-              className={InputClass}
-              value={form.provisioningModel}
-              onChange={(e) =>
-                setParsed("provisioningModel", ProvisioningModel.parse(e.target.value))
-              }
-            >
-              {Object.values(ProvisioningModels).map((m) => (
-                <option key={m} value={m}>
-                  {m === ProvisioningModels.Spot ? "Spot" : "標準"}
-                </option>
-              ))}
-            </select>
-          )}
-        </Field>
-        <Field label="ブートディスク: イメージ">
-          {(id) => (
-            <select
-              id={id}
-              className={InputClass}
-              value={`${form.imageProject}/${form.imageFamily}`}
-              onChange={(e) => {
-                const image = images.find((i) => `${i.project}/${i.family}` === e.target.value);
-                if (image !== undefined) {
-                  set("imageFamily", image.family);
-                  set("imageProject", image.project);
-                }
-              }}
-            >
-              {images.map((i) => (
-                <option key={i.name} value={`${i.project}/${i.family}`}>
-                  {i.family}（{i.project}）
-                </option>
-              ))}
-            </select>
-          )}
-        </Field>
-        <div className="grid grid-cols-2 gap-2">
-          <Field label="サイズ" error={errors.bootDiskSize}>
+      <FormWithCommand
+        command={command}
+        onCopy={handlers.copy}
+        onInsert={handlers.insert}
+        actions={
+          <>
+            <PrimaryButton onClick={create}>作成</PrimaryButton>
+            <SecondaryButton onClick={() => handlers.changeScreen(ConsoleScreens.VmList)}>
+              キャンセル
+            </SecondaryButton>
+          </>
+        }
+      >
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="名前" error={errors.name}>
             {(id) => (
               <input
                 id={id}
                 className={InputClass}
-                value={form.bootDiskSize}
-                onChange={(e) => set("bootDiskSize", e.target.value)}
+                value={form.name}
+                onChange={(e) => set("name", e.target.value)}
               />
             )}
           </Field>
-          <Field label="種類">
+          <Field label="ゾーン" hint={`リージョン: ${Zone.region(form.zone)}`}>
             {(id) => (
-              <select
+              <Select
+                id={id}
+                value={form.zone}
+                onChange={(zone) => set("zone", zone)}
+                options={Zone.all().map((z) => ({ value: z, label: z }))}
+              />
+            )}
+          </Field>
+          <Field label="マシンタイプ" hint="シリーズ: E2 / N2 / N2D / C3 / N1">
+            {(id) => (
+              <Select
+                id={id}
+                value={form.machineType}
+                onChange={(machineType) => set("machineType", machineType)}
+                options={MachineType.all().map((m) => ({
+                  value: m.name,
+                  label: `${m.name}（${m.description}）`,
+                }))}
+              />
+            )}
+          </Field>
+          <Field label="プロビジョニング モデル">
+            {(id) => (
+              <Select
+                id={id}
+                value={form.provisioningModel}
+                onChange={(model) => set("provisioningModel", model)}
+                options={Object.values(ProvisioningModels).map((m) => ({
+                  value: m,
+                  label: m === ProvisioningModels.Spot ? "Spot" : "標準",
+                }))}
+              />
+            )}
+          </Field>
+          <Field label="ブートディスク: イメージ">
+            {(id) => (
+              <Select
+                id={id}
+                value={`${form.imageProject}/${form.imageFamily}`}
+                onChange={(value) => {
+                  const image = images.find((i) => `${i.project}/${i.family}` === value);
+                  if (image !== undefined) {
+                    set("imageFamily", image.family);
+                    set("imageProject", image.project);
+                  }
+                }}
+                options={images.map((i) => ({
+                  value: `${i.project}/${i.family}`,
+                  label: `${i.family}（${i.project}）`,
+                }))}
+              />
+            )}
+          </Field>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="サイズ" error={errors.bootDiskSize}>
+              {(id) => (
+                <input
+                  id={id}
+                  className={InputClass}
+                  value={form.bootDiskSize}
+                  onChange={(e) => set("bootDiskSize", e.target.value)}
+                />
+              )}
+            </Field>
+            <Field label="種類">
+              {(id) => (
+                <Select
+                  id={id}
+                  value={form.bootDiskType}
+                  onChange={(type) => set("bootDiskType", type)}
+                  options={Object.values(BootDiskTypes).map((t) => ({ value: t, label: t }))}
+                />
+              )}
+            </Field>
+          </div>
+          <Field label="サービス アカウント">
+            {(id) => (
+              <Select
+                id={id}
+                value={form.serviceAccount}
+                onChange={(account) => set("serviceAccount", account)}
+                options={accounts.map((a) => ({ value: a, label: a }))}
+              />
+            )}
+          </Field>
+          <Field label="アクセス スコープ">
+            {(id) => (
+              <Select
+                id={id}
+                value={form.scopes}
+                onChange={(scopes) => set("scopes", scopes)}
+                options={[
+                  { value: "default", label: "デフォルトのアクセス権を許可" },
+                  { value: "cloud-platform", label: "すべての Cloud API に完全アクセス権を許可" },
+                ]}
+              />
+            )}
+          </Field>
+          <Field label="ネットワーク タグ" hint="カンマ区切り（例: http-server,https-server）">
+            {(id) => (
+              <input
                 id={id}
                 className={InputClass}
-                value={form.bootDiskType}
-                onChange={(e) => setParsed("bootDiskType", BootDiskType.parse(e.target.value))}
-              >
-                {Object.values(BootDiskTypes).map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
+                value={form.tags}
+                onChange={(e) => set("tags", e.target.value)}
+              />
+            )}
+          </Field>
+          <Field label="外部 IP">
+            {(id) => (
+              <Select
+                id={id}
+                value={form.externalIp ? "ephemeral" : "none"}
+                onChange={(v) => set("externalIp", v === "ephemeral")}
+                options={[
+                  { value: "ephemeral", label: "エフェメラル" },
+                  { value: "none", label: "なし" },
+                ]}
+              />
             )}
           </Field>
         </div>
-        <Field label="サービス アカウント">
-          {(id) => (
-            <select
-              id={id}
-              className={InputClass}
-              value={form.serviceAccount}
-              onChange={(e) => set("serviceAccount", e.target.value)}
-            >
-              {accounts.map((a) => (
-                <option key={a} value={a}>
-                  {a}
-                </option>
-              ))}
-            </select>
-          )}
-        </Field>
-        <Field label="アクセス スコープ">
-          {(id) => (
-            <select
-              id={id}
-              className={InputClass}
-              value={form.scopes}
-              onChange={(e) =>
-                set("scopes", e.target.value === "cloud-platform" ? "cloud-platform" : "default")
-              }
-            >
-              <option value="default">デフォルトのアクセス権を許可</option>
-              <option value="cloud-platform">すべての Cloud API に完全アクセス権を許可</option>
-            </select>
-          )}
-        </Field>
-        <Field label="ネットワーク タグ" hint="カンマ区切り（例: http-server,https-server）">
-          {(id) => (
-            <input
-              id={id}
-              className={InputClass}
-              value={form.tags}
-              onChange={(e) => set("tags", e.target.value)}
-            />
-          )}
-        </Field>
-        <Field label="外部 IP">
-          {(id) => (
-            <select
-              id={id}
-              className={InputClass}
-              value={form.externalIp ? "ephemeral" : "none"}
-              onChange={(e) => set("externalIp", e.target.value === "ephemeral")}
-            >
-              <option value="ephemeral">エフェメラル</option>
-              <option value="none">なし</option>
-            </select>
-          )}
-        </Field>
-      </div>
-      <EquivalentCommandPanel command={command} onCopy={handlers.copy} onInsert={handlers.insert} />
-      <div className="mt-4 flex gap-2">
-        <PrimaryButton onClick={create}>作成</PrimaryButton>
-        <SecondaryButton onClick={() => handlers.changeScreen(ConsoleScreens.VmList)}>
-          キャンセル
-        </SecondaryButton>
-      </div>
+      </FormWithCommand>
     </div>
   );
 };

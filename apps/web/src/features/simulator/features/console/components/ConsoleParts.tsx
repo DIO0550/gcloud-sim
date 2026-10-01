@@ -123,18 +123,45 @@ export const EquivalentCommandPanel = ({
   onInsert: (text: string) => void;
 }>): ReactElement => (
   <section
-    className="mt-6 rounded-lg border border-line bg-canvas p-3"
+    className="rounded-lg border border-line bg-canvas p-3"
     aria-label="同等のコマンドライン"
   >
-    <div className="mb-2 flex items-center justify-between">
-      <h3 className="font-semibold text-muted text-xs">同等のコマンドライン</h3>
-      <div className="flex gap-2">
-        <SecondaryButton onClick={() => onCopy(command)}>コピー</SecondaryButton>
-        <SecondaryButton onClick={() => onInsert(command)}>ターミナルに貼り付け</SecondaryButton>
-      </div>
-    </div>
+    <h3 className="mb-2 font-semibold text-muted text-xs">同等のコマンドライン</h3>
     <pre className="whitespace-pre-wrap break-all font-mono text-xs">{command}</pre>
+    <div className="mt-3 flex flex-wrap gap-2">
+      <SecondaryButton onClick={() => onCopy(command)}>コピー</SecondaryButton>
+      <SecondaryButton onClick={() => onInsert(command)}>ターミナルに貼り付け</SecondaryButton>
+    </div>
   </section>
+);
+
+/**
+ * 入力項目を左、同等のコマンドラインを右に並べる（入力しながら横目でコマンドの変化を追える）。
+ * 右の列は縦に流れても見えるよう上に貼り付ける。
+ */
+export const FormWithCommand = ({
+  command,
+  onCopy,
+  onInsert,
+  actions,
+  children,
+}: Readonly<{
+  command: string;
+  onCopy: (text: string) => void;
+  onInsert: (text: string) => void;
+  /** 作成・キャンセルの並び（項目の下に置く） */
+  actions: ReactNode;
+  children: ReactNode;
+}>): ReactElement => (
+  <div className="grid grid-cols-[minmax(0,1fr)_22rem] items-start gap-6">
+    <div>
+      {children}
+      <div className="mt-4 flex gap-2">{actions}</div>
+    </div>
+    <div className="sticky top-0">
+      <EquivalentCommandPanel command={command} onCopy={onCopy} onInsert={onInsert} />
+    </div>
+  </div>
 );
 
 /**
@@ -163,14 +190,21 @@ export const CreateFormSection = ({
   children: ReactNode;
 }>): ReactElement => (
   <section className="mb-4 rounded-lg border border-line bg-surface p-4" aria-label={label}>
-    <div className={columns === 2 ? "grid grid-cols-2 gap-4" : "grid grid-cols-3 gap-4"}>
-      {children}
-    </div>
-    <EquivalentCommandPanel command={command} onCopy={onCopy} onInsert={onInsert} />
-    <div className="mt-3 flex gap-2">
-      <PrimaryButton onClick={onSubmit}>{submitLabel}</PrimaryButton>
-      <SecondaryButton onClick={onCancel}>キャンセル</SecondaryButton>
-    </div>
+    <FormWithCommand
+      command={command}
+      onCopy={onCopy}
+      onInsert={onInsert}
+      actions={
+        <>
+          <PrimaryButton onClick={onSubmit}>{submitLabel}</PrimaryButton>
+          <SecondaryButton onClick={onCancel}>キャンセル</SecondaryButton>
+        </>
+      }
+    >
+      <div className={columns === 2 ? "grid grid-cols-2 gap-4" : "grid grid-cols-3 gap-4"}>
+        {children}
+      </div>
+    </FormWithCommand>
   </section>
 );
 

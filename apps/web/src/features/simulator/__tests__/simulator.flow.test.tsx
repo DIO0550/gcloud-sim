@@ -2,7 +2,12 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
-import { renderSimulator, resourceTree, screenText } from "@/features/simulator/__tests__/setup";
+import {
+  chooseOption,
+  renderSimulator,
+  resourceTree,
+  screenText,
+} from "@/features/simulator/__tests__/setup";
 import { Result } from "@/utils/Result";
 
 const typeLine = async (
@@ -102,14 +107,13 @@ test("ヘッダーでプリンシパルを変えるとコマンドとして記�
   await waitFor(() =>
     expect(screenText(terminal)).toContain("You are now logged in as [dev@example.com]."),
   );
-  await user.selectOptions(
-    screen.getByRole("combobox", { name: "プリンシパル" }),
-    "owner@example.com",
-  );
+  await chooseOption(user, "プリンシパル", "owner@example.com");
   await waitFor(() =>
     expect(screenText(terminal)).toContain("$ gcloud config set account owner@example.com"),
   );
-  expect(screen.getByRole("combobox", { name: "プリンシパル" })).toHaveValue("owner@example.com");
+  expect(screen.getByRole("combobox", { name: "プリンシパル" })).toHaveTextContent(
+    "owner@example.com",
+  );
 });
 
 test("ミッションを開始して条件を満たすとクリアの通知が出る", async () => {

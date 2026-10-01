@@ -2,7 +2,12 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
-import { renderSimulator, resourceTree, screenText } from "@/features/simulator/__tests__/setup";
+import {
+  chooseOption,
+  renderSimulator,
+  resourceTree,
+  screenText,
+} from "@/features/simulator/__tests__/setup";
 
 const typeLine = async (
   terminal: ReturnType<typeof renderSimulator>["terminal"],
@@ -116,7 +121,7 @@ test("dev@example.com で VM 作成を送ると赤帯に Required ... permission
 test("API が無効なプロジェクトの VM 一覧は「API を有効にする」だけを出し、押すと services enable が流れる", async () => {
   const user = userEvent.setup();
   const { terminal } = renderSimulator();
-  await user.selectOptions(screen.getByRole("combobox", { name: "プロジェクト" }), "ace-prod-01");
+  await chooseOption(user, "プロジェクト", "ace-prod-01");
   await openConsole(user);
   await user.click(within(consoleNav()).getByRole("button", { name: "VM インスタンス" }));
   await user.click(screen.getByRole("button", { name: "Compute Engine API を有効にする" }));
@@ -287,7 +292,7 @@ test.each([
 ])("API が無効なプロジェクトで %s を開くと「%s」だけが出る", async (item, button) => {
   const user = userEvent.setup();
   renderSimulator();
-  await user.selectOptions(screen.getByRole("combobox", { name: "プロジェクト" }), "ace-prod-01");
+  await chooseOption(user, "プロジェクト", "ace-prod-01");
   await openConsole(user);
   await user.click(within(consoleNav()).getByRole("button", { name: item }));
   expect(screen.getByRole("button", { name: button })).toBeInTheDocument();

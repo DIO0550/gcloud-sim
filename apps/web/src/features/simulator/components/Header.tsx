@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 
+import { Select } from "@/components/Select";
 import type { World } from "@/engine/domains/world";
 import { World as WorldOps } from "@/engine/domains/world";
 import { type View, Views } from "@/features/simulator/hooks/use-simulator";
@@ -58,42 +59,41 @@ export const Header = ({
         ))}
       </fieldset>
       <div className="ml-auto flex items-center gap-3 text-sm">
-        <label className="flex items-center gap-2 rounded-lg border border-line px-3 py-1.5">
+        <div className="flex items-center gap-2 rounded-lg border border-line px-3 py-1.5">
           <span className="text-muted">プロジェクト</span>
-          <select
-            className="bg-transparent font-mono"
+          <Select
+            variant="bare"
+            ariaLabel="プロジェクト"
             value={projectId}
-            onChange={(event) => onProjectChange(event.target.value)}
-            aria-label="プロジェクト"
-          >
-            {!WorldOps.hasProjectId(world, projectId) && (
-              <option value={projectId}>{projectId === "" ? "(未設定)" : projectId}</option>
-            )}
-            {WorldOps.activeProjects(world).map((p) => (
-              <option key={p.projectId} value={p.projectId}>
-                {p.projectId}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label
+            onChange={onProjectChange}
+            options={[
+              ...(WorldOps.hasProjectId(world, projectId)
+                ? []
+                : [{ value: projectId, label: projectId === "" ? "(未設定)" : projectId }]),
+              ...WorldOps.activeProjects(world).map((p) => ({
+                value: p.projectId,
+                label: p.projectId,
+              })),
+            ]}
+          />
+        </div>
+        <div
           className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 ${isOwner ? "border-line" : "border-warn bg-warn-soft"}`}
         >
           <span className="text-muted">プリンシパル</span>
-          <select
-            className={`bg-transparent font-mono ${isOwner ? "" : "text-warn-ink"}`}
+          <Select
+            variant="bare"
+            align="end"
+            ariaLabel="プリンシパル"
+            className={isOwner ? "" : "text-warn-ink"}
             value={principalValue}
-            onChange={(event) => onPrincipalChange(event.target.value)}
-            aria-label="プリンシパル"
-          >
-            {!Option.isSome(principal) && <option value="">(未選択)</option>}
-            {world.session.accounts.map((account) => (
-              <option key={account} value={account}>
-                {account}
-              </option>
-            ))}
-          </select>
-        </label>
+            onChange={onPrincipalChange}
+            options={[
+              ...(Option.isSome(principal) ? [] : [{ value: "", label: "(未選択)" }]),
+              ...world.session.accounts.map((account) => ({ value: account, label: account })),
+            ]}
+          />
+        </div>
         <button
           type="button"
           className="rounded-lg px-3 py-1.5 hover:bg-canvas"

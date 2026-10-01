@@ -1,9 +1,10 @@
 import type { ReactElement } from "react";
+import { Select } from "@/components/Select";
 
 import {
-  Direction,
+  type Direction,
   Directions,
-  FirewallAction,
+  type FirewallAction,
   FirewallActions,
   ProtocolRule,
 } from "@/engine/domains/compute";
@@ -54,13 +55,6 @@ export const FirewallScreen = ({ world, project, handlers }: ScreenProps): React
     });
     editor.close();
   };
-  /** 選択肢に無い値は無視して今の値を保つ（select は選択肢しか出さないので、届くのは選択肢だけ）。 */
-  const setParsed = <K extends keyof FirewallCreateForm>(
-    key: K,
-    parsed: Option<FirewallCreateForm[K]>,
-  ): void => {
-    if (Option.isSome(parsed)) editor.set(key, parsed.value);
-  };
   return (
     <div>
       <ScreenTitle
@@ -93,34 +87,28 @@ export const FirewallScreen = ({ world, project, handlers }: ScreenProps): React
           </Field>
           <Field label="ネットワーク">
             {(id) => (
-              <select
+              <Select
                 id={id}
-                className={InputClass}
                 value={form.network}
-                onChange={(e) => editor.set("network", e.target.value)}
-              >
-                {World.networksOf(world, projectId).map((n) => (
-                  <option key={n.name} value={n.name}>
-                    {n.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(network) => editor.set("network", network)}
+                options={World.networksOf(world, projectId).map((n) => ({
+                  value: n.name,
+                  label: n.name,
+                }))}
+              />
             )}
           </Field>
           <Field label="トラフィックの方向">
             {(id) => (
-              <select
+              <Select
                 id={id}
-                className={InputClass}
                 value={form.direction}
-                onChange={(e) => setParsed("direction", Direction.parse(e.target.value))}
-              >
-                {Object.values(Directions).map((d) => (
-                  <option key={d} value={d}>
-                    {directionText(d)}
-                  </option>
-                ))}
-              </select>
+                onChange={(d) => editor.set("direction", d)}
+                options={Object.values(Directions).map((d) => ({
+                  value: d,
+                  label: directionText(d),
+                }))}
+              />
             )}
           </Field>
           <Field label="優先度" error={editor.errors.priority}>
@@ -169,18 +157,15 @@ export const FirewallScreen = ({ world, project, handlers }: ScreenProps): React
           </Field>
           <Field label="一致したときのアクション">
             {(id) => (
-              <select
+              <Select
                 id={id}
-                className={InputClass}
                 value={form.action}
-                onChange={(e) => setParsed("action", FirewallAction.parse(e.target.value))}
-              >
-                {Object.values(FirewallActions).map((a) => (
-                  <option key={a} value={a}>
-                    {actionText(a)}
-                  </option>
-                ))}
-              </select>
+                onChange={(a) => editor.set("action", a)}
+                options={Object.values(FirewallActions).map((a) => ({
+                  value: a,
+                  label: actionText(a),
+                }))}
+              />
             )}
           </Field>
         </CreateFormSection>
