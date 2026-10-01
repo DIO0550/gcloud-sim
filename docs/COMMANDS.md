@@ -1,0 +1,392 @@
+# 対応コマンド
+
+gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を再現している（設計書 DJ-005: 未対応は
+それっぽく成功させず、明示的にエラーにする）。
+
+- **基準にした gcloud のバージョン**（TBD-001）: 2026-09 時点の公式リファレンス
+  （`cloud.google.com/sdk/gcloud/reference`）。出力の綴りとフラグ名はこれに合わせ、差異は
+  この表と Issue に記録する
+- **IAM の判定はロールカタログに収録した権限だけで行う**（DJ-006 / TBD-006）。収録しているのは
+  ACE 頻出の約 45 の事前定義ロールと、それが含む代表的な権限。**収録外の権限は許可に倒す**
+  （学習を止めないため）。収録内容は `gcloud iam roles describe ROLE` で見られる
+- ここに無いコマンドは `ERROR: (gcloud) Invalid choice: 'xxx'.`（E-001）になる。「未実装」の表に
+  あるものは `gcloud-sim: command not implemented yet: ...`（E-002）になる
+- グローバルフラグ `--project` `--account` `--format` `--filter` `--limit` `--sort-by`
+  `--quiet`/`-q` `--help`/`-h` `--verbosity` はすべてのコマンドが受ける
+- `--format` は `json` / `yaml` / `value(FIELDS)` / `table(FIELDS)` / `none`、`--filter` は
+  `key=value` / `key!=value` / `key:substring` / `NOT` / `AND` / `OR` の簡易版（DJ-009）
+- `gcloud beta` / `gcloud alpha` は警告を出して `gcloud` と同じに扱う
+- `delete` などの破壊的操作は `--quiet` が無ければ `Do you want to continue (Y/n)?` を挟む
+
+この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
+`src/engine/__tests__/commands-doc.test.ts` が落ちる。
+
+## 実装済み（215）
+
+### `gcloud config`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud config set` | — | — | — |
+| `gcloud config unset` | — | — | — |
+| `gcloud config get` | — | — | — |
+| `gcloud config get-value` | — | — | — |
+| `gcloud config list` | — | — | `--all` |
+| `gcloud config configurations list` | — | — | — |
+| `gcloud config configurations create` | — | — | `--activate` |
+| `gcloud config configurations activate` | — | — | — |
+| `gcloud config configurations describe` | — | — | — |
+| `gcloud config configurations delete` | — | — | — |
+
+### `gcloud auth`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud auth activate-service-account` | — | — | `--key-file` |
+| `gcloud auth application-default login` | — | — | `--no-launch-browser` |
+| `gcloud auth login` | — | — | `--brief` `--no-launch-browser` |
+| `gcloud auth list` | — | — | — |
+| `gcloud auth revoke` | — | — | — |
+
+### `gcloud version`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud version` | — | — | — |
+
+### `gcloud info`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud info` | — | — | `--run-diagnostics` |
+
+### `gcloud init`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud init` | — | — | `--skip-diagnostics` `--console-only` |
+
+### `gcloud components`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud components list` | — | — | — |
+| `gcloud components install` | — | — | — |
+| `gcloud components update` | — | — | — |
+
+### `gcloud projects`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud projects list` | — | — | — |
+| `gcloud projects describe` | `resourcemanager.projects.get` | — | — |
+| `gcloud projects create` | `resourcemanager.projects.create` | — | `--name` `--organization` `--folder` `--set-as-default` `--labels` |
+| `gcloud projects delete` | `resourcemanager.projects.delete` | — | — |
+| `gcloud projects undelete` | `resourcemanager.projects.undelete` | — | — |
+| `gcloud projects get-iam-policy` | `resourcemanager.projects.getIamPolicy` | — | — |
+| `gcloud projects add-iam-policy-binding` | `resourcemanager.projects.setIamPolicy` | — | `--member` `--role` |
+| `gcloud projects remove-iam-policy-binding` | `resourcemanager.projects.setIamPolicy` | — | `--member` `--role` |
+
+### `gcloud organizations`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud organizations list` | — | — | — |
+| `gcloud organizations describe` | `resourcemanager.organizations.get` | — | — |
+| `gcloud organizations get-iam-policy` | `resourcemanager.organizations.getIamPolicy` | — | — |
+| `gcloud organizations add-iam-policy-binding` | `resourcemanager.organizations.setIamPolicy` | — | `--member` `--role` |
+| `gcloud organizations remove-iam-policy-binding` | `resourcemanager.organizations.setIamPolicy` | — | `--member` `--role` |
+
+### `gcloud resource-manager`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud resource-manager folders list` | — | — | `--organization` `--folder` |
+| `gcloud resource-manager folders create` | `resourcemanager.folders.create` | — | `--display-name` `--organization` `--folder` |
+| `gcloud resource-manager folders describe` | `resourcemanager.folders.get` | — | — |
+| `gcloud resource-manager folders get-iam-policy` | `resourcemanager.folders.getIamPolicy` | — | — |
+| `gcloud resource-manager folders add-iam-policy-binding` | `resourcemanager.folders.setIamPolicy` | — | `--member` `--role` |
+| `gcloud resource-manager folders remove-iam-policy-binding` | `resourcemanager.folders.setIamPolicy` | — | `--member` `--role` |
+
+### `gcloud billing`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud billing accounts list` | — | — | — |
+| `gcloud billing accounts describe` | — | — | — |
+| `gcloud billing projects describe` | `billing.resourceAssociations.list` | — | — |
+| `gcloud billing projects link` | `billing.resourceAssociations.create` | — | `--billing-account` |
+| `gcloud billing projects unlink` | `billing.resourceAssociations.delete` | — | — |
+| `gcloud billing budgets create` | `billing.budgets.create` | — | `--billing-account` `--display-name` `--budget-amount` `--threshold-rule` `--filter-projects` |
+| `gcloud billing budgets list` | `billing.budgets.list` | — | `--billing-account` |
+| `gcloud billing budgets describe` | `billing.budgets.get` | — | `--billing-account` |
+
+### `gcloud services`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud services enable` | `serviceusage.services.enable` | — | `--async` |
+| `gcloud services disable` | `serviceusage.services.disable` | — | `--force` |
+| `gcloud services list` | `serviceusage.services.list` | — | `--enabled` `--available` |
+
+### `gcloud compute`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud compute instances create` | `compute.instances.create` | `compute.googleapis.com` | `--zone` `--machine-type` `--image-family` `--image-project` `--network` `--subnet` `--tags` `--service-account` `--scopes` `--preemptible` `--provisioning-model` `--metadata` `--boot-disk-size` `--boot-disk-type` `--address` `--async` |
+| `gcloud compute instances list` | `compute.instances.list` | `compute.googleapis.com` | — |
+| `gcloud compute instances describe` | `compute.instances.get` | `compute.googleapis.com` | `--zone` |
+| `gcloud compute instances start` | `compute.instances.start` | `compute.googleapis.com` | `--zone` `--async` |
+| `gcloud compute instances stop` | `compute.instances.stop` | `compute.googleapis.com` | `--zone` `--async` |
+| `gcloud compute instances suspend` | `compute.instances.suspend` | `compute.googleapis.com` | `--zone` `--async` |
+| `gcloud compute instances resume` | `compute.instances.resume` | `compute.googleapis.com` | `--zone` `--async` |
+| `gcloud compute instances delete` | `compute.instances.delete` | `compute.googleapis.com` | `--zone` `--keep-disks` `--delete-disks` `--async` |
+| `gcloud compute instances add-tags` | `compute.instances.setTags` | `compute.googleapis.com` | `--zone` `--tags` |
+| `gcloud compute instances add-metadata` | `compute.instances.setMetadata` | `compute.googleapis.com` | `--zone` `--metadata` |
+| `gcloud compute instances set-machine-type` | `compute.instances.setMachineType` | `compute.googleapis.com` | `--zone` `--machine-type` |
+| `gcloud compute instances attach-disk` | `compute.instances.attachDisk` | `compute.googleapis.com` | `--zone` `--disk` `--device-name` `--mode` |
+| `gcloud compute ssh` | `compute.instances.get` `compute.instances.osLogin` | `compute.googleapis.com` | `--zone` `--internal-ip` `--tunnel-through-iap` `--plain` `--command` `--dry-run` |
+| `gcloud compute scp` | `compute.instances.get` `compute.instances.osLogin` | `compute.googleapis.com` | `--zone` `--internal-ip` `--tunnel-through-iap` `--plain` `--recurse` |
+| `gcloud compute project-info describe` | `compute.projects.get` | `compute.googleapis.com` | — |
+| `gcloud compute project-info add-metadata` | `compute.projects.setCommonInstanceMetadata` | `compute.googleapis.com` | `--metadata` |
+| `gcloud compute os-login ssh-keys add` | `compute.instances.osLogin` | `compute.googleapis.com` | `--key` `--ttl` |
+| `gcloud compute zones list` | `compute.zones.list` | `compute.googleapis.com` | — |
+| `gcloud compute regions list` | `compute.regions.list` | `compute.googleapis.com` | — |
+| `gcloud compute machine-types list` | `compute.machineTypes.list` | `compute.googleapis.com` | `--zones` |
+| `gcloud compute images list` | `compute.images.list` | `compute.googleapis.com` | — |
+| `gcloud compute operations list` | `compute.zoneOperations.list` | `compute.googleapis.com` | — |
+| `gcloud compute disks list` | `compute.disks.list` | `compute.googleapis.com` | — |
+| `gcloud compute disks create` | `compute.disks.create` | `compute.googleapis.com` | `--zone` `--size` `--type` `--image-family` `--image-project` `--image` |
+| `gcloud compute disks describe` | `compute.disks.get` | `compute.googleapis.com` | `--zone` |
+| `gcloud compute disks snapshot` | `compute.disks.createSnapshot` | `compute.googleapis.com` | `--zone` `--snapshot-names` |
+| `gcloud compute disks resize` | `compute.disks.update` | `compute.googleapis.com` | `--zone` `--size` |
+| `gcloud compute snapshots create` | `compute.disks.createSnapshot` | `compute.googleapis.com` | `--source-disk` `--source-disk-zone` `--zone` |
+| `gcloud compute snapshots list` | `compute.snapshots.list` | `compute.googleapis.com` | — |
+| `gcloud compute snapshots describe` | `compute.snapshots.get` | `compute.googleapis.com` | — |
+| `gcloud compute networks create` | `compute.networks.create` | `compute.googleapis.com` | `--subnet-mode` `--bgp-routing-mode` |
+| `gcloud compute networks list` | `compute.networks.list` | `compute.googleapis.com` | — |
+| `gcloud compute networks describe` | `compute.networks.get` | `compute.googleapis.com` | — |
+| `gcloud compute networks delete` | `compute.networks.delete` | `compute.googleapis.com` | — |
+| `gcloud compute networks subnets create` | `compute.subnetworks.create` | `compute.googleapis.com` | `--network` `--range` `--region` `--enable-private-ip-google-access` |
+| `gcloud compute networks subnets list` | `compute.subnetworks.list` | `compute.googleapis.com` | — |
+| `gcloud compute networks subnets describe` | `compute.subnetworks.get` | `compute.googleapis.com` | `--region` |
+| `gcloud compute networks peerings create` | `compute.networks.addPeering` | `compute.googleapis.com` | `--network` `--peer-network` `--peer-project` `--export-custom-routes` `--import-custom-routes` |
+| `gcloud compute firewall-rules create` | `compute.firewalls.create` | `compute.googleapis.com` | `--network` `--allow` `--action` `--rules` `--direction` `--priority` `--source-ranges` `--target-tags` `--destination-ranges` `--disabled` |
+| `gcloud compute firewall-rules list` | `compute.firewalls.list` | `compute.googleapis.com` | — |
+| `gcloud compute firewall-rules describe` | `compute.firewalls.get` | `compute.googleapis.com` | — |
+| `gcloud compute firewall-rules delete` | `compute.firewalls.delete` | `compute.googleapis.com` | — |
+| `gcloud compute addresses create` | `compute.addresses.create` | `compute.googleapis.com` | `--region` `--global` `--address-type` `--addresses` `--network-tier` |
+| `gcloud compute addresses list` | `compute.addresses.list` | `compute.googleapis.com` | — |
+| `gcloud compute addresses describe` | `compute.addresses.get` | `compute.googleapis.com` | `--region` `--global` |
+| `gcloud compute routers create` | `compute.routers.create` | `compute.googleapis.com` | `--network` `--region` `--asn` |
+| `gcloud compute routers list` | `compute.routers.list` | `compute.googleapis.com` | — |
+| `gcloud compute routers describe` | `compute.routers.get` | `compute.googleapis.com` | `--region` |
+| `gcloud compute health-checks create` | `compute.healthChecks.create` | `compute.googleapis.com` | `--tcp` `--http` `--https` `--port` `--global` |
+| `gcloud compute health-checks list` | `compute.healthChecks.list` | `compute.googleapis.com` | — |
+| `gcloud compute health-checks describe` | `compute.healthChecks.get` | `compute.googleapis.com` | `--global` |
+| `gcloud compute backend-services create` | `compute.backendServices.create` | `compute.googleapis.com` | `--global` `--region` `--protocol` `--health-checks` `--load-balancing-scheme` `--timeout` |
+| `gcloud compute backend-services list` | `compute.backendServices.list` | `compute.googleapis.com` | — |
+| `gcloud compute backend-services describe` | `compute.backendServices.get` | `compute.googleapis.com` | `--global` `--region` |
+| `gcloud compute forwarding-rules create` | `compute.forwardingRules.create` | `compute.googleapis.com` | `--global` `--region` `--backend-service` `--address` `--ports` `--load-balancing-scheme` |
+| `gcloud compute forwarding-rules list` | `compute.forwardingRules.list` | `compute.googleapis.com` | — |
+| `gcloud compute forwarding-rules describe` | `compute.forwardingRules.get` | `compute.googleapis.com` | `--global` `--region` |
+| `gcloud compute instance-templates create` | `compute.instanceTemplates.create` | `compute.googleapis.com` | `--machine-type` `--image-family` `--image-project` `--network` `--subnet` `--tags` `--service-account` `--scopes` `--preemptible` `--provisioning-model` `--metadata` `--boot-disk-size` `--boot-disk-type` `--address` |
+| `gcloud compute instance-templates list` | `compute.instanceTemplates.list` | `compute.googleapis.com` | — |
+| `gcloud compute instance-templates describe` | `compute.instanceTemplates.get` | `compute.googleapis.com` | — |
+| `gcloud compute instance-groups managed create` | `compute.instanceGroupManagers.create` | `compute.googleapis.com` | `--zone` `--region` `--template` `--size` `--base-instance-name` |
+| `gcloud compute instance-groups managed list` | `compute.instanceGroupManagers.list` | `compute.googleapis.com` | — |
+| `gcloud compute instance-groups managed describe` | `compute.instanceGroupManagers.get` | `compute.googleapis.com` | `--zone` `--region` |
+| `gcloud compute instance-groups managed set-autoscaling` | `compute.autoscalers.create` | `compute.googleapis.com` | `--zone` `--region` `--max-num-replicas` `--min-num-replicas` `--target-cpu-utilization` `--cool-down-period` |
+
+### `gcloud storage`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud storage buckets create` | `storage.buckets.create` | — | `--location` `--default-storage-class` `--uniform-bucket-level-access` `--public-access-prevention` |
+| `gcloud storage buckets list` | `storage.buckets.list` | — | — |
+| `gcloud storage buckets describe` | `storage.buckets.get` | — | — |
+| `gcloud storage buckets delete` | `storage.buckets.delete` | — | `--recursive` |
+| `gcloud storage buckets get-iam-policy` | `storage.buckets.getIamPolicy` | — | — |
+| `gcloud storage buckets add-iam-policy-binding` | `storage.buckets.setIamPolicy` | — | `--member` `--role` |
+| `gcloud storage buckets remove-iam-policy-binding` | `storage.buckets.setIamPolicy` | — | `--member` `--role` |
+| `gcloud storage ls` | `storage.objects.list` | — | `--long` `--recursive` |
+| `gcloud storage cp` | `storage.objects.create` | — | `--recursive` |
+| `gcloud storage rm` | `storage.objects.delete` | — | `--recursive` |
+| `gcloud storage buckets update` | `storage.buckets.update` | — | `--versioning` `--lifecycle-file` `--default-storage-class` `--uniform-bucket-level-access` `--public-access-prevention` |
+| `gcloud storage objects update` | `storage.objects.update` | — | `--storage-class` `--content-type` |
+| `gcloud storage rsync` | `storage.objects.create` | — | `--recursive` `--delete-unmatched-destination-objects` |
+| `gcloud storage sign-url` | `storage.objects.get` | — | `--duration` `--private-key-file` `--impersonate-service-account` |
+
+### `gsutil`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gsutil mb` | `storage.buckets.create` | — | `--l` `--c` `--b` `--public-access-prevention` |
+| `gsutil ls` | `storage.objects.list` | — | `--long` `--recursive` |
+| `gsutil cp` | `storage.objects.create` | — | `--recursive` `--m` |
+| `gsutil rm` | `storage.objects.delete` | — | `--recursive` `--m` |
+| `gsutil iam get` | `storage.buckets.getIamPolicy` | — | — |
+| `gsutil iam ch` | `storage.buckets.setIamPolicy` | — | `--d` |
+| `gsutil rsync` | `storage.objects.create` | — | `--recursive` `--d` `--m` |
+| `gsutil lifecycle set` | `storage.buckets.update` | — | — |
+| `gsutil versioning set` | `storage.buckets.update` | — | — |
+| `gsutil acl ch` | `storage.buckets.update` | — | `--u` `--g` |
+
+### `gcloud iam`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud iam service-accounts create` | `iam.serviceAccounts.create` | — | `--display-name` `--description` |
+| `gcloud iam service-accounts list` | `iam.serviceAccounts.list` | — | — |
+| `gcloud iam service-accounts describe` | `iam.serviceAccounts.get` | — | — |
+| `gcloud iam service-accounts delete` | `iam.serviceAccounts.delete` | — | — |
+| `gcloud iam roles list` | — | — | `--show-deleted` |
+| `gcloud iam roles describe` | — | — | — |
+| `gcloud iam roles create` | `iam.roles.create` | — | `--permissions` `--title` `--description` `--stage` |
+| `gcloud iam roles copy` | `iam.roles.create` | — | `--source` `--destination` `--dest-project` |
+| `gcloud iam service-accounts keys create` | `iam.serviceAccountKeys.create` | — | `--iam-account` `--key-file-type` |
+| `gcloud iam service-accounts keys list` | `iam.serviceAccountKeys.list` | — | `--iam-account` |
+| `gcloud iam service-accounts get-iam-policy` | `iam.serviceAccounts.getIamPolicy` | — | — |
+| `gcloud iam service-accounts add-iam-policy-binding` | `iam.serviceAccounts.setIamPolicy` | — | `--member` `--role` |
+| `gcloud iam service-accounts remove-iam-policy-binding` | `iam.serviceAccounts.setIamPolicy` | — | `--member` `--role` |
+
+### `gcloud container`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud container clusters create` | `container.clusters.create` | `container.googleapis.com` | `--zone` `--region` `--num-nodes` `--machine-type` `--release-channel` |
+| `gcloud container clusters create-auto` | `container.clusters.create` | `container.googleapis.com` | `--zone` `--region` `--release-channel` |
+| `gcloud container clusters list` | `container.clusters.list` | `container.googleapis.com` | — |
+| `gcloud container clusters describe` | `container.clusters.get` | `container.googleapis.com` | `--zone` `--region` |
+| `gcloud container clusters delete` | `container.clusters.delete` | `container.googleapis.com` | `--zone` `--region` `--async` |
+| `gcloud container clusters get-credentials` | `container.clusters.get` `container.clusters.getCredentials` | `container.googleapis.com` | `--zone` `--region` `--internal-ip` |
+| `gcloud container clusters resize` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--num-nodes` `--node-pool` |
+| `gcloud container clusters upgrade` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--master` `--cluster-version` |
+| `gcloud container node-pools create` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--cluster` `--machine-type` `--num-nodes` `--disk-size` |
+| `gcloud container node-pools list` | `container.clusters.get` | `container.googleapis.com` | `--zone` `--region` `--cluster` |
+| `gcloud container node-pools describe` | `container.clusters.get` | `container.googleapis.com` | `--zone` `--region` `--cluster` |
+
+### `kubectl`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `kubectl get` | `container.pods.list` | `container.googleapis.com` | `--output` `--namespace` |
+| `kubectl apply` | `container.deployments.update` | `container.googleapis.com` | `--filename` `--namespace` |
+| `kubectl create` | `container.deployments.create` | `container.googleapis.com` | `--filename` `--image` `--replicas` `--namespace` |
+| `kubectl delete` | `container.deployments.delete` | `container.googleapis.com` | `--filename` `--namespace` |
+| `kubectl describe` | `container.pods.get` | `container.googleapis.com` | `--namespace` |
+| `kubectl expose` | `container.services.create` | `container.googleapis.com` | `--type` `--port` `--target-port` `--name` `--namespace` |
+| `kubectl scale` | `container.deployments.update` | `container.googleapis.com` | `--replicas` `--namespace` |
+| `kubectl rollout` | `container.deployments.update` | `container.googleapis.com` | `--namespace` |
+| `kubectl logs` | `container.pods.get` | `container.googleapis.com` | `--follow` `--namespace` |
+| `kubectl config` | `container.clusters.get` | `container.googleapis.com` | `--namespace` |
+
+### `gcloud run`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud run deploy` | `run.services.create` | `run.googleapis.com` | `--image` `--region` `--platform` `--allow-unauthenticated` |
+| `gcloud run services list` | `run.services.list` | `run.googleapis.com` | `--region` `--platform` |
+| `gcloud run services describe` | `run.services.get` | `run.googleapis.com` | `--region` `--platform` |
+| `gcloud run services delete` | `run.services.delete` | `run.googleapis.com` | `--region` `--platform` |
+
+### `gcloud functions`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud functions deploy` | `cloudfunctions.functions.create` | `cloudfunctions.googleapis.com` | `--region` `--runtime` `--trigger-http` `--trigger-topic` `--entry-point` `--memory` `--allow-unauthenticated` `--gen2` `--source` |
+| `gcloud functions list` | `cloudfunctions.functions.list` | `cloudfunctions.googleapis.com` | `--regions` |
+| `gcloud functions describe` | `cloudfunctions.functions.get` | `cloudfunctions.googleapis.com` | `--region` |
+| `gcloud functions delete` | `cloudfunctions.functions.delete` | `cloudfunctions.googleapis.com` | `--region` |
+| `gcloud functions call` | `cloudfunctions.functions.call` | `cloudfunctions.googleapis.com` | `--region` `--data` |
+
+### `gcloud app`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud app deploy` | `appengine.applications.create` `appengine.versions.create` | `appengine.googleapis.com` | `--region` `--version` `--promote` |
+| `gcloud app browse` | `appengine.applications.get` | `appengine.googleapis.com` | `--service` |
+| `gcloud app describe` | `appengine.applications.get` | `appengine.googleapis.com` | — |
+| `gcloud app versions list` | `appengine.versions.list` | `appengine.googleapis.com` | `--service` |
+| `gcloud app services set-traffic` | `appengine.services.update` | `appengine.googleapis.com` | `--splits` `--split-by` |
+
+### `gcloud sql`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud sql instances create` | `cloudsql.instances.create` | `sqladmin.googleapis.com` | `--database-version` `--tier` `--region` `--root-password` `--storage-size` `--availability-type` |
+| `gcloud sql instances list` | `cloudsql.instances.list` | `sqladmin.googleapis.com` | — |
+| `gcloud sql instances describe` | `cloudsql.instances.get` | `sqladmin.googleapis.com` | — |
+| `gcloud sql instances delete` | `cloudsql.instances.delete` | `sqladmin.googleapis.com` | — |
+| `gcloud sql backups create` | `cloudsql.backupRuns.create` | `sqladmin.googleapis.com` | `--instance` `--description` `--async` |
+| `gcloud sql backups list` | `cloudsql.instances.get` | `sqladmin.googleapis.com` | `--instance` |
+
+### `gcloud pubsub`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud pubsub topics create` | `pubsub.topics.create` | `pubsub.googleapis.com` | — |
+| `gcloud pubsub topics list` | `pubsub.topics.list` | `pubsub.googleapis.com` | — |
+| `gcloud pubsub topics describe` | `pubsub.topics.get` | `pubsub.googleapis.com` | — |
+| `gcloud pubsub subscriptions create` | `pubsub.subscriptions.create` | `pubsub.googleapis.com` | `--topic` `--ack-deadline` `--push-endpoint` |
+| `gcloud pubsub subscriptions list` | `pubsub.topics.list` | `pubsub.googleapis.com` | — |
+| `gcloud pubsub subscriptions describe` | `pubsub.subscriptions.get` | `pubsub.googleapis.com` | — |
+
+### `gcloud logging`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud logging read` | `logging.logEntries.list` | `logging.googleapis.com` | `--freshness` `--order` |
+| `gcloud logging logs list` | `logging.logs.list` | `logging.googleapis.com` | — |
+| `gcloud logging sinks create` | `logging.sinks.create` | `logging.googleapis.com` | `--log-filter` |
+| `gcloud logging sinks list` | `logging.sinks.list` | `logging.googleapis.com` | — |
+| `gcloud logging sinks describe` | `logging.sinks.get` | `logging.googleapis.com` | — |
+
+### `gcloud monitoring`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud monitoring dashboards list` | `monitoring.dashboards.list` | `monitoring.googleapis.com` | — |
+| `gcloud monitoring policies list` | `monitoring.alertPolicies.list` | `monitoring.googleapis.com` | — |
+
+### `gcloud kms`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud kms keyrings create` | `cloudkms.keyRings.create` | `cloudkms.googleapis.com` | `--location` |
+| `gcloud kms keyrings list` | `cloudkms.keyRings.list` | `cloudkms.googleapis.com` | `--location` |
+| `gcloud kms keyrings describe` | `cloudkms.keyRings.get` | `cloudkms.googleapis.com` | `--location` |
+
+### `gcloud dns`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud dns managed-zones create` | `dns.managedZones.create` | `dns.googleapis.com` | `--dns-name` `--description` `--visibility` |
+| `gcloud dns managed-zones list` | `dns.managedZones.list` | `dns.googleapis.com` | — |
+| `gcloud dns managed-zones describe` | `dns.managedZones.get` | `dns.googleapis.com` | — |
+
+### `gcloud deployment-manager`
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud deployment-manager deployments create` | `deploymentmanager.deployments.create` | `deploymentmanager.googleapis.com` | `--config` `--preview` |
+| `gcloud deployment-manager deployments list` | `deploymentmanager.deployments.list` | `deploymentmanager.googleapis.com` | — |
+| `gcloud deployment-manager deployments describe` | `deploymentmanager.deployments.get` | `deploymentmanager.googleapis.com` | — |
+
+## 解決はできるが未実装（0）
+
+設計書 3.1 の範囲はすべて実装済み。次に足すコマンドは、実装するまで `src/engine/commands/not-implemented/` に並べると、打ったときに E-002（`gcloud-sim: command not implemented yet`）になる。
+
+## サンプルファイル
+
+gcloud-sim にはローカルのファイルシステムが無い。**中身が結果を決めるファイル**を受けるコマンドは、次の固定のサンプルだけを名前で受け付ける（ディレクトリ部分は無視する）。無い名前は本物と同じ `No such file or directory`（E-005）になる。`gcloud storage cp ./x gs://b` のように名前しか使わない経路は任意のパスを受ける。
+
+| ファイル | 受けるコマンド | 中身 |
+|---|---|---|
+| `app.yaml` | `gcloud app deploy` | `runtime: python312` / `service: default` |
+| `deployment.yaml` | `kubectl apply -f` / `kubectl delete -f` | Deployment `web`（image `nginx:1.27`、replicas 2） |
+| `service.yaml` | `kubectl apply -f` / `kubectl delete -f` | Service `web`（type LoadBalancer、port 80 → 80、selector app=web） |
+| `config.yaml` | `gcloud deployment-manager deployments create --config` | `compute.v1.instance` の `dm-vm`（asia-northeast1-a） |
+| `lifecycle.json` | `gsutil lifecycle set` / `gcloud storage buckets update --lifecycle-file` | 365 日で Delete |
+| `lifecycle-nearline.json` | 同上 | 30 日で SetStorageClass NEARLINE |
+| `key.json` | `gcloud auth activate-service-account --key-file` | `web-sa@ace-dev-01.iam.gserviceaccount.com` の鍵。`keys create OUTPUT` で書き出した名前も使える |

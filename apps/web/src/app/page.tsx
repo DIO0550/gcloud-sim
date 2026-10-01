@@ -1,10 +1,8 @@
-// 画面はまだ無い。static export に index.html を出すための置き場。
+import { SimulatorLoader } from "./simulator-loader";
+
+// 見出し（h1）はシミュレータのヘッダーが持つ。
 const Home = () => {
-  return (
-    <main className="mx-auto max-w-3xl px-6 py-16">
-      <h1 className="text-2xl font-bold">gcloud-sim</h1>
-    </main>
-  );
+  return <SimulatorLoader />;
 };
 
 export default Home;

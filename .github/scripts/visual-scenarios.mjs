@@ -31,12 +31,63 @@ export const FROZEN_TIME = Date.UTC(2026, 0, 1, 12, 0, 0);
  *
  * steps に書けるもの:
  * - { click: "ボタンの文字" }        文字がちょうど一致するボタンを押す
+ * - { type: "gcloud ..." }           端末に 1 行打って Enter する（Console の画面に出すリソースを作る）
+ * - { fill: ["ラベル", "値"] }       そのラベルの入力欄に値を入れる
  * - { wait: 400 }                    ミリ秒待つ
  */
 export const SCENARIOS = [
   {
     name: "home",
-    label: "トップ",
-    steps: [],
+    label: "CLI 画面（初期 World）",
+    steps: [{ wait: 800 }],
+  },
+  {
+    name: "settings",
+    label: "設定ダイアログ",
+    steps: [{ wait: 800 }, { click: "設定" }, { wait: 300 }],
+  },
+  {
+    name: "console-vm-list",
+    label: "Console: VM インスタンス一覧（VM を 2 台作った状態）",
+    steps: [
+      { wait: 800 },
+      { type: "gcloud compute instances create web-1 --zone=asia-northeast1-a --tags=http-server" },
+      { type: "gcloud compute instances create batch-1 --zone=asia-northeast1-b --no-address" },
+      { type: "gcloud compute instances stop batch-1 --zone=asia-northeast1-b" },
+      { wait: 300 },
+      { click: "Console" },
+      { wait: 300 },
+      { click: "VM インスタンス" },
+      { wait: 300 },
+    ],
+  },
+  {
+    name: "console-vm-create",
+    label: "Console: インスタンスを作成（名前とタグを入れた状態）",
+    steps: [
+      { wait: 800 },
+      { click: "Console" },
+      { wait: 300 },
+      { click: "インスタンスを作成" },
+      { fill: ["名前", "web-2"] },
+      { fill: ["ネットワーク タグ", "http-server"] },
+      { wait: 300 },
+    ],
+  },
+  {
+    name: "console-iam",
+    label: "Console: IAM（継承されたロールを含む）",
+    steps: [
+      { wait: 800 },
+      {
+        type: "gcloud resource-manager folders add-iam-policy-binding 284100000001 --member=user:dev@example.com --role=roles/compute.instanceAdmin.v1",
+      },
+      { wait: 300 },
+      { click: "Console" },
+      { wait: 300 },
+      { click: "IAM" },
+      { click: "アクセス権を付与" },
+      { wait: 300 },
+    ],
   },
 ];
