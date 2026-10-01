@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import type userEvent from "@testing-library/user-event";
 
 import { Engine, type OutputLine } from "@/engine";
 import type { World } from "@/engine/domains/world";
@@ -108,3 +109,13 @@ export const resourceTree = (): HTMLElement =>
 
 /** 端末に書かれたものを 1 つの文字列にする。 */
 export const screenText = (terminal: FakeTerminal): string => terminal.written.join("");
+
+/** 自作の選択ボックス（`components/Select`）を開いて、見出しが `label` の選択肢を選ぶ。 */
+export const chooseOption = async (
+  user: ReturnType<typeof userEvent.setup>,
+  name: string,
+  label: string,
+): Promise<void> => {
+  await user.click(screen.getByRole("combobox", { name }));
+  await user.click(screen.getByRole("option", { name: label }));
+};

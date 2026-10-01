@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { Select } from "@/components/Select";
 
 import { World } from "@/engine/domains/world";
 import {
@@ -114,21 +115,20 @@ export const BudgetsScreen = ({ world, project, handlers }: ScreenProps): ReactE
           </fieldset>
           <Field label="対象プロジェクト" hint="選ばなければアカウント全体">
             {(id) => (
-              <select
+              <Select
                 id={id}
-                className={InputClass}
                 value={form.projectIds[0] ?? ""}
-                onChange={(e) =>
-                  editor.set("projectIds", e.target.value === "" ? [] : [e.target.value])
+                onChange={(projectId) =>
+                  editor.set("projectIds", projectId === "" ? [] : [projectId])
                 }
-              >
-                <option value="">すべてのプロジェクト</option>
-                {World.activeProjects(world).map((p) => (
-                  <option key={p.projectId} value={p.projectId}>
-                    {p.projectId}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: "", label: "すべてのプロジェクト" },
+                  ...World.activeProjects(world).map((p) => ({
+                    value: p.projectId,
+                    label: p.projectId,
+                  })),
+                ]}
+              />
             )}
           </Field>
         </CreateFormSection>
