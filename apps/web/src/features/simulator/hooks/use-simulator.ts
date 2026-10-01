@@ -3,7 +3,7 @@ import { useReducer } from "react";
 import { Engine, type ExecutionOutcome, type OutputLine, Shell, type ShellState } from "@/engine";
 import type { World } from "@/engine/domains/world";
 import type { Mission } from "@/engine/missions";
-import type { Selection } from "@/engine/resource-tree";
+import type { TreeSelection } from "@/engine/resource-tree";
 import { type ConsoleScreen, ConsoleScreens } from "@/features/simulator/features/console";
 import type { ValueOf } from "@/types/ValueOf";
 import { Option } from "@/utils/Option";
@@ -51,7 +51,7 @@ export type SimulatorState = Readonly<{
   shell: ShellState;
   transcript: readonly TranscriptLine[];
   nextLineId: number;
-  selection: Option<Selection>;
+  selection: Option<TreeSelection>;
   panelTab: PanelTab;
   settingsOpen: boolean;
   /** ツリーのダブルクリックで入力行に入れる文字列。端末が取り込んだら `insertConsumed` で消す */
@@ -82,7 +82,7 @@ export type SimulatorAction =
   | Readonly<{ type: "viewChanged"; view: View }>
   | Readonly<{ type: "consoleScreenChanged"; screen: ConsoleScreen }>
   | Readonly<{ type: "consoleOutcomeCleared" }>
-  | Readonly<{ type: "selected"; selection: Selection }>
+  | Readonly<{ type: "selected"; selection: TreeSelection }>
   | Readonly<{ type: "insertRequested"; text: string }>
   | Readonly<{ type: "insertConsumed" }>
   | Readonly<{ type: "tabChanged"; tab: PanelTab }>

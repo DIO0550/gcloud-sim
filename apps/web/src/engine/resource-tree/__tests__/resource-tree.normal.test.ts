@@ -6,9 +6,9 @@ import {
   BindingRow,
   type ResourceGroup,
   ResourceGroups,
-  Selection,
   type TreeLabel,
   TreeNode,
+  TreeSelection,
 } from "@/engine/resource-tree";
 import { Option } from "@/utils/Option";
 
@@ -109,12 +109,12 @@ test("バケットの継承元にはプロジェクト由来の行がプロジ�
 
 test("describe コマンドはリソースごとに組み立てられ、組織には無い", () => {
   expect(
-    Selection.describeCommand({
+    TreeSelection.describeCommand({
       kind: "instance",
       projectId: "p",
       zone: "asia-northeast1-a",
       name: "web-1",
     }),
   ).toEqual(Option.some("gcloud compute instances describe web-1 --zone=asia-northeast1-a"));
-  expect(Selection.describeCommand({ kind: "organization" })).toEqual(Option.none);
+  expect(TreeSelection.describeCommand({ kind: "organization" })).toEqual(Option.none);
 });

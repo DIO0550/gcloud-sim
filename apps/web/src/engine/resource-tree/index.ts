@@ -1,118 +1,15 @@
-import type { Zone } from "@/engine/domains/catalog";
+import { Budget } from "@/engine/domains/billing-budget";
 import { Instance } from "@/engine/domains/compute";
 import { type IamMember, IamPolicy, type RoleName } from "@/engine/domains/iam-policy";
+import type { GkeCluster } from "@/engine/domains/managed-services";
+import { NodePool } from "@/engine/domains/managed-services";
 import { type ParentRef, PolicyTarget, type Project } from "@/engine/domains/resource-hierarchy";
 import { World } from "@/engine/domains/world";
+import { TreeSelection } from "@/engine/resource-tree/selection";
 import type { ValueOf } from "@/types/ValueOf";
 import { Option } from "@/utils/Option";
 
-/** ツリーで選べるもの。プロパティパネルはこれを見て World から中身を引く。 */
-export type Selection =
-  | Readonly<{ kind: "organization" }>
-  | Readonly<{ kind: "folder"; id: string }>
-  | Readonly<{ kind: "project"; projectId: string }>
-  | Readonly<{ kind: "billing"; id: string }>
-  | Readonly<{ kind: "instance"; projectId: string; zone: Zone; name: string }>
-  | Readonly<{ kind: "network"; projectId: string; name: string }>
-  | Readonly<{ kind: "firewall"; projectId: string; name: string }>
-  | Readonly<{ kind: "bucket"; name: string }>
-  | Readonly<{ kind: "cluster"; projectId: string; name: string }>
-  | Readonly<{ kind: "run-service"; projectId: string; name: string }>
-  | Readonly<{ kind: "service-account"; email: string }>
-  | Readonly<{ kind: "iam"; target: PolicyTarget }>;
-
-export const Selection = {
-  /**
-   * 2 つの選択が同じものを指しているか。
-   *
-   * @param a 片方
-   * @param b もう片方
-   * @returns 種類とキーが同じなら真
-   */
-  equals(a: Selection, b: Selection): boolean {
-    return Selection.key(a) === Selection.key(b);
-  },
-
-  /** ツリーのノード id にもなる一意なキー。 */
-  key(selection: Selection): string {
-    switch (selection.kind) {
-      case "organization":
-        return "organization";
-      case "folder":
-        return `folder:${selection.id}`;
-      case "project":
-        return `project:${selection.projectId}`;
-      case "billing":
-        return `billing:${selection.id}`;
-      case "instance":
-        return `instance:${selection.projectId}/${selection.zone}/${selection.name}`;
-      case "network":
-        return `network:${selection.projectId}/${selection.name}`;
-      case "firewall":
-        return `firewall:${selection.projectId}/${selection.name}`;
-      case "bucket":
-        return `bucket:${selection.name}`;
-      case "cluster":
-        return `cluster:${selection.projectId}/${selection.name}`;
-      case "run-service":
-        return `run:${selection.projectId}/${selection.name}`;
-      case "service-account":
-        return `sa:${selection.email}`;
-      case "iam":
-        return `iam:${selection.target.type}/${selection.target.id}`;
-    }
-  },
-
-  /**
-   * ダブルクリックで入力行に挿入する describe コマンド（UC-007）。
-   *
-   * @param selection 選択
-   * @returns そのリソースを describe するコマンド。無いもの（組織）は `none`
-   */
-  describeCommand(selection: Selection): Option<string> {
-    switch (selection.kind) {
-      case "organization":
-        return Option.none;
-      case "folder":
-        return Option.some(`gcloud resource-manager folders describe ${selection.id}`);
-      case "project":
-        return Option.some(`gcloud projects describe ${selection.projectId}`);
-      case "billing":
-        return Option.some(`gcloud billing accounts describe ${selection.id}`);
-      case "instance":
-        return Option.some(
-          `gcloud compute instances describe ${selection.name} --zone=${selection.zone}`,
-        );
-      case "network":
-        return Option.some(`gcloud compute networks describe ${selection.name}`);
-      case "firewall":
-        return Option.some(`gcloud compute firewall-rules describe ${selection.name}`);
-      case "bucket":
-        return Option.some(`gcloud storage buckets describe gs://${selection.name}`);
-      case "cluster":
-        return Option.some(`gcloud container clusters describe ${selection.name}`);
-      case "run-service":
-        return Option.some(`gcloud run services describe ${selection.name}`);
-      case "service-account":
-        return Option.some(`gcloud iam service-accounts describe ${selection.email}`);
-      case "iam": {
-        const t = selection.target;
-        switch (t.type) {
-          case "organization":
-            return Option.some(`gcloud organizations get-iam-policy ${t.id}`);
-          case "folder":
-            return Option.some(`gcloud resource-manager folders get-iam-policy ${t.id}`);
-          case "project":
-            return Option.some(`gcloud projects get-iam-policy ${t.id}`);
-          case "bucket":
-            return Option.some(`gcloud storage buckets get-iam-policy gs://${t.id}`);
-          case "service-account":
-            return Option.some(`gcloud iam service-accounts get-iam-policy ${t.id}`);
-        }
-      }
-    }
-  },
-} as const;
+export { TreeSelection } from "@/engine/resource-tree/selection";
 
 /** ノードの左に出す種別。綴り（`組織` / `PJ` 等）は表示側が決める。 */
 export const TreeBadges = {
@@ -127,11 +24,23 @@ export type TreeBadge = ValueOf<typeof TreeBadges>;
 /** プロジェクト直下でリソースを種別ごとに束ねるグループ。見出しの綴りは表示側が決める。 */
 export const ResourceGroups = {
   Compute: "compute",
+  Disks: "disks",
+  InstanceGroups: "instance-groups",
+  LoadBalancing: "load-balancing",
   Vpc: "vpc",
   Storage: "storage",
   Gke: "gke",
   Run: "run",
+  Functions: "functions",
+  AppEngine: "app-engine",
+  Sql: "sql",
+  Pubsub: "pubsub",
+  Logging: "logging",
+  Kms: "kms",
+  Dns: "dns",
+  DeploymentManager: "deployment-manager",
   ServiceAccounts: "service-accounts",
+  Roles: "roles",
   Iam: "iam",
 } as const;
 export type ResourceGroup = ValueOf<typeof ResourceGroups>;
@@ -147,7 +56,7 @@ export type TreeNode = Readonly<{
   label: TreeLabel;
   /** グループ行に出す件数 */
   count: Option<number>;
-  selection: Option<Selection>;
+  selection: Option<TreeSelection>;
   children: readonly TreeNode[];
   /** インスタンスの状態など、ラベルの左に出す点の色 */
   status: "none" | "running" | "stopped";
@@ -169,6 +78,7 @@ const node = (
 
 const text = (value: string): TreeLabel => ({ kind: "text", text: value });
 
+/** 中身が無いグループは出さない（件数 0 の見出しが並ぶと本当にあるものが埋もれる）。 */
 const group = (
   projectId: string,
   kind: ResourceGroup,
@@ -184,60 +94,219 @@ const group = (
         ),
       ];
 
-const leaf = (selection: Selection, label: string, status: TreeNode["status"] = "none"): TreeNode =>
-  node(Selection.key(selection), text(label), { selection: Option.some(selection), status });
+type LeafFields = Partial<Pick<TreeNode, "children" | "status">>;
+
+const leaf = (selection: TreeSelection, label: string, fields: LeafFields = {}): TreeNode =>
+  node(TreeSelection.key(selection), text(label), {
+    selection: Option.some(selection),
+    ...fields,
+  });
 
 const byName = <T extends { name: string }>(items: readonly T[]): readonly T[] =>
   items.toSorted((a, b) => a.name.localeCompare(b.name));
 
-const projectNode = (world: World, project: Project): TreeNode => {
-  const id = project.projectId;
-  const instances = byName(World.instancesOf(world, id)).map((i) =>
-    leaf(
-      { kind: "instance", projectId: id, zone: i.zone, name: i.name },
-      i.name,
-      Instance.isRunning(i) ? "running" : "stopped",
-    ),
-  );
-  const networks = byName(World.networksOf(world, id)).map((n) =>
-    node(Selection.key({ kind: "network", projectId: id, name: n.name }), text(n.name), {
-      selection: Option.some({ kind: "network", projectId: id, name: n.name }),
-      children: byName(World.firewallRulesOf(world, id).filter((r) => r.network === n.name)).map(
-        (r) => leaf({ kind: "firewall", projectId: id, name: r.name }, `fw: ${r.name}`),
-      ),
+const computeNodes = (world: World, id: string): readonly TreeNode[] =>
+  byName(World.instancesOf(world, id)).map((i) =>
+    leaf({ kind: "instance", projectId: id, zone: i.zone, name: i.name }, i.name, {
+      status: Instance.isRunning(i) ? "running" : "stopped",
     }),
   );
+
+/** 独立ディスクとスナップショット。インスタンスのブートディスクはインスタンス側に出る。 */
+const diskNodes = (world: World, id: string): readonly TreeNode[] => [
+  ...World.disksOf(world, id).map((d) =>
+    leaf({ kind: "disk", projectId: id, zone: d.zone, name: d.name }, d.name),
+  ),
+  ...byName(World.diskSnapshotsOf(world, id)).map((s) =>
+    leaf({ kind: "snapshot", projectId: id, name: s.name }, `snapshot: ${s.name}`),
+  ),
+];
+
+const instanceGroupNodes = (world: World, id: string): readonly TreeNode[] => [
+  ...World.namedOf(world, "instanceTemplates", id).map((t) =>
+    leaf({ kind: "instance-template", projectId: id, name: t.name }, `template: ${t.name}`),
+  ),
+  ...World.namedOf(world, "instanceGroups", id).map((g) =>
+    leaf(
+      { kind: "instance-group", projectId: id, location: g.location, name: g.name },
+      `mig: ${g.name}`,
+    ),
+  ),
+];
+
+const loadBalancingNodes = (world: World, id: string): readonly TreeNode[] => [
+  ...World.namedOf(world, "healthChecks", id).map((h) =>
+    leaf({ kind: "health-check", projectId: id, name: h.name }, `hc: ${h.name}`),
+  ),
+  ...World.namedOf(world, "backendServices", id).map((b) =>
+    leaf(
+      { kind: "backend-service", projectId: id, scope: b.scope, name: b.name },
+      `bes: ${b.name}`,
+    ),
+  ),
+  ...World.namedOf(world, "forwardingRules", id).map((r) =>
+    leaf({ kind: "forwarding-rule", projectId: id, scope: r.scope, name: r.name }, `fr: ${r.name}`),
+  ),
+  ...World.namedOf(world, "addresses", id).map((a) =>
+    leaf({ kind: "address", projectId: id, region: a.region, name: a.name }, `ip: ${a.name}`),
+  ),
+];
+
+/** ネットワークの下にサブネット・ファイアウォール・ルータを束ねる。 */
+const networkNodes = (world: World, id: string): readonly TreeNode[] =>
+  byName(World.networksOf(world, id)).map((n) => {
+    const subnets = byName(World.subnetsOf(world, id).filter((s) => s.network === n.name)).map(
+      (s) =>
+        leaf(
+          { kind: "subnet", projectId: id, region: s.region, name: s.name },
+          `subnet: ${s.name} (${s.region})`,
+        ),
+    );
+    const firewalls = byName(
+      World.firewallRulesOf(world, id).filter((r) => r.network === n.name),
+    ).map((r) => leaf({ kind: "firewall", projectId: id, name: r.name }, `fw: ${r.name}`));
+    const routers = World.namedOf(world, "routers", id)
+      .filter((r) => r.network === n.name)
+      .map((r) =>
+        leaf(
+          { kind: "router", projectId: id, region: r.region, name: r.name },
+          `router: ${r.name}`,
+        ),
+      );
+    return leaf({ kind: "network", projectId: id, name: n.name }, n.name, {
+      children: [...subnets, ...firewalls, ...routers],
+    });
+  });
+
+/** クラスタの下にノードプールと、kubectl で作った Deployment / Service を束ねる。 */
+const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[] => {
+  const id = cluster.projectId;
+  const pools = cluster.autopilot
+    ? []
+    : [NodePool.defaultPool(cluster), ...World.nodePoolsOf(world, cluster)].map((p) =>
+        leaf(
+          { kind: "node-pool", projectId: id, cluster: cluster.name, name: p.name },
+          `pool: ${p.name}`,
+        ),
+      );
+  const deployments = World.kubeDeploymentsOf(world, cluster).map((d) =>
+    leaf(
+      { kind: "kube-deployment", projectId: id, cluster: cluster.name, name: d.name },
+      `deploy: ${d.name}`,
+    ),
+  );
+  const services = World.kubeServicesOf(world, cluster).map((s) =>
+    leaf(
+      { kind: "kube-service", projectId: id, cluster: cluster.name, name: s.name },
+      `svc: ${s.name}`,
+    ),
+  );
+  return [...pools, ...deployments, ...services];
+};
+
+const gkeNodes = (world: World, id: string): readonly TreeNode[] =>
+  byName(World.clustersOf(world, id)).map((c) =>
+    leaf({ kind: "cluster", projectId: id, name: c.name }, c.name, {
+      children: clusterChildren(world, c),
+    }),
+  );
+
+/** App Engine のアプリ 1 つと、その下のバージョン（サービス/ID）。 */
+const appEngineNodes = (world: World, id: string): readonly TreeNode[] =>
+  Option.unwrapOr(
+    Option.map(World.findAppEngineApp(world, id), (app) => {
+      const versions = world.appVersions
+        .filter((v) => v.projectId === id)
+        .map((v) =>
+          leaf(
+            { kind: "app-version", projectId: id, service: v.service, id: v.id },
+            `${v.service}/${v.id}`,
+          ),
+        );
+      return [
+        leaf({ kind: "app-engine", projectId: id }, `${id} (${app.region})`, {
+          children: versions,
+        }),
+      ];
+    }),
+    [],
+  );
+
+const pubsubNodes = (world: World, id: string): readonly TreeNode[] =>
+  World.namedOf(world, "pubsubTopics", id).map((t) =>
+    leaf({ kind: "topic", projectId: id, name: t.name }, t.name, {
+      children: World.namedOf(world, "pubsubSubscriptions", id)
+        .filter((s) => s.topic === t.name)
+        .map((s) => leaf({ kind: "subscription", projectId: id, name: s.name }, `sub: ${s.name}`)),
+    }),
+  );
+
+const projectNode = (world: World, project: Project): TreeNode => {
+  const id = project.projectId;
   const buckets = byName(World.bucketsOf(world, id)).map((b) =>
     leaf({ kind: "bucket", name: b.name }, b.name),
   );
-  const clusters = byName(World.clustersOf(world, id)).map((c) =>
-    leaf({ kind: "cluster", projectId: id, name: c.name }, c.name),
-  );
-  const services = byName(World.runServicesOf(world, id)).map((s) =>
+  const runServices = byName(World.runServicesOf(world, id)).map((s) =>
     leaf({ kind: "run-service", projectId: id, name: s.name }, s.name),
+  );
+  const functions = World.namedOf(world, "functions", id).map((f) =>
+    leaf({ kind: "function", projectId: id, region: f.region, name: f.name }, f.name),
+  );
+  const sqlInstances = World.namedOf(world, "sqlInstances", id).map((i) =>
+    leaf({ kind: "sql-instance", projectId: id, name: i.name }, i.name),
+  );
+  const sinks = World.namedOf(world, "logSinks", id).map((s) =>
+    leaf({ kind: "log-sink", projectId: id, name: s.name }, s.name),
+  );
+  const keyRings = World.namedOf(world, "kmsKeyRings", id).map((r) =>
+    leaf(
+      { kind: "key-ring", projectId: id, location: r.location, name: r.name },
+      `${r.location}/${r.name}`,
+    ),
+  );
+  const dnsZones = World.namedOf(world, "dnsZones", id).map((z) =>
+    leaf({ kind: "dns-zone", projectId: id, name: z.name }, z.name),
+  );
+  const deployments = World.namedOf(world, "dmDeployments", id).map((d) =>
+    leaf({ kind: "dm-deployment", projectId: id, name: d.name }, d.name),
   );
   const accounts = World.serviceAccountsOf(world, id)
     .toSorted((a, b) => a.email.localeCompare(b.email))
     .map((s) =>
       leaf({ kind: "service-account", email: s.email }, s.email.split("@")[0] ?? s.email),
     );
+  const roles = World.customRolesOf(world, id).map((r) =>
+    leaf({ kind: "custom-role", projectId: id, roleId: r.roleId }, r.roleId),
+  );
   const bindingCount = project.iamPolicy.bindings.reduce((sum, b) => sum + b.members.length, 0);
-  const iamSelection: Selection = { kind: "iam", target: { type: "project", id } };
+  const iamSelection: TreeSelection = { kind: "iam", target: { type: "project", id } };
   const iam = node(
-    Selection.key(iamSelection),
+    TreeSelection.key(iamSelection),
     { kind: "group", group: ResourceGroups.Iam },
     { count: Option.some(bindingCount), selection: Option.some(iamSelection) },
   );
-  return node(Selection.key({ kind: "project", projectId: id }), text(id), {
+  return node(TreeSelection.key({ kind: "project", projectId: id }), text(id), {
     badge: TreeBadges.Project,
     selection: Option.some({ kind: "project", projectId: id }),
     children: [
-      ...group(id, ResourceGroups.Compute, instances),
-      ...group(id, ResourceGroups.Vpc, networks),
+      ...group(id, ResourceGroups.Compute, computeNodes(world, id)),
+      ...group(id, ResourceGroups.Disks, diskNodes(world, id)),
+      ...group(id, ResourceGroups.InstanceGroups, instanceGroupNodes(world, id)),
+      ...group(id, ResourceGroups.LoadBalancing, loadBalancingNodes(world, id)),
+      ...group(id, ResourceGroups.Vpc, networkNodes(world, id)),
       ...group(id, ResourceGroups.Storage, buckets),
-      ...group(id, ResourceGroups.Gke, clusters),
-      ...group(id, ResourceGroups.Run, services),
+      ...group(id, ResourceGroups.Gke, gkeNodes(world, id)),
+      ...group(id, ResourceGroups.Run, runServices),
+      ...group(id, ResourceGroups.Functions, functions),
+      ...group(id, ResourceGroups.AppEngine, appEngineNodes(world, id)),
+      ...group(id, ResourceGroups.Sql, sqlInstances),
+      ...group(id, ResourceGroups.Pubsub, pubsubNodes(world, id)),
+      ...group(id, ResourceGroups.Logging, sinks),
+      ...group(id, ResourceGroups.Kms, keyRings),
+      ...group(id, ResourceGroups.Dns, dnsZones),
+      ...group(id, ResourceGroups.DeploymentManager, deployments),
       ...group(id, ResourceGroups.ServiceAccounts, accounts),
+      ...group(id, ResourceGroups.Roles, roles),
       iam,
     ],
   });
@@ -246,7 +315,7 @@ const projectNode = (world: World, project: Project): TreeNode => {
 /** 親の直下にあるフォルダとプロジェクト（フォルダが先、それぞれ名前順）。 */
 const childrenUnder = (world: World, parent: ParentRef): readonly TreeNode[] => [
   ...World.foldersUnder(world, parent).map((f) =>
-    node(Selection.key({ kind: "folder", id: f.id }), text(f.displayName), {
+    node(TreeSelection.key({ kind: "folder", id: f.id }), text(f.displayName), {
       badge: TreeBadges.Folder,
       selection: Option.some({ kind: "folder", id: f.id }),
       children: childrenUnder(world, { type: "folder", id: f.id }),
@@ -254,6 +323,16 @@ const childrenUnder = (world: World, parent: ParentRef): readonly TreeNode[] => 
   ),
   ...World.projectsUnder(world, parent).map((p) => projectNode(world, p)),
 ];
+
+/** 請求アカウントと、その下の予算。 */
+const billingNode = (world: World, id: string): TreeNode =>
+  node(TreeSelection.key({ kind: "billing", id }), text(id), {
+    badge: TreeBadges.Billing,
+    selection: Option.some({ kind: "billing", id }),
+    children: World.budgetsOf(world, id).map((b) =>
+      leaf({ kind: "budget", billingAccountId: id, id: Budget.id(b) }, `budget: ${b.displayName}`),
+    ),
+  });
 
 export const TreeNode = {
   /**
@@ -265,7 +344,7 @@ export const TreeNode = {
    */
   fromWorld(world: World): readonly TreeNode[] {
     const organization = node(
-      Selection.key({ kind: "organization" }),
+      TreeSelection.key({ kind: "organization" }),
       text(world.organization.displayName),
       {
         badge: TreeBadges.Organization,
@@ -273,12 +352,7 @@ export const TreeNode = {
         children: childrenUnder(world, { type: "organization", id: world.organization.id }),
       },
     );
-    const billing = world.billingAccounts.map((b) =>
-      node(Selection.key({ kind: "billing", id: b.id }), text(b.id), {
-        badge: TreeBadges.Billing,
-        selection: Option.some({ kind: "billing", id: b.id }),
-      }),
-    );
+    const billing = world.billingAccounts.map((b) => billingNode(world, b.id));
     return [organization, ...billing];
   },
 } as const;

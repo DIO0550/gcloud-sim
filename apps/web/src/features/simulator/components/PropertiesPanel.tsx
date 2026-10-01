@@ -1,466 +1,195 @@
 import type { ReactElement } from "react";
 
-import {
-  DefaultScopes,
-  ExternalIp,
-  FirewallRule,
-  Instance,
-  ProtocolRule,
-} from "@/engine/domains/compute";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
-import type { IamMember, RoleName } from "@/engine/domains/iam-policy";
-import { CloudRunService } from "@/engine/domains/managed-services";
-import type { PolicyTarget } from "@/engine/domains/resource-hierarchy";
-import { RoleCatalog } from "@/engine/domains/role-catalog";
 import { World } from "@/engine/domains/world";
-import { type BindingOrigin, BindingRow, Selection } from "@/engine/resource-tree";
+import { TreeSelection } from "@/engine/resource-tree";
+import {
+  AddressProperties,
+  BackendServiceProperties,
+  DiskProperties,
+  FirewallProperties,
+  ForwardingRuleProperties,
+  HealthCheckProperties,
+  InstanceGroupProperties,
+  InstanceProperties,
+  InstanceTemplateProperties,
+  NetworkProperties,
+  RouterProperties,
+  SnapshotProperties,
+  SubnetProperties,
+} from "@/features/simulator/components/ComputeProperties";
+import {
+  BillingProperties,
+  BudgetProperties,
+  CustomRoleProperties,
+  FolderProperties,
+  IamProperties,
+  OrganizationProperties,
+  ProjectProperties,
+  ServiceAccountProperties,
+} from "@/features/simulator/components/HierarchyProperties";
+import {
+  AppEngineProperties,
+  AppVersionProperties,
+  BucketProperties,
+  ClusterProperties,
+  DmDeploymentProperties,
+  DnsZoneProperties,
+  FunctionProperties,
+  KeyRingProperties,
+  KubeDeploymentProperties,
+  KubeServiceProperties,
+  LogSinkProperties,
+  NodePoolProperties,
+  RunServiceProperties,
+  SqlInstanceProperties,
+  SubscriptionProperties,
+  TopicProperties,
+} from "@/features/simulator/components/ServiceProperties";
 import { Option } from "@/utils/Option";
 
 type PropertiesPanelProps = Readonly<{
   world: World;
-  selection: Option<Selection>;
+  selection: Option<TreeSelection>;
   onInsert: (command: string) => void;
 }>;
-
-type Row = Readonly<{ label: string; value: string }>;
-
-const Section = ({
-  title,
-  rows,
-}: Readonly<{ title: string; rows: readonly Row[] }>): ReactElement => (
-  <section className="mb-4">
-    <h4 className="mb-1 font-semibold text-muted text-xs">{title}</h4>
-    <dl className="grid grid-cols-[9rem_1fr] gap-x-3 gap-y-1 text-sm">
-      {rows.map((row) => (
-        <div key={row.label} className="contents">
-          <dt className="text-muted">{row.label}</dt>
-          <dd className="break-all font-mono">{row.value}</dd>
-        </div>
-      ))}
-    </dl>
-  </section>
-);
-
-/** ロールの表示名。カタログに無ければ World のカスタムロール、それも無ければ名前そのまま。 */
-const roleTitle = (world: World, role: RoleName): string =>
-  Option.unwrapOr(
-    Option.or(
-      Option.map(RoleCatalog.find(role), (r) => r.title),
-      Option.map(World.findCustomRole(world, role), (r) => r.title),
-    ),
-    role,
-  );
-
-const memberLabel = (member: IamMember): string => member.replace(/^user:/, "");
-
-/** 継承元の綴り（モック s2: `組織 example.com` / `フォルダ dev` / `このプロジェクト`）。 */
-const originText = (origin: BindingOrigin): string => {
-  switch (origin.kind) {
-    case "self":
-      switch (origin.target.type) {
-        case "organization":
-          return "この組織";
-        case "folder":
-          return "このフォルダ";
-        case "project":
-          return "このプロジェクト";
-        case "bucket":
-          return "このバケット";
-        case "service-account":
-          return "このサービスアカウント";
-      }
-      break;
-    case "organization":
-      return `組織 ${origin.displayName}`;
-    case "folder":
-      return `フォルダ ${origin.displayName}`;
-    case "project":
-      return `プロジェクト ${origin.projectId}`;
-    case "bucket":
-      return `バケット ${origin.name}`;
-    case "service-account":
-      return `サービスアカウント ${origin.email}`;
-  }
-};
-
-const protocolText = (rules: readonly ProtocolRule[]): string =>
-  rules.map(ProtocolRule.toText).join(", ") || "-";
-
-/** IAM の表（モック s2: プリンシパル・ロール・継承元）。 */
-const PolicyTable = ({
-  world,
-  target,
-}: Readonly<{ world: World; target: PolicyTarget }>): ReactElement => {
-  const rows = BindingRow.fromWorld(world, target);
-  return (
-    <table className="w-full table-fixed text-sm" aria-label="IAM ポリシー">
-      <colgroup>
-        <col className="w-[38%]" />
-        <col className="w-[38%]" />
-        <col className="w-[24%]" />
-      </colgroup>
-      <thead className="text-left text-muted text-xs">
-        <tr>
-          <th className="py-1 pr-2 font-medium">プリンシパル</th>
-          <th className="py-1 pr-2 font-medium">ロール</th>
-          <th className="py-1 font-medium">継承元</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.length === 0 && (
-          <tr>
-            <td colSpan={3} className="py-2 text-muted">
-              バインディングはありません
-            </td>
-          </tr>
-        )}
-        {rows.map((row) => {
-          const origin = originText(row.origin);
-          return (
-            <tr key={`${row.member}/${row.role}/${origin}`} className="border-line border-t">
-              <td className="break-all py-1.5 pr-2 font-mono text-xs">{memberLabel(row.member)}</td>
-              <td className="py-1.5 pr-2">
-                {roleTitle(world, row.role)}
-                <span className="block font-mono text-muted text-xs">{row.role}</span>
-              </td>
-              <td
-                className={`py-1.5 text-xs ${BindingRow.isInherited(row) ? "text-warn-ink" : "text-muted"}`}
-              >
-                {origin}
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
-  );
-};
-
-const NotFound = ({ what }: Readonly<{ what: string }>): ReactElement => (
-  <p className="text-muted text-sm">{what} は見つかりません（削除されました）。</p>
-);
 
 const Body = ({
   world,
   selection,
-}: Readonly<{ world: World; selection: Selection }>): ReactElement => {
+}: Readonly<{ world: World; selection: TreeSelection }>): ReactElement => {
   switch (selection.kind) {
     case "organization":
-      return (
-        <>
-          <Section
-            title="基本"
-            rows={[
-              { label: "id", value: world.organization.id },
-              { label: "displayName", value: world.organization.displayName },
-            ]}
-          />
-          <h4 className="mb-1 font-semibold text-muted text-xs">IAM</h4>
-          <PolicyTable world={world} target={{ type: "organization", id: world.organization.id }} />
-        </>
-      );
-    case "folder": {
-      const folder = World.findFolder(world, selection.id);
-      if (!Option.isSome(folder)) return <NotFound what="フォルダ" />;
-      return (
-        <>
-          <Section
-            title="基本"
-            rows={[
-              { label: "id", value: folder.value.id },
-              { label: "displayName", value: folder.value.displayName },
-              { label: "parent", value: `${folder.value.parent.type}/${folder.value.parent.id}` },
-            ]}
-          />
-          <h4 className="mb-1 font-semibold text-muted text-xs">IAM（継承を含む）</h4>
-          <PolicyTable world={world} target={{ type: "folder", id: folder.value.id }} />
-        </>
-      );
-    }
-    case "project": {
-      const project = World.findProject(world, selection.projectId);
-      if (!Option.isSome(project)) return <NotFound what="プロジェクト" />;
-      const p = project.value;
-      return (
-        <>
-          <Section
-            title="基本"
-            rows={[
-              { label: "projectId", value: p.projectId },
-              { label: "name", value: p.name },
-              { label: "projectNumber", value: p.projectNumber },
-              { label: "lifecycleState", value: p.lifecycleState },
-              { label: "parent", value: `${p.parent.type}/${p.parent.id}` },
-              { label: "createTime", value: p.createTime },
-            ]}
-          />
-          <Section
-            title="請求"
-            rows={[
-              { label: "billingAccount", value: Option.unwrapOr(p.billingAccountId, "未リンク") },
-            ]}
-          />
-          <Section
-            title="有効な API"
-            rows={
-              p.enabledApis.length === 0
-                ? [{ label: "(none)", value: "gcloud services enable で有効化" }]
-                : p.enabledApis.map((api) => ({ label: api.split(".")[0] ?? api, value: api }))
-            }
-          />
-        </>
-      );
-    }
-    case "billing": {
-      const account = World.findBillingAccount(world, selection.id);
-      if (!Option.isSome(account)) return <NotFound what="請求アカウント" />;
-      const linked = world.projects
-        .filter(
-          (p) => Option.isSome(p.billingAccountId) && p.billingAccountId.value === selection.id,
-        )
-        .map((p) => p.projectId);
-      return (
-        <Section
-          title="基本"
-          rows={[
-            { label: "id", value: account.value.id },
-            { label: "displayName", value: account.value.displayName },
-            { label: "open", value: String(account.value.open) },
-            { label: "linked projects", value: linked.length === 0 ? "(none)" : linked.join(", ") },
-          ]}
-        />
-      );
-    }
-    case "instance": {
-      const instance = World.findInstance(
-        world,
-        selection.projectId,
-        selection.zone,
-        selection.name,
-      );
-      if (!Option.isSome(instance)) return <NotFound what="インスタンス" />;
-      const i = instance.value;
-      const nic = i.networkInterfaces[0];
-      const boot = i.disks.find((d) => d.boot);
-      const rules = World.firewallRulesOf(world, i.projectId).filter(
-        (r) => FirewallRule.appliesTo(r, i) && r.targetTags.length > 0,
-      );
-      const operations = world.operations.filter((o) => o.targetLink === Instance.selfLink(i));
-      return (
-        <>
-          <Section
-            title="基本"
-            rows={[
-              { label: "machineType", value: i.machineType },
-              { label: "zone", value: i.zone },
-              {
-                label: "scheduling",
-                value: `${i.provisioningModel}${i.preemptible ? " · preemptible" : ""}`,
-              },
-              { label: "creationTimestamp", value: i.creationTimestamp },
-            ]}
-          />
-          <Section
-            title="ネットワーク"
-            rows={[
-              {
-                label: "network / subnet",
-                value: nic === undefined ? "-" : `${nic.network} / ${nic.subnetwork}`,
-              },
-              { label: "internal IP", value: nic?.networkIP ?? "-" },
-              {
-                label: "external IP",
-                value:
-                  nic === undefined
-                    ? "-"
-                    : nic.externalIP.kind === "none"
-                      ? "なし"
-                      : `${Option.unwrapOr(ExternalIp.address(nic.externalIP), "(解放中)")} エフェメラル`,
-              },
-              { label: "tags", value: i.tags.length === 0 ? "(none)" : i.tags.join(", ") },
-            ]}
-          />
-          {rules.length > 0 && (
-            <p className="mb-4 rounded bg-ok-soft px-3 py-2 text-sm">
-              ↳ 適用されるファイアウォール:{" "}
-              {rules.map((r) => `${r.name}（${protocolText(r.allowed)} · タグ一致）`).join(" / ")}
-            </p>
-          )}
-          <Section
-            title="ディスク"
-            rows={[
-              {
-                label: "boot",
-                value:
-                  boot === undefined ? "-" : `${boot.deviceName} · ${boot.type} · ${boot.sizeGb}GB`,
-              },
-              { label: "image", value: boot?.sourceImage.split("/").at(-1) ?? "-" },
-            ]}
-          />
-          <Section
-            title="ID とアクセス"
-            rows={[
-              { label: "serviceAccount", value: i.serviceAccount },
-              {
-                label: "scopes",
-                value:
-                  i.scopes.length === DefaultScopes.length &&
-                  DefaultScopes.every((s) => i.scopes.includes(s))
-                    ? `デフォルト（${DefaultScopes.length} 件）`
-                    : `${i.scopes.length} 件`,
-              },
-            ]}
-          />
-          <Section
-            title="オペレーション"
-            rows={operations.map((o) => ({
-              label: o.operationType,
-              value: `${o.status} ${o.insertTime}`,
-            }))}
-          />
-        </>
-      );
-    }
-    case "network": {
-      const network = World.findNetwork(world, selection.projectId, selection.name);
-      if (!Option.isSome(network)) return <NotFound what="ネットワーク" />;
-      const subnets = World.subnetsOf(world, selection.projectId).filter(
-        (s) => s.network === selection.name,
-      );
-      return (
-        <>
-          <Section
-            title="基本"
-            rows={[
-              { label: "name", value: network.value.name },
-              { label: "subnetMode", value: network.value.subnetMode },
-            ]}
-          />
-          <Section
-            title="サブネット"
-            rows={subnets.map((s) => ({ label: s.region, value: `${s.name} ${s.ipCidrRange}` }))}
-          />
-        </>
-      );
-    }
-    case "firewall": {
-      const rule = World.findFirewallRule(world, selection.projectId, selection.name);
-      if (!Option.isSome(rule)) return <NotFound what="ファイアウォールルール" />;
-      const r = rule.value;
-      return (
-        <Section
-          title="基本"
-          rows={[
-            { label: "network", value: r.network },
-            { label: "direction", value: r.direction },
-            { label: "priority", value: String(r.priority) },
-            { label: "sourceRanges", value: r.sourceRanges.join(", ") || "-" },
-            { label: "targetTags", value: r.targetTags.join(", ") || "(すべてのインスタンス)" },
-            { label: "allow", value: protocolText(r.allowed) },
-            { label: "deny", value: protocolText(r.denied) },
-          ]}
-        />
-      );
-    }
-    case "bucket": {
-      const bucket = World.findBucket(world, selection.name);
-      if (!Option.isSome(bucket)) return <NotFound what="バケット" />;
-      const b = bucket.value;
-      return (
-        <>
-          <Section
-            title="基本"
-            rows={[
-              { label: "location", value: b.location },
-              { label: "storageClass", value: b.storageClass },
-              { label: "uniformBucketLevelAccess", value: String(b.uniformBucketLevelAccess) },
-              { label: "objects", value: String(b.objects.length) },
-            ]}
-          />
-          <h4 className="mb-1 font-semibold text-muted text-xs">IAM（継承を含む）</h4>
-          <PolicyTable world={world} target={{ type: "bucket", id: b.name }} />
-        </>
-      );
-    }
-    case "cluster": {
-      const cluster = World.findCluster(world, selection.projectId, selection.name);
-      if (!Option.isSome(cluster)) return <NotFound what="クラスタ" />;
-      const c = cluster.value;
-      return (
-        <Section
-          title="基本"
-          rows={[
-            { label: "location", value: c.location },
-            { label: "mode", value: c.autopilot ? "Autopilot" : "Standard" },
-            { label: "nodeCount", value: String(c.nodeCount) },
-            { label: "machineType", value: c.machineType },
-            { label: "status", value: c.status },
-          ]}
-        />
-      );
-    }
-    case "run-service": {
-      const service = World.findRunService(world, selection.projectId, selection.name);
-      if (!Option.isSome(service)) return <NotFound what="サービス" />;
-      const s = service.value;
-      return (
-        <Section
-          title="基本"
-          rows={[
-            { label: "region", value: s.region },
-            { label: "image", value: s.image },
-            { label: "url", value: CloudRunService.url(s) },
-            { label: "unauthenticated", value: s.allowUnauthenticated ? "許可" : "拒否" },
-          ]}
-        />
-      );
-    }
-    case "service-account": {
-      const account = World.findServiceAccount(world, selection.email);
-      if (!Option.isSome(account)) return <NotFound what="サービスアカウント" />;
-      return (
-        <Section
-          title="基本"
-          rows={[
-            { label: "email", value: account.value.email },
-            { label: "displayName", value: account.value.displayName },
-            { label: "uniqueId", value: account.value.uniqueId },
-          ]}
-        />
-      );
-    }
+      return <OrganizationProperties world={world} selection={selection} />;
+    case "folder":
+      return <FolderProperties world={world} selection={selection} />;
+    case "project":
+      return <ProjectProperties world={world} selection={selection} />;
+    case "billing":
+      return <BillingProperties world={world} selection={selection} />;
+    case "budget":
+      return <BudgetProperties world={world} selection={selection} />;
+    case "instance":
+      return <InstanceProperties world={world} selection={selection} />;
+    case "disk":
+      return <DiskProperties world={world} selection={selection} />;
+    case "snapshot":
+      return <SnapshotProperties world={world} selection={selection} />;
+    case "instance-template":
+      return <InstanceTemplateProperties world={world} selection={selection} />;
+    case "instance-group":
+      return <InstanceGroupProperties world={world} selection={selection} />;
+    case "network":
+      return <NetworkProperties world={world} selection={selection} />;
+    case "subnet":
+      return <SubnetProperties world={world} selection={selection} />;
+    case "firewall":
+      return <FirewallProperties world={world} selection={selection} />;
+    case "address":
+      return <AddressProperties world={world} selection={selection} />;
+    case "router":
+      return <RouterProperties world={world} selection={selection} />;
+    case "health-check":
+      return <HealthCheckProperties world={world} selection={selection} />;
+    case "backend-service":
+      return <BackendServiceProperties world={world} selection={selection} />;
+    case "forwarding-rule":
+      return <ForwardingRuleProperties world={world} selection={selection} />;
+    case "bucket":
+      return <BucketProperties world={world} selection={selection} />;
+    case "cluster":
+      return <ClusterProperties world={world} selection={selection} />;
+    case "node-pool":
+      return <NodePoolProperties world={world} selection={selection} />;
+    case "kube-deployment":
+      return <KubeDeploymentProperties world={world} selection={selection} />;
+    case "kube-service":
+      return <KubeServiceProperties world={world} selection={selection} />;
+    case "run-service":
+      return <RunServiceProperties world={world} selection={selection} />;
+    case "function":
+      return <FunctionProperties world={world} selection={selection} />;
+    case "app-engine":
+      return <AppEngineProperties world={world} selection={selection} />;
+    case "app-version":
+      return <AppVersionProperties world={world} selection={selection} />;
+    case "sql-instance":
+      return <SqlInstanceProperties world={world} selection={selection} />;
+    case "topic":
+      return <TopicProperties world={world} selection={selection} />;
+    case "subscription":
+      return <SubscriptionProperties world={world} selection={selection} />;
+    case "log-sink":
+      return <LogSinkProperties world={world} selection={selection} />;
+    case "key-ring":
+      return <KeyRingProperties world={world} selection={selection} />;
+    case "dns-zone":
+      return <DnsZoneProperties world={world} selection={selection} />;
+    case "dm-deployment":
+      return <DmDeploymentProperties world={world} selection={selection} />;
+    case "service-account":
+      return <ServiceAccountProperties world={world} selection={selection} />;
+    case "custom-role":
+      return <CustomRoleProperties world={world} selection={selection} />;
     case "iam":
-      return <PolicyTable world={world} target={selection.target} />;
+      return <IamProperties world={world} selection={selection} />;
   }
 };
 
-const titleOf = (selection: Selection): string => {
+/** 見出し。名前を持つものは名前、持たないものは種別の綴り。 */
+const titleOf = (selection: TreeSelection): string => {
   switch (selection.kind) {
     case "organization":
       return "組織";
     case "folder":
       return `フォルダ ${selection.id}`;
     case "project":
+    case "app-engine":
       return selection.projectId;
     case "billing":
+    case "budget":
+    case "app-version":
       return selection.id;
     case "instance":
-      return selection.name;
+    case "disk":
+    case "snapshot":
+    case "instance-template":
+    case "instance-group":
     case "network":
+    case "subnet":
     case "firewall":
+    case "address":
+    case "router":
+    case "health-check":
+    case "backend-service":
+    case "forwarding-rule":
     case "cluster":
+    case "node-pool":
+    case "kube-deployment":
+    case "kube-service":
     case "run-service":
+    case "function":
+    case "sql-instance":
+    case "topic":
+    case "subscription":
+    case "log-sink":
+    case "key-ring":
+    case "dns-zone":
+    case "dm-deployment":
       return selection.name;
     case "bucket":
       return `gs://${selection.name}`;
     case "service-account":
       return selection.email;
+    case "custom-role":
+      return selection.roleId;
     case "iam":
       return `IAM: ${selection.target.type}/${selection.target.id}`;
   }
 };
 
-const kindLabel = (selection: Selection): string => {
+/** 見出しの下に出す API の種別（`compute#instance` の形）と置き場。 */
+const kindLabel = (selection: TreeSelection): string => {
   switch (selection.kind) {
     case "organization":
       return "cloudresourcemanager#organization";
@@ -470,26 +199,76 @@ const kindLabel = (selection: Selection): string => {
       return "cloudresourcemanager#project";
     case "billing":
       return "cloudbilling#billingAccount";
+    case "budget":
+      return `billingbudgets#budget · billingAccounts/${selection.billingAccountId}`;
     case "instance":
       return `compute#instance · projects/${selection.projectId}/zones/${selection.zone}`;
+    case "disk":
+      return `compute#disk · projects/${selection.projectId}/zones/${selection.zone}`;
+    case "snapshot":
+      return "compute#snapshot";
+    case "instance-template":
+      return "compute#instanceTemplate";
+    case "instance-group":
+      return `compute#instanceGroupManager · ${selection.location}`;
     case "network":
       return "compute#network";
+    case "subnet":
+      return `compute#subnetwork · regions/${selection.region}`;
     case "firewall":
       return "compute#firewall";
+    case "address":
+      return `compute#address · ${Option.isSome(selection.region) ? `regions/${selection.region.value}` : "global"}`;
+    case "router":
+      return `compute#router · regions/${selection.region}`;
+    case "health-check":
+      return "compute#healthCheck";
+    case "backend-service":
+      return "compute#backendService";
+    case "forwarding-rule":
+      return "compute#forwardingRule";
     case "bucket":
       return "storage#bucket";
     case "cluster":
       return "container#cluster";
+    case "node-pool":
+      return `container#nodePool · clusters/${selection.cluster}`;
+    case "kube-deployment":
+      return `apps/v1 Deployment · clusters/${selection.cluster}`;
+    case "kube-service":
+      return `v1 Service · clusters/${selection.cluster}`;
     case "run-service":
       return "run#service";
+    case "function":
+      return `cloudfunctions#function · locations/${selection.region}`;
+    case "app-engine":
+      return "appengine#application";
+    case "app-version":
+      return `appengine#version · services/${selection.service}`;
+    case "sql-instance":
+      return "sql#instance";
+    case "topic":
+      return "pubsub#topic";
+    case "subscription":
+      return "pubsub#subscription";
+    case "log-sink":
+      return "logging#sink";
+    case "key-ring":
+      return `cloudkms#keyRing · locations/${selection.location}`;
+    case "dns-zone":
+      return "dns#managedZone";
+    case "dm-deployment":
+      return "deploymentmanager#deployment";
     case "service-account":
       return "iam#serviceAccount";
+    case "custom-role":
+      return `iam#role · projects/${selection.projectId}`;
     case "iam":
       return "iam#policy";
   }
 };
 
-const statusOf = (world: World, selection: Selection): Option<string> => {
+const statusOf = (world: World, selection: TreeSelection): Option<string> => {
   if (selection.kind !== "instance") return Option.none;
   return Option.map(
     World.findInstance(world, selection.projectId, selection.zone, selection.name),
@@ -523,7 +302,7 @@ export const PropertiesPanel = ({
       </div>
     );
   }
-  const describe = Selection.describeCommand(selection.value);
+  const describe = TreeSelection.describeCommand(selection.value);
   const status = statusOf(world, selection.value);
   return (
     <div className="p-5">

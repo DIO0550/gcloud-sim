@@ -3,28 +3,28 @@ import { type ReactElement, useMemo, useState } from "react";
 import type { World } from "@/engine/domains/world";
 import {
   type ResourceGroup,
-  Selection,
   type TreeBadge,
   type TreeLabel,
   TreeNode,
+  TreeSelection,
 } from "@/engine/resource-tree";
 import { Option } from "@/utils/Option";
 
 type ResourceTreeProps = Readonly<{
   world: World;
-  selection: Option<Selection>;
+  selection: Option<TreeSelection>;
   /** 現在の core/project。ハイライトに使う（UC-007） */
   currentProjectId: Option<string>;
-  onSelect: (selection: Selection) => void;
+  onSelect: (selection: TreeSelection) => void;
   onInsertDescribe: (command: string) => void;
 }>;
 
 type NodeProps = Readonly<{
   node: TreeNode;
   depth: number;
-  selection: Option<Selection>;
+  selection: Option<TreeSelection>;
   currentProjectId: Option<string>;
-  onSelect: (selection: Selection) => void;
+  onSelect: (selection: TreeSelection) => void;
   onInsertDescribe: (command: string) => void;
 }>;
 
@@ -44,11 +44,17 @@ const badgeText = (badge: TreeBadge): string => {
   }
 };
 
-/** リソース種別グループの見出し（モック 2a）。 */
+/** リソース種別グループの見出し（モック 2a のプロダクト名。足した種別も同じ流儀）。 */
 const groupText = (group: ResourceGroup): string => {
   switch (group) {
     case "compute":
       return "Compute Engine";
+    case "disks":
+      return "ディスク";
+    case "instance-groups":
+      return "インスタンスグループ";
+    case "load-balancing":
+      return "ロードバランシング";
     case "vpc":
       return "VPC ネットワーク";
     case "storage":
@@ -57,8 +63,26 @@ const groupText = (group: ResourceGroup): string => {
       return "Kubernetes Engine";
     case "run":
       return "Cloud Run";
+    case "functions":
+      return "Cloud Functions";
+    case "app-engine":
+      return "App Engine";
+    case "sql":
+      return "Cloud SQL";
+    case "pubsub":
+      return "Pub/Sub";
+    case "logging":
+      return "Logging";
+    case "kms":
+      return "Cloud KMS";
+    case "dns":
+      return "Cloud DNS";
+    case "deployment-manager":
+      return "Deployment Manager";
     case "service-accounts":
       return "サービスアカウント";
+    case "roles":
+      return "ロール";
     case "iam":
       return "IAM";
   }
@@ -107,7 +131,7 @@ const Node = ({
   const isSelected =
     Option.isSome(selection) &&
     Option.isSome(node.selection) &&
-    Selection.equals(selection.value, node.selection.value);
+    TreeSelection.equals(selection.value, node.selection.value);
   const isCurrentProject =
     Option.isSome(node.selection) &&
     node.selection.value.kind === "project" &&
@@ -118,7 +142,7 @@ const Node = ({
     if (Option.isSome(node.selection)) onSelect(node.selection.value);
   };
   const insert = (): void => {
-    const command = Option.flatMap(node.selection, Selection.describeCommand);
+    const command = Option.flatMap(node.selection, TreeSelection.describeCommand);
     if (Option.isSome(command)) onInsertDescribe(command.value);
   };
   return (
