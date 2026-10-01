@@ -159,3 +159,28 @@ test("Kubernetes の権限が無い主体は E-006 になる", () => {
   );
   expect(s.text).toContain("Required 'container.deployments.create' permission");
 });
+
+test("apply に -f が無いと本物と同じ使い方の誤りになる", () => {
+  const s = run(session(), ...cluster, "kubectl apply");
+  expect(s.text).toBe("error: must specify one of -f and -k");
+});
+
+test("create に何も渡さないと -f を求める", () => {
+  const s = run(session(), ...cluster, "kubectl create");
+  expect(s.text).toBe("error: must specify one of -f and -k");
+});
+
+test("delete に何も渡さないと対象を求める", () => {
+  const s = run(session(), ...cluster, "kubectl delete");
+  expect(s.text).toBe("error: You must provide one or more resources by argument or filename.");
+});
+
+test("同名の Deployment を 2 回作ると AlreadyExists", () => {
+  const s = run(
+    session(),
+    ...cluster,
+    "kubectl create deployment web --image=nginx",
+    "kubectl create deployment web --image=nginx",
+  );
+  expect(s.text).toBe('Error from server (AlreadyExists): deployments.apps "web" already exists');
+});

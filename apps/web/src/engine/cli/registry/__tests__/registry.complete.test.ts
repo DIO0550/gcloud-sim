@@ -142,3 +142,54 @@ test("services enable の可変長の位置引数は 2 つ目以降も API 名�
     ),
   ).toEqual(["container.googleapis.com"]);
 });
+
+test("enum フラグの値は選択肢から補完する（= の形）", () => {
+  expect(
+    Engine.completionCandidates(
+      session().world,
+      "gcloud compute networks create n1 --subnet-mode=",
+    ),
+  ).toEqual(["--subnet-mode=auto", "--subnet-mode=custom"]);
+});
+
+test("enum フラグの値は選択肢から補完する（空白の形）", () => {
+  expect(
+    Engine.completionCandidates(
+      session().world,
+      "gcloud compute networks create n1 --subnet-mode ",
+    ),
+  ).toEqual(["auto", "custom"]);
+});
+
+const withDeployment = () =>
+  run(
+    session(),
+    "gcloud services enable container.googleapis.com",
+    "gcloud container clusters create app --zone=asia-northeast1-a --num-nodes=2",
+    "kubectl create deployment web --image=nginx",
+  );
+
+test("別名のフラグの直後は値として扱い、位置引数の候補を出さない", () => {
+  const s = withDeployment();
+  expect(Engine.completionCandidates(s.world, "kubectl get deployment ")).toEqual(["web"]);
+  expect(Engine.completionCandidates(s.world, "kubectl get deployment -n ")).toEqual([]);
+});
+
+test("別名のフラグの値は位置引数に数えない", () => {
+  const s = withDeployment();
+  expect(Engine.completionCandidates(s.world, "kubectl get -n default deployment w")).toEqual([
+    "web",
+  ]);
+});
+
+test("別名（-i）でも、そのフラグの値の候補を引く", () => {
+  const s = run(
+    session(),
+    "gcloud services enable sqladmin.googleapis.com",
+    "gcloud sql instances create db1 --database-version=POSTGRES_15 --tier=db-f1-micro --region=asia-northeast1",
+  );
+  expect(Engine.completionCandidates(s.world, "gcloud sql backups list -i ")).toEqual(["db1"]);
+  expect(Engine.completionCandidates(s.world, "gcloud sql backups list --instance=d")).toEqual([
+    "--instance=db1",
+  ]);
+});

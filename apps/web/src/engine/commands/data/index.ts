@@ -298,7 +298,11 @@ export const SqlCommands: readonly CommandSpec[] = [
     path: ["gcloud", "sql", "backups", "create"],
     summary: "Create a backup of a Cloud SQL instance.",
     flags: [
-      Flag.string("instance", "Cloud SQL instance ID.", { required: true, aliases: ["-i"] }),
+      Flag.string("instance", "Cloud SQL instance ID.", {
+        required: true,
+        aliases: ["-i"],
+        candidates: Candidates.sqlInstances,
+      }),
       Flag.string("description", "A friendly description of the backup."),
       CommonFlags.async,
     ],
@@ -309,7 +313,13 @@ export const SqlCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "sql", "backups", "list"],
     summary: "List all backups associated with the instance.",
-    flags: [Flag.string("instance", "Cloud SQL instance ID.", { required: true, aliases: ["-i"] })],
+    flags: [
+      Flag.string("instance", "Cloud SQL instance ID.", {
+        required: true,
+        aliases: ["-i"],
+        candidates: Candidates.sqlInstances,
+      }),
+    ],
     permission: "cloudsql.instances.get",
     requiredApis: [SqlApi],
     run: (ctx, args) =>

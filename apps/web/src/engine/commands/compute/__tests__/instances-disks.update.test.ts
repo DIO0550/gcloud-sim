@@ -173,3 +173,28 @@ test("os-login ssh-keys add は OpenSSH の公開鍵だけを受け、同じ鍵�
   const bad = run(session(), "gcloud compute os-login ssh-keys add --key=notakey");
   expect(bad.text).toContain("Expected an OpenSSH public key");
 });
+
+test("同名のディスクは別ゾーンなら作れる", () => {
+  const s = run(
+    session(),
+    "gcloud compute disks create data-1 --zone=asia-northeast1-a --size=10GB",
+    "gcloud compute disks create data-1 --zone=asia-northeast1-b --size=10GB",
+  );
+  expect(World.disksOf(s.world, "ace-dev-01").map((d) => d.zone)).toEqual([
+    "asia-northeast1-a",
+    "asia-northeast1-b",
+  ]);
+});
+
+test("別ゾーンに同名のディスクがあっても、resize は指したゾーンのものだけを変える", () => {
+  const s = run(
+    session(),
+    "gcloud compute disks create data-1 --zone=asia-northeast1-a --size=10GB",
+    "gcloud compute disks create data-1 --zone=asia-northeast1-b --size=10GB",
+    "gcloud compute disks resize data-1 --zone=asia-northeast1-b --size=20GB --quiet",
+  );
+  expect(World.disksOf(s.world, "ace-dev-01").map((d) => [d.zone, d.sizeGb])).toEqual([
+    ["asia-northeast1-a", 10],
+    ["asia-northeast1-b", 20],
+  ]);
+});

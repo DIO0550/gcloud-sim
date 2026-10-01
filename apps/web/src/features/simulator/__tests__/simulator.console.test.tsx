@@ -246,3 +246,60 @@ test("Console に切り替えても端末は消えず、CLI に戻ると同じ�
   expect(resourceTree()).toBeInTheDocument();
   expect(terminal.written.length).toBe(before);
 });
+
+test("作成画面にいる間も左ナビは VM インスタンスが現在地になり、ナビに作成の項目は無い", async () => {
+  const user = userEvent.setup();
+  renderSimulator();
+  await openConsole(user);
+  await openVmCreate(user);
+  expect(screen.getByRole("heading", { name: "インスタンスを作成" })).toBeInTheDocument();
+  expect(
+    within(consoleNav()).queryByRole("button", { name: "インスタンスを作成" }),
+  ).not.toBeInTheDocument();
+});
+
+test("送信を試みる前は空の名前にもエラーを出さず、送信を試みると出る", async () => {
+  const user = userEvent.setup();
+  renderSimulator();
+  await openConsole(user);
+  await user.click(within(consoleNav()).getByRole("button", { name: "ファイアウォール" }));
+  await user.click(screen.getByRole("button", { name: "ファイアウォール ルールを作成" }));
+  expect(screen.queryAllByRole("alert")).toHaveLength(0);
+  await user.click(screen.getByRole("button", { name: "作成" }));
+  expect(screen.getAllByRole("alert").length).toBeGreaterThan(0);
+});
+
+test("キャンセルで作成フォームが閉じる", async () => {
+  const user = userEvent.setup();
+  renderSimulator();
+  await openConsole(user);
+  await user.click(within(consoleNav()).getByRole("button", { name: "バケット" }));
+  await user.click(screen.getByRole("button", { name: "作成" }));
+  expect(screen.getByLabelText("名前")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "キャンセル" }));
+  expect(screen.queryByLabelText("名前")).not.toBeInTheDocument();
+});
+
+test.each([
+  ["クラスタ", "Kubernetes Engine API を有効にする"],
+  ["サービス", "Cloud Run Admin API を有効にする"],
+  ["ファイアウォール", "Compute Engine API を有効にする"],
+])("API が無効なプロジェクトで %s を開くと「%s」だけが出る", async (item, button) => {
+  const user = userEvent.setup();
+  renderSimulator();
+  await user.selectOptions(screen.getByRole("combobox", { name: "プロジェクト" }), "ace-prod-01");
+  await openConsole(user);
+  await user.click(within(consoleNav()).getByRole("button", { name: item }));
+  expect(screen.getByRole("button", { name: button })).toBeInTheDocument();
+  expect(screen.queryByRole("table")).not.toBeInTheDocument();
+});
+
+test("コピーに失敗すると端末に理由付きの警告が出る", async () => {
+  const user = userEvent.setup();
+  const { terminal, copied } = renderSimulator({ copyFails: "NotAllowedError" });
+  await openConsole(user);
+  await openVmCreate(user);
+  await user.click(screen.getByRole("button", { name: "コピー" }));
+  await waitFor(() => expect(screenText(terminal)).toContain("NotAllowedError"));
+  expect(copied).toEqual([]);
+});

@@ -152,3 +152,15 @@ test("Home / End と Ctrl+U でカーソルと行頭削除が効く", () => {
   const moved = LineEditor.handle(LineEditor.handle(editor, Keys.Left).editor, Keys.Left).editor;
   expect(LineEditor.handle(moved, "\x15").editor.buffer).toBe("cd");
 });
+
+test("候補の制御文字は落としてから入力行に入れる", () => {
+  const editor = type(LineEditor.create(), "gcloud compute instances describe we");
+  const completed = LineEditor.complete(editor, ["web\u0007-1"]);
+  expect(completed.editor.buffer).toBe("gcloud compute instances describe web-1 ");
+});
+
+test("候補が複数のとき、並べる候補からも制御文字を落とす", () => {
+  const editor = type(LineEditor.create(), "gcloud compute instances describe we");
+  const completed = LineEditor.complete(editor, ["web\u0007-1", "web-2"]);
+  expect(completed.listing).toEqual(["web-1", "web-2"]);
+});

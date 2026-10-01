@@ -169,3 +169,11 @@ test("保存に失敗すると黄色の警告が transcript に出て、同じ�
   const again = simulatorReducer(saved, { type: "saveFailed", reason: "SecurityError" });
   expect(again.transcript).toHaveLength(other.transcript.length + 1);
 });
+
+test("コピーに失敗すると理由付きの警告が transcript に出る", () => {
+  const s = simulatorReducer(start(), { type: "copyFailed", reason: "NotAllowedError" });
+  expect(s.transcript.at(-1)).toMatchObject({
+    tone: "warning",
+    text: expect.stringContaining("NotAllowedError"),
+  });
+});

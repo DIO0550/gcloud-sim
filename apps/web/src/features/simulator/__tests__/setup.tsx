@@ -58,6 +58,8 @@ export type Harness = Readonly<{
 
 type HarnessOptions = Readonly<{
   saveFails?: string;
+  /** クリップボードへの書き込みが失敗するときの理由 */
+  copyFails?: string;
   confirmAnswer?: boolean;
   readResult?: SimulatorIo["readFile"];
 }>;
@@ -81,6 +83,7 @@ export const harness = (options: HarnessOptions = {}): Harness => {
       options.readResult ?? (async () => Result.err({ kind: "malformed", reason: "not used" })),
     confirm: () => options.confirmAnswer ?? true,
     copy: async (text) => {
+      if (options.copyFails !== undefined) return Result.err(options.copyFails);
       copied.push(text);
       return Result.ok(undefined);
     },

@@ -1,11 +1,12 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
 
-import { initialWorld } from "@/engine/__tests__/setup";
+import { initialWorld, run, session } from "@/engine/__tests__/setup";
 import { IamPolicy } from "@/engine/domains/iam-policy";
 import type { Folder } from "@/engine/domains/resource-hierarchy";
 import { type World, World as WorldOps } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
+import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
 const folder = (
@@ -114,4 +115,77 @@ const instanceOf = () => ({
   metadata: {},
   creationTimestamp: "2026-01-01T00:00:00.000Z",
   id: "1",
+});
+
+test("同じ置き場に同名のサブネットが 2 つある World は弾かれる", () => {
+  const world = initialWorld();
+  const tokyo = Option.unwrap(
+    WorldOps.findLocated(world, "subnets", {
+      projectId: F.devProjectId,
+      location: "asia-northeast1",
+      name: "default",
+    }),
+  );
+  const dup: World = { ...world, subnets: [...world.subnets, tokyo] };
+  expect(failure(dup)).toBe(`subnets [${F.devProjectId}/asia-northeast1/default] is duplicated`);
+});
+
+test("存在しないプロジェクトに属するバケットは弾かれる", () => {
+  const s = run(session(), "gcloud storage buckets create gs://probe-1");
+  const orphan: World = {
+    ...s.world,
+    buckets: s.world.buckets.map((b) => ({ ...b, projectId: "nowhere" })),
+  };
+  expect(failure(s.world)).toBe("");
+  expect(failure(orphan)).toBe("buckets [probe-1] belongs to a missing project [nowhere]");
+});
+
+test("トピックの無いサブスクリプションは弾かれる", () => {
+  const s = run(
+    session(),
+    "gcloud services enable pubsub.googleapis.com",
+    "gcloud pubsub topics create orders",
+    "gcloud pubsub subscriptions create orders-sub --topic=orders",
+  );
+  expect(failure(s.world)).toBe("");
+  expect(failure({ ...s.world, pubsubTopics: [] })).toBe(
+    "subscription [orders-sub] refers to a missing topic",
+  );
+});
+
+test("クラスタの無い Deployment は弾かれる", () => {
+  const s = run(
+    session(),
+    "gcloud services enable container.googleapis.com",
+    "gcloud container clusters create app --zone=asia-northeast1-a --num-nodes=2",
+    "kubectl create deployment web --image=nginx",
+  );
+  expect(failure(s.world)).toBe("");
+  expect(failure({ ...s.world, clusters: [] })).toBe("[web] belongs to a missing cluster [app]");
+});
+
+test("SQL インスタンスの無いバックアップは弾かれる", () => {
+  const s = run(
+    session(),
+    "gcloud services enable sqladmin.googleapis.com",
+    "gcloud sql instances create db1 --database-version=POSTGRES_15 --tier=db-f1-micro --region=asia-northeast1",
+    "gcloud sql backups create --instance=db1",
+  );
+  expect(failure(s.world)).toBe("");
+  expect(failure({ ...s.world, sqlInstances: [] })).toContain(
+    "belongs to a missing Cloud SQL instance",
+  );
+});
+
+test("請求先アカウントの無い予算は弾かれる", () => {
+  const s = run(
+    session(),
+    `gcloud billing budgets create --billing-account=${F.billingAccountId} --display-name=B1 --budget-amount=1000JPY`,
+  );
+  expect(failure(s.world)).toBe("");
+  const orphan: World = {
+    ...s.world,
+    budgets: s.world.budgets.map((b) => ({ ...b, billingAccountId: "nowhere" })),
+  };
+  expect(failure(orphan)).toContain("budget [B1] belongs to a missing billing account");
 });
