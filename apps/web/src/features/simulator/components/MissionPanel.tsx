@@ -61,6 +61,24 @@ const assertionLabel = (assertion: Mission["assertions"][number]): string => {
       return `Cloud Run ${assertion.name}（${assertion.region}${assertion.allowUnauthenticated ? ", 未認証許可" : ""}）がある`;
     case "effectivePermission":
       return `${assertion.member} が ${assertion.projectId} で ${assertion.permission} を持つ`;
+    case "kubeDeploymentExists":
+      return `クラスタ ${assertion.cluster} に Deployment ${assertion.name}（${assertion.replicas} レプリカ）がある`;
+    case "kubeServiceExists":
+      return `クラスタ ${assertion.cluster} に Service ${assertion.name}（${assertion.type}）がある`;
+    case "functionExists":
+      return `関数 ${assertion.name}（${assertion.region}, ${assertion.trigger === "http" ? "HTTP" : "Pub/Sub"}${assertion.allowUnauthenticated ? ", 未認証許可" : ""}）がある`;
+    case "sqlInstanceExists":
+      return `Cloud SQL ${assertion.name}（${assertion.databaseVersion}）がある`;
+    case "topicExists":
+      return `トピック ${assertion.name} がある`;
+    case "subscriptionExists":
+      return `サブスクリプション ${assertion.name}（topic: ${assertion.topic}）がある`;
+    case "budgetExists":
+      return `請求アカウント ${assertion.billingAccountId} に ${assertion.amount} JPY の予算がある`;
+    case "instanceGroupExists":
+      return `MIG ${assertion.name}（${assertion.targetSize} 台${assertion.autoscaled ? ", 自動スケール" : ""}）がある`;
+    case "customRoleExists":
+      return `カスタムロール ${assertion.roleId}（${assertion.permissions.join(", ")}）がある`;
   }
 };
 

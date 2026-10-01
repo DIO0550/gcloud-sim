@@ -36,10 +36,10 @@ gcloud-sim は、ブラウザだけで動作する **gcloud CLI の学習用エ�
   - 環境セットアップ: プロジェクト・請求アカウント・`gcloud config` / configurations
   - 計画と構成: マシンタイプ・リージョン/ゾーン・料金試算に関わる `list` / `describe` 系
   - デプロイと実装: Compute Engine、GKE（`gcloud container` + 主要な `kubectl`）、Cloud Run、Cloud Functions、App Engine、Cloud Storage（`gcloud storage`）、VPC / サブネット / ファイアウォール、Cloud SQL の作成
-  - 運用の維持: インスタンスの start/stop/delete、スナップショット、ログ・モニタリングの `list` 系、`gcloud operations`
+  - 運用の維持: インスタンスの start/stop/delete、スナップショット、ログ・モニタリングの `list` 系、`gcloud operations`、`gcloud compute ssh` / `scp`（疑似。ファイアウォールと OS Login の判定だけを行い、シェルは開かない）
   - アクセスとセキュリティ: IAM ポリシー（組織・フォルダ・プロジェクト・リソース）、サービスアカウント、ロール一覧、`gcloud auth`（疑似）
 - **UI（Phase 1）**: xterm.js によるターミナル、リソースツリー表示、ミッションパネル（オプション）、設定パネル（reset / export / import）
-- **Console 風 GUI（Phase 2）**: 同じ World を操作する第2の UI。本物の Google Cloud Console の **ナビゲーション構造と主要フォームの項目** を再現し、見た目の忠実度は追わない（DJ-011）。対象画面は以下に限定する。
+- **Console 風 GUI（Phase 2・実装済み）**: 同じ World を操作する第2の UI。ヘッダーの CLI / Console で切り替える。本物の Google Cloud Console の **ナビゲーション構造と主要フォームの項目** を再現し、見た目の忠実度は追わない（DJ-011）。対象画面は以下に限定する。
   - IAM と管理: IAM（プリンシパル・ロール一覧、継承元の表示）、サービスアカウント
   - Compute Engine: VM インスタンス一覧、VM 作成フォーム（マシンタイプ・ブートディスク・サービスアカウント・アクセススコープ・ネットワークタグ・プリエンプティブル/Spot）
   - VPC ネットワーク: ファイアウォールルール一覧・作成フォーム、サブネット一覧
@@ -54,7 +54,7 @@ gcloud-sim は、ブラウザだけで動作する **gcloud CLI の学習用エ�
 ### 3.2 対象外
 
 - 本物の Google Cloud API への接続、認証、課金。
-- Google Cloud Console の **見た目の忠実な再現**、および 3.1 に列挙した以外の画面。Console 風 GUI は構造と主要フォームの再現に留め、Phase 1 では実装しない。
+- Google Cloud Console の **見た目の忠実な再現**、および 3.1 に列挙した以外の画面。Console 風 GUI は構造と主要フォームの再現に留める。
 - Professional レベルの試験範囲（Cloud Architect 等）に固有の高度な機能。
 - gcloud の全コマンド・全フラグの網羅。ACE 頻出の範囲に限定し、未対応は明示的にエラーとする（DJ-005）。
 - 実行時間・料金の正確なシミュレーション。料金はあくまで参考値として扱うか、初期バージョンでは扱わない。
@@ -76,7 +76,7 @@ gcloud-sim は、ブラウザだけで動作する **gcloud CLI の学習用エ�
 | 用語 | 定義 | コード上の表現 |
 |:-----|:-----|:-------------|
 | エンジン | UI に依存しない純粋な TS モジュール。状態とコマンドを受け取り、新しい状態と出力を返す | `src/engine/` |
-| Console ビュー | World を Google Cloud Console 風に表示・操作する第2の UI（Phase 2） | `src/features/console/`（予定） |
+| Console ビュー | World を Google Cloud Console 風に表示・操作する第2の UI（Phase 2） | `src/features/simulator/features/console/`（simulator の子 feature） |
 | 同等コマンド | GUI フォームの入力内容から生成される gcloud コマンド文字列 | `toEquivalentCommand()` |
 | ワールド | エミュレータが保持する全リソースの集合（組織〜リソース、config、疑似ログイン済みアカウントを含む）。リソースはフラットな集合で持ち、階層は `parent` / `projectId` で結ぶ | `World`（`src/engine/domains/world/`） |
 | コマンド定義 | サブコマンドの名前・フラグ・実行関数・出力整形を宣言的に記述したもの | `CommandSpec` |
@@ -361,9 +361,10 @@ classDiagram
 | 属性 | 型 | 必須 | 説明 | 制約 |
 |:-----|:---|:-----|:-----|:-----|
 | organization / folders / projects / billingAccounts | — | Yes | 組織 1 つと、フォルダ・プロジェクト・請求アカウントのフラットな集合。階層は `parent` で結ぶ | フォルダ・プロジェクトは組織へ辿り着く（循環・10 段超え不可） |
-| serviceAccounts / instances / networks / subnets / firewallRules / diskSnapshots / buckets / clusters / runServices | — | Yes | プロジェクト配下のリソースのフラットな集合。所属は `projectId` で結ぶ | 名前の一意性は `World.with*` が守る |
+| serviceAccounts / instances / networks / subnets / firewallRules / disks / diskSnapshots / projectMetadata / addresses / routers / peerings / healthChecks / backendServices / forwardingRules / instanceTemplates / instanceGroups / buckets / clusters / nodePools / kubeDeployments / kubeServices / runServices / functions / appEngineApps / appVersions / sqlInstances / sqlBackups / pubsubTopics / pubsubSubscriptions / logSinks / kmsKeyRings / dnsZones / dmDeployments / customRoles | — | Yes | プロジェクト配下のリソースのフラットな集合。所属は `projectId` で結ぶ | 名前の一意性は `World.with*` / `World.withNamed` が守る |
+| budgets / serviceAccountKeys / osLoginKeys | — | Yes | プロジェクトではなく請求アカウント・サービスアカウント・アカウントに属するもの | 所属先が存在する |
 | config | GcloudConfig | Yes | `gcloud config` の設定群（configurations 複数）とアクティブな configuration の名前 | アクティブな configuration が存在する |
-| session | Session | Yes | `auth login` した疑似アカウントの一覧。今の主体は `config` の `core/account` | — |
+| session | Session | Yes | `auth login` した疑似アカウントの一覧、`application-default` の資格情報、`components install` したコンポーネント。今の主体は `config` の `core/account` | — |
 | operations | Operation[] | Yes | 実行済みオペレーションの履歴 | 上限 500 件で古いものから削除 |
 | missions | MissionProgress[] | Yes | ミッションの進捗（定義はコードが持つ） | id ユニーク |
 | sequence | number | Yes | id・projectNumber・オペレーション名の採番に使う通し番号 | 単調増加 |
@@ -485,6 +486,8 @@ classDiagram
 | Instance → ServiceAccount | N:1 | アタッチ | 任意 |
 | FirewallRule → Instance | N:N（tag 経由） | targetTags で対象を決定 | 実際の通信は再現しない |
 | World → Operation | 1:N | 履歴 | 上限 500 |
+| IAM ポリシーの対象（`PolicyTarget`） | — | 組織・フォルダ・プロジェクト・バケット・サービスアカウントがポリシーを持つ。サービスアカウントのポリシーは `iam service-accounts *-iam-policy*` で扱い、プロジェクトから継承する | 対象は存在するリソース |
+| GkeCluster → NodePool / KubeDeployment / KubeService | 1:N | `kubectl` は `get-credentials` したクラスタに対して動く。Pod は Deployment から導出する | クラスタ削除でカスケード |
 
 ## 7. 振る舞い仕様
 
@@ -650,7 +653,7 @@ classDiagram
 **トリガー**: Console ビューで「Compute Engine → VM インスタンス → インスタンスを作成」を選び、フォームを送信する
 
 **事前条件**:
-- Console ビューが有効化されている（Phase 2 実装後）
+- ヘッダーの CLI / Console 切り替えで Console を選んでいる
 - 選択中のプロジェクト（`core/project` と同期）とプリンシパルが設定されている
 
 **正常フロー**:
@@ -849,10 +852,10 @@ flowchart LR
 | TBD-004 | localStorage から IndexedDB への移行条件 | DJ-007 | 容量警告が出た時点 | 500KB を超えたら警告を出し、移行を検討 |
 | TBD-005 | 疑似的な待ち時間（PROVISIONING 表示）の設定オプション | DJ-008、UI | 初期リリース後 | オプションとして `gcloud-sim config set realism.latency true` のような設定を検討 |
 | TBD-006 | ロールカタログの範囲（事前定義ロールを何個収録するか）と、収録外権限の扱い | DJ-006 | 実装着手前 | ACE 頻出の約 30 ロールから開始。収録外は許可に倒す |
-| TBD-007 | `kubectl` の対応範囲（GKE クラスタ作成後の `get pods` / `apply` / `expose` 等） | コマンド範囲 | GKE 実装時 | `get-credentials` 後に最小限の Deployment / Service モデルを持ち、`kubectl get/apply/delete/expose/scale` に限定 |
-| TBD-008 | ミッションの初期本数とドメイン配分 | コンテンツ | 初期リリース時 | 各ドメイン 2〜3 本、合計 12 本程度から開始 |
-| TBD-009 | Tab 補完の粒度（コマンド名のみ / フラグ名まで / リソース名まで） | UI | 実装中 | 初期はコマンド名とフラグ名まで。リソース名補完は次段階 |
-| TBD-010 | Console ビュー（Phase 2）の着手条件 | DJ-011 | Phase 1 リリース後 | Compute / IAM / Storage / VPC の主要コマンドが揃い、ミッションが動いた時点で着手 |
+| TBD-007 | ~~`kubectl` の対応範囲~~ → 決着: `get-credentials` 後に Deployment / Service / Pod のモデルを持ち、`docs/COMMANDS.md` の `kubectl` 節の動詞を実装した（Pod は Deployment から導出。設定ファイルは `deployment.yaml` / `service.yaml` のサンプルだけ） | コマンド範囲 | — | — |
+| TBD-008 | ~~ミッションの初期本数とドメイン配分~~ → 決着: 18 本（各ドメイン 3〜4 本）。定義は `src/engine/missions/` | コンテンツ | — | — |
+| TBD-009 | ~~Tab 補完の粒度~~ → 決着: リソース名まで。位置引数と文字列フラグの定義に候補の出どころ（`CandidateSource`）を付け、World と今のプロジェクトから引く | UI | — | — |
+| TBD-010 | ~~Console ビュー（Phase 2）の着手条件~~ → 決着: Phase 1 と同じ PR で着手した（#3）。エンジン API は変えずに `features/simulator/features/console/` を足した | DJ-011 | — | — |
 | TBD-011 | ~~Console ビューで UI フレームワーク（React / Preact / Lit 等）を導入するか~~ → 決着: リポジトリが Next.js / React で始まっていたので Phase 1 から React を使う | DJ-011、11.2 | — | — |
 | TBD-012 | 概念クイズ（4 択のサービス選定・ロール選定問題）をミッションに混ぜるか | DJ-010、コンテンツ | ミッション作成時 | 「この要件に合うリソースを作れ」型のミッションでサービス選定を体験させることを優先し、4 択クイズは別機能として後回し |
 

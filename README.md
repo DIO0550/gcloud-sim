@@ -14,22 +14,27 @@
 作って上の URL へ出す。PR には**そのブランチのサイトを触れるプレビュー**が
 `…/gcloud-sim/pr-preview/pr-<番号>/` に出る（詳しくは「[CI とデプロイ](#ci-とデプロイ)」）。
 
-## できること（Phase 1）
+## できること
 
-- **ターミナル**（xterm.js）: 本物準拠の出力とエラー。Tab 補完（コマンド名・フラグ名）、↑↓ 履歴、
+- **ターミナル**（xterm.js）: 本物準拠の出力とエラー。Tab 補完（コマンド名・フラグ名・リソース名）、↑↓ 履歴、
   Ctrl+L、`--help`、`--format=json|yaml|value(...)`、`--filter`
 - **IAM の継承**: `gcloud config set account` でプリンシパルを切り替え、権限不足の
   `PERMISSION_DENIED` を体験し、組織 / フォルダ / プロジェクトのどこにロールを付ければ通るかを
   試行錯誤できる。エラーの下に `gcloud-sim: hint:` で「その権限を含むロール」を出す
 - **リソースツリー**: 組織 → フォルダ → プロジェクト → リソース。クリックでプロパティと
   IAM の継承元、ダブルクリックで `describe` を入力行に挿入
-- **ミッション**: 11 本（ACE の 5 ドメイン）。状態に対するアサーションでクリア判定する
+- **ミッション**: 18 本（ACE の 5 ドメイン）。状態に対するアサーションでクリア判定する
   （コマンドの文字列一致ではない）
 - **保存**: コマンドごとに localStorage へ自動保存。設定から JSON の export / import / リセット
+- **kubectl**: `gcloud container clusters get-credentials` したクラスタに対して、Deployment / Service / Pod を
+  `apply` / `expose` / `scale` / `rollout` などで動かせる（設定ファイルは `deployment.yaml` / `service.yaml` のサンプル）
+- **Console 風 GUI**（Phase 2）: ヘッダーの CLI / Console で切り替える。IAM・サービスアカウント・ロール・予算・
+  VM・ファイアウォール・サブネット・バケット・クラスタ・Cloud Run の画面を持ち、作成フォームには
+  「同等のコマンドライン」が出る。送信したものはターミナルにも `# Console:` 付きで残る
 
 対応コマンドの一覧と、基準にした gcloud のバージョン、IAM 判定の範囲（収録外の権限は許可に倒す）は
 [`docs/COMMANDS.md`](docs/COMMANDS.md)。設計は [`docs/design.md`](docs/design.md)、UI 案は
-[`docs/ui/`](docs/ui/)。Console 風 GUI（Phase 2）は未実装で、ヘッダーの切り替えは無効になっている。
+[`docs/ui/`](docs/ui/)。
 
 開発の土台（ツール・CI・デプロイ・開発環境）は [exam-prep](https://github.com/DIO0550/exam-prep) から
 持ってきたもの。
@@ -49,6 +54,8 @@ apps/web/          Next.js 16（App Router / TypeScript / Tailwind v4）
     missions/      ミッション定義とアサーション
     snapshot/      export / import の形と検証
   src/features/simulator/  画面（ヘッダー / ツリー / ターミナル / 右ペイン / 設定）と reducer
+    features/console/      Console 風 GUI（simulator の子 feature。画面と同等コマンドの生成）
+  src/components/  ドメイン知識を持たない UI 部品（ボタン / 小見出し / 札）
   src/libs/        境界: localStorage・ファイル・時計・xterm.js のラップ
   src/base-path.ts basePath の唯一の定義（next.config.ts と public/ 参照の両方が使う）
   vitest.config.ts テスト設定（jsdom + Testing Library。engine のテストは node 環境）
@@ -277,9 +284,9 @@ PR を出すと、そのブランチのサイトが
 static export をビルドして主要画面を撮り、main の画像（baseline）と画素で突き合わせる。
 
 撮る画面は [`visual-scenarios.mjs`](.github/scripts/visual-scenarios.mjs) に並べてある。
-今はトップ 1 画面だけを **PC 幅（1440px）とスマホ幅（430px）**の 2 通りで撮る。
+今はトップ・設定・Console の 5 画面を **PC 幅（1440px）とスマホ幅（430px）**の 2 通りで撮る。
 画面を足したいときはこのファイルに 1 つ足すだけでよく、workflow は触らない。
-手順はボタンの文字で押す（`click`）と待つ（`wait`）の 2 つ。画面に固有の操作が要るときは
+手順はボタンの文字で押す（`click`）、待つ（`wait`）、端末に 1 行打つ（`type`）、入力欄に入れる（`fill`）の 4 つ。画面に固有の操作が要るときは
 [`visual-regression.mjs`](.github/scripts/visual-regression.mjs) の `applyStep` に足す。
 
 手元でも同じものが撮れる。

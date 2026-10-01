@@ -5,6 +5,8 @@ import {
   DefaultMachineType,
   type MachineTypeName,
   type Region,
+  type SqlDatabaseVersion,
+  SqlDatabaseVersions,
   type StorageClass,
   Zone,
 } from "@/engine/domains/catalog";
@@ -22,9 +24,11 @@ import {
 import { EffectivePermissions } from "@/engine/domains/effective-permissions";
 import { type ConfigProperty, GcloudConfig } from "@/engine/domains/gcloud-config";
 import { type IamMember, IamPolicy, type RoleName } from "@/engine/domains/iam-policy";
+import { type KubeServiceType, KubeServiceTypes } from "@/engine/domains/kubernetes";
 import { MissionProgress, MissionStatuses } from "@/engine/domains/mission-progress";
 import type { Principal } from "@/engine/domains/principal";
 import type { PolicyTarget } from "@/engine/domains/resource-hierarchy";
+import type { FunctionTrigger } from "@/engine/domains/serverless";
 import { ServiceAccount } from "@/engine/domains/service-account";
 import { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
@@ -105,6 +109,50 @@ export type MissionAssertion =
       projectId: string;
       member: IamMember;
       permission: string;
+    }>
+  | Readonly<{
+      kind: "kubeDeploymentExists";
+      projectId: string;
+      cluster: string;
+      name: string;
+      replicas: number;
+    }>
+  | Readonly<{
+      kind: "kubeServiceExists";
+      projectId: string;
+      cluster: string;
+      name: string;
+      type: KubeServiceType;
+    }>
+  | Readonly<{
+      kind: "functionExists";
+      projectId: string;
+      name: string;
+      region: Region;
+      trigger: FunctionTrigger["kind"];
+      allowUnauthenticated: boolean;
+    }>
+  | Readonly<{
+      kind: "sqlInstanceExists";
+      projectId: string;
+      name: string;
+      databaseVersion: SqlDatabaseVersion;
+    }>
+  | Readonly<{ kind: "topicExists"; projectId: string; name: string }>
+  | Readonly<{ kind: "subscriptionExists"; projectId: string; name: string; topic: string }>
+  | Readonly<{ kind: "budgetExists"; billingAccountId: string; amount: number }>
+  | Readonly<{
+      kind: "instanceGroupExists";
+      projectId: string;
+      name: string;
+      targetSize: number;
+      autoscaled: boolean;
+    }>
+  | Readonly<{
+      kind: "customRoleExists";
+      projectId: string;
+      roleId: string;
+      permissions: readonly string[];
     }>;
 
 /** ミッション開始時に World へ当てる変更（設計書 6.2 Mission.setup）。 */
@@ -413,6 +461,169 @@ const Missions: readonly Mission[] = [
       { kind: "bindingExists", target: organization, role: "roles/viewer", member: F.opsGroup },
     ],
   },
+  {
+    id: "m-setup-003",
+    domain: MissionDomains.Setup,
+    title: "請求アカウントに予算を設定する",
+    description:
+      "請求アカウント 01AB2C-DEF345-6789AB に、月額 100000 JPY の予算（表示名は任意）を作ってください。しきい値は既定のままで構いません。",
+    hints: [
+      "予算は gcloud billing budgets create で作ります。--billing-account と --display-name と --budget-amount が必須です。",
+      "gcloud billing budgets create --billing-account=01AB2C-DEF345-6789AB --display-name=monthly --budget-amount=100000JPY",
+    ],
+    setup: [],
+    assertions: [{ kind: "budgetExists", billingAccountId: F.billingAccountId, amount: 100000 }],
+  },
+  {
+    id: "m-plan-003",
+    domain: MissionDomains.Planning,
+    title: "非同期処理用の Pub/Sub を用意する",
+    description:
+      "ace-dev-01 に Pub/Sub トピック `orders` と、それを購読する pull サブスクリプション `orders-worker` を作ってください（Pub/Sub API の有効化から）。",
+    hints: [
+      "gcloud services enable pubsub.googleapis.com",
+      "gcloud pubsub topics create orders",
+      "gcloud pubsub subscriptions create orders-worker --topic=orders",
+    ],
+    setup: [{ kind: "setProject", projectId: F.devProjectId }],
+    assertions: [
+      { kind: "apiEnabled", projectId: F.devProjectId, api: "pubsub.googleapis.com" },
+      { kind: "topicExists", projectId: F.devProjectId, name: "orders" },
+      {
+        kind: "subscriptionExists",
+        projectId: F.devProjectId,
+        name: "orders-worker",
+        topic: "orders",
+      },
+    ],
+  },
+  {
+    id: "m-deploy-004",
+    domain: MissionDomains.Deploy,
+    title: "GKE に Deployment を出して公開する",
+    description:
+      "ace-dev-01 の asia-northeast1-a に Standard クラスタ `app` を作り、kubectl で deployment.yaml（Deployment `web`）を適用して 3 レプリカにスケールし、LoadBalancer 型の Service `web` で公開してください。",
+    hints: [
+      "gcloud services enable container.googleapis.com のあと gcloud container clusters create app --zone=asia-northeast1-a",
+      "kubectl を使う前に gcloud container clusters get-credentials app --zone=asia-northeast1-a で認証情報を取ります。",
+      "kubectl apply -f deployment.yaml / kubectl scale deployment web --replicas=3 / kubectl expose deployment web --type=LoadBalancer --port=80",
+    ],
+    setup: [{ kind: "setProject", projectId: F.devProjectId }],
+    assertions: [
+      {
+        kind: "clusterExists",
+        projectId: F.devProjectId,
+        name: "app",
+        autopilot: false,
+        location: "asia-northeast1-a",
+      },
+      {
+        kind: "kubeDeploymentExists",
+        projectId: F.devProjectId,
+        cluster: "app",
+        name: "web",
+        replicas: 3,
+      },
+      {
+        kind: "kubeServiceExists",
+        projectId: F.devProjectId,
+        cluster: "app",
+        name: "web",
+        type: KubeServiceTypes.LoadBalancer,
+      },
+    ],
+  },
+  {
+    id: "m-deploy-005",
+    domain: MissionDomains.Deploy,
+    title: "HTTP で呼べる Cloud Functions をデプロイする",
+    description:
+      "ace-dev-01 の asia-northeast1 に、ランタイム python312 の HTTP トリガー関数 `hello` を未認証呼び出し許可でデプロイしてください。",
+    hints: [
+      "gcloud services enable cloudfunctions.googleapis.com",
+      "gcloud functions deploy hello --runtime=python312 --trigger-http --allow-unauthenticated --region=asia-northeast1",
+    ],
+    setup: [{ kind: "setProject", projectId: F.devProjectId }],
+    assertions: [
+      {
+        kind: "functionExists",
+        projectId: F.devProjectId,
+        name: "hello",
+        region: "asia-northeast1",
+        trigger: "http",
+        allowUnauthenticated: true,
+      },
+    ],
+  },
+  {
+    id: "m-deploy-006",
+    domain: MissionDomains.Deploy,
+    title: "Cloud SQL のインスタンスを立てる",
+    description:
+      "ace-dev-01 の asia-northeast1 に、MySQL 8.0 の Cloud SQL インスタンス `app-db` を作ってください（Cloud SQL Admin API の有効化から）。",
+    hints: [
+      "gcloud services enable sqladmin.googleapis.com",
+      "gcloud sql instances create app-db --database-version=MYSQL_8_0 --region=asia-northeast1",
+    ],
+    setup: [{ kind: "setProject", projectId: F.devProjectId }],
+    assertions: [
+      {
+        kind: "sqlInstanceExists",
+        projectId: F.devProjectId,
+        name: "app-db",
+        databaseVersion: SqlDatabaseVersions.Mysql80,
+      },
+    ],
+  },
+  {
+    id: "m-ops-003",
+    domain: MissionDomains.Operations,
+    title: "テンプレートから自動スケールする MIG を作る",
+    description:
+      "ace-dev-01 にインスタンステンプレート `web-tpl` を作り、それを使う 2 台のマネージドインスタンスグループ `web-mig` を asia-northeast1-a に作って、最大 5 台まで自動スケールするよう設定してください。",
+    hints: [
+      "gcloud compute instance-templates create web-tpl --machine-type=e2-small",
+      "gcloud compute instance-groups managed create web-mig --template=web-tpl --size=2 --zone=asia-northeast1-a",
+      "gcloud compute instance-groups managed set-autoscaling web-mig --max-num-replicas=5 --zone=asia-northeast1-a",
+    ],
+    setup: [{ kind: "setProject", projectId: F.devProjectId }],
+    assertions: [
+      {
+        kind: "instanceGroupExists",
+        projectId: F.devProjectId,
+        name: "web-mig",
+        targetSize: 2,
+        autoscaled: true,
+      },
+    ],
+  },
+  {
+    id: "m-iam-003",
+    domain: MissionDomains.Security,
+    title: "VM の起動と停止だけできるカスタムロールを作る",
+    description:
+      "ace-dev-01 に、compute.instances.start / compute.instances.stop / compute.instances.get / compute.instances.list だけを持つカスタムロール `vmOperator` を作り、dev@example.com にプロジェクトレベルで付与してください。",
+    hints: [
+      "gcloud iam roles create vmOperator --project=ace-dev-01 --title=VMOperator --permissions=compute.instances.start,compute.instances.stop,compute.instances.get,compute.instances.list",
+      "カスタムロールの名前は projects/ace-dev-01/roles/vmOperator です。",
+      "gcloud projects add-iam-policy-binding ace-dev-01 --member=user:dev@example.com --role=projects/ace-dev-01/roles/vmOperator",
+    ],
+    setup: [{ kind: "setProject", projectId: F.devProjectId }],
+    assertions: [
+      {
+        kind: "customRoleExists",
+        projectId: F.devProjectId,
+        roleId: "vmOperator",
+        permissions: ["compute.instances.start", "compute.instances.stop"],
+      },
+      {
+        kind: "bindingExists",
+        target: devProject,
+        role: `projects/${F.devProjectId}/roles/vmOperator`,
+        member: `user:${F.developer}`,
+      },
+    ],
+  },
 ];
 
 const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: IamMember) => {
@@ -513,6 +724,62 @@ const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
         id: assertion.projectId,
       });
       return EffectivePermissions.allows(effective, assertion.permission);
+    }
+    case "kubeDeploymentExists": {
+      const deployment = Option.flatMap(
+        World.findCluster(world, assertion.projectId, assertion.cluster),
+        (cluster) => World.findKubeDeployment(world, cluster, assertion.name),
+      );
+      return Option.isSome(deployment) && deployment.value.replicas === assertion.replicas;
+    }
+    case "kubeServiceExists": {
+      const service = Option.flatMap(
+        World.findCluster(world, assertion.projectId, assertion.cluster),
+        (cluster) => World.findKubeService(world, cluster, assertion.name),
+      );
+      return Option.isSome(service) && service.value.type === assertion.type;
+    }
+    case "functionExists": {
+      const fn = World.findNamed(world, "functions", assertion);
+      return (
+        Option.isSome(fn) &&
+        fn.value.region === assertion.region &&
+        fn.value.trigger.kind === assertion.trigger &&
+        fn.value.allowUnauthenticated === assertion.allowUnauthenticated
+      );
+    }
+    case "sqlInstanceExists": {
+      const instance = World.findNamed(world, "sqlInstances", assertion);
+      return (
+        Option.isSome(instance) && instance.value.databaseVersion === assertion.databaseVersion
+      );
+    }
+    case "topicExists":
+      return Option.isSome(World.findNamed(world, "pubsubTopics", assertion));
+    case "subscriptionExists": {
+      const subscription = World.findNamed(world, "pubsubSubscriptions", assertion);
+      return Option.isSome(subscription) && subscription.value.topic === assertion.topic;
+    }
+    case "budgetExists":
+      return World.budgetsOf(world, assertion.billingAccountId).some(
+        (b) => b.amount === assertion.amount,
+      );
+    case "instanceGroupExists": {
+      const group = World.findNamed(world, "instanceGroups", assertion);
+      return (
+        Option.isSome(group) &&
+        group.value.targetSize === assertion.targetSize &&
+        Option.isSome(group.value.autoscaling) === assertion.autoscaled
+      );
+    }
+    case "customRoleExists": {
+      const role = World.customRolesOf(world, assertion.projectId).find(
+        (r) => r.roleId === assertion.roleId,
+      );
+      return (
+        role !== undefined &&
+        assertion.permissions.every((p) => role.includedPermissions.includes(p))
+      );
     }
   }
 };
@@ -690,7 +957,7 @@ export const Mission = {
     return { ...world, missions: [...kept, ...missing] };
   },
 
-  /** 完了した件数と定義の総数。ヘッダーの「ミッション 2/11」表示に使う。 */
+  /** 完了した件数と定義の総数。ヘッダーの「ミッション 2/18」表示に使う。 */
   counts(world: World): Readonly<{ completed: number; total: number }> {
     return {
       completed: world.missions.filter((m) => m.status === MissionStatuses.Completed).length,
