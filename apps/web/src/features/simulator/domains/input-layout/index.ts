@@ -7,7 +7,7 @@ export type DrawnInput = Readonly<{ length: number; cursor: number }>;
 export type Redraw = Readonly<{ sequence: string; rendered: DrawnInput }>;
 
 const PromptText = "$ ";
-const PromptAnsi = "\x1b[32m$\x1b[0m ";
+const PromptAnsi = "\x1b[34m$\x1b[0m ";
 const PromptLength = PromptText.length;
 
 const up = (rows: number): string => (rows > 0 ? `\x1b[${rows}A` : "");

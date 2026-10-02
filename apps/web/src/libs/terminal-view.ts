@@ -40,6 +40,8 @@ export const colorize = (line: OutputLine): string => {
   return line.tone === "plain" ? text : `${Ansi[line.tone]}${text}${Ansi.reset}`;
 };
 
+const FontSize = 14;
+
 /** `TerminalView` を作る関数の型。テストではフェイクを注入する。 */
 export type TerminalViewFactory = (container: HTMLElement) => Promise<TerminalView>;
 
@@ -55,22 +57,30 @@ export const createXtermView: TerminalViewFactory = async (container) => {
     import("@xterm/xterm"),
     import("@xterm/addon-fit"),
   ]);
+  // 等幅は layout.tsx が next/font で読み込んだ IBM Plex Mono。xterm は開いた時点の書体で文字幅を
+  // 測るので、読み込みを待ってから開く（待たないと代替書体の幅で測り、桁がずれる）。
+  const mono = getComputedStyle(document.documentElement)
+    .getPropertyValue("--font-plex-mono")
+    .trim();
+  if (mono !== "") await document.fonts.load(`${FontSize}px ${mono}`).catch(() => []);
   const terminal = new Terminal({
     cursorBlink: true,
-    fontFamily: '"SFMono-Regular", Menlo, Consolas, "Noto Sans Mono CJK JP", monospace',
-    fontSize: 13,
-    lineHeight: 1.4,
+    fontFamily: `${mono === "" ? "" : `${mono}, `}"SFMono-Regular", Menlo, Consolas, "Noto Sans Mono CJK JP", monospace`,
+    fontSize: FontSize,
+    lineHeight: 1.55,
     convertEol: true,
     scrollback: 5000,
     theme: {
-      background: "#ffffff",
-      foreground: "#16181d",
-      cursor: "#16181d",
-      selectionBackground: "#cfe0f7",
+      background: "#fafcfe",
+      foreground: "#1d2126",
+      cursor: "#1d2126",
+      cursorAccent: "#fafcfe",
+      selectionBackground: "#e2f1fb",
       red: "#b42318",
       green: "#1a7f37",
-      yellow: "#9a6700",
-      brightBlack: "#6b7280",
+      yellow: "#9a6200",
+      blue: "#0b6aa8",
+      brightBlack: "#5f6570",
     },
   });
   const fit = new FitAddon();

@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-
+import { SectionHeading } from "@/components/SectionHeading";
 import {
   DefaultScopes,
   ExternalIp,
@@ -28,6 +28,23 @@ const protocolText = (rules: readonly ProtocolRuleType[]): string =>
 
 const scopeText = (scope: LbScope): string => LbScope.toPath(scope);
 
+/** 時刻の綴り。ISO 8601 の秒まで（ミリ秒とタイムゾーンは落とす: モック 2a）。 */
+const timestamp = (iso: string): string => iso.slice(0, 19);
+
+/** タグの札（モック 2a の `http-server`）。 */
+const TagChips = ({ tags }: Readonly<{ tags: readonly string[] }>): ReactElement =>
+  tags.length === 0 ? (
+    <span>{Empty}</span>
+  ) : (
+    <span className="flex flex-wrap gap-1.5">
+      {tags.map((tag) => (
+        <span key={tag} className="rounded bg-code px-2 py-0.5 text-[13px]">
+          {tag}
+        </span>
+      ))}
+    </span>
+  );
+
 export const InstanceProperties = ({
   world,
   selection,
@@ -43,6 +60,8 @@ export const InstanceProperties = ({
   const metadata = Object.entries(i.metadata);
   const hasDefaultScopes =
     i.scopes.length === DefaultScopes.length && DefaultScopes.every((s) => i.scopes.includes(s));
+  const bootDisk = i.disks.find((d) => d.boot);
+  const automaticRestart = !i.preemptible && i.provisioningModel === "STANDARD";
   return (
     <>
       <Section
@@ -52,9 +71,9 @@ export const InstanceProperties = ({
           { label: "zone", value: i.zone },
           {
             label: "scheduling",
-            value: `${i.provisioningModel}${i.preemptible ? " · preemptible" : ""}`,
+            value: `${i.provisioningModel}${i.preemptible ? " · preemptible" : ""}${automaticRestart ? " · 自動再起動" : ""}`,
           },
-          { label: "creationTimestamp", value: i.creationTimestamp },
+          { label: "creationTimestamp", value: timestamp(i.creationTimestamp) },
         ]}
       />
       <Section
@@ -68,27 +87,46 @@ export const InstanceProperties = ({
           {
             label: "external IP",
             value:
-              nic === undefined
-                ? Absent
-                : nic.externalIP.kind === "none"
-                  ? "なし"
-                  : `${Option.unwrapOr(ExternalIp.address(nic.externalIP), "(解放中)")} エフェメラル`,
+              nic === undefined ? (
+                Absent
+              ) : nic.externalIP.kind === "none" ? (
+                "なし"
+              ) : (
+                <>
+                  {Option.unwrapOr(ExternalIp.address(nic.externalIP), "(解放中)")}{" "}
+                  <span className="font-sans text-muted">エフェメラル</span>
+                </>
+              ),
           },
-          { label: "tags", value: joined(i.tags) },
+          { label: "tags", value: <TagChips tags={i.tags} /> },
         ]}
       />
       {rules.length > 0 && (
-        <p className="mb-4 rounded bg-ok-soft px-3 py-2 text-sm">
-          ↳ 適用されるファイアウォール:{" "}
-          {rules.map((r) => `${r.name}（${protocolText(r.allowed)} · タグ一致）`).join(" / ")}
-        </p>
+        <div className="-mt-2 mb-5 flex flex-col gap-1 rounded-md bg-ok-soft px-3 py-2.5 text-sm">
+          {rules.map((r) => (
+            <p
+              key={r.name}
+              className="grid grid-cols-[1.25rem_auto_auto_1fr] items-baseline gap-x-2"
+            >
+              <span className="text-ok">↳</span>
+              <span>適用されるファイアウォール：</span>
+              <span className="font-bold font-mono">{r.name}</span>
+              <span className="text-muted">{protocolText(r.allowed)} · タグ一致</span>
+            </p>
+          ))}
+        </div>
       )}
       <Section
         title="ディスク"
-        rows={i.disks.map((d) => ({
-          label: d.boot ? "boot" : d.deviceName,
-          value: `${d.deviceName} · ${d.type} · ${d.sizeGb}GB${d.boot ? ` · ${d.sourceImage.split("/").at(-1) ?? Absent}` : ""}`,
-        }))}
+        rows={[
+          ...i.disks.map((d) => ({
+            label: d.boot ? "boot" : d.deviceName,
+            value: `${d.deviceName} · ${d.type} · ${d.sizeGb}GB`,
+          })),
+          ...(bootDisk === undefined
+            ? []
+            : [{ label: "image", value: bootDisk.sourceImage.split("/").at(-1) ?? Absent }]),
+        ]}
       />
       <Section
         title="ID とアクセス"
@@ -108,13 +146,18 @@ export const InstanceProperties = ({
           rows={metadata.map(([key, value]) => ({ label: key, value }))}
         />
       )}
-      <Section
-        title="オペレーション"
-        rows={operations.map((o) => ({
-          label: o.operationType,
-          value: `${o.status} ${o.insertTime}`,
-        }))}
-      />
+      <section className="mb-5">
+        <SectionHeading className="mb-2">オペレーション</SectionHeading>
+        <ul className="flex flex-col gap-1 font-mono text-[14.5px]">
+          {operations.map((o) => (
+            <li key={o.id} className="flex gap-3">
+              <span>{o.operationType}</span>
+              <span className="text-ok">{o.status}</span>
+              <span>{o.insertTime.slice(11, 19)}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
     </>
   );
 };

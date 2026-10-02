@@ -5,5 +5,5 @@ export const SectionHeading = ({
   children,
   className = "mb-1",
 }: Readonly<{ children: ReactNode; className?: string }>): ReactElement => (
-  <h4 className={`font-semibold text-muted text-xs ${className}`}>{children}</h4>
+  <h4 className={`font-bold text-[13px] text-muted tracking-wider ${className}`}>{children}</h4>
 );

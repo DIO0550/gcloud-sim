@@ -81,7 +81,10 @@ test("名前の形式が悪いと項目の直下にエラーが出て送信さ�
   await openVmCreate(user);
   await user.type(screen.getByLabelText("名前"), "Web_2");
   await user.click(screen.getByRole("button", { name: "作成" }));
-  expect(screen.getByRole("alert")).toHaveTextContent("Invalid value for field 'resource.name'");
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "小文字英字で始め、小文字・数字・ハイフンのみ使用できます",
+  );
+  expect(screen.getByRole("button", { name: "作成" })).toBeDisabled();
   expect(screen.queryByRole("table", { name: "VM インスタンス" })).not.toBeInTheDocument();
   expect(screenText(terminal)).not.toContain("# Console:");
 });
@@ -136,7 +139,7 @@ test("API が無効なプロジェクトの VM 一覧は「API を有効にす�
   ).toBeInTheDocument();
 });
 
-test("IAM 画面でアクセス権を付与すると継承元付きの表に出て、継承された行には削除が無い", async () => {
+test("IAM 画面でアクセス権を付与すると継承元付きの表に出て、継承だけの人には削除が無い", async () => {
   const user = userEvent.setup();
   const { terminal } = renderSimulator();
   await openConsole(user);
@@ -147,20 +150,24 @@ test("IAM 画面でアクセス権を付与すると継承元付きの表に出�
   await user.type(screen.getByLabelText("ロール"), "roles/compute.viewer");
   await user.click(screen.getByRole("button", { name: "保存" }));
   const table = await screen.findByRole("table", { name: "IAM ポリシー" });
-  await waitFor(() =>
-    expect(within(table).getByText("user:alice@example.com")).toBeInTheDocument(),
-  );
-  const aliceRow = within(table).getByText("user:alice@example.com").closest("tr") as HTMLElement;
-  expect(within(aliceRow).getByRole("button", { name: "削除" })).toBeInTheDocument();
-  const ownerRow = within(table).getByText("user:owner@example.com").closest("tr") as HTMLElement;
+  await waitFor(() => expect(within(table).getByText("alice@example.com")).toBeInTheDocument());
+  const aliceRow = within(table).getByText("alice@example.com").closest("tr") as HTMLElement;
+  expect(within(aliceRow).getByText("Compute 閲覧者")).toBeInTheDocument();
+  expect(within(aliceRow).getByText("このプロジェクト")).toBeInTheDocument();
+  const ownerRow = within(table).getByText("owner@example.com").closest("tr") as HTMLElement;
   expect(within(ownerRow).getByText("組織 example.com")).toBeInTheDocument();
-  expect(within(ownerRow).queryByRole("button", { name: "削除" })).not.toBeInTheDocument();
   expect(screenText(terminal)).toContain(
     "$ gcloud projects add-iam-policy-binding ace-dev-01 --member=user:alice@example.com --role=roles/compute.viewer",
   );
-  await user.click(within(aliceRow).getByRole("button", { name: "削除" }));
+  // 継承だけの人を選ぶと、削除の代わりに継承元のポリシーを変えるコマンドが出る。
+  await user.click(within(ownerRow).getByRole("button", { name: "owner@example.com を編集" }));
+  const changes = screen.getByRole("region", { name: "ロールの変更" });
+  expect(within(changes).queryByRole("button", { name: "削除" })).not.toBeInTheDocument();
+  expect(changes).toHaveTextContent("gcloud organizations");
+  await user.click(within(aliceRow).getByRole("button", { name: "alice@example.com を編集" }));
+  await user.click(within(changes).getByRole("button", { name: "削除" }));
   await waitFor(() =>
-    expect(within(table).queryByText("user:alice@example.com")).not.toBeInTheDocument(),
+    expect(within(table).queryByText("alice@example.com")).not.toBeInTheDocument(),
   );
 });
 
@@ -171,14 +178,14 @@ test("VM 一覧で選んで停止すると状態が TERMINATED になり、削�
   await waitFor(() => expect(screenText(terminal)).toContain("Created ["));
   await openConsole(user);
   await user.click(within(consoleNav()).getByRole("button", { name: "VM インスタンス" }));
-  await user.click(screen.getByRole("radio", { name: "batch-1 を選択" }));
+  await user.click(screen.getByRole("checkbox", { name: "batch-1 を選択" }));
   await user.click(screen.getByRole("button", { name: "停止" }));
   const table = screen.getByRole("table", { name: "VM インスタンス" });
   await waitFor(() =>
     expect(within(table).getByRole("img", { name: "TERMINATED" })).toBeInTheDocument(),
   );
   expect(screenText(terminal)).toContain("# Console: 停止 (batch-1)");
-  await user.click(screen.getByRole("radio", { name: "batch-1 を選択" }));
+  // 選んだままなので、停止した VM にはそのまま削除を出せる。
   await user.click(screen.getByRole("button", { name: "削除" }));
   await waitFor(() => expect(within(table).queryByText("batch-1")).not.toBeInTheDocument());
   expect(screenText(terminal)).toContain(

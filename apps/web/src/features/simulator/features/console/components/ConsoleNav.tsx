@@ -70,18 +70,20 @@ export const ConsoleNav = ({ screen, onChange }: ConsoleNavProps): ReactElement 
   return (
     <nav
       aria-label="Console ナビゲーション"
-      className="flex min-h-0 flex-col overflow-auto border-line border-r bg-surface py-3"
+      className="flex min-h-0 flex-col overflow-auto border-line border-r bg-surface px-2.5 py-5"
     >
       {Object.values(ConsoleSections).map((section) => (
         <div key={section} className="mb-3">
-          <h3 className="px-4 pb-1 font-semibold text-muted text-xs">{sectionText(section)}</h3>
+          <h3 className="px-2.5 pb-1.5 font-medium text-[14.5px] text-muted">
+            {sectionText(section)}
+          </h3>
           <ul>
             {ConsoleScreen.inSection(section).map((item) => (
               <li key={item}>
                 <button
                   type="button"
                   aria-current={item === current ? "page" : undefined}
-                  className={`w-full px-4 py-2.5 text-left text-sm ${item === current ? "border-accent border-l-2 bg-accent-soft font-semibold" : "hover:bg-canvas"}`}
+                  className={`w-full rounded-lg px-4 py-2 text-left text-[15px] ${item === current ? "bg-accent-soft font-bold text-accent" : "hover:bg-canvas"}`}
                   onClick={() => onChange(item)}
                 >
                   {screenText(item)}

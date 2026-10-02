@@ -5,18 +5,24 @@
 
 @theme {
   /* 面と文字。canvas が下地、surface がカード。 */
-  --color-canvas: #f4f5f7;
+  --color-canvas: #f4f8fb;
   --color-surface: #ffffff;
-  --color-ink: #16181d;
-  --color-muted: #4a515e;
+  --color-ink: #1d2126;
+  --color-muted: #5f6570;
 
   /* 罫線。 */
-  --color-line: #e3e6ec;
+  --color-line: #d9e5ee;
 
   /* アクセント（選択中・進行中）。 */
-  --color-accent: #2f5fa8;
-  --color-accent-hover: #27508e;
-  --color-accent-soft: #eef3fb;
+  --color-accent: #0b6aa8;
+  --color-accent-hover: #09588c;
+  --color-accent-soft: #e2f1fb;
+
+  /* 等幅の文字を置く面（タグの札・コード片）。 */
+  --color-code: #edf3f8;
+
+  /* 等幅は IBM Plex Mono（layout.tsx が next/font で読み込み、変数で渡す）。 */
+  --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
 
   /* 状態の色。ok = RUNNING / クリア、warn = Owner 以外で操作中・継承、danger = エラー・リセット。 */
   --color-ok: #1a7f37;
@@ -32,4 +38,10 @@
 :root {
   /* デザインはライト 1 本。フォームコントロールが OS 設定で暗転しないよう固定する。 */
   color-scheme: light;
+}
+
+/* 同等のコマンドライン（UI 案 s1）: 1 語 1 行で並べ、行末の継続記号は見た目だけに置く
+   （文字としては 1 行のまま。コピーや読み上げに `\` を混ぜない）。 */
+.command-line:not(:last-child)::after {
+  content: " \\";
 }

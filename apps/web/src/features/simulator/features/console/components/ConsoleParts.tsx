@@ -2,6 +2,7 @@ import { type ReactElement, type ReactNode, useId } from "react";
 
 import { PrimaryButton, SecondaryButton } from "@/components/Button";
 import { ErrorCodes, type ExecutionOutcome } from "@/engine";
+import { CommandPart } from "@/features/simulator/features/console/domains/equivalent-command";
 import { Option } from "@/utils/Option";
 
 /**
@@ -16,10 +17,10 @@ export const ScreenTitle = ({
   title,
   trailing,
 }: Readonly<{ eyebrow: string; title: string; trailing?: ReactNode }>): ReactElement => (
-  <div className="mb-4 flex items-end justify-between gap-4">
+  <div className="mb-5 flex items-end justify-between gap-4">
     <div>
-      <p className="text-muted text-xs">{eyebrow}</p>
-      <h2 className="font-bold text-xl">{title}</h2>
+      <p className="mb-1 text-muted text-sm">{eyebrow}</p>
+      <h2 className="font-bold text-[28px] leading-tight">{title}</h2>
     </div>
     {trailing !== undefined && <div className="flex gap-2">{trailing}</div>}
   </div>
@@ -32,11 +33,14 @@ export const ScreenTitle = ({
  */
 export const Field = ({
   label,
+  required = false,
   error,
   hint,
   children,
 }: Readonly<{
   label: string;
+  /** 必須の印（` *`）を付けるか。印は見た目だけで、項目名には含めない */
+  required?: boolean;
   error?: string;
   hint?: string;
   children: (id: string) => ReactNode;
@@ -44,13 +48,16 @@ export const Field = ({
   const id = useId();
   return (
     <div>
-      <label htmlFor={id} className="mb-1 block font-medium text-sm">
+      <label
+        htmlFor={id}
+        className={`mb-2 block font-bold text-sm ${required ? "after:content-['_*']" : ""}`}
+      >
         {label}
       </label>
       {children(id)}
-      {hint !== undefined && <p className="mt-1 text-muted text-xs">{hint}</p>}
+      {hint !== undefined && <p className="mt-1.5 text-muted text-xs">{hint}</p>}
       {error !== undefined && (
-        <p role="alert" className="mt-1 text-danger text-xs">
+        <p role="alert" className="mt-1.5 text-danger text-sm">
           {error}
         </p>
       )}
@@ -58,8 +65,43 @@ export const Field = ({
   );
 };
 
+/** 択一の項目（ラジオボタンの並び）。`inline` なら横に、そうでなければ縦に並べる。 */
+export const RadioGroup = <T extends string>({
+  label,
+  name,
+  value,
+  options,
+  onChange,
+  inline = false,
+}: Readonly<{
+  label: string;
+  name: string;
+  value: T;
+  options: readonly Readonly<{ value: T; label: string }>[];
+  onChange: (value: T) => void;
+  inline?: boolean;
+}>): ReactElement => (
+  <fieldset>
+    <legend className="mb-2 font-bold text-sm">{label}</legend>
+    <div className={inline ? "flex gap-5" : "flex flex-col gap-1.5"}>
+      {options.map((option) => (
+        <label key={option.value} className="flex items-center gap-1.5 text-[15px]">
+          <input
+            type="radio"
+            name={name}
+            className="h-4 w-4 accent-ink"
+            checked={option.value === value}
+            onChange={() => onChange(option.value)}
+          />
+          {option.label}
+        </label>
+      ))}
+    </div>
+  </fieldset>
+);
+
 export const InputClass =
-  "w-full rounded-lg border border-line bg-surface px-3 py-2 font-mono text-sm focus:border-accent focus:outline-none";
+  "h-9 w-full rounded-md border border-line bg-surface px-3 font-mono text-[15px] focus:border-accent focus:outline-none aria-invalid:border-danger";
 
 type Column<T> = Readonly<{ header: string; cell: (row: T) => ReactNode; className?: string }>;
 
@@ -163,6 +205,87 @@ export const FormWithCommand = ({
     </div>
   </div>
 );
+
+const markClass = (mark: CommandPart["mark"]): string => {
+  switch (mark) {
+    case "plain":
+      return "";
+    case "changed":
+      return "rounded-sm bg-warn-soft";
+    case "invalid":
+      return "rounded-sm bg-danger-soft text-danger";
+  }
+};
+
+/** 同等のコマンドラインを 1 語 1 行で並べる。文字としては空白区切りの 1 行のまま。 */
+const CommandLines = ({ parts }: Readonly<{ parts: readonly CommandPart[] }>): ReactElement => (
+  <code className="block break-all font-mono text-sm leading-[1.9]">
+    {parts.map((part, index) => (
+      <span key={part.lead} className={`command-line block ${index === 0 ? "" : "pl-6"}`}>
+        {index === 0 ? "" : " "}
+        {part.lead}
+        {part.value !== "" && (
+          <span className={`px-0.5 ${markClass(part.mark)}`}>{part.value}</span>
+        )}
+      </span>
+    ))}
+  </code>
+);
+
+/**
+ * 1 画面を使う作成ページ（UI 案 s1）。左に見出し・項目・作成とキャンセル、右の列に
+ * 同等のコマンドライン（変えた値をハイライト）と試験メモを置く。右の列は画面の高さいっぱいに伸ばす。
+ */
+export const CreatePage = ({
+  header,
+  parts,
+  onCopy,
+  onInsert,
+  actions,
+  note,
+  children,
+}: Readonly<{
+  header: ReactNode;
+  parts: readonly CommandPart[];
+  onCopy: (text: string) => void;
+  onInsert: (text: string) => void;
+  actions: ReactNode;
+  /** 右の列の下に出す試験メモ */
+  note?: ReactNode;
+  children: ReactNode;
+}>): ReactElement => {
+  const command = CommandPart.join(parts);
+  return (
+    <div className="-mx-8 -my-7 grid min-h-full grid-cols-[minmax(0,1fr)_29rem]">
+      <div className="flex flex-col px-8 py-7">
+        {header}
+        {children}
+        <div className="mt-auto flex gap-3 pt-8">{actions}</div>
+      </div>
+      <section
+        className="flex flex-col border-line border-l bg-surface px-6 py-7"
+        aria-label="同等のコマンドライン"
+      >
+        <h3 className="mb-1.5 font-bold text-xl">同等のコマンドライン</h3>
+        <p className="mb-5 text-muted text-sm">
+          フォームの入力に合わせて更新。変更した箇所をハイライト。
+        </p>
+        <div className="rounded-lg border border-line bg-[#fafcfe] px-4 py-5">
+          <CommandLines parts={parts} />
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <SecondaryButton onClick={() => onCopy(command)}>コピー</SecondaryButton>
+          <SecondaryButton onClick={() => onInsert(command)}>ターミナルに貼り付け</SecondaryButton>
+        </div>
+        {note !== undefined && (
+          <div className="mt-auto rounded-lg bg-code px-4 py-3.5 text-sm leading-relaxed">
+            {note}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+};
 
 /**
  * 一覧の上に開く作成フォームの器（UI 案 s1 の作成ページを、一覧の上の区画に畳んだ形）。
