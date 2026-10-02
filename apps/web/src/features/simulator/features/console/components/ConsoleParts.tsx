@@ -1,7 +1,8 @@
 import { type ReactElement, type ReactNode, useId } from "react";
 
-import { PrimaryButton, SecondaryButton } from "@/components/Button";
+import { PrimaryButton } from "@/components/PrimaryButton";
 import { RadioGroup } from "@/components/RadioGroup";
+import { SecondaryButton } from "@/components/SecondaryButton";
 import { TextInput } from "@/components/TextInput";
 import { ErrorCodes, type ExecutionOutcome } from "@/engine";
 import { CommandPart } from "@/features/simulator/features/console/domains/equivalent-command";

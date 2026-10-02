@@ -55,7 +55,9 @@ apps/web/          Next.js 16（App Router / TypeScript / Tailwind v4）
     snapshot/      export / import の形と検証
   src/features/simulator/  画面（ヘッダー / ツリー / ターミナル / 右ペイン / 設定）と reducer
     features/console/      Console 風 GUI（simulator の子 feature。画面と同等コマンドの生成）
-  src/components/  ドメイン知識を持たない UI 部品（ボタン / 小見出し / 札）
+  src/components/  ドメイン知識を持たない UI 部品。1 コンポーネント 1 フォルダ
+                   （<Name>/index.tsx・<Name>.stories.tsx・__tests__/）
+  .storybook/      Storybook の設定（src/components の stories を載せる）
   src/libs/        境界: localStorage・ファイル・時計・xterm.js のラップ
   src/base-path.ts basePath の唯一の定義（next.config.ts と public/ 参照の両方が使う）
   vitest.config.ts テスト設定（jsdom + Testing Library。engine のテストは node 環境）
@@ -77,6 +79,8 @@ Next.js / React / Tailwind と xterm.js（`@xterm/xterm` + `@xterm/addon-fit`）
 | `pnpm build` | static export を作る（出力は `apps/web/out`） |
 | `pnpm typecheck` | `tsc --noEmit` |
 | `pnpm test` | Vitest（`pnpm --filter @gcloud-sim/web test:watch` で watch） |
+| `pnpm storybook` | 共通コンポーネント（`apps/web/src/components`）のカタログ（`http://localhost:6006/`） |
+| `pnpm build-storybook` | Storybook を静的にビルドする（出力は `apps/web/storybook-static`） |
 | `pnpm check` | Biome で lint / format / import 順を検査 |
 | `pnpm fix` | Biome で自動修正 |
 | `pnpm visual:capture` | 主要画面のスクリーンショットを撮る（先に `pnpm build`） |
@@ -95,7 +99,7 @@ workflow は目的ごとに分けてある。見たいものが違い（「壊�
 
 | workflow | いつ走るか | やること | 権限 |
 |---|---|---|---|
-| [`ci.yml`](.github/workflows/ci.yml) | PR / `main` への push / 手動 | `pnpm check` / `typecheck` / `test` / `build` | `contents: read` |
+| [`ci.yml`](.github/workflows/ci.yml) | PR / `main` への push / 手動 | `pnpm check` / `typecheck` / `test` / `build` / `build-storybook` | `contents: read` |
 | [`deploy-pages.yml`](.github/workflows/deploy-pages.yml) | `main` への push / 手動 | static export を作って `gh-pages` のルートへ出す | `contents: write` と `pages: read`（設定の確認） |
 | [`pr-preview.yml`](.github/workflows/pr-preview.yml) | PR | その PR のサイトを `gh-pages/pr-preview/pr-<番号>/` へ出し、URL を PR に貼る | `contents: write` と PR コメント |
 | [`visual-regression.yml`](.github/workflows/visual-regression.yml) | PR / 手動 | 主要画面を撮って main と比べ、レポートを `gh-pages` へ出し PR に貼る | `contents: write` と PR コメント |

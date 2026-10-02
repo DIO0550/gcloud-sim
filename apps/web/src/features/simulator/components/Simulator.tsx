@@ -1,9 +1,8 @@
 "use client";
 
 import { type ReactElement, useCallback, useEffect } from "react";
-
-import { TextButton } from "@/components/Button";
 import { Tab } from "@/components/Tab";
+import { TextButton } from "@/components/TextButton";
 import { Engine } from "@/engine";
 import { World as WorldOps } from "@/engine/domains/world";
 import { Mission } from "@/engine/missions";

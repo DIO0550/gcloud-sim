@@ -27,3 +27,11 @@ minimumReleaseAgeIgnoreMissingTime: false
 # 書ける形式: パッケージ名 / パターン（'@myorg/*'） / バージョン指定（'next@16.3.5'）。
 # minimumReleaseAgeExclude:
 #   - 'next@16.3.5'
+
+# --- インストール時のビルドスクリプト ---
+#
+# 既定ではどの依存の postinstall も動かさない。ここに明示したものだけを判断する。
+# esbuild（Storybook が使う）は postinstall がバイナリの確認だけで、プラットフォーム別の
+# バイナリは optionalDependencies から入るので、動かさなくても使える。
+allowBuilds:
+  esbuild: false

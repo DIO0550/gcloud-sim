@@ -1,7 +1,8 @@
 import type { ReactElement } from "react";
 
-import { GhostButton, ToggleButton } from "@/components/Button";
+import { GhostButton } from "@/components/GhostButton";
 import { Select } from "@/components/Select";
+import { ToggleButton } from "@/components/ToggleButton";
 import type { World } from "@/engine/domains/world";
 import { World as WorldOps } from "@/engine/domains/world";
 import { type View, Views } from "@/features/simulator/hooks/use-simulator";

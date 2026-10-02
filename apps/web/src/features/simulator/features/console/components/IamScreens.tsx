@@ -1,8 +1,8 @@
 import { type ReactElement, useState } from "react";
-import { TextButton } from "@/components/Button";
 import { SuggestInput } from "@/components/SuggestInput";
 import { Switch } from "@/components/Switch";
 import { Tab } from "@/components/Tab";
+import { TextButton } from "@/components/TextButton";
 import type { IamMember, RoleName } from "@/engine/domains/iam-policy";
 import type { PolicyTarget } from "@/engine/domains/resource-hierarchy";
 import { CustomRole, RoleCatalog } from "@/engine/domains/role-catalog";

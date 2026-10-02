@@ -154,3 +154,6 @@ next-env.d.ts
 visual-actual/
 visual-baseline/
 visual-report/
+
+# Storybook のビルド出力（pnpm build-storybook）
+storybook-static/

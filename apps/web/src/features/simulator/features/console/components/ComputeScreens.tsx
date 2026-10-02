@@ -1,8 +1,9 @@
 import { type ReactElement, useId, useState } from "react";
-
-import { GhostButton, TextButton, ToggleButton } from "@/components/Button";
 import { Checkbox } from "@/components/Checkbox";
+import { GhostButton } from "@/components/GhostButton";
 import { Select } from "@/components/Select";
+import { TextButton } from "@/components/TextButton";
+import { ToggleButton } from "@/components/ToggleButton";
 
 import { MachineType, PublicImage, Region, Zone } from "@/engine/domains/catalog";
 import {

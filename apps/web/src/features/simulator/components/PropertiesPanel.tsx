@@ -1,7 +1,6 @@
 import type { ReactElement } from "react";
-
-import { SecondaryButton } from "@/components/Button";
 import { Pill } from "@/components/Pill";
+import { SecondaryButton } from "@/components/SecondaryButton";
 import { Instance } from "@/engine/domains/compute";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { World } from "@/engine/domains/world";

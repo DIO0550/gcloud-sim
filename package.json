@@ -11,6 +11,8 @@
     "build": "pnpm --filter @gcloud-sim/web build",
     "typecheck": "pnpm --filter @gcloud-sim/web typecheck",
     "test": "pnpm --filter @gcloud-sim/web test",
+    "storybook": "pnpm --filter @gcloud-sim/web storybook",
+    "build-storybook": "pnpm --filter @gcloud-sim/web build-storybook",
     "check": "biome check .",
     "fix": "biome check --write .",
     "visual:capture": "node .github/scripts/visual-regression.mjs capture",

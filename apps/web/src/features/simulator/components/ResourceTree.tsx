@@ -1,6 +1,6 @@
 import { type ReactElement, useMemo, useState } from "react";
 
-import { TextButton } from "@/components/Button";
+import { TextButton } from "@/components/TextButton";
 import type { World } from "@/engine/domains/world";
 import {
   type ResourceGroup,

@@ -1,6 +1,8 @@
 import { type ReactElement, useRef } from "react";
 
-import { DangerButton, IconButton, SecondaryButton } from "@/components/Button";
+import { DangerButton } from "@/components/DangerButton";
+import { IconButton } from "@/components/IconButton";
+import { SecondaryButton } from "@/components/SecondaryButton";
 import type { World } from "@/engine/domains/world";
 import { SchemaVersion, Snapshot } from "@/engine/snapshot";
 import { Option } from "@/utils/Option";

@@ -1,8 +1,8 @@
 import type { ReactElement } from "react";
-
-import { PrimaryButton, SecondaryButton } from "@/components/Button";
 import { NavItemButton } from "@/components/NavItemButton";
 import { Pill } from "@/components/Pill";
+import { PrimaryButton } from "@/components/PrimaryButton";
+import { SecondaryButton } from "@/components/SecondaryButton";
 import { SectionHeading } from "@/components/SectionHeading";
 import { type MissionStatus, MissionStatuses } from "@/engine/domains/mission-progress";
 import { World } from "@/engine/domains/world";
