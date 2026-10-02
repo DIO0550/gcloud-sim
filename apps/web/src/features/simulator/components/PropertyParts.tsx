@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 
 import { SectionHeading } from "@/components/SectionHeading";
 import type { IamMember } from "@/engine/domains/iam-policy";
@@ -13,7 +13,8 @@ export type SelectionProps<K extends TreeSelection["kind"]> = Readonly<{
   selection: Extract<TreeSelection, { kind: K }>;
 }>;
 
-export type Row = Readonly<{ label: string; value: string }>;
+/** 1 行。値はふつう文字列で、札や色付きの綴りを置きたいときだけ要素を渡す。 */
+export type Row = Readonly<{ label: string; value: ReactNode }>;
 
 /** 無い・空のときの綴り。`-` は値が無いこと、`(none)` は集合が空なことを表す。 */
 export const Absent = "-";
@@ -27,9 +28,9 @@ export const Section = ({
   title,
   rows,
 }: Readonly<{ title: string; rows: readonly Row[] }>): ReactElement => (
-  <section className="mb-4">
-    <SectionHeading>{title}</SectionHeading>
-    <dl className="grid grid-cols-[9rem_1fr] gap-x-3 gap-y-1 text-sm">
+  <section className="mb-5">
+    <SectionHeading className="mb-2">{title}</SectionHeading>
+    <dl className="grid grid-cols-[8.5rem_1fr] gap-x-2 gap-y-1.5 text-[14.5px]">
       {rows.map((row) => (
         <div key={row.label} className="contents">
           <dt className="text-muted">{row.label}</dt>

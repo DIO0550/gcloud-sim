@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 
 import { SecondaryButton } from "@/components/Button";
 import { Pill } from "@/components/Pill";
+import { Instance } from "@/engine/domains/compute";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { World } from "@/engine/domains/world";
 import { TreeSelection } from "@/engine/resource-tree";
@@ -48,12 +49,15 @@ import {
   SubscriptionProperties,
   TopicProperties,
 } from "@/features/simulator/components/ServiceProperties";
+import { type ConsoleScreen, ConsoleScreens } from "@/features/simulator/features/console";
 import { Option } from "@/utils/Option";
 
 type PropertiesPanelProps = Readonly<{
   world: World;
   selection: Option<TreeSelection>;
   onInsert: (command: string) => void;
+  /** 「Console で開く」: Console ビューのその種別の画面へ移る */
+  onOpenConsole: (screen: ConsoleScreen) => void;
 }>;
 
 const Body = ({
@@ -270,6 +274,48 @@ const kindLabel = (selection: TreeSelection): string => {
   }
 };
 
+/** 選んだものを一覧する Console の画面。Console に画面の無い種別は `none`。 */
+const consoleScreenOf = (selection: TreeSelection): Option<ConsoleScreen> => {
+  switch (selection.kind) {
+    case "instance":
+      return Option.some(ConsoleScreens.VmList);
+    case "firewall":
+      return Option.some(ConsoleScreens.Firewall);
+    case "subnet":
+      return Option.some(ConsoleScreens.Subnets);
+    case "bucket":
+      return Option.some(ConsoleScreens.Buckets);
+    case "cluster":
+      return Option.some(ConsoleScreens.Clusters);
+    case "run-service":
+      return Option.some(ConsoleScreens.RunServices);
+    case "service-account":
+      return Option.some(ConsoleScreens.ServiceAccounts);
+    case "custom-role":
+      return Option.some(ConsoleScreens.Roles);
+    case "budget":
+      return Option.some(ConsoleScreens.Budgets);
+    case "iam":
+      return Option.some(ConsoleScreens.Iam);
+    default:
+      return Option.none;
+  }
+};
+
+/** 作成した時刻（`作成 · 14:02`）。insert のオペレーションが残っているインスタンスだけ。 */
+const createdAtOf = (world: World, selection: TreeSelection): Option<string> => {
+  if (selection.kind !== "instance") return Option.none;
+  return Option.flatMap(
+    World.findInstance(world, selection.projectId, selection.zone, selection.name),
+    (i) => {
+      const insert = World.operationsOfTarget(world, Instance.selfLink(i)).find(
+        (o) => o.operationType === "insert",
+      );
+      return insert === undefined ? Option.none : Option.some(insert.insertTime.slice(11, 16));
+    },
+  );
+};
+
 const statusOf = (world: World, selection: TreeSelection): Option<string> => {
   if (selection.kind !== "instance") return Option.none;
   return Option.map(
@@ -283,6 +329,7 @@ export const PropertiesPanel = ({
   world,
   selection,
   onInsert,
+  onOpenConsole,
 }: PropertiesPanelProps): ReactElement => {
   if (!Option.isSome(selection)) {
     return (
@@ -306,28 +353,53 @@ export const PropertiesPanel = ({
   }
   const describe = TreeSelection.describeCommand(selection.value);
   const status = statusOf(world, selection.value);
+  const createdAt = createdAtOf(world, selection.value);
+  const consoleScreen = consoleScreenOf(selection.value);
   return (
-    <div className="p-5">
-      <div className="mb-1 flex items-center gap-2">
-        <h3 className="font-bold font-mono text-lg">{titleOf(selection.value)}</h3>
-        {Option.isSome(status) && (
-          <Pill tone={status.value === "RUNNING" ? "ok" : "muted"} className="font-mono">
-            {status.value}
-          </Pill>
+    <div>
+      <div className="border-line border-b px-5 pt-5 pb-4">
+        <div className="mb-2 flex items-center gap-2">
+          <h3 className="min-w-0 break-all font-bold font-mono text-[22px] leading-tight">
+            {titleOf(selection.value)}
+          </h3>
+          {Option.isSome(status) && (
+            <Pill
+              tone={status.value === "RUNNING" ? "ok" : "muted"}
+              className="font-mono font-semibold"
+            >
+              {status.value}
+            </Pill>
+          )}
+          {Option.isSome(createdAt) && (
+            <span className="ml-auto shrink-0 text-sm text-warn-ink">作成 · {createdAt.value}</span>
+          )}
+        </div>
+        <p className="mb-3 break-all font-mono text-[13px] text-muted">
+          {kindLabel(selection.value)}
+        </p>
+        {(Option.isSome(describe) || Option.isSome(consoleScreen)) && (
+          <div className="flex flex-wrap gap-2">
+            {Option.isSome(describe) && (
+              <>
+                <SecondaryButton onClick={() => onInsert(describe.value)}>
+                  describe を挿入
+                </SecondaryButton>
+                <SecondaryButton onClick={() => onInsert(`${describe.value} --format=json`)}>
+                  JSON
+                </SecondaryButton>
+              </>
+            )}
+            {Option.isSome(consoleScreen) && (
+              <SecondaryButton onClick={() => onOpenConsole(consoleScreen.value)}>
+                Console で開く →
+              </SecondaryButton>
+            )}
+          </div>
         )}
       </div>
-      <p className="mb-3 break-all font-mono text-muted text-xs">{kindLabel(selection.value)}</p>
-      {Option.isSome(describe) && (
-        <div className="mb-4 flex gap-2">
-          <SecondaryButton onClick={() => onInsert(describe.value)}>
-            describe を挿入
-          </SecondaryButton>
-          <SecondaryButton onClick={() => onInsert(`${describe.value} --format=json`)}>
-            JSON
-          </SecondaryButton>
-        </div>
-      )}
-      <Body world={world} selection={selection.value} />
+      <div className="px-5 pt-4">
+        <Body world={world} selection={selection.value} />
+      </div>
     </div>
   );
 };

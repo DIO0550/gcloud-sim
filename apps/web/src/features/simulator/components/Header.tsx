@@ -13,6 +13,9 @@ type HeaderProps = Readonly<{
   onProjectChange: (projectId: string) => void;
   onPrincipalChange: (principal: string) => void;
   onOpenSettings: () => void;
+  /** Console の下の端末（ドロワー）を開いているか */
+  isTerminalOpen: boolean;
+  onTerminalToggle: () => void;
 }>;
 
 const viewText = (view: View): string => {
@@ -32,6 +35,8 @@ export const Header = ({
   onProjectChange,
   onPrincipalChange,
   onOpenSettings,
+  isTerminalOpen,
+  onTerminalToggle,
 }: HeaderProps): ReactElement => {
   const projectId = Option.unwrapOr(WorldOps.currentProjectId(world), "");
   const principal = WorldOps.currentPrincipal(world);
@@ -59,6 +64,16 @@ export const Header = ({
         ))}
       </fieldset>
       <div className="ml-auto flex items-center gap-3 text-sm">
+        {view === "console" && (
+          <button
+            type="button"
+            aria-pressed={isTerminalOpen}
+            className={`rounded-lg px-3 py-1.5 ${isTerminalOpen ? "bg-accent-soft font-semibold text-accent" : "hover:bg-canvas"}`}
+            onClick={onTerminalToggle}
+          >
+            <span className="font-mono">&gt;_</span> ターミナル
+          </button>
+        )}
         <div className="flex items-center gap-2 rounded-lg border border-line px-3 py-1.5">
           <span className="text-muted">プロジェクト</span>
           <Select

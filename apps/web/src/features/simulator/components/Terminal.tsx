@@ -2,7 +2,7 @@
 
 import "@xterm/xterm/css/xterm.css";
 
-import { type ReactElement, useEffect, useRef, useState } from "react";
+import { type ReactElement, type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { OutputLine } from "@/engine";
 import { type DrawnInput, InputLayout } from "@/features/simulator/domains/input-layout";
@@ -26,6 +26,8 @@ type TerminalProps = Readonly<{
   createView: TerminalViewFactory;
   /** 端末の器の見出し。`configuration: default` のように右上に出す */
   caption: string;
+  /** 下端の帯の右側に出すもの（自動保存の状態）。無ければ出さない */
+  status?: ReactNode;
 }>;
 
 const Banner: readonly OutputLine[] = [
@@ -116,8 +118,15 @@ const handleData = (handle: TerminalHandle, data: string, callbacks: TerminalPro
  * CLI で打った入力行は既に端末に映っているので書き直さない。
  */
 export const Terminal = (props: TerminalProps): ReactElement => {
-  const { transcript, screenClearCount, pendingInsert, onInsertConsumed, createView, caption } =
-    props;
+  const {
+    transcript,
+    screenClearCount,
+    pendingInsert,
+    onInsertConsumed,
+    createView,
+    caption,
+    status,
+  } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<Option<TerminalHandle>>(Option.none);
   const lastWrittenIdRef = useRef(0);
@@ -214,16 +223,16 @@ export const Terminal = (props: TerminalProps): ReactElement => {
   }, [pendingInsert, isOpen, onInsertConsumed]);
 
   return (
-    <section aria-label="ターミナル" className="flex min-h-0 flex-1 flex-col bg-surface">
-      <div className="flex items-center justify-between border-line border-b px-4 py-2 text-muted text-xs">
+    <section aria-label="ターミナル" className="flex min-h-0 flex-1 flex-col bg-[#fafcfe]">
+      <div className="flex items-center justify-between border-line border-b bg-surface px-4 py-2.5 text-muted text-sm">
         <span className="font-mono">bash — gcloud-sim</span>
-        <span className="font-mono">{caption}</span>
+        <span>{caption}</span>
       </div>
       {/* overflow-hidden: xterm は入力用の textarea をカーソル行の位置に絶対配置で置く。置き場が縮んだ直後は
           前の行数の位置に残るので、はみ出しを切らないと文書の高さが伸びて画面全体がスクロールする。 */}
       <div
         ref={containerRef}
-        className="min-h-0 flex-1 overflow-hidden px-3 py-2"
+        className="min-h-0 flex-1 overflow-hidden px-5 py-4"
         data-testid="terminal-host"
       >
         {openState.kind === "failed" && (
@@ -232,8 +241,9 @@ export const Terminal = (props: TerminalProps): ReactElement => {
           </p>
         )}
       </div>
-      <div className="flex items-center justify-between border-line border-t px-4 py-1.5 text-muted text-xs">
+      <div className="flex items-center justify-between border-line border-t bg-surface px-4 py-2.5 text-muted text-sm">
         <span>↑↓ 履歴　Tab 補完　Ctrl+L クリア</span>
+        {status}
       </div>
     </section>
   );

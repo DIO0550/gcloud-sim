@@ -110,7 +110,7 @@ const StatusDot = ({ status }: Readonly<{ status: TreeNode["status"] }>): ReactE
         <span
           role="img"
           aria-label="停止中"
-          className="inline-block h-2 w-2 rounded-full bg-line"
+          className="inline-block h-2 w-2 rounded-full bg-[#b5bcc5]"
         />
       );
   }
@@ -138,6 +138,9 @@ const Node = ({
     Option.isSome(currentProjectId) &&
     node.selection.value.projectId === currentProjectId.value;
   const hasChildren = node.children.length > 0;
+  // 組織・フォルダ・種別グループは名前（プロポーショナル）、プロジェクトとリソースは ID（等幅）で書く。
+  const isName =
+    node.label.kind === "group" || node.badge === "organization" || node.badge === "folder";
   const select = (): void => {
     if (Option.isSome(node.selection)) onSelect(node.selection.value);
   };
@@ -148,13 +151,13 @@ const Node = ({
   return (
     <li>
       <div
-        className={`flex items-center gap-1.5 rounded px-2 py-1 text-sm ${isSelected ? "bg-accent text-white" : "hover:bg-canvas"}`}
-        style={{ paddingLeft: `${8 + depth * 14}px` }}
+        className={`flex items-center gap-1.5 rounded-md py-1 pr-2 text-[15px] ${isSelected ? "bg-accent text-white" : "hover:bg-canvas"}`}
+        style={{ paddingLeft: `${6 + depth * 18}px` }}
       >
         {hasChildren ? (
           <button
             type="button"
-            className="w-4 text-xs"
+            className={`w-4 text-[10px] ${isSelected ? "" : "text-muted"}`}
             onClick={() => setOpen((v) => !v)}
             aria-label={isOpen ? `${label} を折りたたむ` : `${label} を展開する`}
             aria-expanded={isOpen}
@@ -173,22 +176,23 @@ const Node = ({
         >
           {badge !== "" && (
             <span
-              className={`rounded border px-1 text-xs ${isSelected ? "border-white/60" : "border-line text-muted"}`}
+              className={`rounded border px-1.5 py-px text-xs ${isSelected ? "border-white/60" : "border-line text-muted"}`}
             >
               {badge}
             </span>
           )}
           <StatusDot status={node.status} />
           <span
-            className={`truncate font-mono ${isCurrentProject ? "font-bold text-accent" : ""} ${isSelected ? "text-white" : ""}`}
+            className={`truncate ${isName ? "" : "font-mono"} ${isCurrentProject ? "font-bold text-accent" : ""} ${isSelected ? "font-medium text-white" : ""}`}
           >
             {label}
           </span>
           {Option.isSome(node.count) && (
-            <span className={`text-xs ${isSelected ? "text-white/80" : "text-muted"}`}>
+            <span className={isSelected ? "text-white/80" : "text-muted/70"}>
               {node.count.value}
             </span>
           )}
+          {isSelected && <span className="ml-auto text-xs">›</span>}
         </button>
       </div>
       {hasChildren && isOpen && (
@@ -225,7 +229,7 @@ export const ResourceTree = ({
       aria-label="リソース階層"
       className="flex min-h-0 flex-col border-line border-r bg-surface"
     >
-      <h2 className="px-4 pt-4 pb-2 font-semibold text-muted text-sm">リソース階層</h2>
+      <h2 className="px-4 pt-5 pb-3 font-bold text-[15px] text-muted">リソース階層</h2>
       <ul className="min-h-0 flex-1 overflow-auto px-2 pb-2">
         {roots.map((node) => (
           <Node
@@ -239,8 +243,9 @@ export const ResourceTree = ({
           />
         ))}
       </ul>
-      <p className="border-line border-t px-4 py-3 text-muted text-xs">
-        クリックでプロパティ、ダブルクリックで describe を入力行に挿入
+      <p className="mx-2 border-line border-t px-2 py-4 text-muted text-sm leading-relaxed">
+        クリックでプロパティ、ダブルクリックで <span className="font-mono">describe</span>{" "}
+        を入力行に挿入
       </p>
     </nav>
   );

@@ -16,12 +16,14 @@ type SelectProps<T extends string> = Readonly<{
   align?: "start" | "end";
   /** 文字色など、置き場の都合の見た目 */
   className?: string;
+  /** 値の書体。ID や綴りは等幅（既定）、名前や説明はプロポーショナル */
+  font?: "mono" | "sans";
 }>;
 
 const TriggerClass = {
   field:
-    "flex w-full items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-left font-mono text-sm focus:border-accent focus:outline-none",
-  bare: "flex items-center gap-1.5 rounded bg-transparent text-left font-mono focus:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+    "flex h-9 w-full items-center justify-between gap-2 rounded-md border border-line bg-surface px-3 text-left text-[15px] focus:border-accent focus:outline-none",
+  bare: "flex items-center gap-2 rounded bg-transparent text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent",
 } as const;
 
 const clamp = (index: number, length: number): number => Math.min(Math.max(index, 0), length - 1);
@@ -40,6 +42,7 @@ export const Select = <T extends string>({
   variant = "field",
   align = "start",
   className,
+  font = "mono",
 }: SelectProps<T>): ReactElement => {
   const listId = useId();
   const [open, setOpen] = useState(false);
@@ -127,7 +130,7 @@ export const Select = <T extends string>({
         aria-expanded={open}
         aria-controls={listId}
         aria-activedescendant={open ? optionId(active) : undefined}
-        className={`${TriggerClass[variant]} ${className ?? ""}`}
+        className={`${TriggerClass[variant]} ${font === "mono" ? "font-mono" : ""} ${className ?? ""}`}
         onClick={() => (open ? setOpen(false) : openList())}
         onKeyDown={onKeyDown}
         onBlur={() => setOpen(false)}
@@ -136,9 +139,9 @@ export const Select = <T extends string>({
         <svg
           aria-hidden="true"
           viewBox="0 0 16 16"
-          className={`h-3.5 w-3.5 shrink-0 text-muted transition-transform ${open ? "rotate-180" : ""}`}
+          className={`h-3 w-3 shrink-0 text-muted transition-transform ${open ? "rotate-180" : ""}`}
         >
-          <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M3.5 5.5h9L8 11z" fill="currentColor" />
         </svg>
       </button>
       {open && (
@@ -160,7 +163,7 @@ export const Select = <T extends string>({
                 role="option"
                 tabIndex={-1}
                 aria-selected={isSelected}
-                className={`flex cursor-pointer items-center gap-2 whitespace-nowrap px-3 py-2 font-mono ${index === active ? "bg-accent-soft" : ""} ${isSelected ? "font-semibold text-accent" : ""}`}
+                className={`flex cursor-pointer items-center gap-2 whitespace-nowrap px-3 py-2 ${font === "mono" ? "font-mono" : ""} ${index === active ? "bg-accent-soft" : ""} ${isSelected ? "font-semibold text-accent" : ""}`}
                 // ボタンからフォーカスを外さない（外れると blur で一覧が閉じ、click が届かない）
                 onMouseDown={(event) => event.preventDefault()}
                 onMouseEnter={() => setActive(index)}

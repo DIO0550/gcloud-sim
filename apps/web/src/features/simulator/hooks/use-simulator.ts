@@ -66,6 +66,8 @@ export type SimulatorState = Readonly<{
   view: View;
   consoleScreen: ConsoleScreen;
   consoleOutcome: Option<ConsoleOutcome>;
+  /** Console の下に端末（ドロワー）を開いているか（UI 案 2b の「>_ ターミナル」） */
+  consoleTerminalOpen: boolean;
 }>;
 
 export type SimulatorAction =
@@ -80,6 +82,7 @@ export type SimulatorAction =
       next: Option<ConsoleScreen>;
     }>
   | Readonly<{ type: "viewChanged"; view: View }>
+  | Readonly<{ type: "consoleTerminalToggled"; open: boolean }>
   | Readonly<{ type: "consoleScreenChanged"; screen: ConsoleScreen }>
   | Readonly<{ type: "consoleOutcomeCleared" }>
   | Readonly<{ type: "copyFailed"; reason: string }>
@@ -150,6 +153,7 @@ export const initialSimulatorState = (start: SimulatorStart): SimulatorState => 
     view: Views.Cli,
     consoleScreen: ConsoleScreens.VmList,
     consoleOutcome: Option.none,
+    consoleTerminalOpen: false,
   };
   return Option.isSome(start.warning) ? append(state, [uiWarning(start.warning.value)]) : state;
 };
@@ -266,6 +270,8 @@ export const simulatorReducer = (
       return { ...state, view: action.view, consoleOutcome: Option.none };
     case "consoleScreenChanged":
       return { ...state, consoleScreen: action.screen, consoleOutcome: Option.none };
+    case "consoleTerminalToggled":
+      return { ...state, consoleTerminalOpen: action.open };
     case "consoleOutcomeCleared":
       return { ...state, consoleOutcome: Option.none };
     case "copyFailed":
@@ -275,7 +281,8 @@ export const simulatorReducer = (
     case "selected":
       return { ...state, selection: Option.some(action.selection), panelTab: PanelTabs.Properties };
     case "insertRequested":
-      return { ...state, pendingInsert: Option.some(action.text) };
+      // 入力行へ入れたものが見えるよう、Console なら端末のドロワーを開く。
+      return { ...state, pendingInsert: Option.some(action.text), consoleTerminalOpen: true };
     case "insertConsumed":
       return { ...state, pendingInsert: Option.none };
     case "tabChanged":

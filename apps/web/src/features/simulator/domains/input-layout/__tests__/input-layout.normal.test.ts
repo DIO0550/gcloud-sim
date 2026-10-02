@@ -4,7 +4,7 @@ import { expect, test } from "vitest";
 import { InputLayout } from "@/features/simulator/domains/input-layout";
 import { Option } from "@/utils/Option";
 
-const Prompt = "\x1b[32m$\x1b[0m ";
+const Prompt = "\x1b[34m$\x1b[0m ";
 
 test("初回は行頭から消してプロンプトとバッファを書き、カーソルを末尾に置く", () => {
   const redraw = InputLayout.redraw(Option.none, { buffer: "gcloud", cursor: 6 }, 80);

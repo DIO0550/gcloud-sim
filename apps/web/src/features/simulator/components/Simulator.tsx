@@ -124,9 +124,13 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
         onProjectChange={(projectId) => submitFromUi(`gcloud config set project ${projectId}`)}
         onPrincipalChange={(principal) => submitFromUi(`gcloud config set account ${principal}`)}
         onOpenSettings={() => dispatch({ type: "settingsToggled", open: true })}
+        isTerminalOpen={state.consoleTerminalOpen}
+        onTerminalToggle={() =>
+          dispatch({ type: "consoleTerminalToggled", open: !state.consoleTerminalOpen })
+        }
       />
       <div
-        className={`grid min-h-0 flex-1 ${isConsole ? "grid-cols-[minmax(0,1fr)]" : "grid-cols-[19rem_minmax(0,1fr)_29rem]"}`}
+        className={`grid min-h-0 flex-1 ${isConsole ? "grid-cols-[minmax(0,1fr)]" : "grid-cols-[17.5rem_minmax(0,1fr)_26rem]"}`}
       >
         {!isConsole && (
           <ResourceTree
@@ -147,8 +151,13 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
               onOutcomeDismiss={() => dispatch({ type: "consoleOutcomeCleared" })}
             />
           )}
+          {/* Console では端末を閉じても描いたまま隠す（作り直すと打った行の映りが消える）。 */}
           <div
-            className={isConsole ? "flex h-64 shrink-0 flex-col border-line border-t" : "contents"}
+            className={
+              isConsole
+                ? `${state.consoleTerminalOpen ? "flex" : "hidden"} h-72 shrink-0 flex-col border-line border-t`
+                : "contents"
+            }
           >
             <Terminal
               transcript={state.transcript}
@@ -159,6 +168,13 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
               completionCandidates={completionCandidates}
               createView={io.createTerminalView}
               caption={`configuration: ${world.config.activeConfiguration}`}
+              status={
+                <span className={saveState.kind === "saved" ? "text-ok" : "text-danger"}>
+                  {saveState.kind === "saved"
+                    ? "● 自動保存済み"
+                    : `● 保存に失敗: ${saveState.reason}`}
+                </span>
+              }
             />
           </div>
         </div>
@@ -174,7 +190,7 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
                   type="button"
                   role="tab"
                   aria-selected={state.panelTab === tab}
-                  className={`px-4 py-3 text-sm ${state.panelTab === tab ? "border-accent border-b-2 font-semibold" : "text-muted"}`}
+                  className={`-mb-px border-b-2 px-4 py-3.5 ${state.panelTab === tab ? "border-accent font-bold" : "border-transparent text-muted"}`}
                   onClick={() => dispatch({ type: "tabChanged", tab })}
                 >
                   {label(`${counts.completed}/${counts.total}`)}
@@ -202,6 +218,10 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
                   world={world}
                   selection={state.selection}
                   onInsert={(command) => dispatch({ type: "insertRequested", text: command })}
+                  onOpenConsole={(screen) => {
+                    dispatch({ type: "viewChanged", view: Views.Console });
+                    dispatch({ type: "consoleScreenChanged", screen });
+                  }}
                 />
               )}
               {state.panelTab === PanelTabs.Missions && (
@@ -219,11 +239,6 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
                 <ChangeLog world={world} transcript={state.transcript} />
               )}
             </div>
-            <p
-              className={`border-line border-t px-4 py-1.5 text-xs ${saveState.kind === "saved" ? "text-muted" : "text-danger"}`}
-            >
-              {saveState.kind === "saved" ? "● 自動保存済み" : `● 保存に失敗: ${saveState.reason}`}
-            </p>
           </aside>
         )}
       </div>

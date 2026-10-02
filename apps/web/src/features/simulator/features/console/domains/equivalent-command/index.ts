@@ -76,6 +76,25 @@ const collect = <F extends object>(
   return errors;
 };
 
+/** 同等のコマンドラインの値に付ける印。changed = 既定から変えた、invalid = 送信できない綴り。 */
+export type CommandMark = "plain" | "changed" | "invalid";
+
+/** 同等のコマンドラインの 1 語。`lead`（`--zone=` の部分）と値に分け、値にだけ印を付ける。 */
+export type CommandPart = Readonly<{ lead: string; value: string; mark: CommandMark }>;
+
+export const CommandPart = {
+  /** 語を空白でつないで 1 行にする（流すのも、コピーするのもこの 1 行）。 */
+  join(parts: readonly CommandPart[]): string {
+    return parts.map((p) => `${p.lead}${p.value}`).join(" ");
+  },
+} as const;
+
+const flagPart = (name: string, value: string, mark: CommandMark): CommandPart => ({
+  lead: `--${name}=`,
+  value: quote(value),
+  mark,
+});
+
 // --- VM ---
 
 export type VmCreateForm = Readonly<{
@@ -133,24 +152,47 @@ export const VmCreateForm = {
    * @returns `gcloud compute instances create ...` の 1 行
    */
   toCommand(form: VmCreateForm, projectId: string): string {
+    return CommandPart.join(VmCreateForm.toParts(form, projectId));
+  },
+
+  /**
+   * 同等のコマンドラインを語ごとに分けたもの（UI 案 s1: 1 フラグ 1 行で並べ、既定から変えた値と
+   * 不正な値に印を付ける）。つなげると `toCommand` と同じ 1 行になる。
+   *
+   * @param form フォームの値
+   * @param projectId 対象プロジェクト
+   * @returns 先頭の `gcloud compute instances create NAME` と、続くフラグ
+   */
+  toParts(form: VmCreateForm, projectId: string): readonly CommandPart[] {
+    const defaults = VmCreateForm.create({ zone: form.zone, serviceAccount: form.serviceAccount });
+    const changed = (key: keyof VmCreateForm): CommandMark =>
+      form[key] === defaults[key] ? "plain" : "changed";
     const tags = StringEx.splitList(form.tags);
-    const parts = [
-      "gcloud compute instances create",
-      quote(form.name),
-      flag("project", projectId),
-      flag("zone", form.zone),
-      flag("machine-type", form.machineType),
-      flag("provisioning-model", form.provisioningModel),
-      flag("service-account", form.serviceAccount),
-      flag("scopes", form.scopes),
-      flag("image-family", form.imageFamily),
-      flag("image-project", form.imageProject),
-      flag("boot-disk-size", form.bootDiskSize),
-      flag("boot-disk-type", form.bootDiskType),
-      ...(tags.length === 0 ? [] : [flag("tags", tags.join(","))]),
-      ...(form.externalIp ? [] : ["--no-address"]),
+    return [
+      {
+        lead: "gcloud compute instances create ",
+        value: quote(form.name),
+        mark: Option.isSome(errorOf(ResourceName.parse(form.name))) ? "invalid" : "plain",
+      },
+      flagPart("project", projectId, "plain"),
+      flagPart("zone", form.zone, "plain"),
+      flagPart("machine-type", form.machineType, changed("machineType")),
+      flagPart("provisioning-model", form.provisioningModel, changed("provisioningModel")),
+      flagPart("service-account", form.serviceAccount, "plain"),
+      flagPart("scopes", form.scopes, changed("scopes")),
+      ...(tags.length === 0 ? [] : [flagPart("tags", tags.join(","), "plain")]),
+      flagPart("image-family", form.imageFamily, changed("imageFamily")),
+      flagPart("image-project", form.imageProject, changed("imageProject")),
+      flagPart(
+        "boot-disk-size",
+        form.bootDiskSize,
+        Option.isSome(errorOf(DiskSizeGb.parse(form.bootDiskSize)))
+          ? "invalid"
+          : changed("bootDiskSize"),
+      ),
+      flagPart("boot-disk-type", form.bootDiskType, changed("bootDiskType")),
+      ...(form.externalIp ? [] : [{ lead: "--no-address", value: "", mark: "plain" as const }]),
     ];
-    return parts.join(" ");
   },
 } as const;
 
@@ -229,6 +271,31 @@ export const IamGrantForm = {
   /** 一覧の行の「削除」（継承していない行だけに出す）。 */
   removeCommand(binding: Readonly<{ member: string; role: string }>, projectId: string): string {
     return `gcloud projects remove-iam-policy-binding ${projectId} ${flag("member", binding.member)} ${flag("role", binding.role)}`;
+  },
+
+  /**
+   * 組織・フォルダ・プロジェクトに付いたバインディングを外すコマンド（UI 案 s2: 継承されたロールは
+   * 継承元のポリシーを変える）。語ごとに分けて返す（1 語 1 行で見せるため）。
+   *
+   * @param binding 外すメンバーとロール
+   * @param target バインディングが付いている所
+   * @returns `gcloud ... remove-iam-policy-binding ...` の語の並び
+   */
+  removeCommandAt(
+    binding: Readonly<{ member: string; role: string }>,
+    target: Readonly<{ type: "organization" | "folder" | "project"; id: string }>,
+  ): readonly string[] {
+    const head = (() => {
+      switch (target.type) {
+        case "organization":
+          return ["gcloud organizations", "remove-iam-policy-binding", target.id];
+        case "folder":
+          return ["gcloud resource-manager folders", "remove-iam-policy-binding", target.id];
+        case "project":
+          return ["gcloud projects", "remove-iam-policy-binding", target.id];
+      }
+    })();
+    return [...head, flag("member", binding.member), flag("role", binding.role)];
   },
 } as const;
 

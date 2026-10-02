@@ -80,7 +80,7 @@ export const ConsoleView = ({
   return (
     <div className="grid min-h-0 flex-1 grid-cols-[15rem_minmax(0,1fr)]" data-testid="console-view">
       <ConsoleNav screen={screen} onChange={handlers.changeScreen} />
-      <main className="min-h-0 overflow-auto bg-canvas p-6" aria-label="Console">
+      <main className="min-h-0 overflow-auto bg-canvas px-8 py-7" aria-label="Console">
         {body()}
       </main>
     </div>
