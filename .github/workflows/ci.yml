@@ -96,3 +96,7 @@ jobs:
           done
           echo "::error::3 回試してビルドが通らなかった"
           exit 1
+
+      # 出力は使わない。stories が壊れていない（ビルドが通る）ことだけ見る。
+      - name: Build Storybook
+        run: pnpm build-storybook

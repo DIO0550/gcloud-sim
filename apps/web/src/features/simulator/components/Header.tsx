@@ -1,6 +1,8 @@
 import type { ReactElement } from "react";
 
+import { GhostButton } from "@/components/GhostButton";
 import { Select } from "@/components/Select";
+import { ToggleButton } from "@/components/ToggleButton";
 import type { World } from "@/engine/domains/world";
 import { World as WorldOps } from "@/engine/domains/world";
 import { type View, Views } from "@/features/simulator/hooks/use-simulator";
@@ -52,27 +54,21 @@ export const Header = ({
       <fieldset className="ml-4 flex rounded-lg border border-line bg-canvas p-0.5 text-sm">
         <legend className="sr-only">表示</legend>
         {Object.values(Views).map((v) => (
-          <button
+          <ToggleButton
             key={v}
-            type="button"
-            aria-pressed={view === v}
-            className={`rounded-md px-3 py-1 ${view === v ? "bg-surface font-semibold shadow-sm" : "text-muted"}`}
+            variant="segment"
+            pressed={view === v}
             onClick={() => onViewChange(v)}
           >
             {viewText(v)}
-          </button>
+          </ToggleButton>
         ))}
       </fieldset>
       <div className="ml-auto flex items-center gap-3 text-sm">
         {view === "console" && (
-          <button
-            type="button"
-            aria-pressed={isTerminalOpen}
-            className={`rounded-lg px-3 py-1.5 ${isTerminalOpen ? "bg-accent-soft font-semibold text-accent" : "hover:bg-canvas"}`}
-            onClick={onTerminalToggle}
-          >
+          <ToggleButton variant="ghost" pressed={isTerminalOpen} onClick={onTerminalToggle}>
             <span className="font-mono">&gt;_</span> ターミナル
-          </button>
+          </ToggleButton>
         )}
         <div className="flex items-center gap-2 rounded-lg border border-line px-3 py-1.5">
           <span className="text-muted">プロジェクト</span>
@@ -109,13 +105,7 @@ export const Header = ({
             ]}
           />
         </div>
-        <button
-          type="button"
-          className="rounded-lg px-3 py-1.5 hover:bg-canvas"
-          onClick={onOpenSettings}
-        >
-          設定
-        </button>
+        <GhostButton onClick={onOpenSettings}>設定</GhostButton>
       </div>
     </header>
   );

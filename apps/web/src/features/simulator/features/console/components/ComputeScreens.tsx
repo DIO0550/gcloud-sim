@@ -1,6 +1,9 @@
-import { type ReactElement, useState } from "react";
-
+import { type ReactElement, useId, useState } from "react";
+import { Checkbox } from "@/components/Checkbox";
+import { GhostButton } from "@/components/GhostButton";
 import { Select } from "@/components/Select";
+import { TextButton } from "@/components/TextButton";
+import { ToggleButton } from "@/components/ToggleButton";
 
 import { MachineType, PublicImage, Region, Zone } from "@/engine/domains/catalog";
 import {
@@ -17,11 +20,11 @@ import { World } from "@/engine/domains/world";
 import {
   CreatePage,
   Field,
-  InputClass,
   PrimaryButton,
   RadioGroup,
   ScreenTitle,
   SecondaryButton,
+  TextInput,
 } from "@/features/simulator/features/console/components/ConsoleParts";
 import { ConsoleScreens } from "@/features/simulator/features/console/domains/console-screen";
 import {
@@ -108,6 +111,7 @@ const searchableText = (instance: Instance): string => {
 export const VmListScreen = ({ world, project, handlers }: ScreenProps): ReactElement => {
   const [selectedNames, setSelectedNames] = useState<ReadonlySet<string>>(new Set());
   const [filter, setFilter] = useState("");
+  const filterId = useId();
   const instances = World.instancesOf(world, project.projectId);
   const shown = instances.filter((i) => searchableText(i).includes(filter.trim().toLowerCase()));
   const selected = instances.filter((i) => selectedNames.has(i.name));
@@ -146,34 +150,39 @@ export const VmListScreen = ({ world, project, handlers }: ScreenProps): ReactEl
           <h2 className="font-bold text-[28px] leading-tight">VM インスタンス</h2>
         </div>
         <div className="flex items-center gap-1 self-end pb-1 text-[15px]">
-          <button
-            type="button"
-            className="rounded-md px-2.5 py-1 font-bold text-accent hover:bg-accent-soft"
+          <GhostButton
+            tone="accent"
+            className="font-bold"
             onClick={() => handlers.changeScreen(ConsoleScreens.VmCreate)}
           >
             <span aria-hidden="true">＋ </span>インスタンスを作成
-          </button>
+          </GhostButton>
           <span aria-hidden="true" className="mx-2 h-5 border-line border-l" />
           {ToolbarActions.map((action) => (
-            <button
+            <GhostButton
               key={action}
-              type="button"
+              tone="accent"
               disabled={!isEnabled(action)}
-              className="rounded-md px-2.5 py-1 text-accent hover:bg-accent-soft disabled:cursor-not-allowed disabled:text-muted/60 disabled:hover:bg-transparent"
               onClick={() => perform(action)}
             >
               {toolbarText(action)}
-            </button>
+            </GhostButton>
           ))}
         </div>
       </div>
-      <label className="mb-4 flex h-11 items-center gap-3 rounded-lg border border-line bg-surface px-4">
+      <label
+        htmlFor={filterId}
+        className="mb-4 flex h-11 items-center gap-3 rounded-lg border border-line bg-surface px-4"
+      >
         <span className="font-bold text-[15px]">フィルタ</span>
-        <input
-          className="min-w-0 flex-1 bg-transparent text-[15px] placeholder:text-muted focus:outline-none"
+        <TextInput
+          id={filterId}
+          variant="bare"
+          font="sans"
+          className="min-w-0 flex-1"
           placeholder="プロパティ名または値を入力"
           value={filter}
-          onChange={(e) => setFilter(e.target.value)}
+          onChange={setFilter}
         />
         <span className="font-mono text-muted text-sm">= --filter</span>
       </label>
@@ -182,10 +191,8 @@ export const VmListScreen = ({ world, project, handlers }: ScreenProps): ReactEl
           <thead className="bg-canvas text-left">
             <tr>
               <th className="w-12 py-3 pl-4">
-                <input
-                  type="checkbox"
-                  aria-label="すべて選択"
-                  className="h-4 w-4 accent-accent"
+                <Checkbox
+                  ariaLabel="すべて選択"
                   checked={allChecked}
                   onChange={() =>
                     setSelectedNames(allChecked ? new Set() : new Set(shown.map((i) => i.name)))
@@ -222,10 +229,8 @@ export const VmListScreen = ({ world, project, handlers }: ScreenProps): ReactEl
                   className={`border-line border-t ${isChecked ? "bg-accent-soft/60" : ""}`}
                 >
                   <td className="py-3.5 pl-4">
-                    <input
-                      type="checkbox"
-                      aria-label={`${i.name} を選択`}
-                      className="h-4 w-4 accent-accent"
+                    <Checkbox
+                      ariaLabel={`${i.name} を選択`}
                       checked={isChecked}
                       onChange={() => toggle(i.name)}
                     />
@@ -245,15 +250,14 @@ export const VmListScreen = ({ world, project, handlers }: ScreenProps): ReactEl
                     )}
                   </td>
                   <td className="py-3.5 pr-4">
-                    <button
-                      type="button"
-                      aria-label={`${i.name} に SSH`}
+                    <TextButton
+                      ariaLabel={`${i.name} に SSH`}
                       disabled={!canSsh}
-                      className="font-bold text-accent disabled:font-normal disabled:text-muted/70"
+                      className="font-bold disabled:font-normal"
                       onClick={() => run("ssh", i)}
                     >
                       SSH
-                    </button>
+                    </TextButton>
                   </td>
                 </tr>
               );
@@ -330,10 +334,10 @@ const TagInput = ({
           className="flex items-center gap-1.5 rounded bg-code px-2 py-0.5 font-mono text-sm"
         >
           {tag}
-          <button
-            type="button"
-            aria-label={`${tag} を外す`}
-            className="text-muted text-xs"
+          <TextButton
+            tone="muted"
+            ariaLabel={`${tag} を外す`}
+            className="text-xs"
             onClick={() =>
               onChange(
                 withTags(
@@ -344,14 +348,15 @@ const TagInput = ({
             }
           >
             ×
-          </button>
+          </TextButton>
         </span>
       ))}
-      <input
+      <TextInput
         id={id}
-        className="min-w-24 flex-1 bg-transparent px-1 font-mono text-[15px] focus:outline-none"
+        variant="bare"
+        className="min-w-24 flex-1 px-1"
         value={draft}
-        onChange={(e) => onChange(withTags(committed, e.target.value))}
+        onChange={(v) => onChange(withTags(committed, v))}
         onKeyDown={(e) => {
           if (e.key === "Enter" && draft !== "") {
             e.preventDefault();
@@ -435,12 +440,11 @@ export const VmCreateScreen = ({ world, project, handlers }: ScreenProps): React
       <div className="flex flex-col gap-6">
         <Field label="名前" required error={errors.name}>
           {(id) => (
-            <input
+            <TextInput
               id={id}
-              className={InputClass}
-              aria-invalid={errors.name !== undefined}
+              invalid={errors.name !== undefined}
               value={form.name}
-              onChange={(e) => set("name", e.target.value)}
+              onChange={(v) => set("name", v)}
             />
           )}
         </Field>
@@ -476,18 +480,17 @@ export const VmCreateScreen = ({ world, project, handlers }: ScreenProps): React
               <fieldset className="flex gap-2">
                 <legend className="sr-only">シリーズ</legend>
                 {allSeries.map((s) => (
-                  <button
+                  <ToggleButton
                     key={s}
-                    type="button"
-                    aria-pressed={s === series}
-                    className={`rounded-md border px-4 py-1.5 text-[15px] ${s === series ? "border-accent bg-accent-soft font-bold text-accent" : "border-line bg-surface"}`}
+                    variant="chip"
+                    pressed={s === series}
                     onClick={() => {
                       const first = MachineType.all().find((m) => seriesOf(m.name) === s);
                       if (first !== undefined && s !== series) set("machineType", first.name);
                     }}
                   >
                     {s}
-                  </button>
+                  </ToggleButton>
                 ))}
               </fieldset>
               <Select
@@ -520,14 +523,9 @@ export const VmCreateScreen = ({ world, project, handlers }: ScreenProps): React
                 {form.imageFamily} · {form.bootDiskSize.replace(/GB$/, " GB")} ·{" "}
                 {diskTypeText(form.bootDiskType)}
               </span>
-              <button
-                type="button"
-                className="text-accent"
-                aria-expanded={isDiskOpen}
-                onClick={() => setDiskOpen((v) => !v)}
-              >
+              <TextButton ariaExpanded={isDiskOpen} onClick={() => setDiskOpen((v) => !v)}>
                 {isDiskOpen ? "閉じる" : "変更"}
-              </button>
+              </TextButton>
             </div>
           </div>
         </div>
@@ -554,12 +552,11 @@ export const VmCreateScreen = ({ world, project, handlers }: ScreenProps): React
             </Field>
             <Field label="サイズ" error={errors.bootDiskSize}>
               {(id) => (
-                <input
+                <TextInput
                   id={id}
-                  className={InputClass}
-                  aria-invalid={errors.bootDiskSize !== undefined}
+                  invalid={errors.bootDiskSize !== undefined}
                   value={form.bootDiskSize}
-                  onChange={(e) => set("bootDiskSize", e.target.value)}
+                  onChange={(v) => set("bootDiskSize", v)}
                 />
               )}
             </Field>
