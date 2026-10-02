@@ -12,10 +12,10 @@ import { World } from "@/engine/domains/world";
 import {
   CreateFormSection,
   Field,
-  InputClass,
   PrimaryButton,
   ResourceTable,
   ScreenTitle,
+  TextInput,
 } from "@/features/simulator/features/console/components/ConsoleParts";
 import { FirewallCreateForm } from "@/features/simulator/features/console/domains/equivalent-command";
 import { useCreateForm } from "@/features/simulator/features/console/hooks/use-create-form";
@@ -77,12 +77,7 @@ export const FirewallScreen = ({ world, project, handlers }: ScreenProps): React
         >
           <Field label="名前" error={editor.errors.name}>
             {(id) => (
-              <input
-                id={id}
-                className={InputClass}
-                value={form.name}
-                onChange={(e) => editor.set("name", e.target.value)}
-              />
+              <TextInput id={id} value={form.name} onChange={(v) => editor.set("name", v)} />
             )}
           </Field>
           <Field label="ネットワーク">
@@ -113,31 +108,28 @@ export const FirewallScreen = ({ world, project, handlers }: ScreenProps): React
           </Field>
           <Field label="優先度" error={editor.errors.priority}>
             {(id) => (
-              <input
+              <TextInput
                 id={id}
-                className={InputClass}
                 value={form.priority}
-                onChange={(e) => editor.set("priority", e.target.value)}
+                onChange={(v) => editor.set("priority", v)}
               />
             )}
           </Field>
           <Field label="ターゲットタグ" hint="空ならすべてのインスタンス">
             {(id) => (
-              <input
+              <TextInput
                 id={id}
-                className={InputClass}
                 value={form.targetTags}
-                onChange={(e) => editor.set("targetTags", e.target.value)}
+                onChange={(v) => editor.set("targetTags", v)}
               />
             )}
           </Field>
           <Field label="送信元 IPv4 範囲">
             {(id) => (
-              <input
+              <TextInput
                 id={id}
-                className={InputClass}
                 value={form.sourceRanges}
-                onChange={(e) => editor.set("sourceRanges", e.target.value)}
+                onChange={(v) => editor.set("sourceRanges", v)}
               />
             )}
           </Field>
@@ -147,11 +139,10 @@ export const FirewallScreen = ({ world, project, handlers }: ScreenProps): React
             hint="tcp:80,tcp:443,icmp"
           >
             {(id) => (
-              <input
+              <TextInput
                 id={id}
-                className={InputClass}
                 value={form.protocolsAndPorts}
-                onChange={(e) => editor.set("protocolsAndPorts", e.target.value)}
+                onChange={(v) => editor.set("protocolsAndPorts", v)}
               />
             )}
           </Field>

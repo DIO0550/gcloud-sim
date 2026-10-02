@@ -1,5 +1,6 @@
 import { type ReactElement, useMemo, useState } from "react";
 
+import { TextButton } from "@/components/Button";
 import type { World } from "@/engine/domains/world";
 import {
   type ResourceGroup,
@@ -155,15 +156,15 @@ const Node = ({
         style={{ paddingLeft: `${6 + depth * 18}px` }}
       >
         {hasChildren ? (
-          <button
-            type="button"
-            className={`w-4 text-[10px] ${isSelected ? "" : "text-muted"}`}
+          <TextButton
+            tone={isSelected ? "inherit" : "muted"}
+            className="w-4 text-[10px]"
             onClick={() => setOpen((v) => !v)}
-            aria-label={isOpen ? `${label} を折りたたむ` : `${label} を展開する`}
-            aria-expanded={isOpen}
+            ariaLabel={isOpen ? `${label} を折りたたむ` : `${label} を展開する`}
+            ariaExpanded={isOpen}
           >
             {isOpen ? "▾" : "▸"}
-          </button>
+          </TextButton>
         ) : (
           <span className="w-4" />
         )}

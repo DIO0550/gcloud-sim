@@ -6,10 +6,10 @@ import { World } from "@/engine/domains/world";
 import {
   CreateFormSection,
   Field,
-  InputClass,
   PrimaryButton,
   ResourceTable,
   ScreenTitle,
+  TextInput,
 } from "@/features/simulator/features/console/components/ConsoleParts";
 import { BucketCreateForm } from "@/features/simulator/features/console/domains/equivalent-command";
 import { useCreateForm } from "@/features/simulator/features/console/hooks/use-create-form";
@@ -51,21 +51,15 @@ export const BucketsScreen = ({ world, project, handlers }: ScreenProps): ReactE
         >
           <Field label="名前" error={editor.errors.name} hint="全世界で一意">
             {(id) => (
-              <input
-                id={id}
-                className={InputClass}
-                value={form.name}
-                onChange={(e) => editor.set("name", e.target.value)}
-              />
+              <TextInput id={id} value={form.name} onChange={(v) => editor.set("name", v)} />
             )}
           </Field>
           <Field label="ロケーション" error={editor.errors.location}>
             {(id) => (
-              <input
+              <TextInput
                 id={id}
-                className={InputClass}
                 value={form.location}
-                onChange={(e) => editor.set("location", e.target.value.toUpperCase())}
+                onChange={(v) => editor.set("location", v.toUpperCase())}
               />
             )}
           </Field>

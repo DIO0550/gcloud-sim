@@ -2,6 +2,8 @@
 
 import { type ReactElement, useCallback, useEffect } from "react";
 
+import { TextButton } from "@/components/Button";
+import { Tab } from "@/components/Tab";
 import { Engine } from "@/engine";
 import { World as WorldOps } from "@/engine/domains/world";
 import { Mission } from "@/engine/missions";
@@ -185,16 +187,14 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
           >
             <div className="flex border-line border-b" role="tablist">
               {Tabs.map(({ tab, label }) => (
-                <button
+                <Tab
                   key={tab}
-                  type="button"
-                  role="tab"
-                  aria-selected={state.panelTab === tab}
-                  className={`-mb-px border-b-2 px-4 py-3.5 ${state.panelTab === tab ? "border-accent font-bold" : "border-transparent text-muted"}`}
+                  selected={state.panelTab === tab}
+                  className="px-4 py-3.5"
                   onClick={() => dispatch({ type: "tabChanged", tab })}
                 >
                   {label(`${counts.completed}/${counts.total}`)}
-                </button>
+                </Tab>
               ))}
             </div>
             {Option.isSome(state.celebration) && (
@@ -203,13 +203,13 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
                 role="status"
               >
                 <span>✓ ミッションクリア「{state.celebration.value.title}」</span>
-                <button
-                  type="button"
+                <TextButton
+                  tone="inherit"
                   className="text-xs underline"
                   onClick={() => dispatch({ type: "celebrationDismissed" })}
                 >
                   閉じる
-                </button>
+                </TextButton>
               </div>
             )}
             <div className="min-h-0 flex-1 overflow-auto">

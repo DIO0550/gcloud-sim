@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 
+import { NavItemButton } from "@/components/NavItemButton";
 import {
   ConsoleScreen,
   type ConsoleSection,
@@ -80,14 +81,14 @@ export const ConsoleNav = ({ screen, onChange }: ConsoleNavProps): ReactElement 
           <ul>
             {ConsoleScreen.inSection(section).map((item) => (
               <li key={item}>
-                <button
-                  type="button"
-                  aria-current={item === current ? "page" : undefined}
-                  className={`w-full rounded-lg px-4 py-2 text-left text-[15px] ${item === current ? "bg-accent-soft font-bold text-accent" : "hover:bg-canvas"}`}
+                <NavItemButton
+                  current={item === current}
+                  currentKind="page"
+                  className={`rounded-lg px-4 py-2 text-[15px] ${item === current ? "font-bold text-accent" : ""}`}
                   onClick={() => onChange(item)}
                 >
                   {screenText(item)}
-                </button>
+                </NavItemButton>
               </li>
             ))}
           </ul>

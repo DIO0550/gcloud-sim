@@ -1,14 +1,15 @@
 import type { ReactElement } from "react";
+import { Checkbox } from "@/components/Checkbox";
 import { Select } from "@/components/Select";
 
 import { World } from "@/engine/domains/world";
 import {
   CreateFormSection,
   Field,
-  InputClass,
   PrimaryButton,
   ResourceTable,
   ScreenTitle,
+  TextInput,
 } from "@/features/simulator/features/console/components/ConsoleParts";
 import { BudgetCreateForm } from "@/features/simulator/features/console/domains/equivalent-command";
 import { useCreateForm } from "@/features/simulator/features/console/hooks/use-create-form";
@@ -80,36 +81,29 @@ export const BudgetsScreen = ({ world, project, handlers }: ScreenProps): ReactE
         >
           <Field label="名前" error={editor.errors.displayName}>
             {(id) => (
-              <input
+              <TextInput
                 id={id}
-                className={InputClass}
                 value={form.displayName}
-                onChange={(e) => editor.set("displayName", e.target.value)}
+                onChange={(v) => editor.set("displayName", v)}
               />
             )}
           </Field>
           <Field label="予算額（JPY）" error={editor.errors.amount}>
             {(id) => (
-              <input
-                id={id}
-                className={InputClass}
-                value={form.amount}
-                onChange={(e) => editor.set("amount", e.target.value)}
-              />
+              <TextInput id={id} value={form.amount} onChange={(v) => editor.set("amount", v)} />
             )}
           </Field>
           <fieldset>
             <legend className="mb-1 block font-medium text-sm">しきい値</legend>
             <div className="flex gap-4 text-sm">
               {ThresholdChoices.map((ratio) => (
-                <label key={ratio} className="flex items-center gap-1">
-                  <input
-                    type="checkbox"
-                    checked={form.thresholds.includes(ratio)}
-                    onChange={() => toggleThreshold(ratio)}
-                  />
+                <Checkbox
+                  key={ratio}
+                  checked={form.thresholds.includes(ratio)}
+                  onChange={() => toggleThreshold(ratio)}
+                >
                   {percentText(ratio)}
-                </label>
+                </Checkbox>
               ))}
             </div>
           </fieldset>

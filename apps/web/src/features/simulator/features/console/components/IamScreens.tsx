@@ -1,5 +1,8 @@
 import { type ReactElement, useState } from "react";
+import { TextButton } from "@/components/Button";
 import { SuggestInput } from "@/components/SuggestInput";
+import { Switch } from "@/components/Switch";
+import { Tab } from "@/components/Tab";
 import type { IamMember, RoleName } from "@/engine/domains/iam-policy";
 import type { PolicyTarget } from "@/engine/domains/resource-hierarchy";
 import { CustomRole, RoleCatalog } from "@/engine/domains/role-catalog";
@@ -9,11 +12,11 @@ import { type BindingOrigin, BindingRow } from "@/engine/resource-tree";
 import {
   CreateFormSection,
   Field,
-  InputClass,
   PrimaryButton,
   ResourceTable,
   ScreenTitle,
   SecondaryButton,
+  TextInput,
 } from "@/features/simulator/features/console/components/ConsoleParts";
 import {
   IamGrantForm,
@@ -193,11 +196,10 @@ export const IamScreen = ({ world, project, handlers }: ScreenProps): ReactEleme
             hint="user:alice@example.com / serviceAccount:... / group:..."
           >
             {(id) => (
-              <input
+              <TextInput
                 id={id}
-                className={InputClass}
                 value={Option.unwrapOr(editor.form, IamGrantForm.create()).member}
-                onChange={(e) => editor.set("member", e.target.value)}
+                onChange={(v) => editor.set("member", v)}
               />
             )}
           </Field>
@@ -205,7 +207,6 @@ export const IamScreen = ({ world, project, handlers }: ScreenProps): ReactEleme
             {(id) => (
               <SuggestInput
                 id={id}
-                className={InputClass}
                 value={Option.unwrapOr(editor.form, IamGrantForm.create()).role}
                 suggestions={[
                   ...RoleCatalog.all().map((r) => ({ value: r.name, description: r.title })),
@@ -223,31 +224,22 @@ export const IamScreen = ({ world, project, handlers }: ScreenProps): ReactEleme
       <div className="mb-6 flex items-end justify-between">
         <div className="flex border-line border-b" role="tablist" aria-label="表示の単位">
           {(["member", "role"] as const).map((key) => (
-            <button
+            <Tab
               key={key}
-              type="button"
-              role="tab"
-              aria-selected={groupKey === key}
-              className={`-mb-px border-b-2 px-5 py-2.5 text-[15px] ${groupKey === key ? "border-accent font-bold" : "border-transparent text-muted"}`}
+              selected={groupKey === key}
+              className="px-5 py-2.5 text-[15px]"
               onClick={() => setGroupKey(key)}
             >
               {key === "member" ? "プリンシパル別" : "ロール別"}
-            </button>
+            </Tab>
           ))}
         </div>
         <div className="flex items-center gap-2.5 text-[15px]">
-          <button
-            type="button"
-            role="switch"
-            aria-checked={includeInherited}
-            aria-label="継承されたロールを表示"
-            className={`relative h-5 w-9 rounded-full transition-colors ${includeInherited ? "bg-accent" : "bg-line"}`}
-            onClick={() => setIncludeInherited((v) => !v)}
-          >
-            <span
-              className={`absolute top-0.5 h-4 w-4 rounded-full bg-surface transition-all ${includeInherited ? "left-[1.125rem]" : "left-0.5"}`}
-            />
-          </button>
+          <Switch
+            checked={includeInherited}
+            ariaLabel="継承されたロールを表示"
+            onChange={setIncludeInherited}
+          />
           <span aria-hidden="true">継承されたロールを表示</span>
         </div>
       </div>
@@ -350,14 +342,14 @@ export const IamScreen = ({ world, project, handlers }: ScreenProps): ReactEleme
                   </td>
                   <td className="px-3 py-4 text-right">
                     {groupKey === "member" && first !== undefined && (
-                      <button
-                        type="button"
-                        aria-label={`${memberText(group.key)} を編集`}
-                        className={editable ? "text-accent" : "text-line"}
+                      <TextButton
+                        tone={editable ? "accent" : "inherit"}
+                        ariaLabel={`${memberText(group.key)} を編集`}
+                        className={editable ? "" : "text-line"}
                         onClick={() => setPicked(Option.some(first.member))}
                       >
                         <PencilIcon />
-                      </button>
+                      </TextButton>
                     )}
                   </td>
                 </tr>
@@ -520,31 +512,28 @@ export const ServiceAccountsScreen = ({ world, project, handlers }: ScreenProps)
         >
           <Field label="サービスアカウント ID" error={editor.errors.accountId}>
             {(id) => (
-              <input
+              <TextInput
                 id={id}
-                className={InputClass}
                 value={form.accountId}
-                onChange={(e) => editor.set("accountId", e.target.value)}
+                onChange={(v) => editor.set("accountId", v)}
               />
             )}
           </Field>
           <Field label="名前">
             {(id) => (
-              <input
+              <TextInput
                 id={id}
-                className={InputClass}
                 value={form.displayName}
-                onChange={(e) => editor.set("displayName", e.target.value)}
+                onChange={(v) => editor.set("displayName", v)}
               />
             )}
           </Field>
           <Field label="説明">
             {(id) => (
-              <input
+              <TextInput
                 id={id}
-                className={InputClass}
                 value={form.description}
-                onChange={(e) => editor.set("description", e.target.value)}
+                onChange={(v) => editor.set("description", v)}
               />
             )}
           </Field>
@@ -615,31 +604,20 @@ export const RolesScreen = ({ world, project, handlers }: ScreenProps): ReactEle
         >
           <Field label="ID" error={editor.errors.roleId}>
             {(id) => (
-              <input
-                id={id}
-                className={InputClass}
-                value={form.roleId}
-                onChange={(e) => editor.set("roleId", e.target.value)}
-              />
+              <TextInput id={id} value={form.roleId} onChange={(v) => editor.set("roleId", v)} />
             )}
           </Field>
           <Field label="タイトル">
             {(id) => (
-              <input
-                id={id}
-                className={InputClass}
-                value={form.title}
-                onChange={(e) => editor.set("title", e.target.value)}
-              />
+              <TextInput id={id} value={form.title} onChange={(v) => editor.set("title", v)} />
             )}
           </Field>
           <Field label="権限" error={editor.errors.permissions} hint="カンマか空白で区切る">
             {(id) => (
-              <input
+              <TextInput
                 id={id}
-                className={InputClass}
                 value={form.permissions}
-                onChange={(e) => editor.set("permissions", e.target.value)}
+                onChange={(v) => editor.set("permissions", v)}
               />
             )}
           </Field>

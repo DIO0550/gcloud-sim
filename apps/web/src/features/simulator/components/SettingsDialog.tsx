@@ -1,6 +1,6 @@
 import { type ReactElement, useRef } from "react";
 
-import { SecondaryButton } from "@/components/Button";
+import { DangerButton, IconButton, SecondaryButton } from "@/components/Button";
 import type { World } from "@/engine/domains/world";
 import { SchemaVersion, Snapshot } from "@/engine/snapshot";
 import { Option } from "@/utils/Option";
@@ -69,14 +69,9 @@ export const SettingsDialog = ({
       >
         <div className="flex items-center justify-between border-line border-b px-7 py-5">
           <h2 className="font-bold text-[22px]">設定</h2>
-          <button
-            type="button"
-            className="rounded px-2 py-1 text-2xl text-muted leading-none hover:bg-canvas"
-            onClick={onClose}
-            aria-label="閉じる"
-          >
+          <IconButton className="text-2xl" ariaLabel="閉じる" onClick={onClose}>
             ×
-          </button>
+          </IconButton>
         </div>
         <div className="px-7 py-6">
           <h3 className="mb-3 font-bold text-muted">保存状態</h3>
@@ -163,13 +158,9 @@ export const SettingsDialog = ({
                 サンプル組織・フォルダ2・プロジェクト2・請求1・default ネットワークで再生成。
               </p>
             </div>
-            <button
-              type="button"
-              className="shrink-0 rounded-md border border-danger/40 px-5 py-2.5 font-bold text-danger hover:bg-danger-soft"
-              onClick={onReset}
-            >
+            <DangerButton className="shrink-0" onClick={onReset}>
               リセット
-            </button>
+            </DangerButton>
           </div>
         </div>
         <p className="border-line border-t px-7 py-4 text-muted text-sm">

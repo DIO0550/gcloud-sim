@@ -1,4 +1,5 @@
 import { type KeyboardEvent, type ReactElement, useEffect, useId, useRef, useState } from "react";
+import { TextInputClass } from "@/components/TextInput";
 
 export type Suggestion = Readonly<{ value: string; description: string }>;
 
@@ -7,8 +8,8 @@ type SuggestInputProps = Readonly<{
   value: string;
   suggestions: readonly Suggestion[];
   onChange: (value: string) => void;
-  /** 入力欄の見た目（Field の入力欄と揃える） */
-  className: string;
+  /** 入力欄の見た目（既定は TextInput の field と同じ枠） */
+  className?: string;
   /** 一度に出す候補の数 */
   limit?: number;
 }>;
@@ -31,7 +32,7 @@ export const SuggestInput = ({
   value,
   suggestions,
   onChange,
-  className,
+  className = `${TextInputClass} font-mono`,
   limit = 50,
 }: SuggestInputProps): ReactElement => {
   const listId = useId();
