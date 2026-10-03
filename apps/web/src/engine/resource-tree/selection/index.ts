@@ -6,6 +6,11 @@ import { Option } from "@/utils/Option";
 /** ツリーで選べるもの。プロパティパネルはこれを見て World から中身を引く。 */
 export type TreeSelection =
   | Readonly<{
+      kind: "container-lab";
+      collection: "repositories" | "images" | "containers";
+      id: string;
+    }>
+  | Readonly<{
       kind: "observability";
       projectId: string;
       name: string;
@@ -65,6 +70,8 @@ const iamDescribeCommand = (target: PolicyTarget): string => {
       return `gcloud resource-manager folders get-iam-policy ${target.id}`;
     case "project":
       return `gcloud projects get-iam-policy ${target.id}`;
+    case "artifact-repository":
+      return `gcloud artifacts repositories get-iam-policy ${target.id}`;
     case "bucket":
       return `gcloud storage buckets get-iam-policy gs://${target.id}`;
     case "service-account":
@@ -87,6 +94,8 @@ export const TreeSelection = {
   /** ツリーのノード id にもなる一意なキー。 */
   key(selection: TreeSelection): string {
     switch (selection.kind) {
+      case "container-lab":
+        return `container-lab:${selection.collection}:${selection.id}`;
       case "observability":
         return `${selection.collection}:${selection.projectId}/${selection.name}`;
       case "organization":
@@ -175,6 +184,12 @@ export const TreeSelection = {
    */
   describeCommand(selection: TreeSelection): Option<string> {
     switch (selection.kind) {
+      case "container-lab":
+        if (selection.collection === "repositories")
+          return Option.some(`gcloud artifacts repositories describe ${selection.id}`);
+        if (selection.collection === "containers")
+          return Option.some(`docker inspect ${selection.id}`);
+        return Option.some("docker images");
       case "observability": {
         const paths = {
           logMetrics: "logging metrics",

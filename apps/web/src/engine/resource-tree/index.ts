@@ -23,6 +23,8 @@ export type TreeBadge = ValueOf<typeof TreeBadges>;
 /** プロジェクト直下でリソースを種別ごとに束ねるグループ。見出しの綴りは表示側が決める。 */
 export const ResourceGroups = {
   Compute: "compute",
+  Artifacts: "artifacts",
+  LocalDocker: "local-docker",
   Disks: "disks",
   InstanceGroups: "instance-groups",
   LoadBalancing: "load-balancing",
@@ -297,6 +299,28 @@ const projectNode = (world: World, project: Project): TreeNode => {
     badge: TreeBadges.Project,
     selection: Option.some({ kind: "project", projectId: id }),
     children: [
+      ...group(
+        id,
+        ResourceGroups.Artifacts,
+        world.containerLab.repositories
+          .filter((r) => r.projectId === id)
+          .map((r) =>
+            leaf(
+              { kind: "container-lab", collection: "repositories", id: r.id },
+              `${r.name} (${r.location})`,
+              {
+                children: world.containerLab.registryImages
+                  .filter((i) => i.repositoryId === r.id)
+                  .map((i) =>
+                    node(
+                      `${r.id}/${i.name}@${i.digest}`,
+                      text(`${i.name}: ${i.tags.join(", ") || "タグなし"} (${i.recipe})`),
+                    ),
+                  ),
+              },
+            ),
+          ),
+      ),
       ...group(id, ResourceGroups.Compute, computeNodes(world, id)),
       ...group(id, ResourceGroups.Disks, diskNodes(world, id)),
       ...group(id, ResourceGroups.InstanceGroups, instanceGroupNodes(world, id)),
@@ -362,7 +386,22 @@ export const TreeNode = {
       },
     );
     const billing = world.billingAccounts.map((b) => billingNode(world, b.id));
-    return [organization, ...billing];
+    const localDocker = group("local", ResourceGroups.LocalDocker, [
+      ...world.containerLab.images.map((i) =>
+        leaf(
+          { kind: "container-lab", collection: "images", id: i.id },
+          `Image: ${i.tags.join(", ") || i.id}`,
+        ),
+      ),
+      ...world.containerLab.containers.map((c) =>
+        leaf(
+          { kind: "container-lab", collection: "containers", id: c.id },
+          `Container: ${c.name}`,
+          { status: c.status === "RUNNING" ? "running" : "stopped" },
+        ),
+      ),
+    ]);
+    return [organization, ...billing, ...localDocker];
   },
 } as const;
 
@@ -396,6 +435,8 @@ const originOf = (world: World, target: PolicyTarget, grantedAt: PolicyTarget): 
     }
     case "project":
       return { kind: "project", projectId: grantedAt.id };
+    case "artifact-repository":
+      return { kind: "self", target: grantedAt };
     case "bucket":
       return { kind: "bucket", name: grantedAt.id };
     case "service-account":

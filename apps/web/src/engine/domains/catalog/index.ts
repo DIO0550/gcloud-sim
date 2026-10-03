@@ -190,6 +190,11 @@ export const BucketLocation = {
 } as const;
 
 const ApiServices = [
+  {
+    name: "artifactregistry.googleapis.com",
+    title: "Artifact Registry API",
+    billingRequired: true,
+  },
   { name: "compute.googleapis.com", title: "Compute Engine API", billingRequired: true },
   { name: "container.googleapis.com", title: "Kubernetes Engine API", billingRequired: true },
   { name: "run.googleapis.com", title: "Cloud Run Admin API", billingRequired: true },

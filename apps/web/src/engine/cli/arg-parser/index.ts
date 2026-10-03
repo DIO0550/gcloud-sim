@@ -97,6 +97,13 @@ const stepFlag = (
     });
   }
   const spec = found.value;
+  if (spec.singleUse && Object.hasOwn(scan.flags, spec.name))
+    return Result.err(
+      CommandFailure.invalidValue(
+        `--${spec.name}`,
+        "This flag may only be specified once in the simulator.",
+      ),
+    );
   if (spec.kind === "boolean") {
     const converted =
       inline === undefined

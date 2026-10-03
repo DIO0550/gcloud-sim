@@ -17,6 +17,8 @@ export type { JsonRecord, JsonValue } from "@/types/Json";
 export type CandidateSource = (world: World, projectId: Option<string>) => readonly string[];
 
 type FlagBase = Readonly<{
+  /** Reject repetition where only one value is supported. */
+  singleUse?: boolean;
   name: string;
   description: string;
   required: boolean;
@@ -55,6 +57,7 @@ export type ParsedArgs = Readonly<{
 }>;
 
 type FlagOptions = Readonly<{
+  singleUse?: boolean;
   required?: boolean;
   aliases?: readonly string[];
   /** `string` だけが持てる補完の候補 */
@@ -64,6 +67,7 @@ type FlagOptions = Readonly<{
 const base = (name: string, description: string, options: FlagOptions): FlagBase => ({
   name,
   description,
+  singleUse: options.singleUse,
   required: options.required ?? false,
   aliases: options.aliases ?? [],
 });

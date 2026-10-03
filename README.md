@@ -23,7 +23,7 @@
   試行錯誤できる。エラーの下に `gcloud-sim: hint:` で「その権限を含むロール」を出す
 - **リソースツリー**: 組織 → フォルダ → プロジェクト → リソース。クリックでプロパティと
   IAM の継承元、ダブルクリックで `describe` を入力行に挿入
-- **ミッション**: 30 本（ACE の 5 ドメイン）。状態に対するアサーションでクリア判定する
+- **ミッション**: 33 本（ACE の 5 ドメイン）。状態に対するアサーションでクリア判定する
   （コマンドの文字列一致ではない）
 - **保存**: コマンドごとに localStorage へ自動保存。設定から JSON の export / import / リセット
 - **kubectl**: `gcloud container clusters get-credentials` したクラスタに対して、Deployment / Service / Pod を
@@ -331,3 +331,7 @@ pnpm visual:compare -- --expected visual-baseline --actual visual-actual --out v
 ### Terraformの演習
 
 `sim files load terraform-network` から始められます。VPC/subnet/VM/firewall/bucketのHCL、plan/apply、ドリフト、state/import、ローカルmodule/moved、GCS backendへのstate移行・ロック復旧と7本のミッションに対応しています。操作例と未対応範囲は [docs/TERRAFORM.md](docs/TERRAFORM.md) を参照してください。
+
+### Docker・Artifact Registryの演習
+
+`sim docker example` → `docker build -t hello:v1 ./hello-web` から始められます。ローカル起動、push/pull、タグとdigest、リポジトリIAMを3本のミッションで練習できます。詳細は [docs/CONTAINERS.md](docs/CONTAINERS.md)。Cloud BuildとGKEのpull権限連携は次の段階です。

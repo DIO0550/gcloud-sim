@@ -10,6 +10,7 @@ import type {
   Subnet,
 } from "@/engine/domains/compute";
 import type { Address, NetworkPeering, Router } from "@/engine/domains/compute-networking";
+import { ContainerLab } from "@/engine/domains/container-lab";
 import type { OsLoginSshKey, ServiceAccountKey } from "@/engine/domains/credentials";
 import type {
   PubsubSubscription,
@@ -70,6 +71,7 @@ export type Session = Readonly<{
  */
 export type World = Readonly<{
   terraform: TerraformState;
+  containerLab: ContainerLab;
   organization: Organization;
   folders: readonly Folder[];
   projects: readonly Project[];
@@ -523,6 +525,12 @@ export const World = {
         const project = World.findProject(world, target.id);
         return Option.isSome(project) ? climb(project.value.parent, [target]) : [target];
       }
+      case "artifact-repository": {
+        const repo = world.containerLab.repositories.find((r) => r.id === target.id);
+        return repo
+          ? [target, ...World.ancestry(world, { type: "project", id: repo.projectId })]
+          : [target];
+      }
       case "bucket": {
         const bucket = World.findBucket(world, target.id);
         return Option.isSome(bucket)
@@ -555,6 +563,10 @@ export const World = {
         return Option.map(World.findFolder(world, target.id), (f) => f.iamPolicy);
       case "project":
         return Option.map(World.findProject(world, target.id), (p) => p.iamPolicy);
+      case "artifact-repository":
+        return Option.fromNullable(
+          world.containerLab.repositories.find((r) => r.id === target.id)?.iamPolicy,
+        );
       case "bucket":
         return Option.map(World.findBucket(world, target.id), (b) => b.iamPolicy);
       case "service-account":
@@ -596,6 +608,19 @@ export const World = {
           ),
           () => notFound,
         );
+      case "artifact-repository": {
+        if (!world.containerLab.repositories.some((r) => r.id === target.id))
+          return Result.err(notFound);
+        return Result.ok({
+          ...world,
+          containerLab: {
+            ...world.containerLab,
+            repositories: world.containerLab.repositories.map((r) =>
+              r.id === target.id ? { ...r, iamPolicy: policy } : r,
+            ),
+          },
+        });
+      }
       case "bucket":
         return Option.toResult(
           Option.map(World.findBucket(world, target.id), (b) =>
@@ -1263,6 +1288,12 @@ export const World = {
    * @returns 満たしていれば同じ World。満たさなければ最初に見つけた違反
    */
   validate(world: World): Result<World, string> {
+    const lab = ContainerLab.validate(world.containerLab);
+    if (!Result.isOk(lab)) return lab;
+    if (
+      lab.value.repositories.some((r) => !world.projects.some((p) => p.projectId === r.projectId))
+    )
+      return Result.err("Repository project is missing.");
     const activeExists = GcloudConfig.hasConfiguration(
       world.config,
       world.config.activeConfiguration,

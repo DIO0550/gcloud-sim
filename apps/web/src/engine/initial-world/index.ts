@@ -7,6 +7,7 @@ import {
   Subnet,
   SubnetModes,
 } from "@/engine/domains/compute";
+import { ContainerLab } from "@/engine/domains/container-lab";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { IamPolicy } from "@/engine/domains/iam-policy";
 import { MissionProgress } from "@/engine/domains/mission-progress";
@@ -219,6 +220,7 @@ export const InitialWorld = {
       serviceAccounts,
       instances: [],
       terraform: TerraformState.empty(),
+      containerLab: ContainerLab.empty(),
       networks: [dev.network, prod.network],
       subnets: [...dev.subnets, ...prod.subnets],
       firewallRules: [...dev.rules, ...prod.rules],
