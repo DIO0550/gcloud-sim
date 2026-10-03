@@ -24,6 +24,7 @@ export type TreeBadge = ValueOf<typeof TreeBadges>;
 export const ResourceGroups = {
   Compute: "compute",
   Artifacts: "artifacts",
+  Builds: "builds",
   LocalDocker: "local-docker",
   Disks: "disks",
   InstanceGroups: "instance-groups",
@@ -299,6 +300,18 @@ const projectNode = (world: World, project: Project): TreeNode => {
     badge: TreeBadges.Project,
     selection: Option.some({ kind: "project", projectId: id }),
     children: [
+      ...group(
+        id,
+        ResourceGroups.Builds,
+        world.containerLab.builds
+          .filter((b) => b.projectId === id)
+          .map((b) =>
+            leaf(
+              { kind: "container-lab", collection: "builds", id: b.id },
+              `${b.id} (${b.status})`,
+            ),
+          ),
+      ),
       ...group(
         id,
         ResourceGroups.Artifacts,

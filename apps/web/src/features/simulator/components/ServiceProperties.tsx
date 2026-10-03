@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { ImagePull } from "@/engine/domains/image-pull";
 
 import { KubePod, KubeService } from "@/engine/domains/kubernetes";
 import { CloudRunService, GkeCluster } from "@/engine/domains/managed-services";
@@ -55,6 +56,7 @@ export const ClusterProperties = ({
         { label: "mode", value: c.autopilot ? "Autopilot" : "Standard" },
         { label: "nodeCount", value: String(c.nodeCount) },
         { label: "machineType", value: c.machineType },
+        { label: "nodeServiceAccount", value: c.nodeServiceAccount || "default" },
         { label: "masterVersion", value: c.currentMasterVersion },
         { label: "status", value: c.status },
         { label: "selfLink", value: GkeCluster.selfLink(c) },
@@ -114,7 +116,9 @@ export const KubeDeploymentProperties = ({
         title="Pod"
         rows={KubePod.fromDeployment(d).map((p) => ({
           label: p.name,
-          value: `${p.status} ${p.ip}`,
+          value: Option.isSome(cluster)
+            ? ImagePull.error(world, cluster.value, d.image) || `${p.status} ${p.ip}`
+            : "Unknown",
         }))}
       />
     </>

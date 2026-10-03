@@ -1291,9 +1291,11 @@ export const World = {
     const lab = ContainerLab.validate(world.containerLab);
     if (!Result.isOk(lab)) return lab;
     if (
-      lab.value.repositories.some((r) => !world.projects.some((p) => p.projectId === r.projectId))
+      [...lab.value.repositories, ...lab.value.builds].some(
+        (r) => !world.projects.some((p) => p.projectId === r.projectId),
+      )
     )
-      return Result.err("Repository project is missing.");
+      return Result.err("Repository or build project is missing.");
     const activeExists = GcloudConfig.hasConfiguration(
       world.config,
       world.config.activeConfiguration,

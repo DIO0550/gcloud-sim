@@ -2,6 +2,7 @@ import { Region } from "@/engine/domains/catalog";
 import { IamMember, type IamPolicy, RoleName } from "@/engine/domains/iam-policy";
 import { ProjectId } from "@/engine/domains/resource-hierarchy";
 import { Decoder as D } from "@/utils/Decoder";
+import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
 export type Recipe = "hello-web" | "hello-web-v2";
@@ -39,7 +40,20 @@ export type RegistryImage = Readonly<{
   tags: readonly string[];
   uploaded: string;
 }>;
+export type CloudBuild = Readonly<{
+  id: string;
+  projectId: string;
+  region: string;
+  source: Recipe;
+  tag: string;
+  serviceAccount: string;
+  status: "QUEUED" | "WORKING" | "SUCCESS" | "FAILURE" | "CANCELLED";
+  created: string;
+  digest: string;
+  logs: readonly string[];
+}>;
 export type ContainerLab = Readonly<{
+  builds: readonly CloudBuild[];
   images: readonly LocalImage[];
   containers: readonly LocalContainer[];
   authHosts: readonly string[];
@@ -108,6 +122,7 @@ const imageName = (name: string): boolean =>
 const tagValid = (tag: string): boolean => /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/.test(tag);
 export const ContainerLab = {
   empty: (): ContainerLab => ({
+    builds: [],
     images: [],
     containers: [],
     authHosts: [],
@@ -115,6 +130,20 @@ export const ContainerLab = {
     registryImages: [],
   }),
   decoder: D.object<ContainerLab>({
+    builds: D.array(
+      D.object<CloudBuild>({
+        id: D.string,
+        projectId: D.string,
+        region: D.string,
+        source: recipe,
+        tag: D.string,
+        serviceAccount: D.string,
+        status: D.literal(["QUEUED", "WORKING", "SUCCESS", "FAILURE", "CANCELLED"]),
+        created: D.string,
+        digest: D.string,
+        logs: D.array(D.string),
+      }),
+    ),
     images: D.array(localImage),
     containers: D.array(container),
     authHosts: D.array(D.string),
@@ -226,8 +255,56 @@ export const ContainerLab = {
       ],
     };
   },
+  publish(lab: ContainerLab, ref: RegistryRef, recipe: Recipe, now: string): ContainerLab {
+    const repo =
+      lab.repositories.find((r) => r.id === ref.repositoryId) ?? fail("Repository not found.");
+    if (ref.digest) fail("Push requires a tag.");
+    const digest = ContainerLab.digest(recipe);
+    const occupied = lab.registryImages.find(
+      (i) => i.repositoryId === repo.id && i.name === ref.image && i.tags.includes(ref.tag),
+    );
+    if (repo.immutableTags && occupied && occupied.digest !== digest)
+      fail("Tag is immutable and already points to a different digest.");
+    const old = lab.registryImages.find(
+      (i) => i.repositoryId === repo.id && i.name === ref.image && i.digest === digest,
+    );
+    const others = lab.registryImages
+      .filter((i) => i !== old)
+      .map((i) =>
+        i.repositoryId === repo.id && i.name === ref.image
+          ? { ...i, tags: i.tags.filter((t) => t !== ref.tag) }
+          : i,
+      );
+    return {
+      ...lab,
+      registryImages: [
+        ...others,
+        {
+          repositoryId: repo.id,
+          name: ref.image,
+          digest,
+          recipe,
+          tags: [...new Set([...(old?.tags ?? []), ref.tag])],
+          uploaded: old?.uploaded ?? now,
+        },
+      ],
+    };
+  },
   validate(lab: ContainerLab): Result<ContainerLab, string> {
     try {
+      if (lab.builds.length > 100 || !unique(lab.builds.map((b) => b.id)))
+        fail("Invalid build collection.");
+      for (const b of lab.builds) {
+        if (!/^build-[1-9][0-9]*$/.test(b.id) || !Result.isOk(ProjectId.parse(b.projectId)))
+          fail("Invalid build identity.");
+        if (b.region !== "global" && !Option.isSome(Region.parse(b.region)))
+          fail("Invalid build region.");
+        if (ContainerLab.registryReference(b.tag).digest) fail("Build target requires a tag.");
+        if (!/^[a-z][a-z0-9-]+@[a-z][a-z0-9-]+\.iam\.gserviceaccount\.com$/.test(b.serviceAccount))
+          fail("Invalid build service account.");
+        if (b.digest !== (b.status === "SUCCESS" ? ContainerLab.digest(b.source) : ""))
+          fail("Invalid build result digest.");
+      }
       if (
         lab.images.length > 100 ||
         lab.containers.length > 100 ||

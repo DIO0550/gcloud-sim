@@ -21,7 +21,22 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（280）
+## 実装済み（286）
+
+### Cloud Build
+
+固定教材をビルドしてArtifact Registryへ登録します。呼び出し元のbuilds権限とサービスアカウントのactAs、実行SAのレジストリ書込権限は別に検証します。操作例・制約は[CONTAINERS.md](CONTAINERS.md)。
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud builds submit` | cloudbuild.builds.create + iam.serviceAccounts.actAs | Cloud Build（登録時Artifact Registry） | --tag/-t, --service-account, --region, --async |
+| `gcloud builds list` | cloudbuild.builds.list | Cloud Build | --region |
+| `gcloud builds describe` | cloudbuild.builds.get | Cloud Build | --region |
+| `gcloud builds log` | cloudbuild.builds.get | Cloud Build | --region |
+| `gcloud builds cancel` | cloudbuild.builds.update | Cloud Build | --region |
+| `sim builds advance` | cloudbuild.builds.update | Cloud Build（完了時Artifact Registry） | --region |
+
+GKE clusters create/create-autoは`--service-account=EMAIL`で既存ノードSAを指定でき、作成者のactAsを確認します。Artifact Registry参照はノードSAのReader権限とタグ/digestの存在を検証し、取得できないDeployment/Podは`ImagePullBackOff`、rollout status/logsはエラーになります。
 
 ### Docker / Artifact Registry
 
@@ -484,7 +499,7 @@ gcloud-sim にはローカルのファイルシステムが無い。**中身が�
 - `monitoring dashboards create` はJSONの `gridLayout`（columns=1、xyChart 1つ、timeSeriesFilter 1つ）のみ。未対応フィールド/レイアウトを黙って捨てずエラーにする。`--validate-only` は保存しない。
 - `monitoring policies create` は1つのしきい値条件（`--if='> 0.8'` / `'< 1'`、`--duration=300s`、OR）。通知先・複数条件・欠測/PromQL・インシデント評価は未対応。
 - `monitoring uptime create` はpublic URLのHTTP/HTTPS設定。periodは分（1/5/10/15）、timeoutは秒（1〜60）。外部URLへアクセスせず、稼働状況の値は生成しない。
-- 上記設定はリソースツリーとプロパティ、一覧/describe、JSON保存/復元に反映する。Snapshot v7（監視リソースはv3、Terraformはv4で追加）。v1/v2は監視集合、v1/v2/v3は空のTerraform状態を補完し、v4/v5のTerraform状態はlocal backendとplanのbackendRevision（v4はmoved情報も）を補って保持する。
+- 上記設定はリソースツリーとプロパティ、一覧/describe、JSON保存/復元に反映する。Snapshot v8（監視リソースはv3、Terraformはv4で追加）。v1/v2は監視集合、v1/v2/v3は空のTerraform状態を補完し、v4/v5のTerraform状態はlocal backendとplanのbackendRevision（v4はmoved情報も）を補って保持する。
 - 新ミッション5本はログ指標、uptime、CPUダッシュボード、CPUアラート、sinkと転送先IAM。残る資料対応は [ACE_COVERAGE.md](ACE_COVERAGE.md)。
 
 ### 組み込み cpu-dashboard.json

@@ -329,6 +329,13 @@ const DeploymentManagerPermissions = [
   "deploymentmanager.deployments.get",
 ] as const;
 
+const BuildReadPermissions = ["cloudbuild.builds.get", "cloudbuild.builds.list"];
+const BuildWritePermissions = [
+  ...BuildReadPermissions,
+  "cloudbuild.builds.create",
+  "cloudbuild.builds.update",
+];
+
 const ArtifactReadPermissions = [
   "artifactregistry.repositories.get",
   "artifactregistry.repositories.list",
@@ -349,6 +356,7 @@ const ArtifactAdminPermissions = [
 ] as const;
 
 const ViewerPermissions = [
+  ...BuildReadPermissions,
   ...ArtifactReadPermissions,
   ...MonitoringViewPermissions,
   "logging.logMetrics.get",
@@ -421,6 +429,7 @@ const ViewerPermissions = [
 ] as const;
 
 const EditorPermissions = [
+  ...BuildWritePermissions,
   ...ArtifactWritePermissions,
   "artifactregistry.repositories.create",
   "artifactregistry.repositories.delete",
@@ -468,6 +477,8 @@ const role = (name: RoleName, title: string, permissions: readonly string[]): Ro
 
 /** ACE 頻出の事前定義ロール（TBD-006: 約 30 個から開始）。 */
 const Roles: readonly Role[] = [
+  role("roles/cloudbuild.builds.viewer", "Cloud Build Viewer", BuildReadPermissions),
+  role("roles/cloudbuild.builds.editor", "Cloud Build Editor", BuildWritePermissions),
   role("roles/artifactregistry.reader", "Artifact Registry Reader", ArtifactReadPermissions),
   role("roles/artifactregistry.writer", "Artifact Registry Writer", ArtifactWritePermissions),
   role("roles/artifactregistry.admin", "Artifact Registry Administrator", ArtifactAdminPermissions),

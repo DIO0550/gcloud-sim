@@ -50,6 +50,8 @@ const groupText = (group: ResourceGroup): string => {
   switch (group) {
     case "artifacts":
       return "Artifact Registry";
+    case "builds":
+      return "Cloud Build";
     case "local-docker":
       return "Docker（ローカル）";
     case "compute":

@@ -108,13 +108,14 @@ import { Result } from "@/utils/Result";
  * v3 はログ指標・ダッシュボード・アラートポリシー・稼働時間チェックを持つ。
  * v4 はTerraformの仮想ファイル・state・保存planを持つ。
  * v5 はmoduleアドレス・サブディレクトリ・保存planのmoved情報を持つ。
+ * v8 はCloud Build履歴とGKEノードSAを持つ。
  * v7 はDockerのローカル状態とArtifact Registryを持つ。
  * v6 はGCS backend・state世代/ロック・移行履歴とplanのbackend revisionを持つ。
  */
-export const SchemaVersion = 7;
+export const SchemaVersion = 8;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
-const MigratableVersions = [1, 2, 3, 4, 5, 6] as const;
+const MigratableVersions = [1, 2, 3, 4, 5, 6, 7] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
 export type Snapshot = Readonly<{
@@ -346,6 +347,7 @@ const cluster = D.object<GkeCluster>({
   status: D.literal(["RUNNING"]),
   machineType,
   currentMasterVersion: string,
+  nodeServiceAccount: string,
 });
 
 const runService = D.object<CloudRunService>({
@@ -820,13 +822,26 @@ const migrateV1 = (value: unknown): unknown => {
 const migrate = (version: number, value: unknown): unknown => {
   if (version === SchemaVersion) return value;
   const old = version === 1 ? migrateV1(value) : value;
-  const previous = isRecord(old) ? { ...old, containerLab: ContainerLab.empty() } : old;
+  const previous = isRecord(old)
+    ? {
+        ...old,
+        containerLab:
+          version === 7
+            ? isRecord(old.containerLab)
+              ? { ...old.containerLab, builds: [] }
+              : old.containerLab
+            : ContainerLab.empty(),
+        clusters: Array.isArray(old.clusters)
+          ? old.clusters.map((c) => (isRecord(c) ? { ...c, nodeServiceAccount: "" } : c))
+          : old.clusters,
+      }
+    : old;
   if (!isRecord(previous)) return previous;
   const observed =
     version < 3
       ? { logMetrics: [], uptimeChecks: [], alertPolicies: [], dashboards: [], ...previous }
       : previous;
-  if (version === 6) return observed;
+  if (version >= 6) return observed;
   if (version < 4) return { ...observed, terraform: TerraformState.empty() };
   if (!isRecord(observed.terraform) || !isRecord(observed.terraform.plans)) return observed;
   const plans = Object.fromEntries(

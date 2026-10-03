@@ -14,6 +14,7 @@ export type GkeCluster = Readonly<{
   status: "RUNNING";
   machineType: MachineTypeName;
   currentMasterVersion: string;
+  nodeServiceAccount: string;
 }>;
 
 /** 作成時のマスターバージョンと、`upgrade` で上がる先。`--cluster-version` は受けない（DJ-005）。 */
@@ -26,6 +27,7 @@ export type GkeClusterSeed = Readonly<{
   name: string;
   location: Zone | Region;
   machineType: MachineTypeName;
+  nodeServiceAccount?: string;
   nodes: Readonly<{ kind: "autopilot" }> | Readonly<{ kind: "standard"; count: number }>;
 }>;
 
@@ -46,6 +48,7 @@ export const GkeCluster = {
       status: "RUNNING",
       machineType: seed.machineType,
       currentMasterVersion: MasterVersion,
+      nodeServiceAccount: seed.nodeServiceAccount ?? "",
     }));
   },
 
@@ -92,7 +95,10 @@ export const GkeCluster = {
       currentMasterVersion: cluster.currentMasterVersion,
       currentNodeCount: cluster.nodeCount,
       autopilot: { enabled: cluster.autopilot },
-      nodeConfig: { machineType: cluster.machineType },
+      nodeConfig: {
+        machineType: cluster.machineType,
+        serviceAccount: cluster.nodeServiceAccount || "default",
+      },
       endpoint: "34.85.0.1",
     };
   },
