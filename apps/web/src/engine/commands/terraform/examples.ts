@@ -110,7 +110,47 @@ output "private_access" {
 `,
 } as const;
 
+export const TerraformInfrastructureExample = `${TerraformNetworkExample}
+resource "google_compute_firewall" "web" {
+  name = "tf-lab-http"
+  network = google_compute_network.lab.id
+  source_ranges = ["0.0.0.0/0"]
+  target_tags = ["web"]
+  allow {
+    protocol = "tcp"
+    ports = ["80", "443"]
+  }
+}
+resource "google_compute_instance" "web" {
+  name = "tf-lab-vm"
+  zone = "us-central1-a"
+  machine_type = "e2-micro"
+  tags = ["web"]
+  boot_disk {
+    initialize_params {
+      image = "debian-cloud/debian-12"
+    }
+  }
+  network_interface {
+    network = google_compute_network.lab.id
+    subnetwork = google_compute_subnetwork.lab.id
+    access_config {}
+  }
+}
+resource "google_storage_bucket" "assets" {
+  name = "ace-dev-01-tf-lab-assets"
+  location = "US-CENTRAL1"
+  uniform_bucket_level_access = true
+  public_access_prevention = "enforced"
+  versioning { enabled = true }
+  force_destroy = false
+}
+output "vm_id" { value = google_compute_instance.web.id }
+output "bucket_url" { value = google_storage_bucket.assets.url }
+`;
+
 export const TerraformExamples: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  "terraform-infrastructure": { "main.tf": TerraformInfrastructureExample },
   "terraform-network": { "main.tf": TerraformNetworkExample },
   "terraform-modules": TerraformModuleExample,
 };

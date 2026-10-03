@@ -25,6 +25,8 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 
 ### Terraform / 学習用ファイル
 
+`sim files load terraform-infrastructure` でVPC/subnet/VM/firewall/bucketの構築・片付けを練習できます。
+
 対応範囲・通常のTerraformとの差異・操作例は [TERRAFORM.md](TERRAFORM.md) を参照。
 
 | コマンド | 必要な権限 | 必要な API | フラグ |

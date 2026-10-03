@@ -1,50 +1,59 @@
 import { Region } from "@/engine/domains/catalog";
-import { EffectivePermissions } from "@/engine/domains/effective-permissions";
-import { Principal } from "@/engine/domains/principal";
 import {
   TerraformState,
   type TfChange,
   type TfPlan,
   type TfResource,
 } from "@/engine/domains/terraform";
+import { TfAccess } from "@/engine/domains/terraform/access";
 import { TfConfiguration } from "@/engine/domains/terraform/configuration";
+import { TfResourceRuntime } from "@/engine/domains/terraform/resource-runtime";
+import { TfResources } from "@/engine/domains/terraform/resources";
 import { TfStructure } from "@/engine/domains/terraform/structure";
-import { World } from "@/engine/domains/world";
+import type { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 
 const fail = (message: string): never => {
   throw new Error(message);
 };
-const equal = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+const equal = TfResources.equal;
 const isNetwork = (r: TfResource): boolean => r.type === "google_compute_network";
 const identity = (a: TfResource, b: TfResource): boolean =>
   TerraformState.id(a) === TerraformState.id(b);
 const ordered = (rs: readonly TfResource[]): readonly TfResource[] =>
   [...rs].sort((a, b) => a.address.localeCompare(b.address));
-const replacing = (a: TfResource, b: TfResource): boolean =>
-  !identity(a, b) || a.network !== b.network || a.cidr !== b.cidr;
-
-const authorize = (world: World, r: TfResource, action: string): void => {
-  if (!Option.isSome(World.findActiveProject(world, r.project)))
-    fail(`Project not found: ${r.project}`);
-  if (!World.hasApi(world, r.project, "compute.googleapis.com"))
-    fail(`compute.googleapis.com is disabled in ${r.project}.`);
-  const adc = world.session.adc;
-  if (!Option.isSome(adc))
-    throw new Error(
-      "Application Default Credentials are missing. Run gcloud auth application-default login.",
+const replacing = (a: TfResource, b: TfResource): boolean => {
+  if (a.type !== b.type || !identity(a, b) || a.project !== b.project) return true;
+  if (a.type === "google_storage_bucket" && b.type === a.type) return a.location !== b.location;
+  if (a.type === "google_compute_instance" && b.type === a.type)
+    return (
+      a.network !== b.network ||
+      a.subnet !== b.subnet ||
+      a.image !== b.image ||
+      a.diskSize !== b.diskSize ||
+      a.diskType !== b.diskType ||
+      a.externalIp !== b.externalIp
     );
-  const permission = `compute.${isNetwork(r) ? "networks" : "subnetworks"}.${action}`;
-  const effective = EffectivePermissions.resolve(world, Principal.toMember(adc.value), {
-    type: "project",
-    id: r.project,
-  });
-  if (!EffectivePermissions.allows(effective, permission))
-    fail(`Permission denied: ${permission} for ADC ${adc.value} in ${r.project}.`);
+  if (a.type === "google_compute_firewall" && b.type === a.type)
+    return a.network !== b.network || a.direction !== b.direction;
+  if (a.type === "google_compute_subnetwork" && b.type === a.type)
+    return a.network !== b.network || a.cidr !== b.cidr;
+  return false;
 };
+const rank = (r: TfResource): number =>
+  ({
+    google_compute_network: 0,
+    google_storage_bucket: 0,
+    google_compute_subnetwork: 1,
+    google_compute_firewall: 1,
+    google_compute_instance: 2,
+  })[r.type];
+const authorize = TfAccess.resource;
 
 const read = (world: World, r: TfResource): TfResource | undefined => {
   authorize(world, r, "get");
+  if (r.type !== "google_compute_network" && r.type !== "google_compute_subnetwork")
+    return TfResourceRuntime.read(world, r);
   if (isNetwork(r)) {
     const network = world.networks.find((n) => n.projectId === r.project && n.name === r.name);
     if (network?.subnetMode === "AUTO")
@@ -73,17 +82,22 @@ const diff = (before: readonly TfResource[], after: readonly TfResource[]): read
   }
   for (const next of after) {
     const old = before.find((r) => r.address === next.address);
-    if (!old || replacing(old, next)) writes.push({ action: "create", resource: next });
-    else if (!equal(old, next)) writes.push({ action: "update", resource: next });
+    if (!old || replacing(old, next)) {
+      writes.push({ action: "create", resource: next });
+      continue;
+    }
+    if (!equal(old, next)) writes.push({ action: "update", resource: next });
   }
-  deletes.sort((a, b) => Number(isNetwork(a.resource)) - Number(isNetwork(b.resource)));
-  writes.sort((a, b) => Number(isNetwork(b.resource)) - Number(isNetwork(a.resource)));
+  deletes.sort((a, b) => rank(b.resource) - rank(a.resource));
+  writes.sort((a, b) => rank(a.resource) - rank(b.resource));
   return [...deletes, ...writes];
 };
 
-const mutate = (world: World, change: TfChange, checkWrites: boolean): World => {
+const mutate = (world: World, change: TfChange, checkWrites: boolean, now = ""): World => {
   const r = change.resource;
   TfConfiguration.validateResource(r);
+  if (r.type !== "google_compute_network" && r.type !== "google_compute_subnetwork")
+    return TfResourceRuntime.mutate(world, r, change.action, checkWrites, now);
   if (checkWrites)
     authorize(world, r, change.action === "update" ? "setPrivateIpGoogleAccess" : change.action);
   const matches = (item: { projectId: string; name: string }): boolean =>
@@ -232,7 +246,7 @@ export const TfRuntime = {
     // Values that depend on mutable attributes require evaluation against the observed values.
     return TfConfiguration.outputsFrom(world.terraform.files, actual);
   },
-  apply(world: World, plan: TfPlan): World {
+  apply(world: World, plan: TfPlan, now: string): World {
     if (plan.serial !== world.terraform.serial)
       fail("Saved plan is stale: state serial changed. Run terraform plan again.");
     const actual = ordered(
@@ -249,7 +263,7 @@ export const TfRuntime = {
     if (plan.mode === "refresh-only" && !equal(plan.after, plan.before))
       fail("Invalid refresh-only plan.");
     if (plan.mode === "destroy" && plan.after.length) fail("Invalid destroy plan.");
-    const next = changes.reduce((w, c) => mutate(w, c, true), world);
+    const next = changes.reduce((w, c) => mutate(w, c, true, now), world);
     return {
       ...next,
       terraform: {
@@ -263,7 +277,7 @@ export const TfRuntime = {
   summary(plan: TfPlan): string {
     const entries = plan.changes.map(
       (c) =>
-        `${c.action === "create" ? "+" : c.action === "delete" ? "-" : "~"} ${c.resource.address} (${TerraformState.id(c.resource)})${c.action === "update" ? ` private_ip_google_access = ${c.resource.privateAccess}` : ""}`,
+        `${c.action === "create" ? "+" : c.action === "delete" ? "-" : "~"} ${c.resource.address} (${TerraformState.id(c.resource)})${c.action === "update" ? ` ${JSON.stringify(TerraformState.record(c.resource))}` : ""}`,
     );
     const count = (action: TfChange["action"]): number =>
       plan.changes.filter((c) => c.action === action).length;

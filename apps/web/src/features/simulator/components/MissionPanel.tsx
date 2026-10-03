@@ -32,6 +32,8 @@ const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElem
 
 const assertionLabel = (assertion: Mission["assertions"][number]): string => {
   switch (assertion.kind) {
+    case "terraformDestroyed":
+      return "構築した5リソースを保存済みdestroy planで削除し、stateと実リソースの両方から片付ける";
     case "terraformManaged":
       return `${assertion.resource.address}: 構成・state・実リソースが指定値と一致する`;
     case "terraformMoved":

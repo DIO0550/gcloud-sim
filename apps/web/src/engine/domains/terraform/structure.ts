@@ -45,7 +45,11 @@ export const TfStructure = {
       return undefined;
     for (let i = 0; i < parts.length - 2; i += 2) if (parts[i] !== "module") return undefined;
     const type = parts.at(-2);
-    return type === "google_compute_network" || type === "google_compute_subnetwork"
+    return type === "google_compute_network" ||
+      type === "google_compute_subnetwork" ||
+      type === "google_compute_instance" ||
+      type === "google_compute_firewall" ||
+      type === "google_storage_bucket"
       ? type
       : undefined;
   },

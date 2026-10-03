@@ -229,7 +229,7 @@ export const CommandRegistry = {
       "NOTES",
       ...(spec.path[0] === "terraform" || spec.path[0] === "sim"
         ? [
-            "    Terraform: VPC/subnetとローカルmodule/movedに対応。GCS backendなどは未対応（docs/TERRAFORM.md）。",
+            "    Terraform: VPC/subnet/VM/firewall/bucketとローカルmodule/movedに対応。GCS backendなどは未対応（docs/TERRAFORM.md）。",
           ]
         : []),
       "    gcloud-sim は本物の一部だけを再現しています。IAM の判定はロールカタログに収録した権限だけで行い、",
