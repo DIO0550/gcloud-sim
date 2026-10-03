@@ -17,7 +17,7 @@
 | 分野 | 既存の対応 | 追加する操作・判断とミッション | 状態 |
 |---|---|---|---|
 | Logging / Monitoring | Compute監査ログ、sink作成。dashboard/policyは空一覧のみ | positional log filter・昇順、ログ指標、sink更新/削除、dashboard・alert policy・uptime・通知、metrics scope、ログバケット/保持/除外、ログルーター、SLI/SLO/予算、監査ログ種類と有効化 | 部分実装: 指標/sink変更・監視3種と5ミッション。通知・metrics scope・ログbucket・SLI/SLO・監査設定は残作業 |
-| Terraform | 未対応（Deployment Managerのみ） | HCL/変数/出力、init/fmt/validate/plan/apply/destroy、保存plan、ドリフト/refresh-only、module/moved、state list/show/mv/rm、import、GCS backend移行と権限 | 未完了 |
+| Terraform | 未対応（Deployment Managerのみ） | HCL/変数/出力、init/fmt/validate/plan/apply/destroy、保存plan、ドリフト/refresh-only、module/moved、state list/show/mv/rm、import、GCS backend移行と権限 | 部分実装: VPC/subnet・HCL/変数/出力・plan/apply・ドリフト・state/importと3ミッション。module/moved・VM/firewall/bucket・GCS backendは残作業（#13、詳細はTERRAFORM.md） |
 | Docker / Artifact Registry | 未対応 | build/run/ps/logs/stop/rm/tag/push、repository作成・認証・イメージ参照、Cloud Build、GKEへのpull権限 | 未完了 |
 | GKE / Kubernetes | Standard/Autopilot、Deployment/Service/Pod、scale/restart、固定manifest | namespace・ConfigMap・Secret・環境変数、set image・rollout history/undo、readiness/liveness・障害・自己修復、requests/limits・HPA/VPA、StatefulSet/PVC、Ingress/NetworkPolicy、プライベートクラスタ・Workload Identity・node pool autoscaling | 未完了 |
 | Load Balancing | health check/backend/forwarding ruleを単独作成 | 正式なhealth-checks create http/tcp構文、backendへのMIG追加、named ports、URL map/target proxy、外部passthrough・外部/内部Application LBの一連の接続、proxy-only subnet、疎通/health障害、SSL/CDN/NEG・ティア選択 | 未完了 |

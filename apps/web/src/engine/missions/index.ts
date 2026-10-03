@@ -37,6 +37,11 @@ import {
   ObservabilityMissions,
   observabilitySatisfied,
 } from "@/engine/missions/observability";
+import {
+  type TerraformAssertion,
+  TerraformMissions,
+  terraformSatisfied,
+} from "@/engine/missions/terraform";
 import type { ValueOf } from "@/types/ValueOf";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -53,6 +58,7 @@ export type MissionDomain = ValueOf<typeof MissionDomains>;
 
 /** World に対する述語（DJ-010: コマンド文字列ではなく状態で判定する）。値の語彙はドメインの型で閉じる。 */
 export type MissionAssertion =
+  | TerraformAssertion
   | ObservabilityAssertion
   | Readonly<{ kind: "billingLinked"; projectId: string }>
   | Readonly<{ kind: "apiEnabled"; projectId: string; api: ApiName }>
@@ -187,6 +193,7 @@ const organization: PolicyTarget = { type: "organization", id: F.organizationId 
 
 const Missions: readonly Mission[] = [
   ...ObservabilityMissions,
+  ...TerraformMissions,
   {
     id: "m-setup-001",
     domain: MissionDomains.Setup,
@@ -640,6 +647,8 @@ const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: 
 
 const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
+    case "terraformManaged":
+      return terraformSatisfied(world, assertion);
     case "logMetricConfigured":
     case "uptimeConfigured":
     case "dashboardConfigured":

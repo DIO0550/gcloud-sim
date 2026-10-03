@@ -105,11 +105,12 @@ import { Result } from "@/utils/Result";
  * v1 は Phase 1 の集合だけ、v2 は残りのサービスの集合と `session.adc` / `components`・SA のポリシー・
  * バケットのバージョニング / ライフサイクル / ACL・オブジェクトのストレージクラスを持つ。
  * v3 はログ指標・ダッシュボード・アラートポリシー・稼働時間チェックを持つ。
+ * v4 はTerraformの仮想ファイル・state・保存planを持つ。
  */
-export const SchemaVersion = 3;
+export const SchemaVersion = 4;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
-const MigratableVersions = [1, 2] as const;
+const MigratableVersions = [1, 2, 3] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
 export type Snapshot = Readonly<{
@@ -716,6 +717,7 @@ const world = D.object<World>({
   billingAccounts: D.array(billingAccount),
   serviceAccounts: D.array(serviceAccount),
   instances: D.array(instance),
+  terraform: D.map(TerraformState.decoder, TerraformState.validate),
   networks: D.array(network),
   subnets: D.array(subnet),
   firewallRules: D.array(firewallRule),
@@ -812,8 +814,12 @@ const migrateV1 = (value: unknown): unknown => {
 
 const migrate = (version: number, value: unknown): unknown => {
   const previous = version === 1 ? migrateV1(value) : value;
-  if (version >= 3 || !isRecord(previous)) return previous;
-  return { logMetrics: [], uptimeChecks: [], alertPolicies: [], dashboards: [], ...previous };
+  if (!isRecord(previous)) return previous;
+  const observed =
+    version < 3
+      ? { logMetrics: [], uptimeChecks: [], alertPolicies: [], dashboards: [], ...previous }
+      : previous;
+  return version < 4 ? { ...observed, terraform: TerraformState.empty() } : observed;
 };
 
 export const Snapshot = {
@@ -865,3 +871,5 @@ export const Snapshot = {
     return Result.map(validated, Mission.syncProgress);
   },
 } as const;
+
+import { TerraformState } from "@/engine/domains/terraform";

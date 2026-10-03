@@ -32,6 +32,8 @@ const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElem
 
 const assertionLabel = (assertion: Mission["assertions"][number]): string => {
   switch (assertion.kind) {
+    case "terraformManaged":
+      return `${assertion.resource.address}: 構成・state・実リソースが指定値と一致する`;
     case "logMetricConfigured":
       return `ログ指標 ${assertion.name} のフィルタが ${assertion.filter}`;
     case "uptimeConfigured":

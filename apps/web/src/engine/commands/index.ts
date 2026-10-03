@@ -30,8 +30,10 @@ import {
   StorageCommands,
   StorageExtraCommands,
 } from "@/engine/commands/storage";
+import { TerraformCommands } from "@/engine/commands/terraform";
 
 const implemented: readonly CommandSpec[] = [
+  ...TerraformCommands,
   ...ConfigCommands,
   ...AuthCommands,
   ...SdkCommands,

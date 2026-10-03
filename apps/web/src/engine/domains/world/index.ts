@@ -48,6 +48,7 @@ import { CustomRole, RoleCatalog } from "@/engine/domains/role-catalog";
 import type { AppEngineApp, AppVersion, CloudFunction } from "@/engine/domains/serverless";
 import { ServiceAccount } from "@/engine/domains/service-account";
 import { Bucket } from "@/engine/domains/storage";
+import type { TerraformState } from "@/engine/domains/terraform";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
@@ -68,6 +69,7 @@ export type Session = Readonly<{
  * スキーマのバージョンは World ではなく Snapshot（`engine/snapshot`）が持つ。
  */
 export type World = Readonly<{
+  terraform: TerraformState;
   organization: Organization;
   folders: readonly Folder[];
   projects: readonly Project[];

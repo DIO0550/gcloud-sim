@@ -218,6 +218,7 @@ export const InitialWorld = {
       billingAccounts: [{ id: f.billingAccountId, displayName: "My Billing Account", open: true }],
       serviceAccounts,
       instances: [],
+      terraform: TerraformState.empty(),
       networks: [dev.network, prod.network],
       subnets: [...dev.subnets, ...prod.subnets],
       firewallRules: [...dev.rules, ...prod.rules],
@@ -236,3 +237,5 @@ export const InitialWorld = {
     };
   },
 } as const;
+
+import { TerraformState } from "@/engine/domains/terraform";

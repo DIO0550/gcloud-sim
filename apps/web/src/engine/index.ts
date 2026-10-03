@@ -73,7 +73,7 @@ export const Engine = {
     return CommandRegistry.complete(
       registry,
       { tokens: confirmed, partial, world },
-      Shell.GlobalFlags,
+      Shell.globalsFor(tokens.value[0]),
     );
   },
 
