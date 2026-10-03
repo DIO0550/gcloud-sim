@@ -1,4 +1,4 @@
-# Terraform 学習シミュレーター（第3段階：VM/firewall/bucket）
+# Terraform 学習シミュレーター（第4段階：GCS backend・state移行）
 
 Issue [#13](https://github.com/DIO0550/gcloud-sim/issues/13) の部分実装です。教材のネットワーク・VM・firewall・bucketの構築・変更・取り込み・モジュール化・片付けを、既存のgcloud操作と同じWorldで実行します。TerraformやGoogle providerそのものは実行しません。通信、認証情報の取得、課金、任意コードの実行はありません。
 
@@ -149,9 +149,60 @@ terraform apply cleanup-plan
 terraform state list
 ```
 
-bucketにオブジェクトがあると削除を拒否し、一括適用を取り消します。オブジェクトを片付けるか、HCLの `force_destroy = false` を `true` に変更して**通常のapplyを先に実行**し、stateに記録してからdestroy planを作り直します。HCLだけを変更してもdestroy時の削除方針は変わりません。force_destroyでオブジェクトを消す際はstorage.objects.list/deleteも検証します。版管理は既存シミュレーターの有効/無効設定を共有し、オブジェクトの世代履歴までは再現しません。
+bucketにオブジェクトがあると削除を拒否し、一括適用を取り消します。オブジェクトを片付けるか、HCLの `force_destroy = false` を `true` に変更して**通常のapplyを先に実行**し、stateに記録してからdestroy planを作り直します。HCLだけを変更してもdestroy時の削除方針は変わりません。force_destroyでオブジェクトを消す際はstorage.objects.list/deleteも検証します。版管理は既存シミュレーターの有効/無効設定を共有します。通常のオブジェクトの世代履歴は未対応ですが、GCS backendのstateは下記の限定的な履歴を持ちます。
 
 「TerraformでVM・firewall・bucketをまとめて構築する」と「Terraformの管理対象を依存順に片付ける」の2ミッションを追加しています。片付けは構築後の保存destroy planと適用後の空のstate・実リソースを確認します。初めから空の状態、planだけ、state rmだけでは完了しません。
+
+## GCS backendへstateを移行する
+
+最初の演習でローカルstateにVPC/subnetを作成した後、実リソースをそのまま保持して移行します。backend用bucketはinitより先に存在する必要があります。`terraform-backend` の例はbackend.tfだけを追加します。
+
+```sh
+gcloud storage buckets create gs://ace-dev-01-tf-state --location=us-central1 --uniform-bucket-level-access
+gcloud storage buckets update gs://ace-dev-01-tf-state --versioning
+sim files load terraform-backend
+sim files read backend.tf
+terraform init -migrate-state
+yes
+terraform state pull
+sim terraform backend
+gcloud storage ls gs://ace-dev-01-tf-state/terraform/lab/
+terraform plan
+```
+
+```hcl
+terraform {
+  backend "gcs" {
+    bucket = "ace-dev-01-tf-state"
+    prefix = "terraform/lab"
+  }
+}
+```
+
+- rootのbackend宣言は1個、bucket/prefixはリテラル文字列のみです。prefix省略時はbucket直下、上記では `terraform/lab/default.tfstate` に保存します。明示的な `backend "local" {}` またはbackend宣言の削除でローカルへ戻せます。
+- 初期化後のbucket/prefix/種別の変更には `init -migrate-state` が必要です。確認前は書き込まず、`yes` で移行、`no` でキャンセルします。`-force-copy` は移行と確認省略を兼ねます。移行前のリモートコピーは残ります。移行先の異なるstateや未知の既存オブジェクトは上書きしません。
+- backendはproviderとは独立して、**bucket所属プロジェクト**のStorage APIとADCを確認します。読込にはstorage.objects.get/list、書込・ロックにはさらにcreate/deleteが必要です。bucket単位のroles/storage.objectAdminで移行でき、roles/storage.objectViewerではstateを読めますが更新できません。
+- Object Versioningが無効でもinitは警告付きで成功します。有効時のstate更新は過去10世代まで保持し、`sim terraform backend` で世代・serial・リソース数を確認できます。最大8か所のリモート保存先を扱います。世代の復元コマンドは未対応です。
+- apply/refresh-only/import/state mv/rmの成功時にリモートstateも更新します。planは権限とロックを確認しますが、Worldを変更しません。移行前の保存plan、stateとキャッシュの不一致、外部で削除・上書きされたstateを拒否します。
+- active backend bucketをTerraformで削除・置換する計画はforce_destroy指定にかかわらず拒否します。先に別backendへ移行してください。gcloudでstateやbucketを削除した場合は、後続Terraform操作が明示エラーになります。
+
+ロック復旧を試すには、移行後に次を実行します。
+
+```sh
+sim terraform lock
+terraform plan
+sim terraform backend
+# 表示された実際のLock IDを指定する
+terraform force-unlock tf-lock-番号
+yes
+terraform plan
+```
+
+`sim terraform lock` はこのアプリ専用の障害演習で、終了済み操作が残したロックを作ります。plan/apply/state変更/移行を拒否しますが、stateの読込は可能です。force-unlockはIDとロックオブジェクトの一致を確認し、`yes`（または `-force`）でロックだけを解除します。実環境でのforce-unlockは対象操作が停止したことを確認してから行うものです。
+
+新ミッション「ローカルstateをGCS backendへ移行する」は、指定VPC/subnetの移行記録・現在の構成/state/実リソース・bucket版管理を確認します。最初からGCSで作成した場合や確認前のプレビューだけでは完了しません。
+
+**シミュレーション上の制限:** 単一の仮想作業領域・default workspaceのみです。実GCS通信・複数クライアントの同時実行は行わず、書込とロック検証はWorldの一括更新です。state本文と世代履歴はアプリ内データに保持し、bucketにはサイズ・更新日時などのオブジェクト情報を反映します。サイズはJSON文字数の概算です。一般の `gcloud storage cp` は本文を扱わないため、任意tfstateのアップロード・復旧や世代指定のダウンロードはできません。`terraform state pull` のJSONもアプリ固有の簡略形式で、実Terraformへのstate移植には使えません。`-backend-config`、`-reconfigure`、`-lock=false`、workspace切替、CMEK、認証情報・impersonationのbackend設定は未対応として拒否します。
 
 ## 対応範囲
 
@@ -165,8 +216,8 @@ bucketにオブジェクトがあると削除を拒否し、一括適用を取�
 | 参照・output | `var.NAME`、resourceの `id` / `name` / `self_link`、subnetworkの `ip_cidr_range` / `private_ip_google_access`。VMのmachine_type/zone、firewallのpriority/direction/disabled、bucketのlocation/storage_class/urlなどスカラー属性も対応。配列・object・NIC内の計算属性はoutput参照不可。`module.NAME.OUTPUT`も対応。module間はスカラー型を保持し、ルート出力は文字列として記録 |
 | plan | 通常／`-destroy`／`-refresh-only`、`-out`、show、保存planの適用。保存planは最大16個（同名で上書き可能） |
 | 認証・権限 | gcloudログインとは別のADC主体、対象プロジェクト、Compute/Storage API、操作別権限を検証。既存bucketはbucket IAMも参照し、VMのNIC・ディスク作成・SA接続の権限を確認 |
-| 状態 | list/show/mv/rm/import、Snapshot v5のまま対応resource型を追加。既存v5の構成・state・planを保持。v4のファイル・state・planを保持しmovesを補完。v1/v2/v3は空のTerraform状態へ移行 |
-| ミッション | VPC/subnet構築、変数・Private Google Access変更、既存VPCの取り込み、再作成なしのmodule移行、5リソース構築、片付けの6本。構成・state・実リソースの一致で判定 |
+| 状態 | list/show/pull/mv/rm/import、GCS backend移行・ロック。Snapshot v6。v4/v5の構成・state・保存planを保持し、local backendとrevision、v4のmovesを補完。v1/v2/v3は空のTerraform状態へ移行 |
+| ミッション | VPC/subnet構築、変数・Private Google Access変更、既存VPCの取り込み、再作成なしのmodule移行、5リソース構築、片付け、GCS state移行の7本。構成・state・実リソースの一致で判定 |
 
 `init` と `validate` はこのサブセットの設定済み変数も検証します。実Terraformのinit（構成の評価より前の初期化）や、入力値なしで行うvalidateの完全再現ではありません。実providerのダウンロード、バージョン解決、ロックファイル生成は行いません。
 
@@ -176,11 +227,10 @@ bucketにオブジェクトがあると削除を拒否し、一括適用を取�
 
 - VM/firewall/bucketの追加属性（複数NIC・追加ディスク・Spot・削除保護・IPv6・firewallログなど）と完全なprovider挙動。
 - リモートmodule、provider別名/明示providers設定、module単位のmoved、count/for_eachのインスタンス移行。
-- GCS backend、版管理・IAMの検証、`init -migrate-state`、リモートロック。
+- GCS backendの世代復元、任意stateの入出力、CMEK、impersonation、複数クライアントの並行更新。
 - provider/version制約、`-chdir`、workspace、`-var` / `-var-file`、複合型の変数/module入出力、関数、文字列テンプレート、for_each/count、data、locals、depends_on、lifecycle。
 - 削除済みリソースを参照するoutputのrefresh。現状はoutputがある状態で構成のリソースが観測できなければ明示エラーとし、該当outputを外してから更新する。
 - 保存planの実クラウド相当の競合制御、実providerの完全な差分/ForceNew規則、部分失敗と復旧。
-- GCS state移行の独立ミッション。
 
 上記の未対応ブロック・属性・式・フラグを、対応済みとして成功させません。
 
@@ -198,3 +248,7 @@ bucketにオブジェクトがあると削除を拒否し、一括適用を取�
 - [Google provider: compute_instance](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_instance)
 - [Google provider: compute_firewall](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_firewall)
 - [Google provider: storage_bucket](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/storage_bucket)
+
+- [GCS backend](https://developer.hashicorp.com/terraform/language/backend/gcs)
+- [Terraform init](https://developer.hashicorp.com/terraform/cli/commands/init)
+- [Terraform force-unlock](https://developer.hashicorp.com/terraform/cli/commands/force-unlock)

@@ -1,11 +1,14 @@
+import { TfBackend, type TfBackendState } from "@/engine/domains/terraform/backend";
 import { type TfResource, TfResources } from "@/engine/domains/terraform/resources";
 import { type TfMove, TfStructure } from "@/engine/domains/terraform/structure";
 import { Decoder as D } from "@/utils/Decoder";
+import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
 export type { TfResource } from "@/engine/domains/terraform/resources";
 export type TfChange = Readonly<{ action: "create" | "update" | "delete"; resource: TfResource }>;
 export type TfPlan = Readonly<{
+  backendRevision: number;
   moves: readonly TfMove[];
   serial: number;
   mode: "normal" | "destroy" | "refresh-only";
@@ -16,6 +19,7 @@ export type TfPlan = Readonly<{
   outputs: Readonly<Record<string, string>>;
 }>;
 export type TerraformState = Readonly<{
+  backend: TfBackendState;
   files: Readonly<Record<string, string>>;
   initialized: boolean;
   serial: number;
@@ -25,6 +29,7 @@ export type TerraformState = Readonly<{
 }>;
 const resource = TfResources.decoder;
 const plan = D.object<TfPlan>({
+  backendRevision: D.number,
   moves: D.array(D.object<TfMove>({ from: D.string, to: D.string })),
   serial: D.number,
   mode: D.literal(["normal", "destroy", "refresh-only"]),
@@ -40,6 +45,7 @@ const plan = D.object<TfPlan>({
 });
 export const TerraformState = {
   empty: (): TerraformState => ({
+    backend: TfBackend.empty(),
     files: {},
     initialized: false,
     serial: 0,
@@ -48,6 +54,7 @@ export const TerraformState = {
     plans: {},
   }),
   decoder: D.object<TerraformState>({
+    backend: TfBackend.decoder,
     files: D.record(D.string),
     initialized: D.boolean,
     serial: D.number,
@@ -92,6 +99,20 @@ export const TerraformState = {
     if (!resourcesValid(state.resources))
       return Result.err("Invalid or duplicate Terraform resource identity.");
     try {
+      TfBackend.validate(state.backend);
+      const data = [
+        ...state.backend.remotes.flatMap((r) => [r.data, ...r.versions.map((v) => v.data)]),
+        ...(Option.isSome(state.backend.migration) ? [state.backend.migration.value.data] : []),
+      ];
+      for (const saved of data) {
+        if (
+          !Number.isSafeInteger(saved.serial) ||
+          saved.serial < 0 ||
+          !resourcesValid(saved.resources)
+        )
+          throw new Error("Invalid remote state data.");
+        for (const r of saved.resources) TfResources.validate(r);
+      }
       for (const r of state.resources) TfResources.validate(r);
       for (const p of Object.values(state.plans))
         for (const r of [
@@ -108,6 +129,9 @@ export const TerraformState = {
     if (
       Object.values(state.plans).some(
         (p) =>
+          !Number.isSafeInteger(p.backendRevision) ||
+          p.backendRevision < 0 ||
+          p.backendRevision > state.backend.revision ||
           !Number.isSafeInteger(p.serial) ||
           p.serial < 0 ||
           p.serial > state.serial ||

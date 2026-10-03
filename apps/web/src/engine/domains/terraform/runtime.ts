@@ -6,6 +6,7 @@ import {
   type TfResource,
 } from "@/engine/domains/terraform";
 import { TfAccess } from "@/engine/domains/terraform/access";
+import { TfBackendRuntime } from "@/engine/domains/terraform/backend-runtime";
 import { TfConfiguration } from "@/engine/domains/terraform/configuration";
 import { TfResourceRuntime } from "@/engine/domains/terraform/resource-runtime";
 import { TfResources } from "@/engine/domains/terraform/resources";
@@ -194,6 +195,7 @@ export const TfRuntime = {
   read,
   plan(world: World, mode: TfPlan["mode"]): TfPlan {
     if (!world.terraform.initialized) fail("Run terraform init first.");
+    TfBackendRuntime.check(world, true);
     const config = TfConfiguration.compile(world.terraform.files);
     const managed = TfStructure.remap(world.terraform.resources, config.moves);
     const moves = world.terraform.resources.flatMap((r, index) => {
@@ -215,6 +217,7 @@ export const TfRuntime = {
         fail(`Resource already exists: ${TerraformState.id(r)}. Use terraform import.`);
     }
     const changes = mode === "refresh-only" ? [] : diff(before, after);
+    TfBackendRuntime.protect(world, changes);
     // Validate references, collisions and deletion dependencies without committing changes.
     changes.reduce((next, change) => mutate(next, change, false), world);
     const outputs = mode === "destroy" ? {} : config.outputs;
@@ -223,6 +226,7 @@ export const TfRuntime = {
     return {
       moves,
       serial: world.terraform.serial,
+      backendRevision: world.terraform.backend.revision,
       mode,
       before,
       after,
@@ -247,6 +251,9 @@ export const TfRuntime = {
     return TfConfiguration.outputsFrom(world.terraform.files, actual);
   },
   apply(world: World, plan: TfPlan, now: string): World {
+    TfBackendRuntime.check(world, true);
+    if (plan.backendRevision !== world.terraform.backend.revision)
+      fail("Saved plan is stale: backend changed. Run terraform plan again.");
     if (plan.serial !== world.terraform.serial)
       fail("Saved plan is stale: state serial changed. Run terraform plan again.");
     const actual = ordered(
@@ -263,16 +270,21 @@ export const TfRuntime = {
     if (plan.mode === "refresh-only" && !equal(plan.after, plan.before))
       fail("Invalid refresh-only plan.");
     if (plan.mode === "destroy" && plan.after.length) fail("Invalid destroy plan.");
+    TfBackendRuntime.protect(world, changes);
     const next = changes.reduce((w, c) => mutate(w, c, true, now), world);
-    return {
-      ...next,
-      terraform: {
-        ...world.terraform,
-        resources: plan.after,
-        outputs: plan.outputs,
-        serial: world.terraform.serial + 1,
+    return TfBackendRuntime.commit(
+      world,
+      {
+        ...next,
+        terraform: {
+          ...world.terraform,
+          resources: plan.after,
+          outputs: plan.outputs,
+          serial: world.terraform.serial + 1,
+        },
       },
-    };
+      now,
+    );
   },
   summary(plan: TfPlan): string {
     const entries = plan.changes.map(

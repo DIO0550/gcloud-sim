@@ -12,6 +12,8 @@ import {
 import { plainCommand } from "@/engine/commands/shared";
 import { TerraformExamples } from "@/engine/commands/terraform/examples";
 import { TerraformState, type TfPlan } from "@/engine/domains/terraform";
+import { TfBackend } from "@/engine/domains/terraform/backend";
+import { TfBackendRuntime } from "@/engine/domains/terraform/backend-runtime";
 import { TfConfiguration } from "@/engine/domains/terraform/configuration";
 import { Hcl } from "@/engine/domains/terraform/hcl";
 import { TfRuntime } from "@/engine/domains/terraform/runtime";
@@ -27,6 +29,8 @@ const fail = (message: string): never => {
 };
 const ok = (world: World, message: string): CommandResult =>
   Result.ok({ world, output: CommandOutput.messages(OutputMessage.plain(message)) });
+const stateOk = (ctx: CommandContext, world: World, message: string): CommandResult =>
+  ok(TfBackendRuntime.commit(ctx.world, world, ctx.now), message);
 const guarded =
   (run: (ctx: CommandContext, args: ParsedArgs) => CommandResult) =>
   (ctx: CommandContext, args: ParsedArgs): CommandResult => {
@@ -202,7 +206,7 @@ export const TerraformCommands: readonly CommandSpec[] = [
   }),
   plainCommand({
     path: ["sim", "files", "load"],
-    summary: "Load a Terraform network or local-module lesson into virtual files.",
+    summary: "Load a Terraform lesson into virtual files.",
     positionals: [
       Positional.required("EXAMPLE", "Lesson name.", () => Object.keys(TerraformExamples)),
     ],
@@ -232,14 +236,91 @@ export const TerraformCommands: readonly CommandSpec[] = [
       );
     }),
   }),
-  plainCommand({
+  {
+    kind: "plain",
     path: ["terraform", "init"],
-    summary: "Initialize the simulated local backend; no provider download or cloud access.",
-    run: guarded((ctx) => {
+    summary: "Initialize a local or GCS backend, optionally migrating state.",
+    positionals: [],
+    flags: [
+      Flag.boolean("migrate-state", "Copy existing state after changing backend.", {
+        aliases: ["-migrate-state"],
+      }),
+      Flag.boolean("force-copy", "Migrate state without interactive confirmation.", {
+        aliases: ["-force-copy"],
+      }),
+    ],
+    destructive: false,
+    confirmation: {
+      skip: (args) =>
+        !ParsedArgs.boolean(args, "migrate-state") || ParsedArgs.boolean(args, "force-copy"),
+      preview: guarded((ctx) => {
+        TfConfiguration.compile(ctx.world.terraform.files);
+        const result = TfBackendRuntime.initialize(ctx.world, true, ctx.now);
+        return ok(
+          ctx.world,
+          `Migration preview: ${result.message}\nCopy state to the configured backend?`,
+        );
+      }),
+    },
+    run: guarded((ctx, args) => {
       TfConfiguration.compile(ctx.world.terraform.files);
+      const result = TfBackendRuntime.initialize(
+        ctx.world,
+        ParsedArgs.boolean(args, "migrate-state") || ParsedArgs.boolean(args, "force-copy"),
+        ctx.now,
+      );
+      return ok(result.world, result.message);
+    }),
+  },
+  plainCommand({
+    path: ["sim", "terraform", "backend"],
+    summary: "Inspect simulated backend, state generations and lock.",
+    run: guarded((ctx) => ok(ctx.world, TfBackendRuntime.inspect(ctx.world))),
+  }),
+  plainCommand({
+    path: ["sim", "terraform", "lock"],
+    summary: "Create a simulated abandoned GCS state lock for recovery practice.",
+    run: guarded((ctx) => {
+      const result = TfBackendRuntime.lock(ctx.world, ctx.now);
       return ok(
-        { ...ctx.world, terraform: { ...ctx.world.terraform, initialized: true } },
-        "Terraform has been initialized (simulated local backend, network/subnetwork subset). No real provider was installed.",
+        result.world,
+        `Simulated abandoned lock: ${result.id}. Recover with terraform force-unlock ${result.id}.`,
+      );
+    }),
+  }),
+  {
+    kind: "plain",
+    path: ["terraform", "force-unlock"],
+    summary: "Remove the matching simulated abandoned state lock.",
+    positionals: [Positional.required("LOCK_ID", "Exact lock ID from the failed operation.")],
+    flags: [Flag.boolean("force", "Skip interactive confirmation.", { aliases: ["-force"] })],
+    destructive: false,
+    confirmation: {
+      skip: (args) => ParsedArgs.boolean(args, "force"),
+      preview: guarded((ctx, args) => {
+        TfBackendRuntime.unlock(ctx.world, ParsedArgs.requiredPositional(args, 0));
+        return ok(
+          ctx.world,
+          "Remove this state lock? Confirm that the other operation has stopped. Infrastructure will not change.",
+        );
+      }),
+    },
+    run: guarded((ctx, args) =>
+      ok(
+        TfBackendRuntime.unlock(ctx.world, ParsedArgs.requiredPositional(args, 0)),
+        "State lock removed. Infrastructure is unchanged.",
+      ),
+    ),
+  },
+  plainCommand({
+    path: ["terraform", "state", "pull"],
+    summary: "Read the current simulator state as JSON (simplified schema).",
+    run: guarded((ctx) => {
+      requireInit(ctx.world);
+      TfBackendRuntime.check(ctx.world);
+      return ok(
+        ctx.world,
+        JSON.stringify({ version: 4, ...TfBackend.data(ctx.world.terraform) }, null, 2),
       );
     }),
   }),
@@ -324,6 +405,7 @@ export const TerraformCommands: readonly CommandSpec[] = [
     ],
     run: guarded((ctx, args) => {
       const plan = savedPlan(ctx.world, args);
+      if (!plan) TfBackendRuntime.check(ctx.world);
       return ok(
         ctx.world,
         plan
@@ -342,27 +424,34 @@ export const TerraformCommands: readonly CommandSpec[] = [
     positionals: [
       Positional.optional("NAME", "Output name.", (w) => Object.keys(w.terraform.outputs)),
     ],
-    run: guarded((ctx, args) =>
-      ok(
+    run: guarded((ctx, args) => {
+      TfBackendRuntime.check(ctx.world);
+      return ok(
         ctx.world,
         args.positionals[0]
           ? (ctx.world.terraform.outputs[args.positionals[0]] ??
               fail("Output not found. Apply the configuration first."))
           : JSON.stringify(ctx.world.terraform.outputs, null, 2),
-      ),
-    ),
+      );
+    }),
   }),
   plainCommand({
     path: ["terraform", "state", "list"],
     summary: "List managed resource addresses.",
-    run: (ctx) =>
-      ok(ctx.world, [...stateCandidates(ctx.world)].sort().join("\n") || "No managed resources."),
+    run: guarded((ctx) => {
+      TfBackendRuntime.check(ctx.world);
+      return ok(
+        ctx.world,
+        [...stateCandidates(ctx.world)].sort().join("\n") || "No managed resources.",
+      );
+    }),
   }),
   plainCommand({
     path: ["terraform", "state", "show"],
     summary: "Show a managed resource from state (does not refresh).",
     positionals: [Positional.required("ADDRESS", "Managed address.", stateCandidates)],
     run: guarded((ctx, args) => {
+      TfBackendRuntime.check(ctx.world);
       const resource =
         ctx.world.terraform.resources.find((r) => r.address === args.positionals[0]) ??
         fail("Address not found in state.");
@@ -375,9 +464,11 @@ export const TerraformCommands: readonly CommandSpec[] = [
     positionals: [Positional.required("ADDRESS", "Managed address.", stateCandidates)],
     run: guarded((ctx, args) => {
       requireInit(ctx.world);
+      TfBackendRuntime.check(ctx.world, true);
       if (!stateCandidates(ctx.world).includes(ParsedArgs.requiredPositional(args, 0)))
         fail("Address not found in state.");
-      return ok(
+      return stateOk(
+        ctx,
         {
           ...ctx.world,
           terraform: {
@@ -401,6 +492,7 @@ export const TerraformCommands: readonly CommandSpec[] = [
     ],
     run: guarded((ctx, args) => {
       requireInit(ctx.world);
+      TfBackendRuntime.check(ctx.world, true);
       const source =
         ctx.world.terraform.resources.find((r) => r.address === args.positionals[0]) ??
         fail("Source not found in state.");
@@ -408,7 +500,8 @@ export const TerraformCommands: readonly CommandSpec[] = [
       if (TfStructure.resourceType(dest) !== source.type)
         fail("Destination must be a root or module address of the same resource type.");
       if (stateCandidates(ctx.world).includes(dest)) fail("Destination already exists in state.");
-      return ok(
+      return stateOk(
+        ctx,
         {
           ...ctx.world,
           terraform: {
@@ -432,6 +525,7 @@ export const TerraformCommands: readonly CommandSpec[] = [
     ],
     run: guarded((ctx, args) => {
       requireInit(ctx.world);
+      TfBackendRuntime.check(ctx.world, true);
       const config = TfConfiguration.compile(ctx.world.terraform.files);
       const target =
         config.resources.find((r) => r.address === args.positionals[0]) ??
@@ -449,7 +543,8 @@ export const TerraformCommands: readonly CommandSpec[] = [
       )
         fail("Address or remote object is already managed.");
       const actual = TfRuntime.read(ctx.world, target) ?? fail("Remote resource not found.");
-      return ok(
+      return stateOk(
+        ctx,
         {
           ...ctx.world,
           terraform: {

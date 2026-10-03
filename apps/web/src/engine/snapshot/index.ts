@@ -107,11 +107,12 @@ import { Result } from "@/utils/Result";
  * v3 はログ指標・ダッシュボード・アラートポリシー・稼働時間チェックを持つ。
  * v4 はTerraformの仮想ファイル・state・保存planを持つ。
  * v5 はmoduleアドレス・サブディレクトリ・保存planのmoved情報を持つ。
+ * v6 はGCS backend・state世代/ロック・移行履歴とplanのbackend revisionを持つ。
  */
-export const SchemaVersion = 5;
+export const SchemaVersion = 6;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
-const MigratableVersions = [1, 2, 3, 4] as const;
+const MigratableVersions = [1, 2, 3, 4, 5] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
 export type Snapshot = Readonly<{
@@ -814,6 +815,7 @@ const migrateV1 = (value: unknown): unknown => {
 };
 
 const migrate = (version: number, value: unknown): unknown => {
+  if (version === SchemaVersion) return value;
   const previous = version === 1 ? migrateV1(value) : value;
   if (!isRecord(previous)) return previous;
   const observed =
@@ -821,15 +823,19 @@ const migrate = (version: number, value: unknown): unknown => {
       ? { logMetrics: [], uptimeChecks: [], alertPolicies: [], dashboards: [], ...previous }
       : previous;
   if (version < 4) return { ...observed, terraform: TerraformState.empty() };
-  if (version !== 4 || !isRecord(observed.terraform) || !isRecord(observed.terraform.plans))
-    return observed;
+  if (!isRecord(observed.terraform) || !isRecord(observed.terraform.plans)) return observed;
   const plans = Object.fromEntries(
     Object.entries(observed.terraform.plans).map(([name, plan]) => [
       name,
-      isRecord(plan) ? { ...plan, moves: [] } : plan,
+      isRecord(plan)
+        ? { ...plan, ...(version === 4 ? { moves: [] } : {}), backendRevision: 0 }
+        : plan,
     ]),
   );
-  return { ...observed, terraform: { ...observed.terraform, plans } };
+  return {
+    ...observed,
+    terraform: { ...observed.terraform, backend: TerraformState.empty().backend, plans },
+  };
 };
 
 export const Snapshot = {

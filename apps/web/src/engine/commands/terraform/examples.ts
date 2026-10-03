@@ -150,6 +150,10 @@ output "bucket_url" { value = google_storage_bucket.assets.url }
 `;
 
 export const TerraformExamples: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  "terraform-backend": {
+    "backend.tf":
+      'terraform { backend "gcs" { bucket = "ace-dev-01-tf-state" prefix = "terraform/lab" } }\n',
+  },
   "terraform-infrastructure": { "main.tf": TerraformInfrastructureExample },
   "terraform-network": { "main.tf": TerraformNetworkExample },
   "terraform-modules": TerraformModuleExample,

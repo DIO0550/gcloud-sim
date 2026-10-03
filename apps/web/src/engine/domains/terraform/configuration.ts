@@ -1,6 +1,7 @@
 import { Region } from "@/engine/domains/catalog";
 import { Network, Subnet, SubnetModes } from "@/engine/domains/compute";
 import { TerraformState, type TfResource } from "@/engine/domains/terraform";
+import { TfBackend } from "@/engine/domains/terraform/backend";
 import { type Expression, Hcl, type HclBlock, type HclBody } from "@/engine/domains/terraform/hcl";
 import { TfResourceConfiguration } from "@/engine/domains/terraform/resource-configuration";
 import { TfResources } from "@/engine/domains/terraform/resources";
@@ -88,6 +89,11 @@ const compileModule = (
     if (Object.keys(block.body.attributes).length)
       fail("Terraform version constraints are not supported yet.");
     for (const child of block.body.blocks) {
+      if (child.type === "backend") {
+        if (context.prefix) fail("Backend configuration is only allowed in the root module.");
+        TfBackend.block(child);
+        continue;
+      }
       if (child.type !== "required_providers" || child.labels.length || child.body.blocks.length)
         fail(`Unsupported terraform block: ${child.type}`);
       for (const [name, expr] of Object.entries(child.body.attributes)) {
@@ -360,6 +366,7 @@ export const TfConfiguration = {
     files: Readonly<Record<string, string>>,
     observed: readonly TfResource[] = [],
   ): TfConfiguration {
+    TfBackend.configuration(files);
     const result = compileModule(files, observed, {
       directory: "",
       prefix: "",
