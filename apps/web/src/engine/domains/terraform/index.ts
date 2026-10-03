@@ -1,3 +1,4 @@
+import { type TfMove, TfStructure } from "@/engine/domains/terraform/structure";
 import { Decoder as D } from "@/utils/Decoder";
 import { Result } from "@/utils/Result";
 
@@ -13,6 +14,7 @@ export type TfResource = Readonly<{
 }>;
 export type TfChange = Readonly<{ action: "create" | "update" | "delete"; resource: TfResource }>;
 export type TfPlan = Readonly<{
+  moves: readonly TfMove[];
   serial: number;
   mode: "normal" | "destroy" | "refresh-only";
   before: readonly TfResource[];
@@ -40,6 +42,7 @@ const resource = D.object<TfResource>({
   privateAccess: D.boolean,
 });
 const plan = D.object<TfPlan>({
+  moves: D.array(D.object<TfMove>({ from: D.string, to: D.string })),
   serial: D.number,
   mode: D.literal(["normal", "destroy", "refresh-only"]),
   before: D.array(resource),
@@ -96,7 +99,7 @@ export const TerraformState = {
     if (
       Object.keys(state.files).length > 32 ||
       Object.entries(state.files).some(
-        ([name, text]) => !safe(name) || !/\.(tf|tfvars)$/.test(name) || text.length > 64000,
+        ([name, text]) => !TfStructure.filePath(name) || text.length > 64000,
       )
     )
       return Result.err("Invalid Terraform file name or file limits.");
@@ -111,7 +114,7 @@ export const TerraformState = {
       new Set(rs.map(TerraformState.id)).size === rs.length &&
       rs.every(
         (r) =>
-          new RegExp(`^${r.type}\\.[A-Za-z_][A-Za-z0-9_-]*$`).test(r.address) &&
+          TfStructure.resourceType(r.address) === r.type &&
           /^[a-z][a-z0-9-]{0,62}$/.test(r.name) &&
           /^[a-z][a-z0-9-]+$/.test(r.project) &&
           (r.type !== "google_compute_network" ||
@@ -119,6 +122,11 @@ export const TerraformState = {
       );
     if (!resourcesValid(state.resources))
       return Result.err("Invalid or duplicate Terraform resource identity.");
+    try {
+      for (const p of Object.values(state.plans)) TfStructure.validateMoves(p.moves);
+    } catch (error) {
+      return Result.err(error instanceof Error ? error.message : "Invalid saved moves.");
+    }
     if (
       Object.values(state.plans).some(
         (p) =>

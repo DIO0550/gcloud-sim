@@ -138,7 +138,7 @@ test("ミッションを開始して条件を満たすとクリアの通知が�
     { timeout: 4000 },
   );
   expect(screenText(terminal)).toContain("gcloud-sim: ✓ ミッションクリア");
-  expect(screen.getByRole("tab", { name: "ミッション 1/26" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "ミッション 1/27" })).toBeInTheDocument();
 });
 
 test("ヒントは押すたびに 1 つ開く", async () => {

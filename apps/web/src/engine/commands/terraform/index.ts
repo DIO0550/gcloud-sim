@@ -10,47 +10,18 @@ import {
   Positional,
 } from "@/engine/cli/command-spec";
 import { plainCommand } from "@/engine/commands/shared";
+import { TerraformExamples } from "@/engine/commands/terraform/examples";
 import { TerraformState, type TfPlan } from "@/engine/domains/terraform";
 import { TfConfiguration } from "@/engine/domains/terraform/configuration";
 import { Hcl } from "@/engine/domains/terraform/hcl";
 import { TfRuntime } from "@/engine/domains/terraform/runtime";
+import { TfStructure } from "@/engine/domains/terraform/structure";
 import type { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
-export const TerraformNetworkExample = `provider "google" {
-  project = var.project_id
-  region = var.region
-}
-variable "project_id" {
-  type = string
-  default = "ace-dev-01"
-}
-variable "region" {
-  type = string
-  default = "us-central1"
-}
-variable "subnet_cidr" {
-  type = string
-  default = "10.42.0.0/24"
-}
-resource "google_compute_network" "lab" {
-  name = "tf-lab-vpc"
-  auto_create_subnetworks = false
-}
-resource "google_compute_subnetwork" "lab" {
-  name = "tf-lab-subnet"
-  ip_cidr_range = var.subnet_cidr
-  network = google_compute_network.lab.id
-  private_ip_google_access = false
-}
-output "network_id" {
-  value = google_compute_network.lab.id
-}
-output "subnet_id" {
-  value = google_compute_subnetwork.lab.id
-}
-`;
+export { TerraformNetworkExample } from "@/engine/commands/terraform/examples";
+
 const fail = (message: string): never => {
   throw new Error(message);
 };
@@ -75,9 +46,11 @@ const fileName = (name: string): string =>
     ? name
     : fail("Use a simple file name in the simulator root directory (no paths).");
 const configName = (name: string): string =>
-  /\.(tf|tfvars)$/.test(fileName(name))
+  TfStructure.filePath(name)
     ? name
-    : fail("Configuration files must end in .tf or .tfvars.");
+    : fail(
+        "Use a relative .tf or .tfvars file path; no paths with .., absolute paths, or unsafe segments.",
+      );
 const requireInit = (world: World): void => {
   if (!world.terraform.initialized) fail("Run terraform init first.");
 };
@@ -229,30 +202,33 @@ export const TerraformCommands: readonly CommandSpec[] = [
   }),
   plainCommand({
     path: ["sim", "files", "load"],
-    summary: "Load the Terraform network lesson into main.tf.",
-    positionals: [Positional.required("EXAMPLE", "terraform-network", () => ["terraform-network"])],
-    flags: [Flag.boolean("force", "Replace an existing main.tf.")],
+    summary: "Load a Terraform network or local-module lesson into virtual files.",
+    positionals: [
+      Positional.required("EXAMPLE", "Lesson name.", () => Object.keys(TerraformExamples)),
+    ],
+    flags: [Flag.boolean("force", "Replace existing files belonging to the selected example.")],
     run: guarded((ctx, args) => {
-      if (ParsedArgs.requiredPositional(args, 0) !== "terraform-network")
-        fail("Available example: terraform-network");
-      if (Object.hasOwn(ctx.world.terraform.plans, "main.tf"))
-        fail("main.tf collides with a saved plan.");
-      if (ctx.world.terraform.files["main.tf"] !== undefined && !ParsedArgs.boolean(args, "force"))
-        fail("main.tf already exists. Read it first or use --force.");
-      if (
-        !Object.hasOwn(ctx.world.terraform.files, "main.tf") &&
-        fileCandidates(ctx.world).length >= 32
-      )
-        fail("Limit: 32 configuration files.");
+      const name = ParsedArgs.requiredPositional(args, 0);
+      if (!Object.hasOwn(TerraformExamples, name))
+        fail(`Available examples: ${Object.keys(TerraformExamples).join(", ")}`);
+      const example = TerraformExamples[name] ?? {};
+      for (const path of Object.keys(example)) {
+        if (Object.hasOwn(ctx.world.terraform.plans, path))
+          fail(`${path} collides with a saved plan.`);
+        if (Object.hasOwn(ctx.world.terraform.files, path) && !ParsedArgs.boolean(args, "force"))
+          fail(`${path} already exists. Read it first or use --force.`);
+      }
+      const files = { ...ctx.world.terraform.files, ...example };
+      if (Object.keys(files).length > 32) fail("Limit: 32 configuration files.");
       return ok(
         {
           ...ctx.world,
           terraform: {
             ...ctx.world.terraform,
-            files: { ...ctx.world.terraform.files, "main.tf": TerraformNetworkExample },
+            files,
           },
         },
-        "Loaded main.tf. Use sim files read main.tf. This is a simulator-only file system.",
+        `Loaded ${Object.keys(example).join(", ")}. Use sim files read FILE. This is a simulator-only file system.`,
       );
     }),
   }),
@@ -281,12 +257,17 @@ export const TerraformCommands: readonly CommandSpec[] = [
     summary: "Format supported HCL files.",
     flags: [
       Flag.boolean("check", "Check formatting without writing files.", { aliases: ["-check"] }),
+      Flag.boolean("recursive", "Include local module subdirectories.", {
+        aliases: ["-recursive"],
+      }),
     ],
     run: guarded((ctx, args) => {
       const files = Object.fromEntries(
         Object.entries(ctx.world.terraform.files).map(([name, text]) => [
           name,
-          Hcl.format(Hcl.parse(text)),
+          name.includes("/") && !ParsedArgs.boolean(args, "recursive")
+            ? text
+            : Hcl.format(Hcl.parse(text)),
         ]),
       );
       const changed = Object.keys(files).filter(
@@ -424,8 +405,8 @@ export const TerraformCommands: readonly CommandSpec[] = [
         ctx.world.terraform.resources.find((r) => r.address === args.positionals[0]) ??
         fail("Source not found in state.");
       const dest = ParsedArgs.requiredPositional(args, 1);
-      if (!new RegExp(`^${source.type}\\.[A-Za-z_][A-Za-z0-9_-]*$`).test(dest))
-        fail("Destination must be a root address of the same resource type.");
+      if (TfStructure.resourceType(dest) !== source.type)
+        fail("Destination must be a root or module address of the same resource type.");
       if (stateCandidates(ctx.world).includes(dest)) fail("Destination already exists in state.");
       return ok(
         {

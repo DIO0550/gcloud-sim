@@ -37,7 +37,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 | `sim files load` | — | — | --force |
 | `terraform init` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | — |
 | `terraform validate` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | — |
-| `terraform fmt` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | -check |
+| `terraform fmt` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | -check, -recursive |
 | `terraform plan` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | -out, -destroy, -refresh-only |
 | `terraform apply` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | -auto-approve, -destroy, -refresh-only |
 | `terraform destroy` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | -auto-approve |
@@ -443,7 +443,7 @@ gcloud-sim にはローカルのファイルシステムが無い。**中身が�
 - `monitoring dashboards create` はJSONの `gridLayout`（columns=1、xyChart 1つ、timeSeriesFilter 1つ）のみ。未対応フィールド/レイアウトを黙って捨てずエラーにする。`--validate-only` は保存しない。
 - `monitoring policies create` は1つのしきい値条件（`--if='> 0.8'` / `'< 1'`、`--duration=300s`、OR）。通知先・複数条件・欠測/PromQL・インシデント評価は未対応。
 - `monitoring uptime create` はpublic URLのHTTP/HTTPS設定。periodは分（1/5/10/15）、timeoutは秒（1〜60）。外部URLへアクセスせず、稼働状況の値は生成しない。
-- 上記設定はリソースツリーとプロパティ、一覧/describe、JSON保存/復元に反映する。Snapshot v4（監視リソースはv3で追加）。v1/v2は監視の新規集合を空にし、v1/v2/v3は空のTerraform状態を補って移行する。
+- 上記設定はリソースツリーとプロパティ、一覧/describe、JSON保存/復元に反映する。Snapshot v5（監視リソースはv3、Terraformはv4で追加）。v1/v2は監視集合、v1/v2/v3は空のTerraform状態を補完し、v4のTerraform状態は保存planのmoved情報を補って保持する。
 - 新ミッション5本はログ指標、uptime、CPUダッシュボード、CPUアラート、sinkと転送先IAM。残る資料対応は [ACE_COVERAGE.md](ACE_COVERAGE.md)。
 
 ### 組み込み cpu-dashboard.json

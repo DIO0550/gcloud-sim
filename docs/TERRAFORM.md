@@ -1,6 +1,6 @@
-# Terraform 学習シミュレーター（第1段階）
+# Terraform 学習シミュレーター（第2段階：ローカルmodule/moved）
 
-Issue [#13](https://github.com/DIO0550/gcloud-sim/issues/13) の部分実装です。教材のネットワーク構築・変更・取り込みを、既存のVPCリソースと同じWorldで操作します。TerraformやGoogle providerそのものは実行しません。通信、認証情報の取得、課金、任意コードの実行はありません。
+Issue [#13](https://github.com/DIO0550/gcloud-sim/issues/13) の部分実装です。教材のネットワーク構築・変更・取り込み・モジュール化を、既存のVPCリソースと同じWorldで操作します。TerraformやGoogle providerそのものは実行しません。通信、認証情報の取得、課金、任意コードの実行はありません。
 
 ## 最初の演習
 
@@ -67,24 +67,52 @@ terraform plan
 terraform state rm google_compute_network.renamed
 ```
 
-`import` は既存リソースの情報をstateに記録します。HCLや実リソースは変更せず、同じ実リソースの二重取り込みを拒否します。IDは構成のproject/name/regionと一致する完全な `projects/...` 形式を指定します。`state mv` は同じ型のルートアドレス間だけに対応します。`state rm` は実リソースを残します。そのまま再度planすると、同名リソースが存在するため再取り込みを案内します。
+`import` は既存リソースの情報をstateに記録します。HCLや実リソースは変更せず、同じ実リソースの二重取り込みを拒否します。IDは構成のproject/name/regionと一致する完全な `projects/...` 形式を指定します。`state mv` は同じ型のリソースアドレス間に対応し、ルートとmodule内部の間でも移せます。module呼び出し全体の一括移動やインスタンスキーには未対応です。`state rm` は実リソースを残します。そのまま再度planすると、同名リソースが存在するため再取り込みを案内します。
 
 `terraform destroy` はstateの管理対象だけを削除し、ファイルを残します。stateから外したリソースは削除しません。依存関係はサブネット→VPCの順に解消します。失敗時に途中までの変更を残さない、アプリ内の一括適用です（実Terraformの部分成功とは異なります）。
+
+## ローカルmoduleへ移行する
+
+最初の演習で作成したVPC/subnetをそのまま使います。変更演習を先に行った場合は、tfvarsやPrivate Google Accessが初期値と異なるため、アドレス移行に加えてその変更もplanに表示されます。
+
+```sh
+sim files load terraform-modules --force
+sim files read main.tf
+sim files read modules/network/main.tf
+terraform init
+terraform fmt -recursive
+terraform validate
+terraform plan -out=module-plan
+terraform show module-plan
+terraform apply module-plan
+terraform state list
+terraform output
+terraform plan
+```
+
+`--force` は例に含まれるmain.tfとmodules/network/main.tfを上書きします。他のファイルやtfvarsは残ります。移行前のリソースが初期値なら、planは2つの `has moved to` とリソース差分なしを表示します。planの段階ではstateを変更せず、apply後にアドレスが `module.network.google_compute_network.lab` と `module.network.google_compute_subnetwork.lab` に変わります。movedブロックを残して再実行しても再移動しません。初めて作成する環境では移動元が存在しないため、通常の新規作成になります。
+
+- `source = "./modules/network"` などのローカル相対パスだけを読みます。子から兄弟への `../network` は仮想領域内なら使用可能です。ホストのファイルやネットワークにはアクセスしません。
+- moduleのスカラー入力・出力と既定google providerの継承に対応します。子モジュールに親の変数は自動では渡りません。tfvarsの自動読込はルートだけです。
+- 子module内のprovider設定、providers/depends_on/count/for_each/version引数は明示エラーです。入れ子は4段、呼び出しの展開は32個、展開後のブロックは200個・リソースは100個までです。
+- movedは同じresource型のアドレス間に対応します。子内のmovedは子のスコープを基準に解決します。移行履歴の連鎖にも対応し、循環・複数の移動元/先・移動先のstate占有を拒否します。最終移動先が構成にあること、移動元が構成に残っていないことも検証します。
+- moduleディレクトリは実行時に仮想ファイルから評価します。実Terraformのmoduleインストールキャッシュや、source変更後の再init要求は再現しません。fmtは通常ルートだけ、`-recursive`付きでサブディレクトリも対象です。
+- 追加ミッション「既存ネットワークを壊さずモジュールへ移す」は、移行前のリソースを用意し、移行planを保存して適用する演習です。新規module作成だけ、planだけ、再作成を含む変更では完了しません。
 
 ## 対応範囲
 
 | 対象 | 対応 |
 |---|---|
-| ファイル | 単一の仮想ルート。`sim files list/read/write/replace/delete/load`。`.tf` / `.tfvars`、最大32ファイル、各64,000文字 |
+| ファイル | 単一の仮想作業領域とサブディレクトリ。`sim files list/read/write/replace/delete/load`。`.tf` / `.tfvars`、最大32ファイル、各64,000文字 |
 | HCL | コメント、スカラーリテラル、ブロック、変数参照、リソース参照。空白区切りの1行入力も許容 |
 | provider | 既定の `google`、`project` / `region`。`required_providers` の `google = { source = "hashicorp/google" }` のみ |
 | variable | 明示した `string` / `number` / `bool` 型、リテラルdefault、`terraform.tfvars` → ファイル名順の `*.auto.tfvars` による上書き |
 | resource | `google_compute_network`（`auto_create_subnetworks = false`必須）、`google_compute_subnetwork`。既存カタログのリージョン、IPv4 /8〜/29 |
-| 参照・output | `var.NAME`、resourceの `id` / `name` / `self_link`、subnetworkの `ip_cidr_range` / `private_ip_google_access`。出力は文字列として記録 |
+| 参照・output | `var.NAME`、resourceの `id` / `name` / `self_link`、subnetworkの `ip_cidr_range` / `private_ip_google_access`。`module.NAME.OUTPUT`も対応。module間はスカラー型を保持し、ルート出力は文字列として記録 |
 | plan | 通常／`-destroy`／`-refresh-only`、`-out`、show、保存planの適用。保存planは最大16個（同名で上書き可能） |
 | 認証・権限 | gcloudログインとは別のADC主体、対象プロジェクト、Compute API、get/create/delete/setPrivateIpGoogleAccess権限を検証 |
-| 状態 | list/show/mv/rm/import、Snapshot v4。旧v1/v2/v3から空のTerraform状態へ移行 |
-| ミッション | VPC/subnet構築、変数・Private Google Access変更、既存VPCの取り込みの3本。構成・state・実リソースの一致で判定 |
+| 状態 | list/show/mv/rm/import、Snapshot v5。v4のファイル・state・planを保持しmovesを補完。v1/v2/v3は空のTerraform状態へ移行 |
+| ミッション | VPC/subnet構築、変数・Private Google Access変更、既存VPCの取り込み、再作成なしのmodule移行の4本。構成・state・実リソースの一致で判定 |
 
 `init` と `validate` はこのサブセットの設定済み変数も検証します。実Terraformのinit（構成の評価より前の初期化）や、入力値なしで行うvalidateの完全再現ではありません。実providerのダウンロード、バージョン解決、ロックファイル生成は行いません。
 
@@ -93,12 +121,12 @@ terraform state rm google_compute_network.renamed
 ## 残作業（Issue #13を閉じない）
 
 - VM、firewall、bucketのresource、Google providerの追加属性。
-- moduleの呼び出し・入出力・provider継承、movedブロック。
+- リモートmodule、provider別名/明示providers設定、module単位のmoved、count/for_eachのインスタンス移行。
 - GCS backend、版管理・IAMの検証、`init -migrate-state`、リモートロック。
 - provider/version制約、`-chdir`、workspace、`-var` / `-var-file`、複合型、関数、文字列テンプレート、for_each/count、data、locals、depends_on、lifecycle。
 - 削除済みリソースを参照するoutputのrefresh。現状はoutputがある状態で構成のリソースが観測できなければ明示エラーとし、該当outputを外してから更新する。
 - 保存planの実クラウド相当の競合制御、実providerの完全な差分/ForceNew規則、部分失敗と復旧。
-- module化、GCS state移行、片付けの独立ミッション。
+- GCS state移行、片付けの独立ミッション。
 
 上記の未対応ブロック・属性・式・フラグを、対応済みとして成功させません。
 
@@ -109,3 +137,6 @@ terraform state rm google_compute_network.renamed
 - [Terraform state rm](https://developer.hashicorp.com/terraform/cli/commands/state/rm)
 - [Terraform import](https://developer.hashicorp.com/terraform/cli/commands/import)
 - [Google Cloud: Private Google Access](https://cloud.google.com/vpc/docs/configure-private-google-access)
+
+- [Providers within modules](https://developer.hashicorp.com/terraform/language/modules/develop/providers)
+- [Refactor modules / moved](https://developer.hashicorp.com/terraform/language/modules/develop/refactoring)

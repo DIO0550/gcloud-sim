@@ -2,6 +2,7 @@ import { Region } from "@/engine/domains/catalog";
 import { Network, Subnet, SubnetModes } from "@/engine/domains/compute";
 import { TerraformState, type TfResource } from "@/engine/domains/terraform";
 import { type Expression, Hcl, type HclBlock, type HclBody } from "@/engine/domains/terraform/hcl";
+import { type TfMove, TfStructure } from "@/engine/domains/terraform/structure";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
@@ -9,11 +10,14 @@ type Scalar = string | number | boolean;
 export type TfConfiguration = Readonly<{
   resources: readonly TfResource[];
   outputs: Readonly<Record<string, string>>;
+  moves: readonly TfMove[];
 }>;
 const fail = (message: string): never => {
   throw new Error(message);
 };
 const checkBody = (body: HclBody, allowed: readonly string[]): void => {
+  if (body.attributes.description !== undefined && typeof body.attributes.description !== "string")
+    fail("description must be a literal string.");
   if (body.blocks.length) fail(`Nested blocks are not supported here: ${body.blocks[0]?.type}`);
   for (const key of Object.keys(body.attributes))
     if (!allowed.includes(key)) fail(`Unsupported attribute: ${key}`);
@@ -33,190 +37,308 @@ const label = (block: HclBlock, count: number): string => {
 const string = (v: Scalar | undefined, name: string): string =>
   typeof v === "string" && v.length > 0 ? v : fail(`${name} must be a non-empty string.`);
 
-/** Only the declared, documented Google network provider subset is accepted. */
+type CompiledModule = Readonly<{
+  resources: readonly TfResource[];
+  outputs: Readonly<Record<string, Scalar>>;
+  moves: readonly TfMove[];
+}>;
+type ModuleContext = Readonly<{
+  directory: string;
+  prefix: string;
+  inputs: Readonly<Record<string, Scalar>>;
+  provider: Readonly<Record<string, Scalar | undefined>>;
+  ancestors: readonly string[];
+  budget: { blocks: number; modules: number };
+}>;
+const compileModule = (
+  files: Readonly<Record<string, string>>,
+  observed: readonly TfResource[],
+  context: ModuleContext,
+): CompiledModule => {
+  const roots = Object.keys(files)
+    .filter(
+      (name) =>
+        name.endsWith(".tf") &&
+        name.slice(0, name.lastIndexOf("/") + 1) ===
+          (context.directory ? `${context.directory}/` : ""),
+    )
+    .sort();
+  if (context.prefix && !roots.length) fail(`Local module has no .tf files: ${context.directory}`);
+  const blocks = roots.flatMap((name) => {
+    const parsed = Hcl.parse(files[name] ?? "");
+    if (Object.keys(parsed.attributes).length)
+      fail(`Top-level attributes are not allowed in ${name}.`);
+    return parsed.blocks;
+  });
+  context.budget.blocks += blocks.length;
+  if (context.budget.blocks > 200) fail("At most 200 expanded blocks are supported.");
+  const allowed = ["terraform", "provider", "resource", "variable", "output", "module", "moved"];
+  for (const b of blocks) if (!allowed.includes(b.type)) fail(`Unsupported block: ${b.type}`);
+  const providers = blocks.filter((b) => b.type === "provider");
+  if (providers.length > 1) fail("Only one default Google provider is supported.");
+  const provider = providers[0];
+  if (context.prefix && provider)
+    fail("Child provider configurations are not supported; inherit the root Google provider.");
+  if (provider && label(provider, 1) !== "google") fail("Only provider google is supported.");
+  if (provider) checkBody(provider.body, ["project", "region"]);
+  for (const block of blocks.filter((b) => b.type === "terraform")) {
+    label(block, 0);
+    if (Object.keys(block.body.attributes).length)
+      fail("Terraform version constraints are not supported yet.");
+    for (const child of block.body.blocks) {
+      if (child.type !== "required_providers" || child.labels.length || child.body.blocks.length)
+        fail(`Unsupported terraform block: ${child.type}`);
+      for (const [name, expr] of Object.entries(child.body.attributes)) {
+        if (name !== "google" || typeof expr !== "object" || !("object" in expr))
+          fail("Only hashicorp/google is supported.");
+        if (typeof expr === "object" && "object" in expr) {
+          const attrs = expr.object;
+          if (attrs.source !== "hashicorp/google" || Object.keys(attrs).some((k) => k !== "source"))
+            fail(
+              'Only source = "hashicorp/google" is supported; version constraints are not simulated.',
+            );
+        }
+      }
+    }
+  }
+  const values: Record<string, Scalar> = { ...context.inputs };
+  for (const name of Object.keys(files)
+    .filter(
+      (n) =>
+        !context.prefix &&
+        (n === "terraform.tfvars" || (!n.includes("/") && n.endsWith(".auto.tfvars"))),
+    )
+    .sort((a, b) =>
+      a === "terraform.tfvars" ? -1 : b === "terraform.tfvars" ? 1 : a.localeCompare(b),
+    )) {
+    const parsed = Hcl.parse(files[name] ?? "");
+    if (parsed.blocks.length) fail("tfvars cannot contain blocks.");
+    for (const [key, expr] of Object.entries(parsed.attributes)) {
+      if (typeof expr === "object") throw new Error("tfvars values must be scalar literals.");
+      values[key] = expr;
+    }
+  }
+  const variables: Record<string, Scalar> = {};
+  for (const b of blocks.filter((b) => b.type === "variable")) {
+    const name = label(b, 1);
+    if (Object.hasOwn(variables, name)) fail(`Duplicate variable: ${name}`);
+    checkBody(b.body, ["type", "default", "description"]);
+    const type = b.body.attributes.type;
+    if (
+      typeof type !== "object" ||
+      !("ref" in type) ||
+      !["string", "number", "bool"].includes(type.ref)
+    )
+      fail(`Variable ${name} requires type string, number or bool.`);
+    const value = Object.hasOwn(values, name) ? values[name] : b.body.attributes.default;
+    if (value === undefined || typeof value === "object")
+      fail(`Missing literal value for variable ${name}.`);
+    const expected =
+      typeof type === "object" && "ref" in type ? (type.ref === "bool" ? "boolean" : type.ref) : "";
+    if (typeof value !== expected) fail(`Wrong type for variable ${name}.`);
+    variables[name] = value as Scalar;
+  }
+  for (const name of Object.keys(values))
+    if (!Object.hasOwn(variables, name)) fail(`Undeclared variable: ${name}`);
+  const resources = new Map<string, TfResource>();
+  const moduleDefinitions = new Map<string, HclBlock>();
+  const modules = new Map<string, CompiledModule>();
+  for (const block of blocks.filter((b) => b.type === "module")) {
+    const name = label(block, 1);
+    if (moduleDefinitions.has(name)) fail(`Duplicate module: ${name}`);
+    moduleDefinitions.set(name, block);
+  }
+  const definitions = new Map<string, HclBlock>();
+  for (const b of blocks.filter((b) => b.type === "resource")) {
+    const name = label(b, 2);
+    const address = `${b.labels[0]}.${name}`;
+    if (definitions.has(address)) fail(`Duplicate resource: ${address}`);
+    definitions.set(address, b);
+  }
+  const visiting = new Set<string>();
+  const evaluate = (expr: Expression | undefined): Scalar | undefined => {
+    if (expr === undefined || typeof expr !== "object") return expr;
+    if (!("ref" in expr))
+      return fail("Object expressions are only supported in required_providers.");
+    const parts = expr.ref.split(".");
+    if (parts[0] === "var" && parts.length === 2) {
+      if (!Object.hasOwn(variables, parts[1] ?? "")) fail(`Unknown variable: ${expr.ref}`);
+      return variables[parts[1] ?? ""];
+    }
+    if (parts[0] === "module" && parts.length === 3) {
+      const child = resolveModule(parts[1] ?? "");
+      if (!Object.hasOwn(child.outputs, parts[2] ?? "")) fail(`Unknown module output: ${expr.ref}`);
+      return child.outputs[parts[2] ?? ""];
+    }
+    if (parts.length !== 3) return fail(`Unsupported reference: ${expr.ref}`);
+    const r = resolve(`${parts[0]}.${parts[1]}`);
+    if (parts[2] === "id") return TerraformState.id(r);
+    if (parts[2] === "self_link")
+      return `https://www.googleapis.com/compute/v1/${TerraformState.id(r)}`;
+    if (parts[2] === "name") return r.name;
+    if (r.type === "google_compute_subnetwork" && parts[2] === "private_ip_google_access")
+      return r.privateAccess;
+    if (r.type === "google_compute_subnetwork" && parts[2] === "ip_cidr_range") return r.cidr;
+    return fail(`Unsupported reference: ${expr.ref}`);
+  };
+  const providerValue = (name: string): Scalar | undefined => {
+    const expr = provider?.body.attributes[name];
+    if (typeof expr === "object" && (!("ref" in expr) || !expr.ref.startsWith("var.")))
+      fail("Provider configuration may only reference variables.");
+    return evaluate(expr) ?? context.provider[name];
+  };
+  const inheritedProvider = { project: providerValue("project"), region: providerValue("region") };
+  const resolveModule = (name: string): CompiledModule => {
+    const existing = modules.get(name);
+    if (existing) return existing;
+    const key = `module.${name}`;
+    if (visiting.has(key)) return fail(`Dependency cycle: ${key}`);
+    visiting.add(key);
+    const block = moduleDefinitions.get(name) ?? fail(`Unknown module: ${name}`);
+    if (block.body.blocks.length) fail("Nested blocks in a module call are not supported.");
+    const source = block.body.attributes.source;
+    if (typeof source !== "string") return fail("Module source must be a literal local path.");
+    const directory = TfStructure.modulePath(context.directory, source);
+    if (context.ancestors.includes(directory)) fail(`Recursive local module: ${directory || "."}`);
+    if (context.ancestors.length >= 5 || ++context.budget.modules > 32)
+      fail("Module limit: depth 4 and at most 32 expanded calls.");
+    const inputs: Record<string, Scalar> = {};
+    for (const [input, expr] of Object.entries(block.body.attributes)) {
+      if (input === "source") continue;
+      if (["count", "for_each", "providers", "depends_on", "version"].includes(input))
+        fail(`Unsupported module meta-argument: ${input}`);
+      const value = evaluate(expr);
+      if (value === undefined) fail(`Missing module input: ${input}`);
+      inputs[input] = value as Scalar;
+    }
+    const child = compileModule(files, observed, {
+      directory,
+      prefix: `${context.prefix}module.${name}.`,
+      inputs,
+      provider: inheritedProvider,
+      ancestors: [...context.ancestors, directory],
+      budget: context.budget,
+    });
+    modules.set(name, child);
+    visiting.delete(key);
+    return child;
+  };
+  const resolve = (address: string): TfResource => {
+    const existing = resources.get(address);
+    if (existing) return existing;
+    if (visiting.has(address)) return fail(`Dependency cycle: ${address}`);
+    visiting.add(address);
+    const b = definitions.get(address) ?? fail(`Unknown resource: ${address}`);
+    const type = b.labels[0];
+    if (type !== "google_compute_network" && type !== "google_compute_subnetwork")
+      return fail(`Unsupported resource type: ${type}`);
+    checkBody(
+      b.body,
+      type === "google_compute_network"
+        ? ["name", "project", "auto_create_subnetworks"]
+        : ["name", "project", "region", "network", "ip_cidr_range", "private_ip_google_access"],
+    );
+    const attr = (name: string): Scalar | undefined => evaluate(b.body.attributes[name]);
+    const name = string(attr("name"), "name");
+    const project = string(attr("project") ?? providerValue("project"), "project");
+    let r: TfResource = {
+      address: `${context.prefix}${address}`,
+      type,
+      project,
+      name,
+      region: "",
+      network: "",
+      cidr: "",
+      privateAccess: false,
+    };
+    if (type === "google_compute_network") {
+      if (attr("auto_create_subnetworks") !== false)
+        fail("Only custom networks (auto_create_subnetworks = false) are supported.");
+    }
+    if (type === "google_compute_subnetwork") {
+      const raw = string(attr("network"), "network");
+      const short = raw.replace("https://www.googleapis.com/compute/v1/", "");
+      const match = /^projects\/([^/]+)\/global\/networks\/([^/]+)$/.exec(short);
+      if (short.includes("/") && (!match || match[1] !== project))
+        fail("Cross-project or invalid network reference.");
+      const access = attr("private_ip_google_access") ?? false;
+      if (typeof access !== "boolean") fail("private_ip_google_access must be bool.");
+      r = {
+        ...r,
+        region: string(attr("region") ?? providerValue("region"), "region"),
+        network: match?.[2] ?? raw,
+        cidr: string(attr("ip_cidr_range"), "ip_cidr_range"),
+        privateAccess: access as boolean,
+      };
+    }
+    TfConfiguration.validateResource(r);
+    const actual = observed.find((item) => item.address === r.address);
+    if (actual) r = actual;
+    resources.set(address, r);
+    visiting.delete(address);
+    return r;
+  };
+  for (const address of definitions.keys()) resolve(address);
+  for (const name of moduleDefinitions.keys()) resolveModule(name);
+  const allResources = [
+    ...resources.values(),
+    ...[...modules.values()].flatMap((m) => m.resources),
+  ];
+  if (allResources.length > 100) fail("At most 100 expanded resources are supported.");
+  const ids = allResources.map(TerraformState.id);
+  if (new Set(ids).size !== ids.length) fail("Multiple addresses refer to the same remote object.");
+  const outputs: Record<string, Scalar> = {};
+  for (const block of blocks.filter((b) => b.type === "output")) {
+    const name = label(block, 1);
+    if (Object.hasOwn(outputs, name)) fail(`Duplicate output: ${name}`);
+    checkBody(block.body, ["value", "description"]);
+    const value = evaluate(block.body.attributes.value);
+    if (value === undefined) fail(`Output ${name} requires value.`);
+    outputs[name] = value as Scalar;
+  }
+  const moves: TfMove[] = [...modules.values()].flatMap((m) => m.moves);
+  for (const block of blocks.filter((b) => b.type === "moved")) {
+    label(block, 0);
+    checkBody(block.body, ["from", "to"]);
+    const address = (name: string): string => {
+      const expr = block.body.attributes[name];
+      if (typeof expr !== "object" || !("ref" in expr))
+        return fail(`moved ${name} must be an unquoted resource address.`);
+      return `${context.prefix}${expr.ref}`;
+    };
+    moves.push({ from: address("from"), to: address("to") });
+  }
+  return { resources: allResources, outputs, moves };
+};
+
+/** Resolve local modules within the virtual workspace, with isolated variables and inherited provider. */
 export const TfConfiguration = {
   compile(
     files: Readonly<Record<string, string>>,
     observed: readonly TfResource[] = [],
   ): TfConfiguration {
-    const roots = Object.keys(files)
-      .filter((name) => !name.includes("/") && name.endsWith(".tf"))
-      .sort();
-    const blocks = roots.flatMap((name) => {
-      const parsed = Hcl.parse(files[name] ?? "");
-      if (Object.keys(parsed.attributes).length)
-        fail(`Top-level attributes are not allowed in ${name}.`);
-      return parsed.blocks;
+    const result = compileModule(files, observed, {
+      directory: "",
+      prefix: "",
+      inputs: {},
+      provider: {},
+      ancestors: [""],
+      budget: { blocks: 0, modules: 0 },
     });
-    if (blocks.length > 100) fail("At most 100 root blocks are supported.");
-    const allowed = ["terraform", "provider", "resource", "variable", "output"];
-    for (const b of blocks) if (!allowed.includes(b.type)) fail(`Unsupported block: ${b.type}`);
-    const providers = blocks.filter((b) => b.type === "provider");
-    if (providers.length > 1) fail("Only one default Google provider is supported.");
-    const provider = providers[0];
-    if (provider && label(provider, 1) !== "google") fail("Only provider google is supported.");
-    if (provider) checkBody(provider.body, ["project", "region"]);
-    for (const block of blocks.filter((b) => b.type === "terraform")) {
-      label(block, 0);
-      if (Object.keys(block.body.attributes).length)
-        fail("Terraform version constraints are not supported yet.");
-      for (const child of block.body.blocks) {
-        if (child.type !== "required_providers" || child.labels.length || child.body.blocks.length)
-          fail(`Unsupported terraform block: ${child.type}`);
-        for (const [name, expr] of Object.entries(child.body.attributes)) {
-          if (name !== "google" || typeof expr !== "object" || !("object" in expr))
-            fail("Only hashicorp/google is supported.");
-          if (typeof expr === "object" && "object" in expr) {
-            const attrs = expr.object;
-            if (
-              attrs.source !== "hashicorp/google" ||
-              Object.keys(attrs).some((k) => k !== "source")
-            )
-              fail(
-                'Only source = "hashicorp/google" is supported; version constraints are not simulated.',
-              );
-          }
-        }
-      }
+    TfStructure.validateMoves(result.moves);
+    for (const move of result.moves) {
+      if (result.resources.some((r) => r.address === move.from))
+        fail(`Moved source is still declared: ${move.from}`);
+      const destination = TfStructure.destination(move.from, result.moves);
+      if (!result.resources.some((r) => r.address === destination))
+        fail(`Moved destination is not declared: ${destination}`);
     }
-    const values: Record<string, Scalar> = {};
-    for (const name of Object.keys(files)
-      .filter((n) => n === "terraform.tfvars" || (!n.includes("/") && n.endsWith(".auto.tfvars")))
-      .sort((a, b) =>
-        a === "terraform.tfvars" ? -1 : b === "terraform.tfvars" ? 1 : a.localeCompare(b),
-      )) {
-      const parsed = Hcl.parse(files[name] ?? "");
-      if (parsed.blocks.length) fail("tfvars cannot contain blocks.");
-      for (const [key, expr] of Object.entries(parsed.attributes)) {
-        if (typeof expr === "object") fail("tfvars values must be scalar literals.");
-        else values[key] = expr;
-      }
-    }
-    const variables: Record<string, Scalar> = {};
-    for (const b of blocks.filter((b) => b.type === "variable")) {
-      const name = label(b, 1);
-      if (Object.hasOwn(variables, name)) fail(`Duplicate variable: ${name}`);
-      checkBody(b.body, ["type", "default", "description"]);
-      const type = b.body.attributes.type;
-      if (
-        typeof type !== "object" ||
-        !("ref" in type) ||
-        !["string", "number", "bool"].includes(type.ref)
-      )
-        fail(`Variable ${name} requires type string, number or bool.`);
-      const value = Object.hasOwn(values, name) ? values[name] : b.body.attributes.default;
-      if (value === undefined || typeof value === "object")
-        fail(`Missing literal value for variable ${name}.`);
-      const expected =
-        typeof type === "object" && "ref" in type
-          ? type.ref === "bool"
-            ? "boolean"
-            : type.ref
-          : "";
-      if (typeof value !== expected) fail(`Wrong type for variable ${name}.`);
-      variables[name] = value as Scalar;
-    }
-    for (const name of Object.keys(values))
-      if (!Object.hasOwn(variables, name)) fail(`Undeclared variable: ${name}`);
-    const resources = new Map<string, TfResource>(observed.map((r) => [r.address, r]));
-    const definitions = new Map<string, HclBlock>();
-    for (const b of blocks.filter((b) => b.type === "resource")) {
-      const name = label(b, 2);
-      const address = `${b.labels[0]}.${name}`;
-      if (definitions.has(address)) fail(`Duplicate resource: ${address}`);
-      definitions.set(address, b);
-    }
-    const visiting = new Set<string>();
-    const evaluate = (expr: Expression | undefined): Scalar | undefined => {
-      if (expr === undefined || typeof expr !== "object") return expr;
-      if (!("ref" in expr))
-        return fail("Object expressions are only supported in required_providers.");
-      const parts = expr.ref.split(".");
-      if (parts[0] === "var" && parts.length === 2)
-        return variables[parts[1] ?? ""] ?? fail(`Unknown variable: ${expr.ref}`);
-      if (parts.length !== 3) return fail(`Unsupported reference: ${expr.ref}`);
-      const r = resolve(`${parts[0]}.${parts[1]}`);
-      if (parts[2] === "id") return TerraformState.id(r);
-      if (parts[2] === "self_link")
-        return `https://www.googleapis.com/compute/v1/${TerraformState.id(r)}`;
-      if (parts[2] === "name") return r.name;
-      if (r.type === "google_compute_subnetwork" && parts[2] === "private_ip_google_access")
-        return r.privateAccess;
-      if (r.type === "google_compute_subnetwork" && parts[2] === "ip_cidr_range") return r.cidr;
-      return fail(`Unsupported reference: ${expr.ref}`);
+    return {
+      ...result,
+      outputs: Object.fromEntries(
+        Object.entries(result.outputs).map(([key, value]) => [key, String(value)]),
+      ),
     };
-    const providerValue = (name: string): Scalar | undefined => {
-      const expr = provider?.body.attributes[name];
-      if (typeof expr === "object" && (!("ref" in expr) || !expr.ref.startsWith("var.")))
-        fail("Provider configuration may only reference variables.");
-      return evaluate(expr);
-    };
-    const resolve = (address: string): TfResource => {
-      const existing = resources.get(address);
-      if (existing) return existing;
-      if (visiting.has(address)) return fail(`Dependency cycle: ${address}`);
-      visiting.add(address);
-      const b = definitions.get(address) ?? fail(`Unknown resource: ${address}`);
-      const type = b.labels[0];
-      if (type !== "google_compute_network" && type !== "google_compute_subnetwork")
-        return fail(`Unsupported resource type: ${type}`);
-      checkBody(
-        b.body,
-        type === "google_compute_network"
-          ? ["name", "project", "auto_create_subnetworks"]
-          : ["name", "project", "region", "network", "ip_cidr_range", "private_ip_google_access"],
-      );
-      const attr = (name: string): Scalar | undefined => evaluate(b.body.attributes[name]);
-      const name = string(attr("name"), "name");
-      const project = string(attr("project") ?? providerValue("project"), "project");
-      let r: TfResource = {
-        address,
-        type,
-        project,
-        name,
-        region: "",
-        network: "",
-        cidr: "",
-        privateAccess: false,
-      };
-      if (type === "google_compute_network") {
-        if (attr("auto_create_subnetworks") !== false)
-          fail("Only custom networks (auto_create_subnetworks = false) are supported.");
-      } else {
-        const raw = string(attr("network"), "network");
-        const short = raw.replace("https://www.googleapis.com/compute/v1/", "");
-        const match = /^projects\/([^/]+)\/global\/networks\/([^/]+)$/.exec(short);
-        if (short.includes("/") && (!match || match[1] !== project))
-          fail("Cross-project or invalid network reference.");
-        const access = attr("private_ip_google_access") ?? false;
-        if (typeof access !== "boolean") fail("private_ip_google_access must be bool.");
-        r = {
-          ...r,
-          region: string(attr("region") ?? providerValue("region"), "region"),
-          network: match?.[2] ?? raw,
-          cidr: string(attr("ip_cidr_range"), "ip_cidr_range"),
-          privateAccess: access as boolean,
-        };
-      }
-      TfConfiguration.validateResource(r);
-      resources.set(address, r);
-      visiting.delete(address);
-      return r;
-    };
-    for (const address of definitions.keys()) resolve(address);
-    const ids = [...resources.values()].map(TerraformState.id);
-    if (new Set(ids).size !== ids.length)
-      fail("Multiple addresses refer to the same remote object.");
-    const outputs: Record<string, string> = {};
-    for (const block of blocks.filter((b) => b.type === "output")) {
-      const name = label(block, 1);
-      if (Object.hasOwn(outputs, name)) fail(`Duplicate output: ${name}`);
-      checkBody(block.body, ["value", "description"]);
-      const value = evaluate(block.body.attributes.value);
-      if (value === undefined) fail(`Output ${name} requires value.`);
-      outputs[name] = String(value);
-    }
-    return { resources: [...resources.values()], outputs };
   },
 
   outputsFrom(
