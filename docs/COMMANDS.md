@@ -12,7 +12,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 - ここに無いコマンドは `ERROR: (gcloud) Invalid choice: 'xxx'.`（E-001）になる。「未実装」の表に
   あるものは `gcloud-sim: command not implemented yet: ...`（E-002）になる
 - グローバルフラグ `--project` `--account` `--format` `--filter` `--limit` `--sort-by`
-  `--quiet`/`-q` `--help`/`-h` `--verbosity` はgcloud/gsutil/kubectlが受ける（Terraform/simはhelpのみ）
+  `--quiet`/`-q` `--help`/`-h` `--verbosity` はgcloud/gsutil/kubectlが受ける（Terraform/sim/Dockerはhelpのみ）
 - `--format` は `json` / `yaml` / `value(FIELDS)` / `table(FIELDS)` / `none`、`--filter` は
   `key=value` / `key!=value` / `key:substring` / `NOT` / `AND` / `OR` の簡易版（DJ-009）
 - `gcloud beta` / `gcloud alpha` は警告を出して `gcloud` と同じに扱う
@@ -21,7 +21,40 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（256）
+## 実装済み（280）
+
+### Docker / Artifact Registry
+
+ローカルのイメージ・コンテナとクラウドの保存先を分けて扱う学習用サブセットです。固定教材のみを使用し、実プロセス/クラウド通信は行いません。操作例・制限は [CONTAINERS.md](CONTAINERS.md)。
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `sim docker example` | — | — | — |
+| `sim docker request` | — | — | — |
+| `docker build` | — | — | --tag/-t（必須） |
+| `docker images` | — | — | — |
+| `docker tag` | — | — | — |
+| `docker push` | artifactregistry.repositories.uploadArtifacts | artifactregistry.googleapis.com | — |
+| `docker pull` | artifactregistry.repositories.downloadArtifacts | artifactregistry.googleapis.com | — |
+| `docker run` | キャッシュなし時はpull権限 | キャッシュなし時はartifactregistry.googleapis.com | --detach/-d（必須）、--name、--publish/-p |
+| `docker ps` | — | — | --all/-a |
+| `docker logs` | — | — | — |
+| `docker inspect` | — | — | — |
+| `docker stop` | — | — | — |
+| `docker rm` | — | — | --force/-f |
+| `docker rmi` | — | — | — |
+| `gcloud auth configure-docker` | ログイン済みアカウント | — | — |
+| `gcloud artifacts repositories create` | artifactregistry.repositories.create | artifactregistry.googleapis.com | --repository-format=docker（必須）、--location、--description、--immutable-tags |
+| `gcloud artifacts repositories list` | artifactregistry.repositories.list | artifactregistry.googleapis.com | --location |
+| `gcloud artifacts repositories describe` | artifactregistry.repositories.get | artifactregistry.googleapis.com | --location |
+| `gcloud artifacts repositories delete` | artifactregistry.repositories.delete | artifactregistry.googleapis.com | --location |
+| `gcloud artifacts repositories get-iam-policy` | artifactregistry.repositories.getIamPolicy | artifactregistry.googleapis.com | --location |
+| `gcloud artifacts repositories add-iam-policy-binding` | artifactregistry.repositories.setIamPolicy | artifactregistry.googleapis.com | --location、--member、--role |
+| `gcloud artifacts repositories remove-iam-policy-binding` | artifactregistry.repositories.setIamPolicy | artifactregistry.googleapis.com | --location、--member、--role |
+| `gcloud artifacts docker images list` | artifactregistry.dockerimages.list | artifactregistry.googleapis.com | --include-tags |
+| `gcloud artifacts docker images describe` | artifactregistry.dockerimages.get | artifactregistry.googleapis.com | — |
+
+repository操作の位置引数はID＋--location、または完全名projects/PROJECT/locations/LOCATION/repositories/ID。Dockerのpush/pullには対象ホストのconfigure-docker設定が必要で、ADCではなく現在のgcloudアカウントを使用します。v1〜v6のSnapshotは空のDocker/Artifact Registry状態を補完します。
 
 ### Terraform / 学習用ファイル
 
@@ -451,7 +484,7 @@ gcloud-sim にはローカルのファイルシステムが無い。**中身が�
 - `monitoring dashboards create` はJSONの `gridLayout`（columns=1、xyChart 1つ、timeSeriesFilter 1つ）のみ。未対応フィールド/レイアウトを黙って捨てずエラーにする。`--validate-only` は保存しない。
 - `monitoring policies create` は1つのしきい値条件（`--if='> 0.8'` / `'< 1'`、`--duration=300s`、OR）。通知先・複数条件・欠測/PromQL・インシデント評価は未対応。
 - `monitoring uptime create` はpublic URLのHTTP/HTTPS設定。periodは分（1/5/10/15）、timeoutは秒（1〜60）。外部URLへアクセスせず、稼働状況の値は生成しない。
-- 上記設定はリソースツリーとプロパティ、一覧/describe、JSON保存/復元に反映する。Snapshot v6（監視リソースはv3、Terraformはv4で追加）。v1/v2は監視集合、v1/v2/v3は空のTerraform状態を補完し、v4/v5のTerraform状態はlocal backendとplanのbackendRevision（v4はmoved情報も）を補って保持する。
+- 上記設定はリソースツリーとプロパティ、一覧/describe、JSON保存/復元に反映する。Snapshot v7（監視リソースはv3、Terraformはv4で追加）。v1/v2は監視集合、v1/v2/v3は空のTerraform状態を補完し、v4/v5のTerraform状態はlocal backendとplanのbackendRevision（v4はmoved情報も）を補って保持する。
 - 新ミッション5本はログ指標、uptime、CPUダッシュボード、CPUアラート、sinkと転送先IAM。残る資料対応は [ACE_COVERAGE.md](ACE_COVERAGE.md)。
 
 ### 組み込み cpu-dashboard.json

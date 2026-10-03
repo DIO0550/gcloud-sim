@@ -39,6 +39,8 @@ export const originText = (origin: BindingOrigin): string => {
           return "このフォルダ";
         case "project":
           return "このプロジェクト";
+        case "artifact-repository":
+          return "このリポジトリ";
         case "bucket":
           return "このバケット";
         case "service-account":

@@ -20,6 +20,7 @@ import {
   SnapshotProperties,
   SubnetProperties,
 } from "@/features/simulator/components/ComputeProperties";
+import { ContainerLabProperties } from "@/features/simulator/components/ContainerLabProperties";
 import {
   BillingProperties,
   BudgetProperties,
@@ -125,6 +126,8 @@ const Body = ({
       return <TopicProperties world={world} selection={selection} />;
     case "subscription":
       return <SubscriptionProperties world={world} selection={selection} />;
+    case "container-lab":
+      return <ContainerLabProperties world={world} selection={selection} />;
     case "observability":
       return <ObservabilityProperties world={world} selection={selection} />;
     case "log-sink":
@@ -147,6 +150,8 @@ const Body = ({
 /** 見出し。名前を持つものは名前、持たないものは種別の綴り。 */
 const titleOf = (selection: TreeSelection): string => {
   switch (selection.kind) {
+    case "container-lab":
+      return selection.id;
     case "organization":
       return "組織";
     case "folder":
@@ -260,6 +265,8 @@ const kindLabel = (selection: TreeSelection): string => {
       return "pubsub#topic";
     case "subscription":
       return "pubsub#subscription";
+    case "container-lab":
+      return `container-lab#${selection.collection}`;
     case "observability":
       return `observability#${selection.collection}`;
     case "log-sink":

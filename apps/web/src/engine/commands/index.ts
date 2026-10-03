@@ -1,4 +1,5 @@
 import type { CommandSpec } from "@/engine/cli/command-spec";
+import { ArtifactCommands, DockerCommands } from "@/engine/commands/artifacts";
 import {
   BillingCommands,
   BudgetCommands,
@@ -34,6 +35,8 @@ import { TerraformCommands } from "@/engine/commands/terraform";
 
 const implemented: readonly CommandSpec[] = [
   ...TerraformCommands,
+  ...ArtifactCommands,
+  ...DockerCommands,
   ...ConfigCommands,
   ...AuthCommands,
   ...SdkCommands,

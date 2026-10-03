@@ -357,7 +357,7 @@ const answerConfirmation = (input: ShellInput, tokens: readonly string[]): Shell
 };
 
 const globalsFor = (tool: string | undefined): readonly FlagSpec[] =>
-  tool === "terraform" || tool === "sim"
+  tool === "terraform" || tool === "sim" || tool === "docker"
     ? GlobalFlags.filter((flag) => flag.name === "help")
     : GlobalFlags;
 

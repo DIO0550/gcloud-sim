@@ -13,6 +13,7 @@ export type ParentRef =
 /** IAM ポリシーを持てるリソースの指し方。継承の評価とコマンドの権限判定で使う。 */
 export type PolicyTarget =
   | ParentRef
+  | Readonly<{ type: "artifact-repository"; id: string }>
   | Readonly<{ type: "project"; id: string }>
   | Readonly<{ type: "bucket"; id: string }>
   | Readonly<{ type: "service-account"; id: string }>;
@@ -32,6 +33,8 @@ export const PolicyTarget = {
         return `folders/${target.id}`;
       case "project":
         return `projects/${target.id}`;
+      case "artifact-repository":
+        return target.id;
       case "bucket":
         return `buckets/${target.id}`;
       case "service-account":
