@@ -34,6 +34,8 @@ const assertionLabel = (assertion: Mission["assertions"][number]): string => {
   switch (assertion.kind) {
     case "terraformManaged":
       return `${assertion.resource.address}: 構成・state・実リソースが指定値と一致する`;
+    case "terraformMoved":
+      return `${assertion.from} → ${assertion.resource.address}: 保存した移行planがあり、再作成せずstateを移行済み`;
     case "logMetricConfigured":
       return `ログ指標 ${assertion.name} のフィルタが ${assertion.filter}`;
     case "uptimeConfigured":

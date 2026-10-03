@@ -106,11 +106,12 @@ import { Result } from "@/utils/Result";
  * バケットのバージョニング / ライフサイクル / ACL・オブジェクトのストレージクラスを持つ。
  * v3 はログ指標・ダッシュボード・アラートポリシー・稼働時間チェックを持つ。
  * v4 はTerraformの仮想ファイル・state・保存planを持つ。
+ * v5 はmoduleアドレス・サブディレクトリ・保存planのmoved情報を持つ。
  */
-export const SchemaVersion = 4;
+export const SchemaVersion = 5;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
-const MigratableVersions = [1, 2, 3] as const;
+const MigratableVersions = [1, 2, 3, 4] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
 export type Snapshot = Readonly<{
@@ -819,7 +820,16 @@ const migrate = (version: number, value: unknown): unknown => {
     version < 3
       ? { logMetrics: [], uptimeChecks: [], alertPolicies: [], dashboards: [], ...previous }
       : previous;
-  return version < 4 ? { ...observed, terraform: TerraformState.empty() } : observed;
+  if (version < 4) return { ...observed, terraform: TerraformState.empty() };
+  if (version !== 4 || !isRecord(observed.terraform) || !isRecord(observed.terraform.plans))
+    return observed;
+  const plans = Object.fromEntries(
+    Object.entries(observed.terraform.plans).map(([name, plan]) => [
+      name,
+      isRecord(plan) ? { ...plan, moves: [] } : plan,
+    ]),
+  );
+  return { ...observed, terraform: { ...observed.terraform, plans } };
 };
 
 export const Snapshot = {

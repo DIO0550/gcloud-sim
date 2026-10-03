@@ -8,6 +8,7 @@ import {
   type TfResource,
 } from "@/engine/domains/terraform";
 import { TfConfiguration } from "@/engine/domains/terraform/configuration";
+import { TfStructure } from "@/engine/domains/terraform/structure";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 
@@ -180,8 +181,13 @@ export const TfRuntime = {
   plan(world: World, mode: TfPlan["mode"]): TfPlan {
     if (!world.terraform.initialized) fail("Run terraform init first.");
     const config = TfConfiguration.compile(world.terraform.files);
+    const managed = TfStructure.remap(world.terraform.resources, config.moves);
+    const moves = world.terraform.resources.flatMap((r, index) => {
+      const to = managed[index]?.address;
+      return to && to !== r.address ? [{ from: r.address, to }] : [];
+    });
     const before = ordered(
-      world.terraform.resources.flatMap((r) => {
+      managed.flatMap((r) => {
         const actual = read(world, r);
         return actual ? [actual] : [];
       }),
@@ -201,12 +207,13 @@ export const TfRuntime = {
     const refreshedOutputs =
       mode === "refresh-only" ? TfRuntime.refreshOutputs(world, before) : outputs;
     return {
+      moves,
       serial: world.terraform.serial,
       mode,
       before,
       after,
       changes,
-      drift: diff(ordered(world.terraform.resources), before),
+      drift: diff(ordered(managed), before),
       outputs: refreshedOutputs,
     };
   },
@@ -229,7 +236,7 @@ export const TfRuntime = {
     if (plan.serial !== world.terraform.serial)
       fail("Saved plan is stale: state serial changed. Run terraform plan again.");
     const actual = ordered(
-      world.terraform.resources.flatMap((r) => {
+      TfStructure.remap(world.terraform.resources, plan.moves).flatMap((r) => {
         const observed = read(world, r);
         return observed ? [observed] : [];
       }),
@@ -270,6 +277,13 @@ export const TfRuntime = {
       (c) =>
         `Detected drift: ${c.action} ${c.resource.address} ${JSON.stringify(TerraformState.record(c.resource))}`,
     );
-    return [...drift, ...entries, summary, `Outputs: ${JSON.stringify(plan.outputs)}`].join("\n");
+    const moves = plan.moves.map((m) => `${m.from} has moved to ${m.to}`);
+    return [
+      ...moves,
+      ...drift,
+      ...entries,
+      summary,
+      `Outputs: ${JSON.stringify(plan.outputs)}`,
+    ].join("\n");
   },
 } as const;

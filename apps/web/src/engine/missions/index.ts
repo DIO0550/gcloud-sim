@@ -648,6 +648,7 @@ const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: 
 const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
     case "terraformManaged":
+    case "terraformMoved":
       return terraformSatisfied(world, assertion);
     case "logMetricConfigured":
     case "uptimeConfigured":

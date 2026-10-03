@@ -4,7 +4,9 @@ import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
 
-export type TerraformAssertion = Readonly<{ kind: "terraformManaged"; resource: TfResource }>;
+export type TerraformAssertion =
+  | Readonly<{ kind: "terraformManaged"; resource: TfResource }>
+  | Readonly<{ kind: "terraformMoved"; resource: TfResource; from: string }>;
 const network: TfResource = {
   address: "google_compute_network.lab",
   type: "google_compute_network",
@@ -87,6 +89,31 @@ export const TerraformMissions: readonly Mission[] = [
       },
     ],
   },
+  {
+    id: "m-terraform-004",
+    domain: "運用の維持",
+    title: "既存ネットワークを壊さずモジュールへ移す",
+    description:
+      "tf-lab-vpcとtf-lab-subnet（us-central1、10.42.0.0/24、Private Google Access無効）をルートのlabからmodule.network内のlabへ移します。movedで保存した移行planと、移行後の構成・state・実リソースの一致が必要です。新規にmoduleを作成するだけでは完了しません。",
+    setup,
+    hints: [
+      "初期状態からは sim files load terraform-network → gcloud auth application-default login → terraform init → terraform apply -auto-approve で移行前の環境を用意します。既存ファイルやtfvarsがある場合は内容を確認してください。",
+      "sim files load terraform-modules --force でmain.tfとmodules/network/main.tfを読み込みます。sim files readで両方を確認し、入力・出力・movedの対応を確認してください。",
+      "terraform init → terraform plan -out=module-plan。2つの has moved to があり、追加・変更・削除がないことを確認して terraform apply module-plan。terraform state listでmodule.networkのアドレスを確認します。",
+    ],
+    assertions: [
+      {
+        kind: "terraformMoved",
+        from: network.address,
+        resource: { ...network, address: `module.network.${network.address}` },
+      },
+      {
+        kind: "terraformMoved",
+        from: subnet.address,
+        resource: { ...subnet, address: `module.network.${subnet.address}` },
+      },
+    ],
+  },
 ];
 
 export const terraformSatisfied = (world: World, assertion: TerraformAssertion): boolean => {
@@ -94,6 +121,18 @@ export const terraformSatisfied = (world: World, assertion: TerraformAssertion):
   const matches = (r: TfResource): boolean =>
     Object.entries(expected).every(([key, value]) => r[key as keyof TfResource] === value);
   if (!world.terraform.initialized || !world.terraform.resources.some(matches)) return false;
+  if (
+    assertion.kind === "terraformMoved" &&
+    !Object.values(world.terraform.plans).some(
+      (p) =>
+        p.serial < world.terraform.serial &&
+        p.moves.some((m) => m.from === assertion.from && m.to === expected.address) &&
+        p.before.some(matches) &&
+        p.after.some(matches) &&
+        !p.changes.some((c) => c.resource.address === expected.address),
+    )
+  )
+    return false;
   try {
     if (!TfConfiguration.compile(world.terraform.files).resources.some(matches)) return false;
   } catch {
