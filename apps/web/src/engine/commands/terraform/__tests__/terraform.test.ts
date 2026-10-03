@@ -199,7 +199,7 @@ test("external dependencies block destroy without a partial deletion", () => {
 test.each([
   'resource "google_compute_instance" "vm" { name = "vm" }',
   'module "network" { source = "./modules/network" }',
-  'terraform { backend "gcs" { bucket = "state" } }',
+  'terraform { backend "s3" { bucket = "state" } }',
   'provider "google" { alias = "other" project = "ace-dev-01" }',
   'resource "google_compute_network" "net" { project = "ace-dev-01" name = "net" auto_create_subnetworks = false count = 2 }',
   'output "bad" { value = file("secrets") }',

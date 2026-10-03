@@ -1,13 +1,22 @@
 import { TerraformInfrastructureExample } from "@/engine/commands/terraform/examples";
 import type { TfResource } from "@/engine/domains/terraform";
 import { TerraformState } from "@/engine/domains/terraform";
+import { TfBackendRuntime } from "@/engine/domains/terraform/backend-runtime";
 import { TfConfiguration } from "@/engine/domains/terraform/configuration";
 import { TfResourceRuntime } from "@/engine/domains/terraform/resource-runtime";
+import { TfResources } from "@/engine/domains/terraform/resources";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { Option } from "@/utils/Option";
 
 export type TerraformAssertion =
+  | Readonly<{
+      kind: "terraformBackendMigrated";
+      bucket: string;
+      prefix: string;
+      resources: readonly TfResource[];
+    }>
   | Readonly<{ kind: "terraformDestroyed"; resources: readonly TfResource[] }>
   | Readonly<{ kind: "terraformManaged"; resource: TfResource }>
   | Readonly<{ kind: "terraformMoved"; resource: TfResource; from: string }>;
@@ -150,9 +159,53 @@ export const TerraformMissions: readonly Mission[] = [
     ],
     assertions: [{ kind: "terraformDestroyed", resources: infrastructure }],
   },
+  {
+    id: "m-terraform-007",
+    domain: "運用の維持",
+    title: "ローカルstateをGCS backendへ移行する",
+    description:
+      "tf-lab-vpcとtf-lab-subnetをローカルstateで管理した後、版管理を有効にしたace-dev-01-tf-stateのterraform/labへstateを移します。実リソースを保持した移行が必要です。最初からGCSで作成するだけでは完了しません。",
+    setup,
+    hints: [
+      "sim files load terraform-network → gcloud auth application-default login → terraform init → terraform apply -auto-approve で移行前の環境を用意します。",
+      "gcloud storage buckets create gs://ace-dev-01-tf-state --location=us-central1 --uniform-bucket-level-access → gcloud storage buckets update gs://ace-dev-01-tf-state --versioning。既に存在するbucketは再作成不要です。",
+      "sim files load terraform-backend → sim files read backend.tf → terraform init -migrate-state → yes。terraform state pull、sim terraform backend、gcloud storage ls gs://ace-dev-01-tf-state/terraform/lab/ で確認します。",
+    ],
+    assertions: [
+      {
+        kind: "terraformBackendMigrated",
+        bucket: "ace-dev-01-tf-state",
+        prefix: "terraform/lab",
+        resources: [network, subnet],
+      },
+    ],
+  },
 ];
 
 export const terraformSatisfied = (world: World, assertion: TerraformAssertion): boolean => {
+  if (assertion.kind === "terraformBackendMigrated") {
+    const backend = world.terraform.backend;
+    const migration = backend.migration;
+    const target = { kind: "gcs", bucket: assertion.bucket, prefix: assertion.prefix };
+    if (!world.terraform.initialized || !TfResources.equal(backend.config, target)) return false;
+    if (!world.buckets.some((b) => b.name === assertion.bucket && b.versioning)) return false;
+    if (
+      !Option.isSome(migration) ||
+      migration.value.from.kind !== "local" ||
+      !TfResources.equal(migration.value.to, target)
+    )
+      return false;
+    try {
+      TfBackendRuntime.check(world);
+    } catch {
+      return false;
+    }
+    return assertion.resources.every(
+      (resource) =>
+        migration.value.data.resources.some((old) => TfResources.equal(old, resource)) &&
+        terraformSatisfied(world, { kind: "terraformManaged", resource }),
+    );
+  }
   if (assertion.kind === "terraformDestroyed") {
     if (!world.terraform.initialized || world.terraform.resources.length) return false;
     const planned = Object.values(world.terraform.plans).some(

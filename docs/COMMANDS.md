@@ -21,7 +21,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（252）
+## 実装済み（256）
 
 ### Terraform / 学習用ファイル
 
@@ -37,20 +37,26 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 | `sim files replace` | — | — | --search, --replacement |
 | `sim files delete` | — | — | — |
 | `sim files load` | — | — | --force |
-| `terraform init` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | — |
-| `terraform validate` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | — |
-| `terraform fmt` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | -check, -recursive |
-| `terraform plan` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | -out, -destroy, -refresh-only |
-| `terraform apply` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | -auto-approve, -destroy, -refresh-only |
-| `terraform destroy` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | -auto-approve |
-| `terraform show` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | — |
-| `terraform output` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | — |
-| `terraform state list` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | — |
-| `terraform state show` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | — |
-| `terraform state mv` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | — |
-| `terraform state rm` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | — |
-| `terraform import` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | — |
+| `terraform init` | GCS時: ADCのstorage.objects.get/list/create/delete | GCS時: storage.googleapis.com（bucket所属project） | -migrate-state, -force-copy |
+| `terraform state pull` | GCS時: ADCのstorage.objects.get/list | GCS時: storage.googleapis.com | — |
+| `terraform force-unlock` | ADCのstorage.objects.get/list/create/delete | storage.googleapis.com | -force |
+| `sim terraform backend` | GCS時: ADCのstorage.objects.get/list | GCS時: storage.googleapis.com | — |
+| `sim terraform lock` | ADCのstorage.objects.get/list/create/delete | storage.googleapis.com | — |
+| `terraform validate` | — | — | — |
+| `terraform fmt` | — | — | -check, -recursive |
+| `terraform plan` | ADCの管理対象操作権限・GCS state権限（下記） | 管理対象API・GCS時Storage API | -out, -destroy, -refresh-only |
+| `terraform apply` | ADCの管理対象操作権限・GCS state権限（下記） | 管理対象API・GCS時Storage API | -auto-approve, -destroy, -refresh-only |
+| `terraform destroy` | ADCの管理対象操作権限・GCS state権限（下記） | 管理対象API・GCS時Storage API | -auto-approve |
+| `terraform show` | GCS state読込権限（下記） | GCS時Storage API | — |
+| `terraform output` | GCS state読込権限（下記） | GCS時Storage API | — |
+| `terraform state list` | GCS state読込権限（下記） | GCS時Storage API | — |
+| `terraform state show` | GCS state読込権限（下記） | GCS時Storage API | — |
+| `terraform state mv` | ADCの管理対象操作権限・GCS state権限（下記） | 管理対象API・GCS時Storage API | — |
+| `terraform state rm` | ADCの管理対象操作権限・GCS state権限（下記） | 管理対象API・GCS時Storage API | — |
+| `terraform import` | ADCの管理対象操作権限・GCS state権限（下記） | 管理対象API・GCS時Storage API | — |
 | `gcloud compute networks subnets update` | compute.subnetworks.setPrivateIpGoogleAccess | compute.googleapis.com | --region, --enable-private-ip-google-access |
+
+GCS backend使用時、stateを読むshow/output/state list/showにもstorage.objects.get/listが必要です。plan/apply/destroy/import/state mv/rmはさらにcreate/deleteを確認します。Compute/Storageの実リソース操作権限は管理対象ごとに別途確認します。local backendのstate読込とfmt/validate自体にはクラウド権限は不要です。保存planのshowもクラウド参照なしです。
 
 ### `gcloud config`
 
@@ -445,7 +451,7 @@ gcloud-sim にはローカルのファイルシステムが無い。**中身が�
 - `monitoring dashboards create` はJSONの `gridLayout`（columns=1、xyChart 1つ、timeSeriesFilter 1つ）のみ。未対応フィールド/レイアウトを黙って捨てずエラーにする。`--validate-only` は保存しない。
 - `monitoring policies create` は1つのしきい値条件（`--if='> 0.8'` / `'< 1'`、`--duration=300s`、OR）。通知先・複数条件・欠測/PromQL・インシデント評価は未対応。
 - `monitoring uptime create` はpublic URLのHTTP/HTTPS設定。periodは分（1/5/10/15）、timeoutは秒（1〜60）。外部URLへアクセスせず、稼働状況の値は生成しない。
-- 上記設定はリソースツリーとプロパティ、一覧/describe、JSON保存/復元に反映する。Snapshot v5（監視リソースはv3、Terraformはv4で追加）。v1/v2は監視集合、v1/v2/v3は空のTerraform状態を補完し、v4のTerraform状態は保存planのmoved情報を補って保持する。
+- 上記設定はリソースツリーとプロパティ、一覧/describe、JSON保存/復元に反映する。Snapshot v6（監視リソースはv3、Terraformはv4で追加）。v1/v2は監視集合、v1/v2/v3は空のTerraform状態を補完し、v4/v5のTerraform状態はlocal backendとplanのbackendRevision（v4はmoved情報も）を補って保持する。
 - 新ミッション5本はログ指標、uptime、CPUダッシュボード、CPUアラート、sinkと転送先IAM。残る資料対応は [ACE_COVERAGE.md](ACE_COVERAGE.md)。
 
 ### 組み込み cpu-dashboard.json
