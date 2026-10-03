@@ -1,0 +1,72 @@
+[
+  {
+    "name": "home__desktop",
+    "label": "CLI 画面（初期 World）",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "settings__desktop",
+    "label": "設定ダイアログ",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "console-vm-list__desktop",
+    "label": "Console: VM インスタンス一覧（VM を 2 台作った状態）",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "console-vm-create__desktop",
+    "label": "Console: インスタンスを作成（名前とタグを入れた状態）",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "console-iam__desktop",
+    "label": "Console: IAM（継承されたロールを含む）",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "home__mobile",
+    "label": "CLI 画面（初期 World）",
+    "viewport": "mobile",
+    "width": 754,
+    "height": 1200
+  },
+  {
+    "name": "settings__mobile",
+    "label": "設定ダイアログ",
+    "viewport": "mobile",
+    "width": 754,
+    "height": 1200
+  },
+  {
+    "name": "console-vm-list__mobile",
+    "label": "Console: VM インスタンス一覧（VM を 2 台作った状態）",
+    "viewport": "mobile",
+    "width": 807,
+    "height": 1200
+  },
+  {
+    "name": "console-vm-create__mobile",
+    "label": "Console: インスタンスを作成（名前とタグを入れた状態）",
+    "viewport": "mobile",
+    "width": 807,
+    "height": 1200
+  },
+  {
+    "name": "console-iam__mobile",
+    "label": "Console: IAM（継承されたロールを含む）",
+    "viewport": "mobile",
+    "width": 807,
+    "height": 1200
+  }
+]
