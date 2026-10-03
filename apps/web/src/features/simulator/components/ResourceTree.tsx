@@ -72,6 +72,8 @@ const groupText = (group: ResourceGroup): string => {
       return "Cloud SQL";
     case "pubsub":
       return "Pub/Sub";
+    case "monitoring":
+      return "Monitoring";
     case "logging":
       return "Logging";
     case "kms":

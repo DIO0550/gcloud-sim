@@ -398,3 +398,20 @@ export const DmDeploymentProperties = ({
     </>
   );
 };
+
+export const ObservabilityProperties = ({
+  world,
+  selection,
+}: SelectionProps<"observability">): ReactElement => {
+  const resource = World.findNamed(world, selection.collection, selection);
+  if (!Option.isSome(resource)) return <NotFound what="監視設定" />;
+  return (
+    <Section
+      title="設定"
+      rows={Object.entries(resource.value).map(([label, value]) => ({
+        label,
+        value: String(value),
+      }))}
+    />
+  );
+};

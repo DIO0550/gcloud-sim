@@ -32,6 +32,11 @@ import type { FunctionTrigger } from "@/engine/domains/serverless";
 import { ServiceAccount } from "@/engine/domains/service-account";
 import { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
+import {
+  type ObservabilityAssertion,
+  ObservabilityMissions,
+  observabilitySatisfied,
+} from "@/engine/missions/observability";
 import type { ValueOf } from "@/types/ValueOf";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -48,6 +53,7 @@ export type MissionDomain = ValueOf<typeof MissionDomains>;
 
 /** World に対する述語（DJ-010: コマンド文字列ではなく状態で判定する）。値の語彙はドメインの型で閉じる。 */
 export type MissionAssertion =
+  | ObservabilityAssertion
   | Readonly<{ kind: "billingLinked"; projectId: string }>
   | Readonly<{ kind: "apiEnabled"; projectId: string; api: ApiName }>
   | Readonly<{
@@ -180,6 +186,7 @@ const devFolder: PolicyTarget = { type: "folder", id: F.devFolderId };
 const organization: PolicyTarget = { type: "organization", id: F.organizationId };
 
 const Missions: readonly Mission[] = [
+  ...ObservabilityMissions,
   {
     id: "m-setup-001",
     domain: MissionDomains.Setup,
@@ -633,6 +640,12 @@ const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: 
 
 const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
+    case "logMetricConfigured":
+    case "uptimeConfigured":
+    case "dashboardConfigured":
+    case "alertConfigured":
+    case "logExportConfigured":
+      return observabilitySatisfied(world, assertion);
     case "billingLinked": {
       const project = World.findProject(world, assertion.projectId);
       return Option.isSome(project) && Option.isSome(project.value.billingAccountId);

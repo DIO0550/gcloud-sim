@@ -1,3 +1,4 @@
+import type { JsonRecord } from "@/types/Json";
 import { Option } from "@/utils/Option";
 
 /**
@@ -7,6 +8,7 @@ import { Option } from "@/utils/Option";
  * 無い名前は本物と同じ `No such file or directory` になる。
  */
 export type SampleFile =
+  | Readonly<{ name: "cpu-dashboard.json"; kind: "monitoring-dashboard"; config: JsonRecord }>
   | Readonly<{ name: "app.yaml"; kind: "app-yaml"; runtime: string; service: string }>
   | Readonly<{
       name: "deployment.yaml";
@@ -45,6 +47,33 @@ export type SampleFileName = SampleFile["name"];
 export const SampleKeyAccount = "web-sa@ace-dev-01.iam.gserviceaccount.com";
 
 const Files: readonly SampleFile[] = [
+  {
+    name: "cpu-dashboard.json",
+    kind: "monitoring-dashboard",
+    config: {
+      displayName: "VM CPU",
+      gridLayout: {
+        columns: 1,
+        widgets: [
+          {
+            title: "CPU utilization",
+            xyChart: {
+              dataSets: [
+                {
+                  timeSeriesQuery: {
+                    timeSeriesFilter: {
+                      filter:
+                        'metric.type="compute.googleapis.com/instance/cpu/utilization" AND resource.type="gce_instance"',
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  },
   { name: "app.yaml", kind: "app-yaml", runtime: "python312", service: "default" },
   {
     name: "deployment.yaml",

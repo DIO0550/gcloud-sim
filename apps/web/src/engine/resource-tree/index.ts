@@ -35,6 +35,7 @@ export const ResourceGroups = {
   Sql: "sql",
   Pubsub: "pubsub",
   Logging: "logging",
+  Monitoring: "monitoring",
   Kms: "kms",
   Dns: "dns",
   DeploymentManager: "deployment-manager",
@@ -255,6 +256,16 @@ const projectNode = (world: World, project: Project): TreeNode => {
   const sinks = World.namedOf(world, "logSinks", id).map((s) =>
     leaf({ kind: "log-sink", projectId: id, name: s.name }, s.name),
   );
+  const observability = (
+    ["logMetrics", "dashboards", "alertPolicies", "uptimeChecks"] as const
+  ).flatMap((collection) =>
+    World.namedOf(world, collection, id).map((resource) =>
+      leaf(
+        { kind: "observability", projectId: id, name: resource.name, collection },
+        "displayName" in resource ? resource.displayName : resource.name,
+      ),
+    ),
+  );
   const keyRings = World.namedOf(world, "kmsKeyRings", id).map((r) =>
     leaf(
       { kind: "key-ring", projectId: id, location: r.location, name: r.name },
@@ -299,6 +310,7 @@ const projectNode = (world: World, project: Project): TreeNode => {
       ...group(id, ResourceGroups.Sql, sqlInstances),
       ...group(id, ResourceGroups.Pubsub, pubsubNodes(world, id)),
       ...group(id, ResourceGroups.Logging, sinks),
+      ...group(id, ResourceGroups.Monitoring, observability),
       ...group(id, ResourceGroups.Kms, keyRings),
       ...group(id, ResourceGroups.Dns, dnsZones),
       ...group(id, ResourceGroups.DeploymentManager, deployments),
