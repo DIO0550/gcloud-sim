@@ -12,7 +12,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 - ここに無いコマンドは `ERROR: (gcloud) Invalid choice: 'xxx'.`（E-001）になる。「未実装」の表に
   あるものは `gcloud-sim: command not implemented yet: ...`（E-002）になる
 - グローバルフラグ `--project` `--account` `--format` `--filter` `--limit` `--sort-by`
-  `--quiet`/`-q` `--help`/`-h` `--verbosity` はすべてのコマンドが受ける
+  `--quiet`/`-q` `--help`/`-h` `--verbosity` はgcloud/gsutil/kubectlが受ける（Terraform/simはhelpのみ）
 - `--format` は `json` / `yaml` / `value(FIELDS)` / `table(FIELDS)` / `none`、`--filter` は
   `key=value` / `key!=value` / `key:substring` / `NOT` / `AND` / `OR` の簡易版（DJ-009）
 - `gcloud beta` / `gcloud alpha` は警告を出して `gcloud` と同じに扱う
@@ -21,7 +21,34 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（232）
+## 実装済み（252）
+
+### Terraform / 学習用ファイル
+
+対応範囲・通常のTerraformとの差異・操作例は [TERRAFORM.md](TERRAFORM.md) を参照。
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `sim files list` | — | — | — |
+| `sim files read` | — | — | — |
+| `sim files write` | — | — | --content |
+| `sim files replace` | — | — | --search, --replacement |
+| `sim files delete` | — | — | — |
+| `sim files load` | — | — | --force |
+| `terraform init` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | — |
+| `terraform validate` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | — |
+| `terraform fmt` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | -check |
+| `terraform plan` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | -out, -destroy, -refresh-only |
+| `terraform apply` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | -auto-approve, -destroy, -refresh-only |
+| `terraform destroy` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | -auto-approve |
+| `terraform show` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | — |
+| `terraform output` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | — |
+| `terraform state list` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | — |
+| `terraform state show` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | — |
+| `terraform state mv` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | — |
+| `terraform state rm` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | — |
+| `terraform import` | ADCのCompute権限（クラウド操作時） | compute.googleapis.com（クラウド操作時） | — |
+| `gcloud compute networks subnets update` | compute.subnetworks.setPrivateIpGoogleAccess | compute.googleapis.com | --region, --enable-private-ip-google-access |
 
 ### `gcloud config`
 
@@ -416,7 +443,7 @@ gcloud-sim にはローカルのファイルシステムが無い。**中身が�
 - `monitoring dashboards create` はJSONの `gridLayout`（columns=1、xyChart 1つ、timeSeriesFilter 1つ）のみ。未対応フィールド/レイアウトを黙って捨てずエラーにする。`--validate-only` は保存しない。
 - `monitoring policies create` は1つのしきい値条件（`--if='> 0.8'` / `'< 1'`、`--duration=300s`、OR）。通知先・複数条件・欠測/PromQL・インシデント評価は未対応。
 - `monitoring uptime create` はpublic URLのHTTP/HTTPS設定。periodは分（1/5/10/15）、timeoutは秒（1〜60）。外部URLへアクセスせず、稼働状況の値は生成しない。
-- 上記設定はリソースツリーとプロパティ、一覧/describe、JSON保存/復元に反映する。Snapshot v3。v1/v2は新規集合を空にして移行する。
+- 上記設定はリソースツリーとプロパティ、一覧/describe、JSON保存/復元に反映する。Snapshot v4（監視リソースはv3で追加）。v1/v2は監視の新規集合を空にし、v1/v2/v3は空のTerraform状態を補って移行する。
 - 新ミッション5本はログ指標、uptime、CPUダッシュボード、CPUアラート、sinkと転送先IAM。残る資料対応は [ACE_COVERAGE.md](ACE_COVERAGE.md)。
 
 ### 組み込み cpu-dashboard.json

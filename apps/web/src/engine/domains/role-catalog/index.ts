@@ -80,6 +80,7 @@ const ComputeNetworkPermissions = [
   "compute.subnetworks.delete",
   "compute.subnetworks.list",
   "compute.subnetworks.get",
+  "compute.subnetworks.setPrivateIpGoogleAccess",
   "compute.subnetworks.use",
   "compute.subnetworks.useExternalIp",
   "compute.firewalls.create",

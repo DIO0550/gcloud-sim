@@ -327,6 +327,11 @@ type SpecBase = Readonly<{
   flags: readonly FlagSpec[];
   /** delete 等。`--quiet` が無ければ確認プロンプトを挟む（UC-001 代替フロー） */
   destructive: boolean;
+  /** Commands such as Terraform preview their changes and require an explicit yes. */
+  confirmation?: Readonly<{
+    preview: (ctx: CommandContext, args: ParsedArgs) => CommandResult;
+    skip: (args: ParsedArgs) => boolean;
+  }>;
 }>;
 
 /**

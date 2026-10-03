@@ -38,7 +38,7 @@ export type OutputLine = Readonly<{ text: string; tone: MessageTone | "error" }>
  */
 export type ShellState =
   | Readonly<{ kind: "ready" }>
-  | Readonly<{ kind: "confirming"; tokens: readonly string[] }>;
+  | Readonly<{ kind: "confirming"; tokens: readonly string[]; explicitYes?: boolean }>;
 
 export type ShellInput = Readonly<{
   world: World;
@@ -242,6 +242,7 @@ const execute = (
   if (!Result.isOk(resolved))
     return result(world, Ready, failureLines(Option.none, resolved.error), failed(resolved.error));
   const { spec, rest, releaseTrack } = resolved.value;
+  const globals = globalsFor(spec.path[0]);
   const trackWarning = Option.isSome(releaseTrack)
     ? [
         line(
@@ -254,7 +255,7 @@ const execute = (
   if (ArgParser.asksHelp(rest)) {
     return result(world, Ready, [
       ...trackWarning,
-      ...CommandRegistry.help(spec, GlobalFlags).map((t) => line(t, "plain")),
+      ...CommandRegistry.help(spec, globals).map((t) => line(t, "plain")),
     ]);
   }
   if (spec.kind === "not-implemented") {
@@ -267,7 +268,7 @@ const execute = (
     );
   }
 
-  const args = ArgParser.parse(rest, [...spec.flags, ...GlobalFlags], spec.positionals);
+  const args = ArgParser.parse(rest, [...spec.flags, ...globals], spec.positionals);
   if (!Result.isOk(args))
     return result(
       world,
@@ -285,6 +286,32 @@ const execute = (
       failed(options.error),
     );
 
+  const projectFlag = ParsedArgs.string(args.value, "project");
+  const ctx: CommandContext = {
+    world,
+    now: input.now,
+    projectId: Option.or(projectFlag, World.currentProjectId(world)),
+    projectFlag,
+  };
+  if (spec.confirmation && !forceQuiet && !spec.confirmation.skip(args.value)) {
+    const preview = spec.confirmation.preview(ctx, args.value);
+    if (!Result.isOk(preview))
+      return result(
+        world,
+        Ready,
+        failureLines(Option.some(spec), preview.error),
+        failed(preview.error),
+      );
+    return result(
+      world,
+      { kind: "confirming", tokens, explicitYes: true },
+      [
+        ...outputLines(preview.value.output, options.value),
+        line("Enter 'yes' to apply these changes, or 'no' to cancel:", "plain"),
+      ],
+      { kind: "confirming" },
+    );
+  }
   const quiet = forceQuiet || ParsedArgs.boolean(args.value, "quiet");
   if (spec.destructive && !quiet) {
     return result(
@@ -295,13 +322,6 @@ const execute = (
     );
   }
 
-  const projectFlag = ParsedArgs.string(args.value, "project");
-  const ctx: CommandContext = {
-    world,
-    now: input.now,
-    projectId: Option.or(projectFlag, World.currentProjectId(world)),
-    projectFlag,
-  };
   const outcome = runSpec(spec, ctx, args.value);
   if (!Result.isOk(outcome))
     return result(
@@ -320,6 +340,14 @@ const execute = (
 
 const answerConfirmation = (input: ShellInput, tokens: readonly string[]): ShellResult => {
   const answer = input.line.trim().toLowerCase();
+  if (input.state.kind === "confirming" && input.state.explicitYes) {
+    if (answer === "yes") return execute(input, tokens, true);
+    if (answer === "no" || answer === "n" || answer === "")
+      return result(input.world, Ready, [line("Apply cancelled.", "plain")]);
+    return result(input.world, input.state, [line("Please enter 'yes' or 'no':", "plain")], {
+      kind: "confirming",
+    });
+  }
   if (answer === "" || answer === "y" || answer === "yes") return execute(input, tokens, true);
   if (answer === "n" || answer === "no")
     return result(input.world, Ready, [line("ERROR: (gcloud) Aborted by user.", "error")]);
@@ -328,9 +356,15 @@ const answerConfirmation = (input: ShellInput, tokens: readonly string[]): Shell
   });
 };
 
+const globalsFor = (tool: string | undefined): readonly FlagSpec[] =>
+  tool === "terraform" || tool === "sim"
+    ? GlobalFlags.filter((flag) => flag.name === "help")
+    : GlobalFlags;
+
 export const Shell = {
   Ready,
   GlobalFlags,
+  globalsFor,
 
   /**
    * 1 行を受け取り、World と shell の状態を進めて出力行を返す（UC-001 のステップ 1〜8）。

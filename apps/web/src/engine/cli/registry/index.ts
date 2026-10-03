@@ -120,7 +120,8 @@ const flagHelp = (flag: FlagSpec): string => {
         ? `=${flag.choices.join("|")}`
         : `=${flag.name.toUpperCase().replace(/-/g, "_")}`;
   const required = flag.required ? " (required)" : "";
-  return `  --${flag.name}${value}${required}\n      ${flag.description}`;
+  const aliases = flag.aliases.length ? ` (aliases: ${flag.aliases.join(", ")})` : "";
+  return `  --${flag.name}${value}${required}${aliases}\n      ${flag.description}`;
 };
 
 export const CommandRegistry = {
@@ -218,9 +219,19 @@ export const CommandRegistry = {
           ]),
       ...section("REQUIRED FLAGS", required),
       ...section("OPTIONAL FLAGS", optional),
-      ...section("GCLOUD WIDE FLAGS", globalFlags),
+      ...section(
+        spec.path[0] === "terraform" || spec.path[0] === "sim"
+          ? "GENERAL FLAGS"
+          : "GCLOUD WIDE FLAGS",
+        globalFlags,
+      ),
       "",
       "NOTES",
+      ...(spec.path[0] === "terraform" || spec.path[0] === "sim"
+        ? [
+            "    Terraform: 仮想ルートのVPC/subnetのみ対応。module/GCS backendなどは未対応（docs/TERRAFORM.md）。",
+          ]
+        : []),
       "    gcloud-sim は本物の一部だけを再現しています。IAM の判定はロールカタログに収録した権限だけで行い、",
       "    収録外の権限は許可として扱います（docs/COMMANDS.md）。",
     ];
@@ -261,7 +272,7 @@ export const CommandRegistry = {
             .toSorted()
         : [];
     const eq = partial.indexOf("=");
-    if (partial.startsWith("--") && eq !== -1) {
+    if (partial.startsWith("-") && eq !== -1) {
       const candidates = Option.flatMap(findFlag(flags, partial.slice(0, eq)), Flag.candidatesOf);
       return evaluate(candidates, partial.slice(eq + 1)).map(
         (c) => `${partial.slice(0, eq + 1)}${c}`,
@@ -269,7 +280,7 @@ export const CommandRegistry = {
     }
     if (partial.startsWith("-")) {
       return flags
-        .map((f) => `--${f.name}`)
+        .flatMap((f) => [`--${f.name}`, ...f.aliases])
         .filter((f) => f.startsWith(partial))
         .toSorted();
     }

@@ -395,6 +395,41 @@ const peeringRecord = (peering: NetworkPeering): JsonRecord => ({
 
 export const NetworkingCommands: readonly CommandSpec[] = [
   projectCommand({
+    path: ["gcloud", "compute", "networks", "subnets", "update"],
+    summary: "Update Private Google Access on a subnetwork.",
+    positionals: [Positional.required("NAME", "Subnetwork name.", Candidates.subnets)],
+    flags: [
+      CommonFlags.region,
+      Flag.boolean("enable-private-ip-google-access", "Enable or disable Private Google Access.", {
+        required: true,
+      }),
+    ],
+    permission: "compute.subnetworks.setPrivateIpGoogleAccess",
+    requiredApis: [ComputeApi],
+    run: (ctx, args) => {
+      const region = CommandContext.resolveRegion(ctx, ParsedArgs.string(args, "region"));
+      if (!Result.isOk(region)) return region;
+      const subnet = World.findSubnet(
+        ctx.world,
+        ctx.project.projectId,
+        region.value,
+        ParsedArgs.requiredPositional(args, 0),
+      );
+      if (!Option.isSome(subnet)) return Result.err(CommandFailure.notFound("subnetwork"));
+      const updated = {
+        ...subnet.value,
+        privateIpGoogleAccess: ParsedArgs.boolean(args, "enable-private-ip-google-access"),
+      };
+      return Result.ok({
+        world: {
+          ...ctx.world,
+          subnets: ctx.world.subnets.map((s) => (s === subnet.value ? updated : s)),
+        },
+        output: CommandOutput.yaml(Subnet.toRecord(updated)),
+      });
+    },
+  }),
+  projectCommand({
     path: ["gcloud", "compute", "networks", "create"],
     summary: "Create a Compute Engine network.",
     positionals: [Positional.required("NAME", "Name of the network to create.")],
