@@ -15,8 +15,9 @@ import {
   KmsCommands,
 } from "@/engine/commands/infrastructure-services";
 import { KubectlCommands } from "@/engine/commands/kubectl";
+import { LogMetricCommands, MonitoringResourceCommands } from "@/engine/commands/monitoring";
 import { NotImplementedCommands } from "@/engine/commands/not-implemented";
-import { LoggingCommands, MonitoringCommands } from "@/engine/commands/observability";
+import { LoggingCommands } from "@/engine/commands/observability";
 import {
   FolderCommands,
   OrganizationCommands,
@@ -54,7 +55,8 @@ const implemented: readonly CommandSpec[] = [
   ...SqlCommands,
   ...PubsubCommands,
   ...LoggingCommands,
-  ...MonitoringCommands,
+  ...LogMetricCommands,
+  ...MonitoringResourceCommands,
   ...KmsCommands,
   ...DnsCommands,
   ...DeploymentManagerCommands,

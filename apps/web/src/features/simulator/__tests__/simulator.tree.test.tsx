@@ -61,3 +61,22 @@ test("予算を選ぶとしきい値が百分率で出る", async () => {
   expect(within(details).getByText("50%, 90%, 100%")).toBeInTheDocument();
   expect(within(details).getByText("100000 JPY")).toBeInTheDocument();
 });
+
+test("監視設定がツリーに現れ、選択で詳細とproject付きdescribeを確認できる", async () => {
+  const user = userEvent.setup();
+  const s = run(
+    session(),
+    "gcloud monitoring uptime create public-web --resource-type=uptime-url --resource-labels=host=example.com,project_id=ace-dev-01 --protocol=https",
+  );
+  const { terminal } = renderSimulator({}, s.world);
+  await user.click(within(resourceTree()).getByText("public-web"));
+  const details = screen.getByRole("complementary", { name: "詳細" });
+  expect(within(details).getByText("example.com")).toBeInTheDocument();
+  expect(within(details).getByText("443")).toBeInTheDocument();
+  await user.click(within(details).getByRole("button", { name: "describe を挿入" }));
+  await waitFor(() =>
+    expect(terminal.written.at(-1)).toContain(
+      `gcloud monitoring uptime describe ${s.world.uptimeChecks[0]?.name} --project=ace-dev-01`,
+    ),
+  );
+});

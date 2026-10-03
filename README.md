@@ -23,7 +23,7 @@
   試行錯誤できる。エラーの下に `gcloud-sim: hint:` で「その権限を含むロール」を出す
 - **リソースツリー**: 組織 → フォルダ → プロジェクト → リソース。クリックでプロパティと
   IAM の継承元、ダブルクリックで `describe` を入力行に挿入
-- **ミッション**: 18 本（ACE の 5 ドメイン）。状態に対するアサーションでクリア判定する
+- **ミッション**: 23 本（ACE の 5 ドメイン）。状態に対するアサーションでクリア判定する
   （コマンドの文字列一致ではない）
 - **保存**: コマンドごとに localStorage へ自動保存。設定から JSON の export / import / リセット
 - **kubectl**: `gcloud container clusters get-credentials` したクラスタに対して、Deployment / Service / Pod を

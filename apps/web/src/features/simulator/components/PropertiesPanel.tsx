@@ -43,6 +43,7 @@ import {
   KubeServiceProperties,
   LogSinkProperties,
   NodePoolProperties,
+  ObservabilityProperties,
   RunServiceProperties,
   SqlInstanceProperties,
   SubscriptionProperties,
@@ -124,6 +125,8 @@ const Body = ({
       return <TopicProperties world={world} selection={selection} />;
     case "subscription":
       return <SubscriptionProperties world={world} selection={selection} />;
+    case "observability":
+      return <ObservabilityProperties world={world} selection={selection} />;
     case "log-sink":
       return <LogSinkProperties world={world} selection={selection} />;
     case "key-ring":
@@ -177,6 +180,7 @@ const titleOf = (selection: TreeSelection): string => {
     case "sql-instance":
     case "topic":
     case "subscription":
+    case "observability":
     case "log-sink":
     case "key-ring":
     case "dns-zone":
@@ -256,6 +260,8 @@ const kindLabel = (selection: TreeSelection): string => {
       return "pubsub#topic";
     case "subscription":
       return "pubsub#subscription";
+    case "observability":
+      return `observability#${selection.collection}`;
     case "log-sink":
       return "logging#sink";
     case "key-ring":

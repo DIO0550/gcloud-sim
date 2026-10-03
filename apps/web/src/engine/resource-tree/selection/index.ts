@@ -5,6 +5,12 @@ import { Option } from "@/utils/Option";
 
 /** ツリーで選べるもの。プロパティパネルはこれを見て World から中身を引く。 */
 export type TreeSelection =
+  | Readonly<{
+      kind: "observability";
+      projectId: string;
+      name: string;
+      collection: "logMetrics" | "dashboards" | "alertPolicies" | "uptimeChecks";
+    }>
   | Readonly<{ kind: "organization" }>
   | Readonly<{ kind: "folder"; id: string }>
   | Readonly<{ kind: "project"; projectId: string }>
@@ -81,6 +87,8 @@ export const TreeSelection = {
   /** ツリーのノード id にもなる一意なキー。 */
   key(selection: TreeSelection): string {
     switch (selection.kind) {
+      case "observability":
+        return `${selection.collection}:${selection.projectId}/${selection.name}`;
       case "organization":
         return "organization";
       case "folder":
@@ -167,6 +175,17 @@ export const TreeSelection = {
    */
   describeCommand(selection: TreeSelection): Option<string> {
     switch (selection.kind) {
+      case "observability": {
+        const paths = {
+          logMetrics: "logging metrics",
+          dashboards: "monitoring dashboards",
+          alertPolicies: "monitoring policies",
+          uptimeChecks: "monitoring uptime",
+        };
+        return Option.some(
+          `gcloud ${paths[selection.collection]} describe ${selection.name} --project=${selection.projectId}`,
+        );
+      }
       case "organization":
       case "app-version":
         return Option.none;

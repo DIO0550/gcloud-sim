@@ -282,12 +282,32 @@ const LoggingPermissions = [
   "logging.sinks.create",
   "logging.sinks.list",
   "logging.sinks.get",
+  "logging.sinks.update",
+  "logging.sinks.delete",
+  "logging.logMetrics.create",
+  "logging.logMetrics.update",
+  "logging.logMetrics.delete",
+  "logging.logMetrics.get",
+  "logging.logMetrics.list",
 ] as const;
 
-const MonitoringPermissions = [
+const MonitoringViewPermissions = [
   "monitoring.timeSeries.list",
   "monitoring.dashboards.list",
   "monitoring.alertPolicies.list",
+  "monitoring.alertPolicies.get",
+  "monitoring.dashboards.get",
+  "monitoring.uptimeCheckConfigs.list",
+  "monitoring.uptimeCheckConfigs.get",
+] as const;
+const MonitoringPermissions = [
+  ...MonitoringViewPermissions,
+  "monitoring.dashboards.create",
+  "monitoring.dashboards.delete",
+  "monitoring.alertPolicies.create",
+  "monitoring.alertPolicies.delete",
+  "monitoring.uptimeCheckConfigs.create",
+  "monitoring.uptimeCheckConfigs.delete",
 ] as const;
 
 const KmsPermissions = [
@@ -309,6 +329,9 @@ const DeploymentManagerPermissions = [
 ] as const;
 
 const ViewerPermissions = [
+  ...MonitoringViewPermissions,
+  "logging.logMetrics.get",
+  "logging.logMetrics.list",
   ...ComputeViewPermissions,
   ...StorageObjectViewPermissions,
   "storage.buckets.list",
@@ -563,11 +586,20 @@ const Roles: readonly Role[] = [
   role("roles/logging.viewer", "Logs Viewer", ["logging.logEntries.list", "logging.logs.list"]),
   role("roles/logging.admin", "Logging Admin", LoggingPermissions),
   role("roles/logging.configWriter", "Logs Configuration Writer", [
+    "logging.sinks.update",
+    "logging.sinks.delete",
+    "logging.logMetrics.create",
+    "logging.logMetrics.update",
+    "logging.logMetrics.delete",
+    "logging.logMetrics.get",
+    "logging.logMetrics.list",
     "logging.sinks.create",
     "logging.sinks.list",
     "logging.sinks.get",
   ]),
-  role("roles/monitoring.viewer", "Monitoring Viewer", MonitoringPermissions),
+  role("roles/monitoring.viewer", "Monitoring Viewer", MonitoringViewPermissions),
+  role("roles/monitoring.editor", "Monitoring Editor", MonitoringPermissions),
+  role("roles/monitoring.admin", "Monitoring Admin", MonitoringPermissions),
   role("roles/cloudfunctions.developer", "Cloud Functions Developer", FunctionsPermissions),
   role("roles/cloudfunctions.invoker", "Cloud Functions Invoker", [
     "cloudfunctions.functions.call",

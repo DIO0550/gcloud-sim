@@ -32,6 +32,7 @@ import {
 } from "@/engine/domains/load-balancing";
 import { type CloudRunService, type GkeCluster, NodePool } from "@/engine/domains/managed-services";
 import { MissionProgress } from "@/engine/domains/mission-progress";
+import type { AlertPolicy, Dashboard, LogMetric, UptimeCheck } from "@/engine/domains/monitoring";
 import type { LogSink } from "@/engine/domains/observability";
 import { type Operation, OperationHistoryLimit } from "@/engine/domains/operation";
 import { Principal } from "@/engine/domains/principal";
@@ -101,6 +102,10 @@ export type World = Readonly<{
   pubsubTopics: readonly PubsubTopic[];
   pubsubSubscriptions: readonly PubsubSubscription[];
   logSinks: readonly LogSink[];
+  logMetrics: readonly LogMetric[];
+  uptimeChecks: readonly UptimeCheck[];
+  alertPolicies: readonly AlertPolicy[];
+  dashboards: readonly Dashboard[];
   serviceAccountKeys: readonly ServiceAccountKey[];
   osLoginKeys: readonly OsLoginSshKey[];
   kmsKeyRings: readonly KmsKeyRing[];
@@ -251,6 +256,10 @@ const NamedCollectionKeys = [
   "pubsubTopics",
   "pubsubSubscriptions",
   "logSinks",
+  "logMetrics",
+  "uptimeChecks",
+  "alertPolicies",
+  "dashboards",
   "kmsKeyRings",
   "dnsZones",
   "dmDeployments",

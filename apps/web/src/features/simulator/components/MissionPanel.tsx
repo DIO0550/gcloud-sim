@@ -32,6 +32,16 @@ const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElem
 
 const assertionLabel = (assertion: Mission["assertions"][number]): string => {
   switch (assertion.kind) {
+    case "logMetricConfigured":
+      return `ログ指標 ${assertion.name} のフィルタが ${assertion.filter}`;
+    case "uptimeConfigured":
+      return `${assertion.displayName}: HTTPS ${assertion.host}${assertion.path} を ${assertion.period} 間隔で確認`;
+    case "dashboardConfigured":
+      return `ダッシュボード ${assertion.displayName} に指定のCPU指標がある`;
+    case "alertConfigured":
+      return `${assertion.displayName}: 指定のCPU指標 > ${assertion.threshold} が ${assertion.duration} 続く有効なアラート`;
+    case "logExportConfigured":
+      return `シンク ${assertion.name} の転送先・フィルタ・バケット書き込み権限がそろっている`;
     case "billingLinked":
       return `${assertion.projectId} に請求アカウントがリンクされている`;
     case "apiEnabled":

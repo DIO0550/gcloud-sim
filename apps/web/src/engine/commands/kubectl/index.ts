@@ -422,6 +422,7 @@ const apply = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
         }),
       );
     }
+    case "monitoring-dashboard":
     case "app-yaml":
     case "dm-config":
     case "lifecycle":

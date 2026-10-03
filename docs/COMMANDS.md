@@ -21,7 +21,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（215）
+## 実装済み（232）
 
 ### `gcloud config`
 
@@ -341,6 +341,13 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 | `gcloud logging sinks create` | `logging.sinks.create` | `logging.googleapis.com` | `--log-filter` |
 | `gcloud logging sinks list` | `logging.sinks.list` | `logging.googleapis.com` | — |
 | `gcloud logging sinks describe` | `logging.sinks.get` | `logging.googleapis.com` | — |
+| `gcloud logging metrics create` | `logging.logMetrics.create` | `logging.googleapis.com` | `--log-filter` `--description` |
+| `gcloud logging metrics update` | `logging.logMetrics.update` | `logging.googleapis.com` | `--log-filter` `--description` |
+| `gcloud logging metrics delete` | `logging.logMetrics.delete` | `logging.googleapis.com` | — |
+| `gcloud logging metrics describe` | `logging.logMetrics.get` | `logging.googleapis.com` | — |
+| `gcloud logging metrics list` | `logging.logMetrics.list` | `logging.googleapis.com` | — |
+| `gcloud logging sinks update` | `logging.sinks.update` | `logging.googleapis.com` | `--log-filter` |
+| `gcloud logging sinks delete` | `logging.sinks.delete` | `logging.googleapis.com` | — |
 
 ### `gcloud monitoring`
 
@@ -348,6 +355,16 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 |---|---|---|---|
 | `gcloud monitoring dashboards list` | `monitoring.dashboards.list` | `monitoring.googleapis.com` | — |
 | `gcloud monitoring policies list` | `monitoring.alertPolicies.list` | `monitoring.googleapis.com` | — |
+| `gcloud monitoring dashboards create` | `monitoring.dashboards.create` | `monitoring.googleapis.com` | `--config` `--config-from-file` `--validate-only` |
+| `gcloud monitoring dashboards describe` | `monitoring.dashboards.get` | `monitoring.googleapis.com` | — |
+| `gcloud monitoring dashboards delete` | `monitoring.dashboards.delete` | `monitoring.googleapis.com` | — |
+| `gcloud monitoring policies create` | `monitoring.alertPolicies.create` | `monitoring.googleapis.com` | `--display-name` `--condition-display-name` `--condition-filter` `--if` `--duration` `--combiner` `--enabled` |
+| `gcloud monitoring policies describe` | `monitoring.alertPolicies.get` | `monitoring.googleapis.com` | — |
+| `gcloud monitoring policies delete` | `monitoring.alertPolicies.delete` | `monitoring.googleapis.com` | — |
+| `gcloud monitoring uptime create` | `monitoring.uptimeCheckConfigs.create` | `monitoring.googleapis.com` | `--resource-type` `--resource-labels` `--protocol` `--path` `--port` `--period` `--timeout` |
+| `gcloud monitoring uptime describe` | `monitoring.uptimeCheckConfigs.get` | `monitoring.googleapis.com` | — |
+| `gcloud monitoring uptime delete` | `monitoring.uptimeCheckConfigs.delete` | `monitoring.googleapis.com` | — |
+| `gcloud monitoring uptime list` | `monitoring.uptimeCheckConfigs.list` | `monitoring.googleapis.com` | — |
 
 ### `gcloud kms`
 
@@ -390,3 +407,45 @@ gcloud-sim にはローカルのファイルシステムが無い。**中身が�
 | `lifecycle.json` | `gsutil lifecycle set` / `gcloud storage buckets update --lifecycle-file` | 365 日で Delete |
 | `lifecycle-nearline.json` | 同上 | 30 日で SetStorageClass NEARLINE |
 | `key.json` | `gcloud auth activate-service-account --key-file` | `web-sa@ace-dev-01.iam.gserviceaccount.com` の鍵。`keys create OUTPUT` で書き出した名前も使える |
+
+
+## 監視・ログ演習の再現範囲
+
+- `logging read 'LOG_FILTER'` は比較、AND/OR/NOT、括弧を解釈し、severityの順序も考慮する。`--order=asc|desc` に対応。ログはCompute操作履歴由来の管理アクティビティのみ。実クラウドから収集しない。フルLoggingクエリ言語（関数や正規表現等）は未対応でエラー。
+- `logging metrics` はカウンタ指標の設定。時系列の取り込み・遡及集計はしない。`sinks update/delete` は転送設定の変更で、実際の配送はしない。
+- `monitoring dashboards create` はJSONの `gridLayout`（columns=1、xyChart 1つ、timeSeriesFilter 1つ）のみ。未対応フィールド/レイアウトを黙って捨てずエラーにする。`--validate-only` は保存しない。
+- `monitoring policies create` は1つのしきい値条件（`--if='> 0.8'` / `'< 1'`、`--duration=300s`、OR）。通知先・複数条件・欠測/PromQL・インシデント評価は未対応。
+- `monitoring uptime create` はpublic URLのHTTP/HTTPS設定。periodは分（1/5/10/15）、timeoutは秒（1〜60）。外部URLへアクセスせず、稼働状況の値は生成しない。
+- 上記設定はリソースツリーとプロパティ、一覧/describe、JSON保存/復元に反映する。Snapshot v3。v1/v2は新規集合を空にして移行する。
+- 新ミッション5本はログ指標、uptime、CPUダッシュボード、CPUアラート、sinkと転送先IAM。残る資料対応は [ACE_COVERAGE.md](ACE_COVERAGE.md)。
+
+### 組み込み cpu-dashboard.json
+
+`gcloud monitoring dashboards create --config-from-file=cpu-dashboard.json` が読む学習用サンプル。任意のローカルファイルを読む機能ではない。次のJSONを `--config` に渡しても同じ設定になる。
+
+```json
+{
+  "displayName": "VM CPU",
+  "gridLayout": {
+    "columns": 1,
+    "widgets": [{
+      "title": "CPU utilization",
+      "xyChart": {
+        "dataSets": [{
+          "timeSeriesQuery": {
+            "timeSeriesFilter": {
+              "filter": "metric.type=\"compute.googleapis.com/instance/cpu/utilization\" AND resource.type=\"gce_instance\""
+            }
+          }
+        }]
+      }
+    }]
+  }
+}
+```
+
+構文確認に使用した公式資料:
+- https://docs.cloud.google.com/sdk/gcloud/reference/monitoring/dashboards/create
+- https://docs.cloud.google.com/sdk/gcloud/reference/monitoring/policies/create
+- https://docs.cloud.google.com/sdk/gcloud/reference/monitoring/uptime/create
+- https://docs.cloud.google.com/sdk/gcloud/reference/logging/metrics/create

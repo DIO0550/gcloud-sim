@@ -72,6 +72,7 @@ import {
 } from "@/engine/domains/load-balancing";
 import type { CloudRunService, GkeCluster, NodePool } from "@/engine/domains/managed-services";
 import { type MissionProgress, MissionStatuses } from "@/engine/domains/mission-progress";
+import { AlertPolicy, Dashboard, LogMetric, UptimeCheck } from "@/engine/domains/monitoring";
 import type { LogSink } from "@/engine/domains/observability";
 import { type Operation, OperationTypes } from "@/engine/domains/operation";
 import { Principal } from "@/engine/domains/principal";
@@ -103,11 +104,12 @@ import { Result } from "@/utils/Result";
  * Snapshot の互換性のためのバージョン。World の形を変えたら上げてマイグレーションを足す（DJ-007）。
  * v1 は Phase 1 の集合だけ、v2 は残りのサービスの集合と `session.adc` / `components`・SA のポリシー・
  * バケットのバージョニング / ライフサイクル / ACL・オブジェクトのストレージクラスを持つ。
+ * v3 はログ指標・ダッシュボード・アラートポリシー・稼働時間チェックを持つ。
  */
-export const SchemaVersion = 2;
+export const SchemaVersion = 3;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
-const MigratableVersions = [1] as const;
+const MigratableVersions = [1, 2] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
 export type Snapshot = Readonly<{
@@ -742,6 +744,10 @@ const world = D.object<World>({
   pubsubTopics: D.array(pubsubTopic),
   pubsubSubscriptions: D.array(pubsubSubscription),
   logSinks: D.array(logSink),
+  logMetrics: D.array(LogMetric.decode),
+  uptimeChecks: D.array(UptimeCheck.decode),
+  alertPolicies: D.array(AlertPolicy.decode),
+  dashboards: D.array(Dashboard.decode),
   serviceAccountKeys: D.array(serviceAccountKey),
   osLoginKeys: D.array(osLoginKey),
   kmsKeyRings: D.array(kmsKeyRing),
@@ -804,8 +810,11 @@ const migrateV1 = (value: unknown): unknown => {
   return { ...EmptyCollections, ...value, session, serviceAccounts, buckets };
 };
 
-const migrate = (version: number, value: unknown): unknown =>
-  version === 1 ? migrateV1(value) : value;
+const migrate = (version: number, value: unknown): unknown => {
+  const previous = version === 1 ? migrateV1(value) : value;
+  if (version >= 3 || !isRecord(previous)) return previous;
+  return { logMetrics: [], uptimeChecks: [], alertPolicies: [], dashboards: [], ...previous };
+};
 
 export const Snapshot = {
   /**

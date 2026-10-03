@@ -10,6 +10,8 @@ import {
   Positional,
   type ProjectContext,
 } from "@/engine/cli/command-spec";
+import type { FilterExpr } from "@/engine/cli/formatter";
+import { LogFilter } from "@/engine/commands/observability/filter";
 import { alreadyExists, describeNamedCommand, projectCommand } from "@/engine/commands/shared";
 import { Freshness, LogEntry, LogNames, LogSink } from "@/engine/domains/observability";
 import { World } from "@/engine/domains/world";
@@ -17,7 +19,6 @@ import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
 const LoggingApi = "logging.googleapis.com" as const;
-const MonitoringApi = "monitoring.googleapis.com" as const;
 
 const SinkColumns = [
   Column.create("NAME", "name"),
@@ -39,17 +40,34 @@ const readLogs = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   );
   if (!Result.isOk(freshness)) return freshness;
   const since = Date.parse(ctx.now) - freshness.value * 1000;
+  const rawFilter = Option.unwrapOr(ParsedArgs.positional(args, 0), "");
+  const filter: Result<Option<FilterExpr>, CommandFailure> = rawFilter.trim() === ""
+    ? Result.ok(Option.none)
+    : Result.map(LogFilter.parse(rawFilter), Option.some);
+  if (!Result.isOk(filter)) return filter;
   const entries = World.operationsOf(ctx.world, ctx.project.projectId)
     .map(LogEntry.fromOperation)
     .filter((e) => Date.parse(e.timestamp) >= since)
-    .toReversed();
+    .map(LogEntry.toRecord)
+    .filter(
+      (entry) => !Option.isSome(filter.value) || LogFilter.matches(filter.value.value, entry),
+    );
+  const ordered =
+    Option.unwrapOr(ParsedArgs.string(args, "order"), "desc") === "asc"
+      ? entries
+      : entries.toReversed();
   return Result.ok({
     world: ctx.world,
-    output: CommandOutput.yamlList(entries.map(LogEntry.toRecord)),
+    output: CommandOutput.yamlList(ordered),
   });
 };
 
 const createSink = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+  const filter = Option.unwrapOr(ParsedArgs.string(args, "log-filter"), "");
+  if (filter.trim() !== "") {
+    const checked = LogFilter.parse(filter);
+    if (!Result.isOk(checked)) return checked;
+  }
   const numbered = World.nextNumber(ctx.world);
   const sink = Result.mapErr(
     LogSink.create(
@@ -92,14 +110,68 @@ const createSink = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   );
 };
 
+const sinkMutations: readonly CommandSpec[] = (["update", "delete"] as const).map((action) =>
+  projectCommand({
+    path: ["gcloud", "logging", "sinks", action],
+    summary: `${action} a log sink.`,
+    positionals: [
+      Positional.required("SINK_NAME", "Sink name."),
+      ...(action === "update" ? [Positional.optional("DESTINATION", "New sink destination.")] : []),
+    ],
+    flags: action === "update" ? [Flag.string("log-filter", "New log filter.")] : [],
+    permission: `logging.sinks.${action}`,
+    requiredApis: [LoggingApi],
+    destructive: action === "delete",
+    run: (ctx, args) => {
+      const name = ParsedArgs.requiredPositional(args, 0);
+      const existing = World.findNamed(ctx.world, "logSinks", {
+        projectId: ctx.project.projectId,
+        name,
+      });
+      if (!Option.isSome(existing)) return Result.err(CommandFailure.notFound(name));
+      if (action === "delete")
+        return Result.ok({
+          world: World.withoutNamed(ctx.world, "logSinks", existing.value),
+          output: CommandOutput.messages(OutputMessage.plain(`Deleted [${name}].`)),
+        });
+      const filter = Option.unwrapOr(ParsedArgs.string(args, "log-filter"), existing.value.filter);
+      if (filter.trim() !== "") {
+        const checked = LogFilter.parse(filter);
+        if (!Result.isOk(checked)) return checked;
+      }
+      const updated = Result.mapErr(
+        LogSink.create(
+          {
+            ...existing.value,
+            destination: Option.unwrapOr(
+              ParsedArgs.positional(args, 1),
+              existing.value.destination,
+            ),
+            filter,
+          },
+          ctx.world.sequence,
+        ),
+        (message) => CommandFailure.invalidValue("SINK", message),
+      );
+      if (!Result.isOk(updated)) return updated;
+      const sink = { ...updated.value, writerIdentity: existing.value.writerIdentity };
+      return Result.ok({
+        world: World.replaceNamed(ctx.world, "logSinks", sink),
+        output: CommandOutput.yaml(LogSink.toRecord(sink)),
+      });
+    },
+  }),
+);
+
 export const LoggingCommands: readonly CommandSpec[] = [
+  ...sinkMutations,
   projectCommand({
     path: ["gcloud", "logging", "read"],
     summary: "Read log entries (audit logs derived from the operation history).",
     positionals: [
       Positional.optional(
         "LOG_FILTER",
-        "Filter expression (accepted; use --filter for gcloud-sim's simple filter).",
+        "Filter expression: comparisons, AND/OR/NOT, and parentheses. Unsupported syntax is rejected.",
       ),
     ],
     flags: [
@@ -107,10 +179,7 @@ export const LoggingCommands: readonly CommandSpec[] = [
         "freshness",
         "Return entries that are not older than this value, e.g. 1d, 12h (default 1d).",
       ),
-      Flag.enum("order", "Ordering of returned log entries (only desc is simulated).", [
-        "asc",
-        "desc",
-      ]),
+      Flag.enum("order", "Ordering of returned log entries.", ["asc", "desc"]),
     ],
     permission: "logging.logEntries.list",
     requiredApis: [LoggingApi],
@@ -176,30 +245,5 @@ export const LoggingCommands: readonly CommandSpec[] = [
     requiredApis: [LoggingApi],
     resourcePath: (ref) => `projects/${ref.projectId}/sinks/${ref.name}`,
     record: LogSink.toRecord,
-  }),
-];
-
-export const MonitoringCommands: readonly CommandSpec[] = [
-  projectCommand({
-    path: ["gcloud", "monitoring", "dashboards", "list"],
-    summary: "List Monitoring dashboards (gcloud-sim has no dashboards, so the list is empty).",
-    permission: "monitoring.dashboards.list",
-    requiredApis: [MonitoringApi],
-    run: (ctx) =>
-      Result.ok({
-        world: ctx.world,
-        output: CommandOutput.messages(OutputMessage.plain("Listed 0 items.")),
-      }),
-  }),
-  projectCommand({
-    path: ["gcloud", "monitoring", "policies", "list"],
-    summary: "List alert policies (gcloud-sim has no alert policies, so the list is empty).",
-    permission: "monitoring.alertPolicies.list",
-    requiredApis: [MonitoringApi],
-    run: (ctx) =>
-      Result.ok({
-        world: ctx.world,
-        output: CommandOutput.messages(OutputMessage.plain("Listed 0 items.")),
-      }),
   }),
 ];
