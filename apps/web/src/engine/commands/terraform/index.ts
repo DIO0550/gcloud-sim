@@ -106,7 +106,7 @@ const applyCommand = (destroy: boolean): CommandSpec => ({
       (!destroy && savedPlan(ctx.world, args)) ||
       TfRuntime.plan(ctx.world, planMode(args, destroy));
     return ok(
-      TfRuntime.apply(ctx.world, plan),
+      TfRuntime.apply(ctx.world, plan, ctx.now),
       `${TfRuntime.summary(plan)}\nApply complete (simulated).`,
     );
   }),
@@ -425,10 +425,10 @@ export const TerraformCommands: readonly CommandSpec[] = [
   }),
   plainCommand({
     path: ["terraform", "import"],
-    summary: "Import an existing custom network/subnetwork into a configured address.",
+    summary: "Import an existing supported resource into a configured address.",
     positionals: [
       Positional.required("ADDRESS", "Address declared in HCL."),
-      Positional.required("ID", "Full projects/... resource ID."),
+      Positional.required("ID", "Compute projects/... ID or bucket name / project/name."),
     ],
     run: guarded((ctx, args) => {
       requireInit(ctx.world);
@@ -436,7 +436,11 @@ export const TerraformCommands: readonly CommandSpec[] = [
       const target =
         config.resources.find((r) => r.address === args.positionals[0]) ??
         fail("Address is not declared in configuration.");
-      if (args.positionals[1] !== TerraformState.id(target))
+      const id = args.positionals[1];
+      const validId =
+        id === TerraformState.id(target) ||
+        (target.type === "google_storage_bucket" && id === `${target.project}/${target.name}`);
+      if (!validId)
         fail(`Use the full ID matching this configuration: ${TerraformState.id(target)}`);
       if (
         ctx.world.terraform.resources.some(
@@ -450,7 +454,10 @@ export const TerraformCommands: readonly CommandSpec[] = [
           ...ctx.world,
           terraform: {
             ...ctx.world.terraform,
-            resources: [...ctx.world.terraform.resources, actual],
+            resources: [
+              ...ctx.world.terraform.resources,
+              actual.type === "google_storage_bucket" ? { ...actual, forceDestroy: false } : actual,
+            ],
             serial: ctx.world.terraform.serial + 1,
           },
         },

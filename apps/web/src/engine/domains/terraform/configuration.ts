@@ -2,6 +2,8 @@ import { Region } from "@/engine/domains/catalog";
 import { Network, Subnet, SubnetModes } from "@/engine/domains/compute";
 import { TerraformState, type TfResource } from "@/engine/domains/terraform";
 import { type Expression, Hcl, type HclBlock, type HclBody } from "@/engine/domains/terraform/hcl";
+import { TfResourceConfiguration } from "@/engine/domains/terraform/resource-configuration";
+import { TfResources } from "@/engine/domains/terraform/resources";
 import { type TfMove, TfStructure } from "@/engine/domains/terraform/structure";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -80,7 +82,7 @@ const compileModule = (
   if (context.prefix && provider)
     fail("Child provider configurations are not supported; inherit the root Google provider.");
   if (provider && label(provider, 1) !== "google") fail("Only provider google is supported.");
-  if (provider) checkBody(provider.body, ["project", "region"]);
+  if (provider) checkBody(provider.body, ["project", "region", "zone"]);
   for (const block of blocks.filter((b) => b.type === "terraform")) {
     label(block, 0);
     if (Object.keys(block.body.attributes).length)
@@ -174,11 +176,35 @@ const compileModule = (
     const r = resolve(`${parts[0]}.${parts[1]}`);
     if (parts[2] === "id") return TerraformState.id(r);
     if (parts[2] === "self_link")
-      return `https://www.googleapis.com/compute/v1/${TerraformState.id(r)}`;
+      return r.type === "google_storage_bucket"
+        ? `https://www.googleapis.com/storage/v1/b/${r.name}`
+        : `https://www.googleapis.com/compute/v1/${TerraformState.id(r)}`;
     if (parts[2] === "name") return r.name;
     if (r.type === "google_compute_subnetwork" && parts[2] === "private_ip_google_access")
       return r.privateAccess;
     if (r.type === "google_compute_subnetwork" && parts[2] === "ip_cidr_range") return r.cidr;
+    const supported = [
+      "project",
+      "region",
+      "zone",
+      "machine_type",
+      "allow_stopping_for_update",
+      "location",
+      "storage_class",
+      "uniform_bucket_level_access",
+      "public_access_prevention",
+      "force_destroy",
+      "url",
+      "direction",
+      "priority",
+      "disabled",
+      "auto_create_subnetworks",
+    ];
+    if (!supported.includes(parts[2] ?? "")) return fail(`Unsupported reference: ${expr.ref}`);
+    const record = TfResources.record(r);
+    const value: unknown = record[parts[2] as keyof typeof record];
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean")
+      return value;
     return fail(`Unsupported reference: ${expr.ref}`);
   };
   const providerValue = (name: string): Scalar | undefined => {
@@ -187,7 +213,11 @@ const compileModule = (
       fail("Provider configuration may only reference variables.");
     return evaluate(expr) ?? context.provider[name];
   };
-  const inheritedProvider = { project: providerValue("project"), region: providerValue("region") };
+  const inheritedProvider = {
+    project: providerValue("project"),
+    region: providerValue("region"),
+    zone: providerValue("zone"),
+  };
   const resolveModule = (name: string): CompiledModule => {
     const existing = modules.get(name);
     if (existing) return existing;
@@ -230,8 +260,20 @@ const compileModule = (
     visiting.add(address);
     const b = definitions.get(address) ?? fail(`Unknown resource: ${address}`);
     const type = b.labels[0];
-    if (type !== "google_compute_network" && type !== "google_compute_subnetwork")
-      return fail(`Unsupported resource type: ${type}`);
+    if (type !== "google_compute_network" && type !== "google_compute_subnetwork") {
+      const configured = TfResourceConfiguration.compile(
+        type ?? "",
+        `${context.prefix}${address}`,
+        b.body,
+        evaluate,
+        inheritedProvider,
+      );
+      TfConfiguration.validateResource(configured);
+      const resource = observed.find((item) => item.address === configured.address) ?? configured;
+      resources.set(address, resource);
+      visiting.delete(address);
+      return resource;
+    }
     checkBody(
       b.body,
       type === "google_compute_network"
@@ -265,6 +307,7 @@ const compileModule = (
       if (typeof access !== "boolean") fail("private_ip_google_access must be bool.");
       r = {
         ...r,
+        type: "google_compute_subnetwork",
         region: string(attr("region") ?? providerValue("region"), "region"),
         network: match?.[2] ?? raw,
         cidr: string(attr("ip_cidr_range"), "ip_cidr_range"),
@@ -349,6 +392,8 @@ export const TfConfiguration = {
   },
 
   validateResource(r: TfResource): void {
+    TfResources.validate(r);
+    if (r.type !== "google_compute_network" && r.type !== "google_compute_subnetwork") return;
     const checked = Network.create({
       projectId: r.project,
       name: r.name,

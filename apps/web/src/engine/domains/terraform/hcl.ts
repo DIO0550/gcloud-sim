@@ -3,6 +3,7 @@ export type Expression =
   | string
   | number
   | boolean
+  | Readonly<{ list: readonly Expression[] }>
   | Readonly<{ ref: string }>
   | Readonly<{ object: Readonly<Record<string, Expression>> }>;
 export type HclBody = Readonly<{
@@ -23,7 +24,7 @@ export const Hcl = {
     const tokens: string[] = [];
     let offset = 0;
     const pattern =
-      /\s+|#[^\n]*|\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|-?\d+(?:\.\d+)?|[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)*|[{}=,]/y;
+      /\s+|#[^\n]*|\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|-?\d+(?:\.\d+)?|[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)*|[{}=,[\]]/y;
     while (offset < source.length) {
       pattern.lastIndex = offset;
       const found = pattern.exec(source);
@@ -51,6 +52,17 @@ export const Hcl = {
       if (token.startsWith('"')) return quoted(token);
       if (token === "true" || token === "false") return token === "true";
       if (/^-?\d/.test(token)) return Number(token);
+      if (token === "[") {
+        const list: Expression[] = [];
+        while (tokens[cursor] !== "]") {
+          if (list.length >= 100) throw new Error("At most 100 list entries are supported.");
+          list.push(expression(depth + 1));
+          if (tokens[cursor] === "]") break;
+          if (take() !== ",") throw new Error("Expected comma in list.");
+        }
+        cursor++;
+        return { list };
+      }
       if (token === "{") {
         const object: Record<string, Expression> = {};
         while (tokens[cursor] !== "}") {
@@ -99,6 +111,7 @@ export const Hcl = {
     const formatExpr = (e: Expression): string => {
       if (typeof e !== "object") return JSON.stringify(e);
       if ("ref" in e) return e.ref;
+      if ("list" in e) return `[${e.list.map(formatExpr).join(", ")}]`;
       return `{ ${Object.entries(e.object)
         .map(([k, v]) => `${k} = ${formatExpr(v)}`)
         .join(", ")} }`;

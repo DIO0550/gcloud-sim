@@ -649,6 +649,7 @@ const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
     case "terraformManaged":
     case "terraformMoved":
+    case "terraformDestroyed":
       return terraformSatisfied(world, assertion);
     case "logMetricConfigured":
     case "uptimeConfigured":

@@ -1,17 +1,9 @@
+import { type TfResource, TfResources } from "@/engine/domains/terraform/resources";
 import { type TfMove, TfStructure } from "@/engine/domains/terraform/structure";
 import { Decoder as D } from "@/utils/Decoder";
 import { Result } from "@/utils/Result";
 
-export type TfResource = Readonly<{
-  address: string;
-  type: "google_compute_network" | "google_compute_subnetwork";
-  project: string;
-  name: string;
-  region: string;
-  network: string;
-  cidr: string;
-  privateAccess: boolean;
-}>;
+export type { TfResource } from "@/engine/domains/terraform/resources";
 export type TfChange = Readonly<{ action: "create" | "update" | "delete"; resource: TfResource }>;
 export type TfPlan = Readonly<{
   moves: readonly TfMove[];
@@ -31,16 +23,7 @@ export type TerraformState = Readonly<{
   outputs: Readonly<Record<string, string>>;
   plans: Readonly<Record<string, TfPlan>>;
 }>;
-const resource = D.object<TfResource>({
-  address: D.string,
-  type: D.literal(["google_compute_network", "google_compute_subnetwork"]),
-  project: D.string,
-  name: D.string,
-  region: D.string,
-  network: D.string,
-  cidr: D.string,
-  privateAccess: D.boolean,
-});
+const resource = TfResources.decoder;
 const plan = D.object<TfPlan>({
   moves: D.array(D.object<TfMove>({ from: D.string, to: D.string })),
   serial: D.number,
@@ -72,24 +55,8 @@ export const TerraformState = {
     outputs: D.record(D.string),
     plans: D.record(plan),
   }),
-  id: (r: TfResource): string =>
-    r.type === "google_compute_network"
-      ? `projects/${r.project}/global/networks/${r.name}`
-      : `projects/${r.project}/regions/${r.region}/subnetworks/${r.name}`,
-  record: (r: TfResource) => ({
-    address: r.address,
-    id: TerraformState.id(r),
-    project: r.project,
-    name: r.name,
-    ...(r.type === "google_compute_network"
-      ? { auto_create_subnetworks: false }
-      : {
-          region: r.region,
-          network: r.network,
-          ip_cidr_range: r.cidr,
-          private_ip_google_access: r.privateAccess,
-        }),
-  }),
+  id: TfResources.id,
+  record: TfResources.record,
   validate(state: TerraformState): Result<TerraformState, string> {
     const safe = (name: string): boolean =>
       /^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/.test(name) &&
@@ -115,7 +82,9 @@ export const TerraformState = {
       rs.every(
         (r) =>
           TfStructure.resourceType(r.address) === r.type &&
-          /^[a-z][a-z0-9-]{0,62}$/.test(r.name) &&
+          (r.type === "google_storage_bucket"
+            ? /^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$/.test(r.name)
+            : /^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$/.test(r.name)) &&
           /^[a-z][a-z0-9-]+$/.test(r.project) &&
           (r.type !== "google_compute_network" ||
             (r.region === "" && r.network === "" && r.cidr === "" && !r.privateAccess)),
@@ -123,6 +92,15 @@ export const TerraformState = {
     if (!resourcesValid(state.resources))
       return Result.err("Invalid or duplicate Terraform resource identity.");
     try {
+      for (const r of state.resources) TfResources.validate(r);
+      for (const p of Object.values(state.plans))
+        for (const r of [
+          ...p.before,
+          ...p.after,
+          ...p.changes.map((c) => c.resource),
+          ...p.drift.map((c) => c.resource),
+        ])
+          TfResources.validate(r);
       for (const p of Object.values(state.plans)) TfStructure.validateMoves(p.moves);
     } catch (error) {
       return Result.err(error instanceof Error ? error.message : "Invalid saved moves.");

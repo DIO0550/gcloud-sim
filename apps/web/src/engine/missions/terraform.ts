@@ -1,10 +1,14 @@
+import { TerraformInfrastructureExample } from "@/engine/commands/terraform/examples";
 import type { TfResource } from "@/engine/domains/terraform";
+import { TerraformState } from "@/engine/domains/terraform";
 import { TfConfiguration } from "@/engine/domains/terraform/configuration";
+import { TfResourceRuntime } from "@/engine/domains/terraform/resource-runtime";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
 
 export type TerraformAssertion =
+  | Readonly<{ kind: "terraformDestroyed"; resources: readonly TfResource[] }>
   | Readonly<{ kind: "terraformManaged"; resource: TfResource }>
   | Readonly<{ kind: "terraformMoved"; resource: TfResource; from: string }>;
 const network: TfResource = {
@@ -31,6 +35,10 @@ const setup = [
   { kind: "setPrincipal", principal: F.owner },
   { kind: "setProject", projectId: F.devProjectId },
 ] as const;
+
+const infrastructure = TfConfiguration.compile({
+  "main.tf": TerraformInfrastructureExample,
+}).resources;
 
 export const TerraformMissions: readonly Mission[] = [
   {
@@ -114,12 +122,70 @@ export const TerraformMissions: readonly Mission[] = [
       },
     ],
   },
+  {
+    id: "m-terraform-005",
+    domain: "デプロイと実装",
+    title: "TerraformでVM・firewall・bucketをまとめて構築する",
+    description:
+      "ace-dev-01にVPC/subnet、HTTP/HTTPS用firewall、e2-microのVM、版管理と公開アクセス防止を有効にしたbucketを作成します。5つのリソースの構成・state・実リソースをそろえます。",
+    setup,
+    hints: [
+      "sim files load terraform-infrastructure で例を読み込み、sim files read main.tf で各resourceと参照を確認します。既存main.tfがあれば内容を確認し、必要に応じて --force で置き換えます。",
+      "gcloud auth application-default login → terraform init → terraform plan -out=infra-plan → terraform apply infra-plan",
+      "terraform state list と gcloud compute instances describe tf-lab-vm --zone=us-central1-a、gcloud storage buckets describe gs://ace-dev-01-tf-lab-assets で確認します。",
+    ],
+    assertions: infrastructure.map((resource) => ({ kind: "terraformManaged" as const, resource })),
+  },
+  {
+    id: "m-terraform-006",
+    domain: "運用の維持",
+    title: "Terraformの管理対象を依存順に片付ける",
+    description:
+      "terraform-infrastructureの5リソースを用意し、destroy planを保存・確認して適用します。初めから空の状態やstate rmだけでは完了しません。",
+    setup,
+    hints: [
+      "初期状態では sim files load terraform-infrastructure → gcloud auth application-default login → terraform init → terraform apply -auto-approve で対象を用意します。",
+      "terraform plan -destroy -out=cleanup-plan → terraform show cleanup-plan。VM/firewallを先に、subnet/VPCを後に削除する計画を確認します。",
+      "terraform apply cleanup-plan → terraform state list。bucketが空でない場合はオブジェクトを削除するか、force_destroy = trueを構成に指定して通常のapplyを行ってからdestroy planを作り直します。",
+    ],
+    assertions: [{ kind: "terraformDestroyed", resources: infrastructure }],
+  },
 ];
 
 export const terraformSatisfied = (world: World, assertion: TerraformAssertion): boolean => {
+  if (assertion.kind === "terraformDestroyed") {
+    if (!world.terraform.initialized || world.terraform.resources.length) return false;
+    const planned = Object.values(world.terraform.plans).some(
+      (p) =>
+        p.mode === "destroy" &&
+        p.serial + 1 === world.terraform.serial &&
+        !p.after.length &&
+        assertion.resources.every((r) =>
+          p.before.some(
+            (old) => old.address === r.address && TerraformState.id(old) === TerraformState.id(r),
+          ),
+        ),
+    );
+    if (!planned) return false;
+    return assertion.resources.every((r) => {
+      if (r.type === "google_compute_network")
+        return !world.networks.some((n) => n.projectId === r.project && n.name === r.name);
+      if (r.type === "google_compute_subnetwork")
+        return !world.subnets.some(
+          (n) => n.projectId === r.project && n.name === r.name && n.region === r.region,
+        );
+      try {
+        return !TfResourceRuntime.read(world, r);
+      } catch {
+        return false;
+      }
+    });
+  }
   const expected = assertion.resource;
   const matches = (r: TfResource): boolean =>
-    Object.entries(expected).every(([key, value]) => r[key as keyof TfResource] === value);
+    Object.entries(expected).every(
+      ([key, value]) => JSON.stringify(r[key as keyof TfResource]) === JSON.stringify(value),
+    );
   if (!world.terraform.initialized || !world.terraform.resources.some(matches)) return false;
   if (
     assertion.kind === "terraformMoved" &&
@@ -143,6 +209,14 @@ export const terraformSatisfied = (world: World, assertion: TerraformAssertion):
       (n) =>
         n.projectId === expected.project && n.name === expected.name && n.subnetMode === "CUSTOM",
     );
+  if (expected.type !== "google_compute_subnetwork") {
+    try {
+      const actual = TfResourceRuntime.read(world, expected);
+      return actual !== undefined && matches(actual);
+    } catch {
+      return false;
+    }
+  }
   return world.subnets.some(
     (s) =>
       s.projectId === expected.project &&
