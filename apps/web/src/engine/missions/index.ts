@@ -33,6 +33,11 @@ import { ServiceAccount } from "@/engine/domains/service-account";
 import { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import {
+  type ContainerAssertion,
+  ContainerMissions,
+  containerSatisfied,
+} from "@/engine/missions/containers";
+import {
   type ObservabilityAssertion,
   ObservabilityMissions,
   observabilitySatisfied,
@@ -58,6 +63,7 @@ export type MissionDomain = ValueOf<typeof MissionDomains>;
 
 /** World に対する述語（DJ-010: コマンド文字列ではなく状態で判定する）。値の語彙はドメインの型で閉じる。 */
 export type MissionAssertion =
+  | ContainerAssertion
   | TerraformAssertion
   | ObservabilityAssertion
   | Readonly<{ kind: "billingLinked"; projectId: string }>
@@ -194,6 +200,7 @@ const organization: PolicyTarget = { type: "organization", id: F.organizationId 
 const Missions: readonly Mission[] = [
   ...ObservabilityMissions,
   ...TerraformMissions,
+  ...ContainerMissions,
   {
     id: "m-setup-001",
     domain: MissionDomains.Setup,
@@ -647,6 +654,9 @@ const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: 
 
 const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
+    case "localContainerReady":
+    case "artifactPublished":
+      return containerSatisfied(world, assertion);
     case "terraformManaged":
     case "terraformMoved":
     case "terraformDestroyed":

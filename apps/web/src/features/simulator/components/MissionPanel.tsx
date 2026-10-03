@@ -32,6 +32,12 @@ const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElem
 
 const assertionLabel = (assertion: Mission["assertions"][number]): string => {
   switch (assertion.kind) {
+    case "localContainerReady":
+      return `${assertion.name}: hello:v1で起動し ${assertion.hostPort} → 8080を公開`;
+    case "artifactPublished":
+      return assertion.readerOnly
+        ? "hello:v1を登録し、developerのダウンロードだけを許可"
+        : "ace-imagesへhello:v1を登録（hello-web v1）";
     case "terraformBackendMigrated":
       return `ローカルstateを gs://${assertion.bucket}/${assertion.prefix} へ移行（版管理有効）`;
     case "terraformDestroyed":

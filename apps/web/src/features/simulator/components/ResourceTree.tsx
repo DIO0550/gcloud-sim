@@ -48,6 +48,10 @@ const badgeText = (badge: TreeBadge): string => {
 /** リソース種別グループの見出し（モック 2a のプロダクト名。足した種別も同じ流儀）。 */
 const groupText = (group: ResourceGroup): string => {
   switch (group) {
+    case "artifacts":
+      return "Artifact Registry";
+    case "local-docker":
+      return "Docker（ローカル）";
     case "compute":
       return "Compute Engine";
     case "disks":

@@ -329,7 +329,27 @@ const DeploymentManagerPermissions = [
   "deploymentmanager.deployments.get",
 ] as const;
 
+const ArtifactReadPermissions = [
+  "artifactregistry.repositories.get",
+  "artifactregistry.repositories.list",
+  "artifactregistry.repositories.downloadArtifacts",
+  "artifactregistry.dockerimages.list",
+  "artifactregistry.dockerimages.get",
+  "artifactregistry.repositories.getIamPolicy",
+] as const;
+const ArtifactWritePermissions = [
+  ...ArtifactReadPermissions,
+  "artifactregistry.repositories.uploadArtifacts",
+] as const;
+const ArtifactAdminPermissions = [
+  ...ArtifactWritePermissions,
+  "artifactregistry.repositories.create",
+  "artifactregistry.repositories.delete",
+  "artifactregistry.repositories.setIamPolicy",
+] as const;
+
 const ViewerPermissions = [
+  ...ArtifactReadPermissions,
   ...MonitoringViewPermissions,
   "logging.logMetrics.get",
   "logging.logMetrics.list",
@@ -401,6 +421,9 @@ const ViewerPermissions = [
 ] as const;
 
 const EditorPermissions = [
+  ...ArtifactWritePermissions,
+  "artifactregistry.repositories.create",
+  "artifactregistry.repositories.delete",
   ...ViewerPermissions,
   ...ComputeInstancePermissions,
   ...ComputeNetworkPermissions,
@@ -423,6 +446,7 @@ const EditorPermissions = [
 ] as const;
 
 const OwnerPermissions = [
+  ...ArtifactAdminPermissions,
   ...EditorPermissions,
   ...ResourceManagerProjectPermissions,
   ...ResourceManagerFolderPermissions,
@@ -444,6 +468,9 @@ const role = (name: RoleName, title: string, permissions: readonly string[]): Ro
 
 /** ACE 頻出の事前定義ロール（TBD-006: 約 30 個から開始）。 */
 const Roles: readonly Role[] = [
+  role("roles/artifactregistry.reader", "Artifact Registry Reader", ArtifactReadPermissions),
+  role("roles/artifactregistry.writer", "Artifact Registry Writer", ArtifactWritePermissions),
+  role("roles/artifactregistry.admin", "Artifact Registry Administrator", ArtifactAdminPermissions),
   role("roles/owner", "Owner", OwnerPermissions),
   role("roles/editor", "Editor", EditorPermissions),
   role("roles/viewer", "Viewer", ViewerPermissions),

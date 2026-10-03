@@ -220,16 +220,16 @@ export const CommandRegistry = {
       ...section("REQUIRED FLAGS", required),
       ...section("OPTIONAL FLAGS", optional),
       ...section(
-        spec.path[0] === "terraform" || spec.path[0] === "sim"
+        ["terraform", "sim", "docker"].includes(spec.path[0] ?? "")
           ? "GENERAL FLAGS"
           : "GCLOUD WIDE FLAGS",
         globalFlags,
       ),
       "",
       "NOTES",
-      ...(spec.path[0] === "terraform" || spec.path[0] === "sim"
+      ...(["terraform", "sim", "docker"].includes(spec.path[0] ?? "")
         ? [
-            "    Terraform: VPC/subnet/VM/firewall/bucketとローカルmodule/movedに対応。GCS backendなどは未対応（docs/TERRAFORM.md）。",
+            "    学習用サブセットです。Terraformはdocs/TERRAFORM.md、Dockerはdocs/CONTAINERS.mdを参照。実クラウドやコンテナには接続しません。",
           ]
         : []),
       "    gcloud-sim は本物の一部だけを再現しています。IAM の判定はロールカタログに収録した権限だけで行い、",
