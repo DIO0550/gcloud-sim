@@ -42,6 +42,7 @@ import {
   KeyRingProperties,
   KubeConfigProperties,
   KubeDeploymentProperties,
+  KubeHpaProperties,
   KubeServiceProperties,
   LogSinkProperties,
   NodePoolProperties,
@@ -111,6 +112,8 @@ const Body = ({
       return <NodePoolProperties world={world} selection={selection} />;
     case "kube-deployment":
       return <KubeDeploymentProperties world={world} selection={selection} />;
+    case "kube-hpa":
+      return <KubeHpaProperties world={world} selection={selection} />;
     case "kube-config":
       return <KubeConfigProperties world={world} selection={selection} />;
     case "kube-service":
@@ -184,6 +187,7 @@ const titleOf = (selection: TreeSelection): string => {
     case "kube-deployment":
     case "kube-service":
     case "kube-config":
+    case "kube-hpa":
     case "run-service":
     case "function":
     case "sql-instance":
@@ -253,6 +257,8 @@ const kindLabel = (selection: TreeSelection): string => {
       return `container#nodePool · clusters/${selection.cluster}`;
     case "kube-deployment":
       return `apps/v1 Deployment · clusters/${selection.cluster}`;
+    case "kube-hpa":
+      return `autoscaling/v2 HPA · clusters/${selection.cluster}`;
     case "kube-config":
       return `v1 ${selection.resourceKind} · clusters/${selection.cluster}`;
     case "kube-service":

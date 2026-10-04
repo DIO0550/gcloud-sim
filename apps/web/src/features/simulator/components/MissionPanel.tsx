@@ -44,6 +44,8 @@ const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElem
 
 const assertionLabel = (assertion: Mission["assertions"][number]): string => {
   switch (assertion.kind) {
+    case "kubeHpaScaled":
+      return "CPU requestとHPAを設定し、教材評価で2→4レプリカへ増やす";
     case "kubeResourcesConfigured":
       return "2レプリカでrequestsを250m・128Mi、limitsを500m・256Miにし、ファイルと一致させる";
     case "kubeLabelsSwitched":

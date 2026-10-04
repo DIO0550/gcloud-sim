@@ -73,6 +73,11 @@ const amounts = (input: unknown): Result<ResourceAmounts, string> => {
 };
 
 export const KubeResources = {
+  /** Canonical request quantity in millicores; omitted requests have no utilization base. */
+  cpuMilli(text: string | undefined): number {
+    if (text === undefined) return 0;
+    return Number(Result.unwrap(cpuAmount(text)));
+  },
   empty(): KubeResources {
     return { requests: {}, limits: {} };
   },

@@ -45,6 +45,7 @@ export type TreeSelection =
       cluster: string;
       name: string;
     }>
+  | Readonly<{ kind: "kube-hpa"; projectId: string; cluster: string; name: string }>
   | Readonly<{ kind: "kube-service"; projectId: string; cluster: string; name: string }>
   | Readonly<{ kind: "run-service"; projectId: string; name: string }>
   | Readonly<{ kind: "function"; projectId: string; region: Region; name: string }>
@@ -151,6 +152,8 @@ export const TreeSelection = {
         return `deploy:${selection.projectId}/${selection.cluster}/${selection.name}`;
       case "kube-config":
         return `kube-config:${selection.projectId}/${selection.cluster}/${selection.resourceKind}/${selection.name}`;
+      case "kube-hpa":
+        return `hpa:${selection.projectId}/${selection.cluster}/${selection.name}`;
       case "kube-service":
         return `svc:${selection.projectId}/${selection.cluster}/${selection.name}`;
       case "run-service":
@@ -278,6 +281,8 @@ export const TreeSelection = {
         return Option.some(`kubectl describe deployment ${selection.name}`);
       case "kube-config":
         return Option.some(`kubectl describe ${selection.resourceKind} ${selection.name}`);
+      case "kube-hpa":
+        return Option.some(`kubectl describe hpa ${selection.name}`);
       case "kube-service":
         return Option.some(`kubectl describe service ${selection.name}`);
       case "run-service":

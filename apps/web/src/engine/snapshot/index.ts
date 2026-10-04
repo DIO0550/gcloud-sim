@@ -58,6 +58,7 @@ import type {
 } from "@/engine/domains/instance-groups";
 import type { KmsKeyRing } from "@/engine/domains/kms";
 import type { KubeConfig, KubeEnv } from "@/engine/domains/kube-config";
+import { type HpaEvaluation, HpaReasons, type KubeHpa } from "@/engine/domains/kube-hpa";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import {
   type KubeDeployment,
@@ -118,11 +119,12 @@ import { Result } from "@/utils/Result";
  * v11 はKubernetes仮想ファイルとapply管理キーを持つ。
  * v12 はラベル・selectorとDeploymentごとの仮想Podネットワークを持つ。
  * v13 はコンテナのCPU/メモリrequests・limitsをtemplateと履歴に持つ。
+ * v14 はHPAの設定と前回の教材評価を持つ。
  */
-export const SchemaVersion = 13;
+export const SchemaVersion = 14;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
-const MigratableVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
+const MigratableVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
 export type Snapshot = Readonly<{
@@ -595,6 +597,25 @@ const kubeDeployment = D.object<KubeDeployment>({
   createdAt: string,
 });
 
+const hpaEvaluation = D.object<HpaEvaluation>({
+  evaluatedAt: string,
+  cpuMilli: D.number,
+  requestMilli: D.number,
+  currentReplicas: D.number,
+  desiredReplicas: D.number,
+  reason: D.literal(HpaReasons),
+});
+const kubeHpa = D.object<KubeHpa>({
+  projectId: string,
+  cluster: string,
+  name: string,
+  target: string,
+  minReplicas: D.number,
+  maxReplicas: D.number,
+  targetCpu: D.number,
+  createdAt: string,
+  lastEvaluation: D.option(hpaEvaluation),
+});
 const kubeService = D.object<KubeService>({
   projectId: string,
   cluster: string,
@@ -803,6 +824,7 @@ const world = D.object<World>({
   nodePools: D.array(nodePool),
   kubeDeployments: D.array(kubeDeployment),
   kubeServices: D.array(kubeService),
+  kubeHpas: D.array(kubeHpa),
   kubeConfigs: D.array(kubeConfig),
   kubeFiles: D.record(string),
   functions: D.array(cloudFunction),
@@ -918,6 +940,7 @@ const migrateLegacyKubeDeployment = (version: number, value: unknown): unknown =
 };
 
 const migrateKubeDeployment = (version: number, value: unknown, podNetwork: number): unknown => {
+  if (version >= 13) return value;
   const d = migrateLegacyKubeDeployment(version, value);
   if (!isRecord(d)) return d;
   const labels = { app: d.name };
@@ -947,6 +970,7 @@ const migrate = (version: number, value: unknown): unknown => {
     ? {
         ...old,
         kubeFiles: version >= 11 ? old.kubeFiles : {},
+        kubeHpas: [],
         kubeConfigs:
           version >= 11
             ? old.kubeConfigs

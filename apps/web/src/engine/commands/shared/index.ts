@@ -139,6 +139,13 @@ export const Candidates = {
       ? World.kubeDeploymentsOf(world, cluster.value).map((d) => d.name)
       : [];
   }),
+  kubeHpas: inProject((world, projectId) => {
+    const cluster = GcloudConfig.get(world.config, "container/cluster");
+    if (!Option.isSome(cluster)) return [];
+    return world.kubeHpas
+      .filter((h) => h.projectId === projectId && h.cluster === cluster.value)
+      .map((h) => h.name);
+  }),
   kubeConfigs: inProject((world, projectId) => {
     const cluster = GcloudConfig.get(world.config, "container/cluster");
     if (!Option.isSome(cluster)) return [];

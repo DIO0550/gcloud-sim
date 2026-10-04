@@ -216,7 +216,15 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
         `${c.kind}: ${c.name}`,
       ),
     );
-  return [...pools, ...deployments, ...services, ...configs];
+  const hpas = world.kubeHpas
+    .filter((h) => h.projectId === id && h.cluster === cluster.name)
+    .map((h) =>
+      leaf(
+        { kind: "kube-hpa", projectId: id, cluster: cluster.name, name: h.name },
+        `hpa: ${h.name}`,
+      ),
+    );
+  return [...pools, ...deployments, ...services, ...configs, ...hpas];
 };
 
 const gkeNodes = (world: World, id: string): readonly TreeNode[] =>

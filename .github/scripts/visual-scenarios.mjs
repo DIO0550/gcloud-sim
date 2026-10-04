@@ -50,12 +50,41 @@ const configSteps = [
 ];
 export const SCENARIOS = [
   {
+    name: "mission-gke-hpa",
+    label: "ミッション: CPU使用率によるPodの増加",
+    steps: [
+      { wait: 800 },
+      { click: "ミッション 0/46" },
+      { click: "運用の維持0/20 クリア" },
+      { click: "CPU使用率に合わせてPodを増やす未着手" },
+      { click: "開始" },
+      { click: "ヒント（0/5）" },
+      { wait: 300 },
+    ],
+  },
+  {
+    name: "gke-hpa-properties",
+    label: "GKE: HPAの設定と教材評価",
+    steps: [
+      { wait: 800 },
+      { type: "gcloud services enable container.googleapis.com" },
+      { type: "gcloud container clusters create-auto hpa-gke --region=us-central1" },
+      { type: "kubectl create deployment hpa-web --image=nginx:1 --replicas=2" },
+      { type: "kubectl set resources deployment/hpa-web --requests=cpu=250m" },
+      { type: "kubectl autoscale deployment/hpa-web --min=1 --max=5 --cpu-percent=50" },
+      { type: "sim kubernetes reconcile hpa-web --cpu=250m" },
+      { click: "hpa-gke を展開する" },
+      { click: "hpa: hpa-web" },
+      { wait: 300 },
+    ],
+  },
+  {
     name: "mission-gke-resources",
     label: "ミッション: CPU・メモリの必要量と上限",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/45" },
-      { click: "運用の維持0/19 クリア" },
+      { click: "ミッション 0/46" },
+      { click: "運用の維持0/20 クリア" },
       { click: "CPU・メモリの必要量と上限を設定する未着手" },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -84,8 +113,8 @@ export const SCENARIOS = [
     label: "ミッション: 複数ラベルで公開先を切り替え",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/45" },
-      { click: "運用の維持0/19 クリア" },
+      { click: "ミッション 0/46" },
+      { click: "運用の維持0/20 クリア" },
       { click: "ラベルでServiceの公開先を切り替える未着手" },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -116,8 +145,8 @@ export const SCENARIOS = [
     label: "ミッション: マニフェスト更新とService接続先",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/45" },
-      { click: "運用の維持0/19 クリア" },
+      { click: "ミッション 0/46" },
+      { click: "運用の維持0/20 クリア" },
       { click: "マニフェストでアプリを更新しServiceの接続先を直す未着手" },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -145,8 +174,8 @@ export const SCENARIOS = [
     label: "ミッション: 設定ファイルをapplyして反映",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/45" },
-      { click: "運用の維持0/19 クリア" },
+      { click: "ミッション 0/46" },
+      { click: "運用の維持0/20 クリア" },
       { click: "設定ファイルをapplyしてPodへ反映する未着手" },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -168,8 +197,8 @@ export const SCENARIOS = [
     label: "ミッション: ConfigMap変更を再起動で反映",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/45" },
-      { click: "運用の維持0/19 クリア" },
+      { click: "ミッション 0/46" },
+      { click: "運用の維持0/20 クリア" },
       { click: "ConfigMapの変更をPodの再起動で反映する未着手" },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -181,8 +210,8 @@ export const SCENARIOS = [
     label: "ミッション: GKE更新失敗からの復旧",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/45" },
-      { click: "運用の維持0/19 クリア" },
+      { click: "ミッション 0/46" },
+      { click: "運用の維持0/20 クリア" },
       { click: "失敗したGKEの更新をロールバックする未着手" },
       { click: "開始" },
       { click: "ヒント（0/7）" },
@@ -194,8 +223,8 @@ export const SCENARIOS = [
     label: "ミッション: コンテナ教材の片付け",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/45" },
-      { click: "運用の維持0/19 クリア" },
+      { click: "ミッション 0/46" },
+      { click: "運用の維持0/20 クリア" },
       { click: "残すイメージを守りながらコンテナ教材を片付ける未着手" },
       { click: "開始" },
       { click: "ヒント（0/4）" },
@@ -205,14 +234,14 @@ export const SCENARIOS = [
   {
     name: "mission-categories",
     label: "ミッション: カテゴリ選択",
-    steps: [{ wait: 800 }, { click: "ミッション 0/45" }, { wait: 300 }],
+    steps: [{ wait: 800 }, { click: "ミッション 0/46" }, { wait: 300 }],
   },
   {
     name: "mission-list",
     label: "ミッション: カテゴリ内の一覧",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/45" },
+      { click: "ミッション 0/46" },
       { click: "環境セットアップ0/3 クリア" },
       { wait: 300 },
     ],
@@ -222,7 +251,7 @@ export const SCENARIOS = [
     label: "ミッション: 選んだ1件の手順",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/45" },
+      { click: "ミッション 0/46" },
       { click: "環境セットアップ0/3 クリア" },
       { click: "本番用の configuration を用意する未着手" },
       { click: "開始" },
