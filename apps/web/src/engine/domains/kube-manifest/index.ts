@@ -1,5 +1,6 @@
 import { isAlias, parseAllDocuments, visit } from "yaml";
 import { KubeConfig as Configuration, type KubeConfig } from "@/engine/domains/kube-config";
+import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { Result } from "@/utils/Result";
 import { type HpaManifest, parseHpa } from "./hpa";
@@ -11,6 +12,7 @@ export type ConfigManifest = Readonly<{
   name: string;
   namespace: string | undefined;
   data: KubeConfig["data"];
+  labels: KubeLabels;
 }>;
 export type NamespaceManifest = Readonly<{ kind: "namespace"; name: string; namespace: undefined }>;
 export type KubeManifest = NamespaceManifest | ConfigManifest | WorkloadManifest | HpaManifest;
@@ -55,7 +57,9 @@ const parseResource = (value: unknown): KubeManifest => {
     "manifest",
   );
   const meta = record(r.metadata, "metadata");
-  fields(meta, ["name", "namespace"], "metadata");
+  fields(meta, ["name", "namespace", "labels"], "metadata");
+  const labels = KubeLabels.parse(meta.labels === undefined ? {} : meta.labels);
+  if (!Result.isOk(labels)) return fail(labels.error);
   const ns = namespace(meta.namespace);
   if (typeof meta.name !== "string") return fail("metadata.name must be a string.");
   if (secret && r.type !== undefined && r.type !== "Opaque")
@@ -68,6 +72,8 @@ const parseResource = (value: unknown): KubeManifest => {
     namespace: ns ?? "default",
     kind: secret ? "secret" : "configmap",
     name: meta.name,
+    labels: labels.value,
+    lastAppliedLabelKeys: [],
     data: Array.from(data, ([key, value]) => ({ key, value })).toSorted((a, b) =>
       a.key.localeCompare(b.key),
     ),
@@ -80,6 +86,7 @@ const parseResource = (value: unknown): KubeManifest => {
     name: config.value.name,
     namespace: ns,
     data: config.value.data,
+    labels: config.value.labels,
   };
 };
 export const KubeManifest = {
@@ -163,6 +170,62 @@ spec:
 `;
 
 export const KubeManifestExamples: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  "kubernetes-config-labels": {
+    "labeled-configs.yaml": `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: settings-dev
+data:
+  MODE: staging
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: settings-prod
+  labels:
+    environment: staging
+    temporary: cleanup
+data:
+  MODE: production
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: credentials
+type: Opaque
+stringData:
+  TOKEN: demo-token
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: nginx:1
+          env:
+            - name: MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: settings-prod
+                  key: MODE
+            - name: TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: credentials
+                  key: TOKEN
+`,
+  },
   "kubernetes-startup": {
     "slow-web.yaml": `apiVersion: apps/v1
 kind: Deployment

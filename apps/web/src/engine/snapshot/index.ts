@@ -129,11 +129,14 @@ import { Result } from "@/utils/Result";
  * v17 はstartupProbeと起動判定、probe間で共通の再起動回数を持つ。
  * v18 はカスタムnamespaceと各Kubernetesリソースのnamespaceを持つ。
  * v19 はコンテキストごとの既定namespaceを持つ。
+ * v20 はConfigMap/Secretのラベルとapply管理キーを持つ。
  */
-export const SchemaVersion = 19;
+export const SchemaVersion = 20;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
-const MigratableVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18] as const;
+const MigratableVersions = [
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
 export type Snapshot = Readonly<{
@@ -554,6 +557,8 @@ const kubeEnv = D.object<KubeEnv>({
   key: string,
 });
 const kubeConfig = D.object<KubeConfig>({
+  labels: stringMap,
+  lastAppliedLabelKeys: D.array(string),
   lastAppliedKeys: D.array(string),
   projectId: string,
   cluster: string,
@@ -1091,9 +1096,19 @@ const withDefaultNamespace = (value: unknown): unknown =>
     ? value.map((r) => (isRecord(r) ? { ...r, namespace: "default" } : r))
     : value;
 
+const withConfigLabels = (value: unknown): unknown =>
+  Array.isArray(value)
+    ? value.map((c) => (isRecord(c) ? { ...c, labels: {}, lastAppliedLabelKeys: [] } : c))
+    : value;
+
 const migrate = (version: number, value: unknown): unknown => {
   if (version === SchemaVersion) return value;
-  if (version === 18 && isRecord(value)) return { ...value, kubeContextNamespaces: {} };
+  if (version >= 18 && isRecord(value))
+    return {
+      ...value,
+      kubeContextNamespaces: version === 18 ? {} : value.kubeContextNamespaces,
+      kubeConfigs: withConfigLabels(value.kubeConfigs),
+    };
   const old = version === 1 ? migrateV1(value) : value;
   const networks = new Map<string, number>();
   const previous = isRecord(old)
@@ -1105,10 +1120,18 @@ const migrate = (version: number, value: unknown): unknown => {
         kubeHpas: version >= 14 ? withDefaultNamespace(old.kubeHpas) : [],
         kubeConfigs:
           version >= 11
-            ? withDefaultNamespace(old.kubeConfigs)
+            ? withConfigLabels(withDefaultNamespace(old.kubeConfigs))
             : version >= 10 && Array.isArray(old.kubeConfigs)
               ? old.kubeConfigs.map((c) =>
-                  isRecord(c) ? { ...c, namespace: "default", lastAppliedKeys: [] } : c,
+                  isRecord(c)
+                    ? {
+                        ...c,
+                        namespace: "default",
+                        lastAppliedKeys: [],
+                        labels: {},
+                        lastAppliedLabelKeys: [],
+                      }
+                    : c,
                 )
               : [],
         kubeDeployments: Array.isArray(old.kubeDeployments)

@@ -561,6 +561,7 @@ export const KubeConfigProperties = ({
           { label: "cluster", value: c.cluster },
           { label: "namespace", value: c.namespace },
           { label: "kind", value: c.kind },
+          { label: "labels", value: KubeLabels.text(c.labels) },
         ]}
       />
       <Section

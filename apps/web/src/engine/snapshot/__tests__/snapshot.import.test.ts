@@ -19,13 +19,13 @@ test("export した JSON を import すると同じ World に戻る", () => {
 
 test("schemaVersion が未対応なら E-011 で理由に版が入る", () => {
   const result = Snapshot.fromUnknown({
-    schemaVersion: 20,
+    schemaVersion: 21,
     exportedAt: Now,
     world: initialWorld(),
   });
   expect(Result.isOk(result)).toBe(false);
   if (!Result.isOk(result)) {
-    expect(result.error).toEqual({ kind: "unsupportedVersion", version: "20" });
+    expect(result.error).toEqual({ kind: "unsupportedVersion", version: "21" });
   }
 });
 

@@ -21,7 +21,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（302）
+## 実装済み（303）
 
 Kubernetesは`kubectl create/get/describe/delete namespace`（`ns`別名）とNamespace manifestに対応します。各kubectl操作と`sim kubernetes probe/reconcile`で`-n/--namespace`を使い、`kubectl get -A/--all-namespaces`でnamespaceを横断した一覧を確認できます。省略時はコンテキストの既定namespace（未設定なら`default`）です。`kubectl config set-context --current --namespace=staging`または既存CONTEXT名で設定し、空文字で解除できます。詳細は[KUBERNETES.md](KUBERNETES.md)。
 
@@ -366,6 +366,7 @@ HPAは`autoscale`またはautoscaling/v2の仮想YAML/JSONで作成し、`get/de
 |---|---|---|---|
 | `kubectl create configmap` | `container.configMaps.create` | `container.googleapis.com` | `--from-literal`（繰り返し可） `--namespace` |
 | `kubectl create secret generic` | `container.secrets.create` | `container.googleapis.com` | `--from-literal`（繰り返し可） `--namespace` |
+| `kubectl label` | ConfigMap/Secretのgetとupdate | `container.googleapis.com` | `--overwrite` `--namespace`（1リソースのKEY=VALUE / KEY-） |
 | `kubectl set env` | 更新: `container.deployments.update`、一覧: `container.deployments.get`、取込元のgetも必要 | `container.googleapis.com` | `--from` `--keys` `--prefix` `--list` `--namespace` |
 | `kubectl exec` | `container.pods.exec` | `container.googleapis.com` | `--namespace`（printenv/envのみ） |
 | `kubectl get` | Deployment/Service/ConfigMap/Secret/HPA: 対象のget/list、その他: `container.pods.list` | `container.googleapis.com` | `--output` `--selector` (`-l`) `--namespace` |

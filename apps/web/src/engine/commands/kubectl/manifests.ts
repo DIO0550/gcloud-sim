@@ -1,6 +1,7 @@
 import { CommandFailure } from "@/engine/cli/command-failure";
 import { CommandOutput, type CommandResult, OutputMessage } from "@/engine/cli/command-spec";
 import { KubeConfig } from "@/engine/domains/kube-config";
+import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeManifest } from "@/engine/domains/kube-manifest";
 import type { GkeCluster } from "@/engine/domains/managed-services";
 import { World } from "@/engine/domains/world";
@@ -96,6 +97,12 @@ export const applyManifest = (
     const retained = (existing?.data ?? []).filter(
       (e) => !incoming.has(e.key) && !existing?.lastAppliedKeys.includes(e.key),
     );
+    const incomingLabels = Object.keys(manifest.labels);
+    const retainedLabels = Object.entries(existing?.labels ?? {}).filter(
+      ([key]) =>
+        !Object.hasOwn(manifest.labels, key) && !existing?.lastAppliedLabelKeys.includes(key),
+    );
+    const labels = Object.fromEntries([...retainedLabels, ...Object.entries(manifest.labels)]);
     const next: KubeConfig = {
       ...manifest,
       projectId: cluster.projectId,
@@ -103,6 +110,8 @@ export const applyManifest = (
       namespace: scoped.namespace,
       data: [...retained, ...manifest.data].toSorted((a, b) => a.key.localeCompare(b.key)),
       lastAppliedKeys: action === "apply" ? [...incoming].sort() : [],
+      labels: Object.fromEntries(Object.entries(labels).sort(([a], [b]) => a.localeCompare(b))),
+      lastAppliedLabelKeys: action === "apply" ? incomingLabels.sort() : [],
       createdAt: existing?.createdAt ?? ctx.now,
     };
     const valid = KubeConfig.validate(next);
@@ -110,7 +119,9 @@ export const applyManifest = (
     const unchanged =
       existing &&
       JSON.stringify(existing.data) === JSON.stringify(next.data) &&
-      JSON.stringify(existing.lastAppliedKeys) === JSON.stringify(next.lastAppliedKeys);
+      JSON.stringify(existing.lastAppliedKeys) === JSON.stringify(next.lastAppliedKeys) &&
+      KubeLabels.equal(existing.labels, next.labels) &&
+      JSON.stringify(existing.lastAppliedLabelKeys) === JSON.stringify(next.lastAppliedLabelKeys);
     configs = existing
       ? configs.map((c) => (c === existing ? (unchanged ? existing : next) : c))
       : [...configs, next];
