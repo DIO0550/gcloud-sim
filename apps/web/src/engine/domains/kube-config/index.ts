@@ -8,6 +8,8 @@ export type KubeConfig = Readonly<{
   kind: "configmap" | "secret";
   name: string;
   data: readonly Readonly<{ key: string; value: string }>[];
+  /** Keys managed by the last simulated client-side apply. */
+  lastAppliedKeys: readonly string[];
   createdAt: string;
 }>;
 export type KubeEnv = Readonly<{
@@ -26,6 +28,12 @@ const validEnvName = (name: string) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name);
 export const KubeConfig = {
   validate(c: KubeConfig): Result<KubeConfig, string> {
     if (!Result.isOk(KubeName.parse(c.name))) return Result.err("Invalid configuration name.");
+    if (
+      c.lastAppliedKeys.length > 100 ||
+      new Set(c.lastAppliedKeys).size !== c.lastAppliedKeys.length ||
+      c.lastAppliedKeys.some((key) => !validKey(key))
+    )
+      return Result.err("Invalid last-applied configuration keys.");
     if (c.data.length > 100 || new Set(c.data.map((e) => e.key)).size !== c.data.length)
       return Result.err("Configuration keys must be unique (maximum 100 on gcloud-sim).");
     if (

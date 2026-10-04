@@ -6,7 +6,7 @@ import type { Mission } from "@/engine/missions";
 import { Result } from "@/utils/Result";
 
 export type KubeConfigurationAssertion = Readonly<{
-  kind: "kubeConfigInjected" | "kubeConfigRefreshed";
+  kind: "kubeConfigInjected" | "kubeConfigRefreshed" | "kubeConfigApplied";
 }>;
 const setup = [
   { kind: "setPrincipal", principal: F.owner },
@@ -17,6 +17,22 @@ const prepare =
 const inject =
   "kubectl set env deployment/config-web --from=configmap/app-config → kubectl set env deployment/config-web --from=secret/app-secret → kubectl set env deployment/config-web LOG_LEVEL=info";
 export const KubeConfigurationMissions: readonly Mission[] = [
+  {
+    id: "m-gke-005",
+    domain: "運用の維持",
+    title: "設定ファイルをapplyしてPodへ反映する",
+    setup,
+    description:
+      "ConfigMapとSecretのYAMLを読み込み、app-configのAPP_MODEをstagingからproductionへ編集してapplyします。config-webの2つのPodへ参照で渡し、再起動後にproductionとdemo-tokenを確認してください。ファイルの編集だけではクラスタ設定は変わりません。",
+    hints: [
+      prepare,
+      "sim files load kubernetes-config → sim files read app-config.yaml → sim files read app-secret.yaml。既存の同名ファイルを置き換える場合は内容を確認して --force を使います。",
+      "kubectl apply -f app-config.yaml → kubectl apply -f app-secret.yaml → kubectl set env deployment/config-web --from=configmap/app-config → kubectl set env deployment/config-web --from=secret/app-secret",
+      "sim files replace app-config.yaml --search=staging --replacement=production → kubectl apply -f app-config.yaml。get configmapで設定を、exec deployment/config-web -- printenv APP_MODEで起動済みの値を比較します。",
+      "kubectl rollout restart deployment/config-web → kubectl rollout status deployment/config-web → kubectl exec deployment/config-web -- printenv APP_MODE → kubectl exec deployment/config-web -- printenv API_TOKEN。applyを繰り返すとunchangedになります。",
+    ],
+    assertions: [{ kind: "kubeConfigApplied" }],
+  },
   {
     id: "m-gke-003",
     domain: "デプロイと実装",
@@ -94,6 +110,27 @@ export const kubeConfigurationSatisfied = (
       c.kind === "secret" &&
       c.name === "app-secret",
   );
+  if (assertion.kind === "kubeConfigApplied")
+    return (
+      d.revisions.at(-1)?.reason === "restart" &&
+      config.lastAppliedKeys.includes("APP_MODE") &&
+      !!secret?.lastAppliedKeys.includes("API_TOKEN") &&
+      secret.data.some((e) => e.key === "API_TOKEN" && e.value === "demo-token") &&
+      d.env.some(
+        (e) =>
+          e.name === "API_TOKEN" &&
+          e.source === "secret" &&
+          e.resource === "app-secret" &&
+          e.key === "API_TOKEN",
+      ) &&
+      pods.every((p) => {
+        const env = KubeRuntime.environment(world.kubeConfigs, d, p.name);
+        return (
+          Result.isOk(env) &&
+          env.value.values.some((e) => e.name === "API_TOKEN" && e.value === "demo-token")
+        );
+      })
+    );
   return (
     !!secret?.data.some((e) => e.key === "API_TOKEN" && e.value === "demo-token") &&
     d.env.some(

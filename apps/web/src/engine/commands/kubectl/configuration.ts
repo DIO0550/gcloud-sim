@@ -56,6 +56,7 @@ export const createConfig = (
     kind,
     name,
     data,
+    lastAppliedKeys: [],
     createdAt: ctx.now,
   });
   if (!Result.isOk(config)) return invalid(config.error);

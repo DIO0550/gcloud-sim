@@ -17,6 +17,7 @@ import { Candidates, projectCommand } from "@/engine/commands/shared";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { ImagePull } from "@/engine/domains/image-pull";
 import { KubeConfig, KubeEnv, KubeRuntime } from "@/engine/domains/kube-config";
+import { KubeManifest } from "@/engine/domains/kube-manifest";
 import {
   KubeDeployment,
   KubePod,
@@ -30,6 +31,7 @@ import { type AlreadyExists, World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 import { createConfig, kubePermission, setEnv } from "./configuration";
+import { applyManifest } from "./manifests";
 
 /**
  * `kubectl`（TBD-007）。コンテキストは `get-credentials` が書いた `container/cluster` で、
@@ -491,18 +493,35 @@ const createService = (
 
 /** `-f FILE` のファイル。サンプル以外は本物と同じ no such file。 */
 const sampleFile = (path: string) =>
-  Option.toResult(SampleFile.find(path), () =>
-    CommandFailure.notFoundWith(
-      `error: the path "${path}" does not exist\ngcloud-sim: 使えるサンプルは ${SampleFile.names().join(" / ")} です（中身は docs/COMMANDS.md）。`,
-    ),
+  Option.toResult(
+    path.replace(/^\.\//, "").includes("/") ? Option.none : SampleFile.find(path),
+    () =>
+      CommandFailure.notFoundWith(
+        `error: the path "${path}" does not exist\ngcloud-sim: 使えるサンプルは ${SampleFile.names().join(" / ")} です。ConfigMap/Secretは sim files write/load で仮想ファイルを用意してください（docs/KUBERNETES.md）。`,
+      ),
   );
 
 /** `-f` が無いときの本物の文言。 */
 const fileRequired = (): CommandFailure => usage("must specify one of -f and -k");
 
-const apply = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+const apply = (
+  ctx: ProjectContext,
+  args: ParsedArgs,
+  action: "apply" | "create" = "apply",
+): CommandResult => {
   const cluster = currentCluster(ctx);
   if (!Result.isOk(cluster)) return cluster;
+  const path = Option.toResult(ParsedArgs.string(args, "filename"), fileRequired);
+  if (!Result.isOk(path)) return path;
+  const normalized = KubeManifest.path(path.value);
+  if (!normalized) return Result.err(usage("Use a relative YAML/JSON virtual file path."));
+  const source = ctx.world.kubeFiles[normalized];
+  if (source !== undefined) return applyManifest(ctx, cluster.value, source, action);
+  const allowed = kubePermission(
+    ctx,
+    action === "create" ? "container.deployments.create" : "container.deployments.update",
+  );
+  if (!Result.isOk(allowed)) return allowed;
   const file = Result.flatMap(
     Option.toResult(ParsedArgs.string(args, "filename"), fileRequired),
     sampleFile,
@@ -513,6 +532,10 @@ const apply = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
     case "kube-deployment": {
       const existing = World.findKubeDeployment(ctx.world, cluster.value, sample.deployment);
       if (Option.isSome(existing)) {
+        if (action === "create")
+          return Result.err(
+            kubeAlreadyExists({ resource: `deployments.apps "${sample.deployment}"` }),
+          );
         const next = KubeDeployment.withSpec(existing.value, sample.image, sample.replicas);
         const unchanged =
           existing.value.image === sample.image && existing.value.replicas === sample.replicas;
@@ -533,6 +556,8 @@ const apply = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
     }
     case "kube-service": {
       if (Option.isSome(World.findKubeService(ctx.world, cluster.value, sample.service))) {
+        if (action === "create")
+          return Result.err(kubeAlreadyExists({ resource: `services "${sample.service}"` }));
         return Result.ok({
           world: ctx.world,
           output: CommandOutput.messages(
@@ -570,7 +595,17 @@ const apply = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
 const create = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   const cluster = currentCluster(ctx);
   if (!Result.isOk(cluster)) return cluster;
-  if (ParsedArgs.has(args, "filename")) return apply(ctx, args);
+  if (ParsedArgs.has(args, "filename")) {
+    if (
+      args.positionals.length ||
+      ParsedArgs.has(args, "image") ||
+      ParsedArgs.has(args, "replicas")
+    )
+      return Result.err(usage("Do not combine -f with resource arguments or flags."));
+    return apply(ctx, args, "create");
+  }
+  const allowed = kubePermission(ctx, "container.deployments.create");
+  if (!Result.isOk(allowed)) return allowed;
   const type = ParsedArgs.positional(args, 0);
   const name = ParsedArgs.positional(args, 1);
   if (!Option.isSome(type)) return Result.err(fileRequired());
@@ -596,6 +631,16 @@ const remove = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   if (!Result.isOk(cluster)) return cluster;
   const file = ParsedArgs.string(args, "filename");
   const type = ParsedArgs.positional(args, 0);
+  if (Option.isSome(file)) {
+    if (args.positionals.length)
+      return Result.err(usage("Do not combine -f with resource arguments."));
+    const path = KubeManifest.path(file.value);
+    if (!path) return Result.err(usage("Use a relative YAML/JSON virtual file path."));
+    const source = ctx.world.kubeFiles[path];
+    if (source !== undefined) return applyManifest(ctx, cluster.value, source, "delete");
+    const allowed = kubePermission(ctx, "container.deployments.delete");
+    if (!Result.isOk(allowed)) return allowed;
+  }
   if (!Option.isSome(file) && !Option.isSome(type)) {
     return Result.err(usage("You must provide one or more resources by argument or filename."));
   }
@@ -953,8 +998,12 @@ const config = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
 
 const FileFlag = Flag.string(
   "filename",
-  "The file that contains the configuration to apply (sample files only).",
-  { aliases: ["-f"] },
+  "Virtual ConfigMap/Secret YAML/JSON, or deployment.yaml/service.yaml samples.",
+  {
+    aliases: ["-f"],
+    singleUse: true,
+    candidates: (world) => [...Object.keys(world.kubeFiles), "deployment.yaml", "service.yaml"],
+  },
 );
 const OutputFlag = Flag.string("output", "Output format: wide, yaml or json.", { aliases: ["-o"] });
 const NamespaceFlag = Flag.string("namespace", "The namespace (only default is simulated).", {
@@ -972,7 +1021,7 @@ type KubectlSeed = Readonly<{
   summary: string;
   positionals: readonly PositionalSpec[];
   flags: readonly FlagSpec[];
-  permission: string | ((args: ParsedArgs) => string);
+  permission: string | ((args: ParsedArgs) => string | undefined);
   run: (ctx: ProjectContext, args: ParsedArgs) => CommandResult;
 }>;
 
@@ -989,8 +1038,11 @@ const kubectl = (seed: KubectlSeed): CommandSpec =>
       if (namespace !== "default")
         return Result.err(usage("Only namespace default is supported on gcloud-sim."));
       if (typeof seed.permission === "function") {
-        const allowed = kubePermission(ctx, seed.permission(args));
-        if (!Result.isOk(allowed)) return allowed;
+        const permission = seed.permission(args);
+        if (permission) {
+          const allowed = kubePermission(ctx, permission);
+          if (!Result.isOk(allowed)) return allowed;
+        }
       }
       return seed.run(ctx, args);
     },
@@ -998,7 +1050,8 @@ const kubectl = (seed: KubectlSeed): CommandSpec =>
 
 const resourcePermission =
   (action: string, fallback: string) =>
-  (args: ParsedArgs): string => {
+  (args: ParsedArgs): string | undefined => {
+    if (ParsedArgs.has(args, "filename")) return undefined;
     const ref = parseResource(
       ParsedArgs.requiredPositional(args, 0),
       ParsedArgs.positional(args, 1),
@@ -1103,10 +1156,10 @@ export const KubectlCommands: readonly CommandSpec[] = [
   }),
   kubectl({
     verb: "apply",
-    summary: "Apply a configuration to a resource by file name (sample files only).",
+    summary: "Apply virtual ConfigMap/Secret YAML/JSON or fixed Deployment/Service samples.",
     positionals: [],
     flags: [FileFlag],
-    permission: "container.deployments.update",
+    permission: () => undefined,
     run: apply,
   }),
   kubectl({
@@ -1123,7 +1176,7 @@ export const KubectlCommands: readonly CommandSpec[] = [
       Flag.string("image", "Image name to run."),
       Flag.integer("replicas", "Number of replicas to create (default 1)."),
     ],
-    permission: "container.deployments.create",
+    permission: () => undefined,
     run: create,
   }),
   kubectl({

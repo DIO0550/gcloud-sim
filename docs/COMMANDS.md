@@ -364,8 +364,8 @@ GCS backend使用時、stateを読むshow/output/state list/showにもstorage.ob
 | `kubectl set env` | 更新: `container.deployments.update`、一覧: `container.deployments.get`、取込元のgetも必要 | `container.googleapis.com` | `--from` `--keys` `--prefix` `--list` `--namespace` |
 | `kubectl exec` | `container.pods.exec` | `container.googleapis.com` | `--namespace`（printenv/envのみ） |
 | `kubectl get` | 通常: `container.pods.list`、ConfigMap/Secret: 対象のget/list | `container.googleapis.com` | `--output` `--namespace` |
-| `kubectl apply` | `container.deployments.update` | `container.googleapis.com` | `--filename` `--namespace` |
-| `kubectl create` | `container.deployments.create` | `container.googleapis.com` | `--filename` `--image` `--replicas` `--namespace` |
+| `kubectl apply` | ConfigMap/Secret: 対象のgetとcreate/update、固定教材: `container.deployments.update` | `container.googleapis.com` | `--filename` `--namespace` |
+| `kubectl create` | ConfigMap/Secretファイル: 対象のcreate、Deployment/固定教材: `container.deployments.create` | `container.googleapis.com` | `--filename` `--image` `--replicas` `--namespace` |
 | `kubectl delete` | 通常: `container.deployments.delete`、ConfigMap/Secret: 対象のdelete | `container.googleapis.com` | `--filename` `--namespace` |
 | `kubectl describe` | 通常: `container.pods.get`、ConfigMap/Secret: 対象のget/list | `container.googleapis.com` | `--namespace` |
 | `kubectl expose` | `container.services.create` | `container.googleapis.com` | `--type` `--port` `--target-port` `--name` `--namespace` |
@@ -493,7 +493,7 @@ GCS backend使用時、stateを読むshow/output/state list/showにもstorage.ob
 
 ## サンプルファイル
 
-gcloud-sim にはローカルのファイルシステムが無い。**中身が結果を決めるファイル**を受けるコマンドは、次の固定のサンプルだけを名前で受け付ける（ディレクトリ部分は無視する）。無い名前は本物と同じ `No such file or directory`（E-005）になる。`gcloud storage cp ./x gs://b` のように名前しか使わない経路は任意のパスを受ける。
+gcloud-simはホストのファイルを読みません。TerraformとConfigMap/Secretは `sim files` で編集できる仮想ファイルを読みます。`sim files load kubernetes-config` でYAML教材を読み込み、`kubectl create/apply/delete -f FILE` で操作できます（詳細は [KUBERNETES.md](KUBERNETES.md)）。Kubernetesのファイルは正規化した相対パスで一致し、同名の仮想ファイルが固定教材より優先します。仮想ファイルがない場合の `deployment.yaml` / `service.yaml` と、他サービスの次の操作は固定サンプルを使います（kubectl以外はディレクトリ部分を無視）。無い名前は本物と同じ `No such file or directory`（E-005）になる。`gcloud storage cp ./x gs://b` のように名前しか使わない経路は任意のパスを受ける。
 
 | ファイル | 受けるコマンド | 中身 |
 |---|---|---|

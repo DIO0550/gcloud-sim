@@ -114,11 +114,12 @@ import { Result } from "@/utils/Result";
  * v8 はCloud Build履歴とGKEノードSAを持つ。
  * v9 はDeploymentのrevision/template履歴と個別Podの採番状態を持つ。
  * v10 はConfigMap/Secret、template環境変数と起動済みPodの環境を持つ。
+ * v11 はKubernetes仮想ファイルとapply管理キーを持つ。
  */
-export const SchemaVersion = 10;
+export const SchemaVersion = 11;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
-const MigratableVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
+const MigratableVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
 export type Snapshot = Readonly<{
@@ -539,6 +540,7 @@ const kubeEnv = D.object<KubeEnv>({
   key: string,
 });
 const kubeConfig = D.object<KubeConfig>({
+  lastAppliedKeys: D.array(string),
   projectId: string,
   cluster: string,
   kind: D.literal(["configmap", "secret"]),
@@ -780,6 +782,7 @@ const world = D.object<World>({
   kubeDeployments: D.array(kubeDeployment),
   kubeServices: D.array(kubeService),
   kubeConfigs: D.array(kubeConfig),
+  kubeFiles: D.record(string),
   functions: D.array(cloudFunction),
   appEngineApps: D.array(appEngineApp),
   appVersions: D.array(appVersion),
@@ -856,6 +859,7 @@ const migrateV1 = (value: unknown): unknown => {
 
 const migrateKubeDeployment = (version: number, value: unknown): unknown => {
   if (!isRecord(value)) return value;
+  if (version >= 10) return value;
   if (version >= 9)
     return {
       ...value,
@@ -897,7 +901,11 @@ const migrate = (version: number, value: unknown): unknown => {
   const previous = isRecord(old)
     ? {
         ...old,
-        kubeConfigs: [],
+        kubeFiles: {},
+        kubeConfigs:
+          version >= 10 && Array.isArray(old.kubeConfigs)
+            ? old.kubeConfigs.map((c) => (isRecord(c) ? { ...c, lastAppliedKeys: [] } : c))
+            : [],
         kubeDeployments: Array.isArray(old.kubeDeployments)
           ? old.kubeDeployments.map((d) => migrateKubeDeployment(version, d))
           : old.kubeDeployments,
