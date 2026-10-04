@@ -21,7 +21,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（294）
+## 実装済み（298）
 
 ### Cloud Build
 
@@ -359,11 +359,15 @@ GCS backend使用時、stateを読むshow/output/state list/showにもstorage.ob
 
 | コマンド | 必要な権限 | 必要な API | フラグ |
 |---|---|---|---|
-| `kubectl get` | `container.pods.list` | `container.googleapis.com` | `--output` `--namespace` |
+| `kubectl create configmap` | `container.configMaps.create` | `container.googleapis.com` | `--from-literal`（繰り返し可） `--namespace` |
+| `kubectl create secret generic` | `container.secrets.create` | `container.googleapis.com` | `--from-literal`（繰り返し可） `--namespace` |
+| `kubectl set env` | 更新: `container.deployments.update`、一覧: `container.deployments.get`、取込元のgetも必要 | `container.googleapis.com` | `--from` `--keys` `--prefix` `--list` `--namespace` |
+| `kubectl exec` | `container.pods.exec` | `container.googleapis.com` | `--namespace`（printenv/envのみ） |
+| `kubectl get` | 通常: `container.pods.list`、ConfigMap/Secret: 対象のget/list | `container.googleapis.com` | `--output` `--namespace` |
 | `kubectl apply` | `container.deployments.update` | `container.googleapis.com` | `--filename` `--namespace` |
 | `kubectl create` | `container.deployments.create` | `container.googleapis.com` | `--filename` `--image` `--replicas` `--namespace` |
-| `kubectl delete` | `container.deployments.delete` | `container.googleapis.com` | `--filename` `--namespace` |
-| `kubectl describe` | `container.pods.get` | `container.googleapis.com` | `--namespace` |
+| `kubectl delete` | 通常: `container.deployments.delete`、ConfigMap/Secret: 対象のdelete | `container.googleapis.com` | `--filename` `--namespace` |
+| `kubectl describe` | 通常: `container.pods.get`、ConfigMap/Secret: 対象のget/list | `container.googleapis.com` | `--namespace` |
 | `kubectl expose` | `container.services.create` | `container.googleapis.com` | `--type` `--port` `--target-port` `--name` `--namespace` |
 | `kubectl scale` | `container.deployments.update` | `container.googleapis.com` | `--replicas` `--namespace` |
 | `kubectl set image` | `container.deployments.update` | `container.googleapis.com` | `--namespace` |

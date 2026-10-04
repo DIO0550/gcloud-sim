@@ -200,7 +200,20 @@ const BillingPermissions = [
   "billing.budgets.get",
 ] as const;
 
+const KubeConfigPermissions = [
+  "container.configMaps.create",
+  "container.configMaps.get",
+  "container.configMaps.list",
+  "container.configMaps.delete",
+  "container.secrets.create",
+  "container.secrets.get",
+  "container.secrets.list",
+  "container.secrets.delete",
+  "container.pods.exec",
+] as const;
+
 const ContainerPermissions = [
+  ...KubeConfigPermissions,
   "container.clusters.create",
   "container.clusters.delete",
   "container.clusters.get",
@@ -220,6 +233,7 @@ const ContainerPermissions = [
 ] as const;
 
 const ContainerDeveloperPermissions = [
+  ...KubeConfigPermissions,
   "container.clusters.get",
   "container.clusters.list",
   "container.clusters.getCredentials",
@@ -624,6 +638,8 @@ const Roles: readonly Role[] = [
   role("roles/container.admin", "Kubernetes Engine Admin", ContainerPermissions),
   role("roles/container.developer", "Kubernetes Engine Developer", ContainerDeveloperPermissions),
   role("roles/container.viewer", "Kubernetes Engine Viewer", [
+    "container.configMaps.get",
+    "container.configMaps.list",
     "container.clusters.get",
     "container.clusters.list",
     "container.deployments.get",

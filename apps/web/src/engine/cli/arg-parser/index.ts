@@ -1,5 +1,10 @@
 import { CommandFailure } from "@/engine/cli/command-failure";
-import type { FlagSpec, FlagValue, ParsedArgs, PositionalSpec } from "@/engine/cli/command-spec";
+import {
+  type FlagSpec,
+  type FlagValue,
+  ParsedArgs,
+  type PositionalSpec,
+} from "@/engine/cli/command-spec";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
@@ -34,7 +39,7 @@ const convert = (spec: FlagSpec, raw: string): Result<FlagValue, CommandFailure>
     case "list":
       return Result.ok({
         kind: "list",
-        value: raw === "" ? [] : raw.split(",").map((v) => v.trim()),
+        value: spec.literalRepeat ? [raw] : raw === "" ? [] : raw.split(",").map((v) => v.trim()),
       });
     case "keyvalue": {
       const pairs = raw === "" ? [] : raw.split(",");
@@ -61,7 +66,19 @@ const convert = (spec: FlagSpec, raw: string): Result<FlagValue, CommandFailure>
 
 const withFlag = (scan: Scan, spec: FlagSpec, value: FlagValue): Scan => ({
   ...scan,
-  flags: { ...scan.flags, [spec.name]: value },
+  flags: {
+    ...scan.flags,
+    [spec.name]:
+      spec.kind === "list" && spec.literalRepeat && value.kind === "list"
+        ? {
+            kind: "list",
+            value: [
+              ...ParsedArgs.list({ positionals: [], flags: scan.flags }, spec.name),
+              ...value.value,
+            ],
+          }
+        : value,
+  },
 });
 
 type Step = Readonly<{ scan: Scan; consumed: number }>;

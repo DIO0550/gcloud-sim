@@ -23,7 +23,7 @@
   試行錯誤できる。エラーの下に `gcloud-sim: hint:` で「その権限を含むロール」を出す
 - **リソースツリー**: 組織 → フォルダ → プロジェクト → リソース。クリックでプロパティと
   IAM の継承元、ダブルクリックで `describe` を入力行に挿入
-- **ミッション**: 39 本（ACE の 5 ドメインからカテゴリ→ミッション→手順を選択）。状態に対するアサーションでクリア判定する
+- **ミッション**: 41 本（ACE の 5 ドメインからカテゴリ→ミッション→手順を選択）。状態に対するアサーションでクリア判定する
   （コマンドの文字列一致ではない）
 - **保存**: コマンドごとに localStorage へ自動保存。設定から JSON の export / import / リセット
 - **kubectl**: `gcloud container clusters get-credentials` したクラスタに対して、Deployment / Service / Pod を
@@ -338,4 +338,4 @@ pnpm visual:compare -- --expected visual-baseline --actual visual-actual --out v
 
 ### GKEの更新・復旧
 
-`kubectl set image`、`rollout history/status/undo`でイメージ更新とロールバックを練習できます。2本のミッションと、現在/過去のReplicaSet表示、Podを1つ削除した後の自己修復に対応しています。操作例と再現範囲は [docs/KUBERNETES.md](docs/KUBERNETES.md)。
+`kubectl set image`、`rollout history/status/undo`でイメージ更新とロールバックを練習できます。ConfigMap/Secretからの環境変数注入・再起動による反映も含む4本のミッションと、現在/過去のReplicaSet表示、Podを1つ削除した後の自己修復に対応しています。操作例と再現範囲は [docs/KUBERNETES.md](docs/KUBERNETES.md)。

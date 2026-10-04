@@ -139,6 +139,13 @@ export const Candidates = {
       ? World.kubeDeploymentsOf(world, cluster.value).map((d) => d.name)
       : [];
   }),
+  kubeConfigs: inProject((world, projectId) => {
+    const cluster = GcloudConfig.get(world.config, "container/cluster");
+    if (!Option.isSome(cluster)) return [];
+    return world.kubeConfigs
+      .filter((c) => c.projectId === projectId && c.cluster === cluster.value)
+      .map((c) => `${c.kind}/${c.name}`);
+  }),
   budgets: ((world) => world.budgets.map(Budget.id)) satisfies CandidateSource,
 } as const;
 

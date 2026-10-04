@@ -57,6 +57,7 @@ import type {
   ManagedInstanceGroup,
 } from "@/engine/domains/instance-groups";
 import type { KmsKeyRing } from "@/engine/domains/kms";
+import type { KubeConfig, KubeEnv } from "@/engine/domains/kube-config";
 import {
   type KubeDeployment,
   type KubeService,
@@ -112,11 +113,12 @@ import { Result } from "@/utils/Result";
  * v7 はDockerのローカル状態とArtifact Registryを持つ。
  * v8 はCloud Build履歴とGKEノードSAを持つ。
  * v9 はDeploymentのrevision/template履歴と個別Podの採番状態を持つ。
+ * v10 はConfigMap/Secret、template環境変数と起動済みPodの環境を持つ。
  */
-export const SchemaVersion = 9;
+export const SchemaVersion = 10;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
-const MigratableVersions = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+const MigratableVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
 export type Snapshot = Readonly<{
@@ -529,6 +531,21 @@ const nodePool = D.object<NodePool>({
   version: string,
 });
 
+const kubeEnv = D.object<KubeEnv>({
+  name: string,
+  source: D.literal(["literal", "configmap", "secret"]),
+  value: string,
+  resource: string,
+  key: string,
+});
+const kubeConfig = D.object<KubeConfig>({
+  projectId: string,
+  cluster: string,
+  kind: D.literal(["configmap", "secret"]),
+  name: string,
+  data: D.array(D.object({ key: string, value: string })),
+  createdAt: string,
+});
 const kubeDeployment = D.object<KubeDeployment>({
   projectId: string,
   cluster: string,
@@ -542,8 +559,13 @@ const kubeDeployment = D.object<KubeDeployment>({
       revision: D.number,
       templateId: D.number,
       image: string,
-      reason: D.literal(["create", "image", "restart", "undo", "migrated"]),
+      reason: D.literal(["create", "image", "env", "restart", "undo", "migrated"]),
+      env: D.array(kubeEnv),
     }),
+  ),
+  env: D.array(kubeEnv),
+  podEnvironments: D.array(
+    D.object({ podName: string, values: D.array(D.object({ name: string, value: string })) }),
   ),
   podIncarnations: D.array(D.number),
   podSequence: D.number,
@@ -757,6 +779,7 @@ const world = D.object<World>({
   nodePools: D.array(nodePool),
   kubeDeployments: D.array(kubeDeployment),
   kubeServices: D.array(kubeService),
+  kubeConfigs: D.array(kubeConfig),
   functions: D.array(cloudFunction),
   appEngineApps: D.array(appEngineApp),
   appVersions: D.array(appVersion),
@@ -831,42 +854,52 @@ const migrateV1 = (value: unknown): unknown => {
   return { ...EmptyCollections, ...value, session, serviceAccounts, buckets };
 };
 
+const migrateKubeDeployment = (version: number, value: unknown): unknown => {
+  if (!isRecord(value)) return value;
+  if (version >= 9)
+    return {
+      ...value,
+      env: [],
+      podEnvironments: [],
+      revisions: Array.isArray(value.revisions)
+        ? value.revisions.map((r) => (isRecord(r) ? { ...r, env: [] } : r))
+        : value.revisions,
+    };
+  const replicas =
+    typeof value.replicas === "number" &&
+    Number.isSafeInteger(value.replicas) &&
+    value.replicas >= 0 &&
+    value.replicas <= 1000
+      ? value.replicas
+      : 0;
+  return {
+    ...value,
+    env: [],
+    podEnvironments: [],
+    revision: value.generation,
+    podSequence: 0,
+    revisions: [
+      {
+        revision: value.generation,
+        templateId: value.generation,
+        image: value.image,
+        reason: "migrated",
+        env: [],
+      },
+    ],
+    podIncarnations: Array.from({ length: replicas }, () => 0),
+  };
+};
+
 const migrate = (version: number, value: unknown): unknown => {
   if (version === SchemaVersion) return value;
   const old = version === 1 ? migrateV1(value) : value;
   const previous = isRecord(old)
     ? {
         ...old,
+        kubeConfigs: [],
         kubeDeployments: Array.isArray(old.kubeDeployments)
-          ? old.kubeDeployments.map((d) =>
-              isRecord(d)
-                ? {
-                    ...d,
-                    revision: d.generation,
-                    podSequence: 0,
-                    revisions: [
-                      {
-                        revision: d.generation,
-                        templateId: d.generation,
-                        image: d.image,
-                        reason: "migrated",
-                      },
-                    ],
-                    podIncarnations: Array.from(
-                      {
-                        length:
-                          typeof d.replicas === "number" &&
-                          Number.isSafeInteger(d.replicas) &&
-                          d.replicas >= 0 &&
-                          d.replicas <= 1000
-                            ? d.replicas
-                            : 0,
-                      },
-                      () => 0,
-                    ),
-                  }
-                : d,
-            )
+          ? old.kubeDeployments.map((d) => migrateKubeDeployment(version, d))
           : old.kubeDeployments,
         containerLab:
           version >= 8

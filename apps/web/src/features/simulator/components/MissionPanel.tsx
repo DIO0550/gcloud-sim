@@ -32,6 +32,10 @@ const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElem
 
 const assertionLabel = (assertion: Mission["assertions"][number]): string => {
   switch (assertion.kind) {
+    case "kubeConfigInjected":
+      return "ConfigMap/Secret参照とLOG_LEVELを設定し、2レプリカへ正しい値を注入";
+    case "kubeConfigRefreshed":
+      return "app-configのAPP_MODE=productionを再起動で2レプリカへ反映";
     case "kubeImageUpdated":
       return "helloをv1からv2へ更新し、履歴と取得権限を保って2レプリカで起動";
     case "kubeRollbackRecovered":

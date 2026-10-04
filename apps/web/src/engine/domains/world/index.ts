@@ -24,6 +24,7 @@ import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { IamPolicy, type RoleName } from "@/engine/domains/iam-policy";
 import type { InstanceTemplate, ManagedInstanceGroup } from "@/engine/domains/instance-groups";
 import type { KmsKeyRing } from "@/engine/domains/kms";
+import { KubeConfig, KubeRuntime } from "@/engine/domains/kube-config";
 import { KubeDeployment, type KubeService } from "@/engine/domains/kubernetes";
 import {
   type BackendService,
@@ -98,6 +99,7 @@ export type World = Readonly<{
   nodePools: readonly NodePool[];
   kubeDeployments: readonly KubeDeployment[];
   kubeServices: readonly KubeService[];
+  kubeConfigs: readonly KubeConfig[];
   functions: readonly CloudFunction[];
   appEngineApps: readonly AppEngineApp[];
   appVersions: readonly AppVersion[];
@@ -255,6 +257,7 @@ const NamedCollectionKeys = [
   "nodePools",
   "kubeDeployments",
   "kubeServices",
+  "kubeConfigs",
   "functions",
   "sqlInstances",
   "pubsubTopics",
@@ -1003,6 +1006,7 @@ export const World = {
       nodePools: world.nodePools.filter((p) => !belongs(p)),
       kubeDeployments: world.kubeDeployments.filter((d) => !belongs(d)),
       kubeServices: world.kubeServices.filter((s) => !belongs(s)),
+      kubeConfigs: world.kubeConfigs.filter((s) => !belongs(s)),
     };
   },
 
@@ -1047,20 +1051,38 @@ export const World = {
     return addUnique(
       world.kubeDeployments.some(sameInCluster(deployment)),
       `deployments.apps "${deployment.name}"`,
-      () => ({ ...world, kubeDeployments: [...world.kubeDeployments, deployment] }),
+      () => ({
+        ...world,
+        kubeDeployments: [
+          ...world.kubeDeployments,
+          KubeRuntime.reconcile(world.kubeConfigs, deployment),
+        ],
+      }),
     );
   },
 
   replaceKubeDeployment(world: World, deployment: KubeDeployment): World {
     return {
       ...world,
-      kubeDeployments: replaceBy(world.kubeDeployments, sameInCluster(deployment), deployment),
+      kubeDeployments: replaceBy(
+        world.kubeDeployments,
+        sameInCluster(deployment),
+        KubeRuntime.reconcile(world.kubeConfigs, deployment),
+      ),
     };
   },
 
   withoutKubeDeployment(world: World, deployment: KubeDeployment): World {
     const same = sameInCluster(deployment);
     return { ...world, kubeDeployments: world.kubeDeployments.filter((d) => !same(d)) };
+  },
+
+  withKubeConfigs(world: World, kubeConfigs: readonly KubeConfig[]): World {
+    return {
+      ...world,
+      kubeConfigs,
+      kubeDeployments: world.kubeDeployments.map((d) => KubeRuntime.reconcile(kubeConfigs, d)),
+    };
   },
 
   kubeServicesOf(world: World, cluster: GkeCluster): readonly KubeService[] {
@@ -1292,6 +1314,15 @@ export const World = {
       const checked = KubeDeployment.validate(deployment);
       if (!Result.isOk(checked)) return Result.err(checked.error);
     }
+    const configIds = world.kubeConfigs.map(
+      (c) => `${c.projectId}/${c.cluster}/${c.kind}/${c.name}`,
+    );
+    if (new Set(configIds).size !== configIds.length)
+      return Result.err("Duplicate Kubernetes configuration.");
+    for (const c of world.kubeConfigs) {
+      const checked = KubeConfig.validate(c);
+      if (!Result.isOk(checked)) return Result.err(checked.error);
+    }
     const lab = ContainerLab.validate(world.containerLab);
     if (!Result.isOk(lab)) return lab;
     if (
@@ -1391,9 +1422,12 @@ const validateReferences = (world: World): Result<World, string> => {
   if (orphanSubscription !== undefined) {
     return Result.err(`subscription [${orphanSubscription.name}] refers to a missing topic`);
   }
-  const clusterless = [...world.nodePools, ...world.kubeDeployments, ...world.kubeServices].find(
-    (r) => !Option.isSome(World.findCluster(world, r.projectId, r.cluster)),
-  );
+  const clusterless = [
+    ...world.nodePools,
+    ...world.kubeDeployments,
+    ...world.kubeServices,
+    ...world.kubeConfigs,
+  ].find((r) => !Option.isSome(World.findCluster(world, r.projectId, r.cluster)));
   if (clusterless !== undefined) {
     return Result.err(
       `[${clusterless.name}] belongs to a missing cluster [${clusterless.cluster}]`,

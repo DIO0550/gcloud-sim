@@ -290,7 +290,10 @@ const resetStorage = (entries) => {
 
 const clickByText = (text) => {
   const buttons = [...document.querySelectorAll("button")];
-  const target = buttons.find((button) => (button.textContent ?? "").trim() === text);
+  const target = buttons.find(
+    (button) =>
+      (button.textContent ?? "").trim() === text || button.getAttribute("aria-label") === text,
+  );
   if (!target) {
     return {
       ok: false,
@@ -467,10 +470,11 @@ const capture = async (options) => {
             })();`,
           });
 
-          // 1 回目は記録を置くためだけに開く。置いてから開き直したものを撮る
-          // （同じブラウザを使い回すので、前の画面の記録が残っていると別の絵になる）。
-          await navigate(page.cdp, url);
-          await run(page.cdp, resetStorage, Object.entries(scenario.storage ?? {}));
+          // アプリが保存状態を読む前に初期化する。起動後にclearして開き直すと、
+          // 旧ページの自動保存がclear後に走り、前のシナリオの状態が復活することがある。
+          await page.cdp.send("Page.addScriptToEvaluateOnNewDocument", {
+            source: `(${resetStorage.toString()})(${JSON.stringify(Object.entries(scenario.storage ?? {}))});`,
+          });
           await navigate(page.cdp, url);
 
           for (const step of scenario.steps) {

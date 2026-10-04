@@ -74,7 +74,7 @@ deleteはリポジトリと保存したイメージを確認後に削除しま�
 ## 表示・保存・ミッション
 
 - リソースツリーは各projectのArtifact Registryと、project外の「Docker（ローカル）」を分けて表示します。選択するとイメージ・コンテナ・リポジトリ設定とIAMを確認できます。
-- Snapshot v9に各状態を保存します。v1〜v6は空のコンテナ教材状態を補完します。v6のTerraform GCS backend/state/ロックはそのまま保持します。
+- Snapshot v10に各状態を保存します。v1〜v6は空のコンテナ教材状態を補完します。v6のTerraform GCS backend/state/ロックはそのまま保持します。
 - 「Dockerイメージを作りローカルで動かす」「Artifact Registryへイメージを公開する」「イメージを読み取り専用で共有する」の3ミッションを追加しました。buildだけ、tagだけ、誤ったポート、余分な書込権限がある状態では対応するミッションを完了できません。
 - 保存量の上限はイメージ/コンテナ/リポジトリ各100、ローカル参照200、リモートバージョン200、各リモートバージョンのタグ100、認証ホスト8です。
 
@@ -121,7 +121,7 @@ gcloud artifacts repositories delete ace-images --location=us-central1
 - Artifact RegistryのAPI・リポジトリ・タグ/digest・ノードSAのReader権限を現在の状態から判定します。ユーザーやビルドSAの権限は使いません。Deployment作成自体は成功してもPodは起動待ちとなり、rollout status/logsは成功扱いになりません。
 - GKEのノードキャッシュ/リトライ時間/実スケジューラを持たない簡略モデルです。権限付与後は即時に回復し、登録イメージ削除や権限削除後は既存Podも起動待ちになります。node pool個別SA・OAuth scope・既定Compute SA・imagePullSecretsは未対応で、明示指定したクラスタSAを全ノードへ適用します。
 - `.pkg.dev`以外の既存公開/教材イメージは従来の簡略動作です。Cloud Runには今回のpull検証を適用しません。
-- Snapshot v8で追加したビルド履歴（最大100件）とノードSAは、現行のv9にも保存します。v7のDocker/レジストリ/Terraformは保持し、空の履歴と既定のノードSA設定を補います。完了履歴はリポジトリ・クラスタの片付け後も残します。
+- Snapshot v8で追加したビルド履歴（最大100件）とノードSAは、現行のv10にも保存します。v7のDocker/レジストリ/Terraformは保持し、空の履歴と既定のノードSA設定を補います。完了履歴はリポジトリ・クラスタの片付け後も残します。
 
 参照: [builds submit](https://docs.cloud.google.com/sdk/gcloud/reference/builds/submit)、[独自サービスアカウント](https://docs.cloud.google.com/build/docs/securing-builds/configure-user-specified-service-accounts)、[GKEのイメージ取得](https://docs.cloud.google.com/kubernetes-engine/docs/troubleshooting/image-pulls)。
 
@@ -141,7 +141,7 @@ gcloud artifacts docker images delete us-central1-docker.pkg.dev/ace-dev-01/ace-
 - `tags delete` はタグだけを消します。`images delete IMAGE:TAG` はそのタグの版、`IMAGE@DIGEST`は指定版、修飾なしの`IMAGE`はそのパスの全バージョンを消します。タグ指定で他にもタグがある場合、digest/パス指定でタグ付きの場合は`--delete-tags`が必要です。削除は確認に`y`、中止に`n`、省略に`--quiet`を使います。非同期削除は未対応です。
 - immutable tagsを設定したリポジトリではタグ移動・タグ削除・タグ付きバージョン削除を拒否します。`--delete-tags`でも回避できません。未タグの版は削除できます。
 - Readerは一覧、Writerはタグの作成/移動、`roles/artifactregistry.repoAdmin`はタグ/バージョン/パッケージの削除も許可します。repoAdminはリポジトリ自体の削除やIAM変更は許しません。継承権限も評価します。
-- 削除してもローカルキャッシュ・実行中のローカルコンテナ・Cloud Buildの履歴は残ります。GKEは前述の現在状態によるモデルなので、参照先を消すとImagePullBackOffになります。Snapshot v8で追加したコンテナのスキーマをv9でも保持し、タグの移動・未タグ・削除後の状態を保存します。
+- 削除してもローカルキャッシュ・実行中のローカルコンテナ・Cloud Buildの履歴は残ります。GKEは前述の現在状態によるモデルなので、参照先を消すとImagePullBackOffになります。Snapshot v8で追加したコンテナのスキーマをv10でも保持し、タグの移動・未タグ・削除後の状態を保存します。
 
 新ミッションは「リリースタグを新しいイメージへ切り替える」（デプロイと実装）と「残すイメージを守りながらコンテナ教材を片付ける」（運用の維持）です。前者はv1を保持してv2/stableを同じ教材digestにします。後者は開始時に専用リポジトリcleanup-images（old:v1/keep:v2）と公開ポートなしのcleanup-localコンテナ/タグを用意します。停止だけ・タグ削除だけ・リポジトリ全削除は未達成です。他のローカルタグやコンテナは削除する必要がありません。既存のcleanup-imagesは上書きせず、リポジトリ未作成時にcleanup-local名が使われていれば開始を拒否します。
 
@@ -155,4 +155,4 @@ Cloud Buildの任意設定・トリガー・ログ転送/ソース保存先、GK
 
 参照: [Docker run](https://docs.docker.com/reference/cli/docker/container/run/)、[Artifact Registry push/pull](https://docs.cloud.google.com/artifact-registry/docs/docker/pushing-and-pulling)、[Docker認証](https://docs.cloud.google.com/artifact-registry/docs/docker/authentication)、[repository作成](https://docs.cloud.google.com/sdk/gcloud/reference/artifacts/repositories/create)、[アクセス制御](https://docs.cloud.google.com/artifact-registry/docs/access-control)。
 
-GKEの更新履歴・ロールバック・Snapshot v9への移行は[KUBERNETES.md](KUBERNETES.md)を参照してください。
+GKEの更新履歴・ロールバック・Snapshot v10への移行は[KUBERNETES.md](KUBERNETES.md)を参照してください。
