@@ -27,7 +27,7 @@
   （コマンドの文字列一致ではない）
 - **保存**: コマンドごとに localStorage へ自動保存。設定から JSON の export / import / リセット
 - **kubectl**: `gcloud container clusters get-credentials` したクラスタに対して、Deployment / Service / Pod を
-  `apply` / `expose` / `scale` / `rollout` などで動かせる（ConfigMap/Secretは編集可能なYAML/JSON、Deployment/Serviceは固定サンプル）
+  `apply` / `expose` / `scale` / `rollout` などで動かせる（ConfigMap/Secretと単一コンテナのDeployment/Serviceは編集可能なYAML/JSONに対応）
 - **Console 風 GUI**（Phase 2）: ヘッダーの CLI / Console で切り替える。IAM・サービスアカウント・ロール・予算・
   VM・ファイアウォール・サブネット・バケット・クラスタ・Cloud Run の画面を持ち、作成フォームには
   「同等のコマンドライン」が出る。送信したものはターミナルにも `# Console:` 付きで残る
@@ -288,7 +288,7 @@ PR を出すと、そのブランチのサイトが
 static export をビルドして主要画面を撮り、main の画像（baseline）と画素で突き合わせる。
 
 撮る画面は [`visual-scenarios.mjs`](.github/scripts/visual-scenarios.mjs) に並べてある。
-今はトップ・設定・Console の 5 画面を **PC 幅（1440px）とスマホ幅（430px）**の 2 通りで撮る。
+今はトップ・設定・Console・ミッション・GKE の 16 画面を **PC 幅（1440px）とスマホ幅（430px）**の 2 通りで撮る。
 画面を足したいときはこのファイルに 1 つ足すだけでよく、workflow は触らない。
 手順はボタンの文字で押す（`click`）、待つ（`wait`）、端末に 1 行打つ（`type`）、入力欄に入れる（`fill`）の 4 つ。画面に固有の操作が要るときは
 [`visual-regression.mjs`](.github/scripts/visual-regression.mjs) の `applyStep` に足す。
@@ -338,4 +338,4 @@ pnpm visual:compare -- --expected visual-baseline --actual visual-actual --out v
 
 ### GKEの更新・復旧
 
-`kubectl set image`、`rollout history/status/undo`でイメージ更新とロールバックを練習できます。ConfigMap/Secretからの環境変数注入・再起動による反映も含む4本のミッションと、現在/過去のReplicaSet表示、Podを1つ削除した後の自己修復に対応しています。操作例と再現範囲は [docs/KUBERNETES.md](docs/KUBERNETES.md)。
+`kubectl set image`、`rollout history/status/undo`でイメージ更新とロールバックを練習できます。ConfigMap/Secretからの環境変数注入・再起動・設定ファイル適用と、Deployment更新・Service接続先の修正も含む6本のミッションと、現在/過去のReplicaSet表示、Podを1つ削除した後の自己修復に対応しています。操作例と再現範囲は [docs/KUBERNETES.md](docs/KUBERNETES.md)。

@@ -22,16 +22,30 @@ type MissionPanelProps = Readonly<{
 const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElement => {
   switch (status) {
     case MissionStatuses.Completed:
-      return <Pill tone="ok">クリア</Pill>;
+      return (
+        <Pill className="shrink-0 whitespace-nowrap" tone="ok">
+          クリア
+        </Pill>
+      );
     case MissionStatuses.InProgress:
-      return <Pill tone="accent">挑戦中</Pill>;
+      return (
+        <Pill className="shrink-0 whitespace-nowrap" tone="accent">
+          挑戦中
+        </Pill>
+      );
     case MissionStatuses.Available:
-      return <Pill tone="muted">未着手</Pill>;
+      return (
+        <Pill className="shrink-0 whitespace-nowrap" tone="muted">
+          未着手
+        </Pill>
+      );
   }
 };
 
 const assertionLabel = (assertion: Mission["assertions"][number]): string => {
   switch (assertion.kind) {
+    case "kubeWorkloadApplied":
+      return "ファイルとクラスタをnginx:2・2レプリカ・正しいService selectorでそろえる";
     case "kubeConfigInjected":
       return "ConfigMap/Secret参照とLOG_LEVELを設定し、2レプリカへ正しい値を注入";
     case "kubeConfigApplied":

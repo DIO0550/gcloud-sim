@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { ImagePull } from "@/engine/domains/image-pull";
 import { KubeEnv, KubeRuntime } from "@/engine/domains/kube-config";
+import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
 
 import { KubePod, KubeService } from "@/engine/domains/kubernetes";
 import { CloudRunService, GkeCluster } from "@/engine/domains/managed-services";
@@ -155,6 +156,8 @@ export const KubeServiceProperties = ({
         { label: "cluster", value: s.cluster },
         { label: "type", value: s.type },
         { label: "selector", value: `app=${s.targetDeployment}` },
+        { label: "targetPort", value: String(s.targetPort) },
+        { label: "endpoints", value: KubeServiceRouting.endpoints(world, s).join(", ") || Absent },
         { label: "ports", value: KubeService.portsText(s) },
         { label: "clusterIP", value: s.clusterIp },
         { label: "externalIP", value: Option.unwrapOr(s.externalIp, Absent) },

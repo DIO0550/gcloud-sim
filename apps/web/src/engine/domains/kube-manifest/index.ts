@@ -2,27 +2,15 @@ import { isAlias, parseAllDocuments, visit } from "yaml";
 import { KubeConfig as Configuration, type KubeConfig } from "@/engine/domains/kube-config";
 import { Result } from "@/utils/Result";
 
-export type KubeManifest = Readonly<{
+import { fail, fields, record } from "./validation";
+import { parseWorkload, type WorkloadManifest } from "./workloads";
+
+export type ConfigManifest = Readonly<{
   kind: KubeConfig["kind"];
   name: string;
   data: KubeConfig["data"];
 }>;
-const fail = (message: string): never => {
-  throw new Error(message);
-};
-const record = (value: unknown, field: string): Record<string, unknown> => {
-  if (typeof value !== "object" || value === null || Array.isArray(value))
-    return fail(`${field} must be an object.`);
-  return value as Record<string, unknown>;
-};
-const fields = (
-  value: Record<string, unknown>,
-  allowed: readonly string[],
-  field: string,
-): void => {
-  if (Object.keys(value).some((key) => !allowed.includes(key)))
-    fail(`Unsupported field in ${field}. Supported: ${allowed.join(", ")}.`);
-};
+export type KubeManifest = ConfigManifest | WorkloadManifest;
 const strings = (value: unknown, field: string): [string, string][] =>
   Object.entries(value === undefined ? {} : record(value, field)).map(([key, value]) => {
     if (typeof value !== "string")
@@ -41,8 +29,9 @@ const decode = (value: string): string => {
 };
 const parseResource = (value: unknown): KubeManifest => {
   const r = record(value, "manifest");
+  if (r.kind === "Deployment" || r.kind === "Service") return parseWorkload(r);
   if (r.apiVersion !== "v1" || (r.kind !== "ConfigMap" && r.kind !== "Secret"))
-    return fail("Virtual manifests support only v1 ConfigMap and Secret.");
+    return fail("Virtual manifests support ConfigMap, Secret, apps/v1 Deployment and v1 Service.");
   const secret = r.kind === "Secret";
   fields(
     r,
@@ -108,7 +97,8 @@ export const KubeManifest = {
         prettyErrors: false,
         stringKeys: true,
       });
-      if (!docs.length || docs.length > 32) return fail("Use 1 to 32 ConfigMap/Secret manifests.");
+      if (!docs.length || docs.length > 32)
+        return fail("Use 1 to 32 supported Kubernetes manifests.");
       const resources = docs.map((doc) => {
         if (doc.errors.length || doc.warnings.length)
           return fail("Invalid YAML/JSON manifest (duplicate keys, syntax or tags).");
@@ -128,6 +118,38 @@ export const KubeManifest = {
 } as const;
 
 export const KubeManifestExamples: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  "kubernetes-workload": {
+    "web-deployment.yaml": `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: manifest-web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: manifest-web
+  template:
+    metadata:
+      labels:
+        app: manifest-web
+    spec:
+      containers:
+        - name: manifest-web
+          image: nginx:1
+`,
+    "web-service.yaml": `apiVersion: v1
+kind: Service
+metadata:
+  name: manifest-svc
+spec:
+  type: LoadBalancer
+  selector:
+    app: wrong-app
+  ports:
+    - port: 80
+      targetPort: 80
+`,
+  },
   "kubernetes-config": {
     "app-config.yaml": `apiVersion: v1
 kind: ConfigMap

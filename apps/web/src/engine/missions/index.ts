@@ -68,6 +68,11 @@ import {
   KubeConfigurationMissions,
   kubeConfigurationSatisfied,
 } from "./kube-configuration";
+import {
+  type KubeWorkloadAssertion,
+  KubeWorkloadMissions,
+  kubeWorkloadSatisfied,
+} from "./kube-workloads";
 
 /** ACE の 5 ドメイン（設計書 6.2 Mission.domain）。 */
 export const MissionDomains = {
@@ -82,6 +87,7 @@ export type MissionDomain = ValueOf<typeof MissionDomains>;
 /** World に対する述語（DJ-010: コマンド文字列ではなく状態で判定する）。値の語彙はドメインの型で閉じる。 */
 export type MissionAssertion =
   | BuildAssertion
+  | KubeWorkloadAssertion
   | KubeConfigurationAssertion
   | KubernetesAssertion
   | ArtifactLifecycleAssertion
@@ -226,6 +232,7 @@ const Missions: readonly Mission[] = [
   ...ContainerMissions,
   ...BuildMissions,
   ...KubernetesMissions,
+  ...KubeWorkloadMissions,
   ...KubeConfigurationMissions,
   ...ArtifactLifecycleMissions,
   {
@@ -681,6 +688,8 @@ const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: 
 
 const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
+    case "kubeWorkloadApplied":
+      return kubeWorkloadSatisfied(world);
     case "kubeConfigInjected":
     case "kubeConfigRefreshed":
     case "kubeConfigApplied":
