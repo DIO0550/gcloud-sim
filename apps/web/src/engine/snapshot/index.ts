@@ -115,11 +115,12 @@ import { Result } from "@/utils/Result";
  * v9 はDeploymentのrevision/template履歴と個別Podの採番状態を持つ。
  * v10 はConfigMap/Secret、template環境変数と起動済みPodの環境を持つ。
  * v11 はKubernetes仮想ファイルとapply管理キーを持つ。
+ * v12 はラベル・selectorとDeploymentごとの仮想Podネットワークを持つ。
  */
-export const SchemaVersion = 11;
+export const SchemaVersion = 12;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
-const MigratableVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+const MigratableVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
 export type Snapshot = Readonly<{
@@ -549,6 +550,10 @@ const kubeConfig = D.object<KubeConfig>({
   createdAt: string,
 });
 const kubeDeployment = D.object<KubeDeployment>({
+  labels: stringMap,
+  selector: stringMap,
+  podLabels: stringMap,
+  podNetwork: D.number,
   projectId: string,
   cluster: string,
   name: string,
@@ -561,7 +566,8 @@ const kubeDeployment = D.object<KubeDeployment>({
       revision: D.number,
       templateId: D.number,
       image: string,
-      reason: D.literal(["create", "image", "env", "restart", "undo", "migrated"]),
+      reason: D.literal(["create", "image", "env", "labels", "restart", "undo", "migrated"]),
+      podLabels: stringMap,
       env: D.array(kubeEnv),
     }),
   ),
@@ -579,7 +585,8 @@ const kubeService = D.object<KubeService>({
   cluster: string,
   name: string,
   type: D.parsed(KubeServiceType.parse, "service type"),
-  targetDeployment: string,
+  selector: stringMap,
+  labels: stringMap,
   port: D.number,
   targetPort: D.number,
   clusterIp: string,
@@ -857,7 +864,7 @@ const migrateV1 = (value: unknown): unknown => {
   return { ...EmptyCollections, ...value, session, serviceAccounts, buckets };
 };
 
-const migrateKubeDeployment = (version: number, value: unknown): unknown => {
+const migrateLegacyKubeDeployment = (version: number, value: unknown): unknown => {
   if (!isRecord(value)) return value;
   if (version >= 10) return value;
   if (version >= 9)
@@ -895,20 +902,51 @@ const migrateKubeDeployment = (version: number, value: unknown): unknown => {
   };
 };
 
+const migrateKubeDeployment = (version: number, value: unknown, podNetwork: number): unknown => {
+  const d = migrateLegacyKubeDeployment(version, value);
+  if (!isRecord(d)) return d;
+  const labels = { app: d.name };
+  return {
+    ...d,
+    labels,
+    selector: labels,
+    podLabels: labels,
+    podNetwork,
+    revisions: Array.isArray(d.revisions)
+      ? d.revisions.map((r) => (isRecord(r) ? { ...r, podLabels: labels } : r))
+      : d.revisions,
+  };
+};
+
 const migrate = (version: number, value: unknown): unknown => {
   if (version === SchemaVersion) return value;
   const old = version === 1 ? migrateV1(value) : value;
+  const networks = new Map<string, number>();
   const previous = isRecord(old)
     ? {
         ...old,
-        kubeFiles: {},
+        kubeFiles: version >= 11 ? old.kubeFiles : {},
         kubeConfigs:
-          version >= 10 && Array.isArray(old.kubeConfigs)
-            ? old.kubeConfigs.map((c) => (isRecord(c) ? { ...c, lastAppliedKeys: [] } : c))
-            : [],
+          version >= 11
+            ? old.kubeConfigs
+            : version >= 10 && Array.isArray(old.kubeConfigs)
+              ? old.kubeConfigs.map((c) => (isRecord(c) ? { ...c, lastAppliedKeys: [] } : c))
+              : [],
         kubeDeployments: Array.isArray(old.kubeDeployments)
-          ? old.kubeDeployments.map((d) => migrateKubeDeployment(version, d))
+          ? old.kubeDeployments.map((d) => {
+              const key = isRecord(d) ? `${d.projectId}/${d.cluster}` : "";
+              const slot = networks.get(key) ?? 0;
+              networks.set(key, slot + 1);
+              return migrateKubeDeployment(version, d, slot);
+            })
           : old.kubeDeployments,
+        kubeServices: Array.isArray(old.kubeServices)
+          ? old.kubeServices.map((s) => {
+              if (!isRecord(s)) return s;
+              const { targetDeployment, ...rest } = s;
+              return { ...rest, labels: {}, selector: { app: targetDeployment } };
+            })
+          : old.kubeServices,
         containerLab:
           version >= 8
             ? old.containerLab

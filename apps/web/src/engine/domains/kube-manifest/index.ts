@@ -117,7 +117,49 @@ export const KubeManifest = {
   },
 } as const;
 
+const shopDeployment = (track: string, image: string) => `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shop-${track}
+  labels:
+    team: storefront
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: shop
+      track: ${track}
+  template:
+    metadata:
+      labels:
+        app: shop
+        track: ${track}
+    spec:
+      containers:
+        - name: shop-${track}
+          image: ${image}
+`;
+
 export const KubeManifestExamples: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  "kubernetes-labels": {
+    "shop-blue.yaml": shopDeployment("blue", "nginx:1"),
+    "shop-green.yaml": shopDeployment("green", "nginx:2"),
+    "shop-service.yaml": `apiVersion: v1
+kind: Service
+metadata:
+  name: shop
+  labels:
+    team: storefront
+spec:
+  type: LoadBalancer
+  selector:
+    app: shop
+    track: blue
+  ports:
+    - port: 80
+      targetPort: 80
+`,
+  },
   "kubernetes-workload": {
     "web-deployment.yaml": `apiVersion: apps/v1
 kind: Deployment

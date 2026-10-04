@@ -17,6 +17,7 @@ import { Candidates, projectCommand } from "@/engine/commands/shared";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { ImagePull } from "@/engine/domains/image-pull";
 import { KubeConfig, KubeEnv, KubeRuntime } from "@/engine/domains/kube-config";
+import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeManifest } from "@/engine/domains/kube-manifest";
 import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
 import {
@@ -323,10 +324,13 @@ const collect = (
               namespace: "default",
               annotations: { "deployment.kubernetes.io/revision": String(r.revision) },
               ownerReferences: [{ kind: "Deployment", name: d.name }],
+              labels: r.podLabels,
             },
             spec: {
               replicas,
+              selector: { matchLabels: d.selector },
               template: {
+                metadata: { labels: r.podLabels },
                 spec: {
                   containers: [{ name: d.name, image: r.image, env: r.env.map(KubeEnv.toRecord) }],
                 },
@@ -356,7 +360,13 @@ const collect = (
         rows: rows.map((s) => ({
           ...serviceRow(s, ctx.now),
           ...(describe
-            ? { endpoints: KubeServiceRouting.endpoints(ctx.world, s).join(", ") || "<none>" }
+            ? {
+                endpoints: KubeServiceRouting.endpoints(ctx.world, s).join(", ") || "<none>",
+                backendPods:
+                  KubeServiceRouting.backends(ctx.world, s)
+                    .map((b) => b.pod)
+                    .join(", ") || "<none>",
+              }
             : {}),
         })),
         columns: ServiceColumns,
@@ -397,7 +407,26 @@ const get = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   if (!Result.isOk(ref)) return ref;
   const collected = collect(ctx, cluster.value, ref.value);
   if (!Result.isOk(collected)) return collected;
-  const { rows, columns } = collected.value;
+  let { rows } = collected.value;
+  const { columns } = collected.value;
+  const selector = ParsedArgs.string(args, "selector");
+  if (Option.isSome(selector)) {
+    if (
+      Option.isSome(ref.value.name) ||
+      !["deployment", "service", "pod", "replicaset", "all"].includes(ref.value.kind)
+    )
+      return Result.err(
+        usage("--selector supports unnamed deployments, services, pods, replicasets or all."),
+      );
+    const labels = KubeLabels.query(selector.value);
+    if (!Result.isOk(labels)) return Result.err(usage(labels.error));
+    rows = rows.filter((row) => {
+      const metadata = row.metadata;
+      if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return false;
+      const parsed = KubeLabels.parse("labels" in metadata ? metadata.labels : {});
+      return Result.isOk(parsed) && KubeLabels.matches(labels.value, parsed.value);
+    });
+  }
   const output = ParsedArgs.string(args, "output");
   if (Option.isSome(output) && output.value === "json") {
     const data =
@@ -462,7 +491,8 @@ const createService = (
     targetPort: Option<number>;
   }>,
 ): CommandResult => {
-  if (!Option.isSome(World.findKubeDeployment(ctx.world, cluster, seed.targetDeployment))) {
+  const deployment = World.findKubeDeployment(ctx.world, cluster, seed.targetDeployment);
+  if (!Option.isSome(deployment)) {
     return Result.err(notFound("deployments.apps", seed.targetDeployment));
   }
   const type = Option.toResult(KubeServiceType.parse(seed.type), () =>
@@ -478,7 +508,7 @@ const createService = (
       cluster: cluster.name,
       name: seed.name,
       type: type.value,
-      targetDeployment: seed.targetDeployment,
+      selector: deployment.value.selector,
       port: seed.port,
       targetPort: seed.targetPort,
       clusterIp: clusterIp(numbered.number),
@@ -876,6 +906,7 @@ const rollout = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
             output: CommandOutput.yaml({
               revision: record.revision,
               kind: "PodTemplate",
+              metadata: { labels: record.podLabels },
               spec: {
                 containers: [
                   { name: d.name, image: record.image, env: record.env.map(KubeEnv.toRecord) },
@@ -1158,7 +1189,13 @@ export const KubectlCommands: readonly CommandSpec[] = [
     verb: "get",
     summary: "Display one or many resources.",
     positionals: [TypePositional, NamePositional],
-    flags: [OutputFlag],
+    flags: [
+      OutputFlag,
+      Flag.string("selector", "Filter labels with comma-separated key=value pairs.", {
+        aliases: ["-l"],
+        singleUse: true,
+      }),
+    ],
     permission: resourcePermission("list", "container.pods.list"),
     run: get,
   }),

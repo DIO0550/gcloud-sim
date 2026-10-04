@@ -50,12 +50,44 @@ const configSteps = [
 ];
 export const SCENARIOS = [
   {
+    name: "mission-gke-labels",
+    label: "ミッション: 複数ラベルで公開先を切り替え",
+    steps: [
+      { wait: 800 },
+      { click: "ミッション 0/44" },
+      { click: "運用の維持0/18 クリア" },
+      { click: "ラベルでServiceの公開先を切り替える未着手" },
+      { click: "開始" },
+      { click: "ヒント（0/5）" },
+      { wait: 300 },
+    ],
+  },
+  {
+    name: "gke-label-routing",
+    label: "GKE: greenへの公開先切り替え",
+    steps: [
+      { wait: 800 },
+      { type: "gcloud services enable container.googleapis.com" },
+      { type: "gcloud container clusters create-auto labels-gke --region=us-central1" },
+      { type: "sim files load kubernetes-labels" },
+      { type: "kubectl apply -f shop-blue.yaml" },
+      { type: "kubectl apply -f shop-green.yaml" },
+      { type: "kubectl apply -f shop-service.yaml" },
+      { type: "sim files replace shop-service.yaml --search=blue --replacement=green" },
+      { type: "kubectl apply -f shop-service.yaml" },
+      { type: "kubectl get pods -l app=shop,track=green" },
+      { click: "labels-gke を展開する" },
+      { click: "svc: shop" },
+      { wait: 300 },
+    ],
+  },
+  {
     name: "mission-gke-workload",
     label: "ミッション: マニフェスト更新とService接続先",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/43" },
-      { click: "運用の維持0/17 クリア" },
+      { click: "ミッション 0/44" },
+      { click: "運用の維持0/18 クリア" },
       { click: "マニフェストでアプリを更新しServiceの接続先を直す未着手" },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -83,8 +115,8 @@ export const SCENARIOS = [
     label: "ミッション: 設定ファイルをapplyして反映",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/43" },
-      { click: "運用の維持0/17 クリア" },
+      { click: "ミッション 0/44" },
+      { click: "運用の維持0/18 クリア" },
       { click: "設定ファイルをapplyしてPodへ反映する未着手" },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -106,8 +138,8 @@ export const SCENARIOS = [
     label: "ミッション: ConfigMap変更を再起動で反映",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/43" },
-      { click: "運用の維持0/17 クリア" },
+      { click: "ミッション 0/44" },
+      { click: "運用の維持0/18 クリア" },
       { click: "ConfigMapの変更をPodの再起動で反映する未着手" },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -119,8 +151,8 @@ export const SCENARIOS = [
     label: "ミッション: GKE更新失敗からの復旧",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/43" },
-      { click: "運用の維持0/17 クリア" },
+      { click: "ミッション 0/44" },
+      { click: "運用の維持0/18 クリア" },
       { click: "失敗したGKEの更新をロールバックする未着手" },
       { click: "開始" },
       { click: "ヒント（0/7）" },
@@ -132,8 +164,8 @@ export const SCENARIOS = [
     label: "ミッション: コンテナ教材の片付け",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/43" },
-      { click: "運用の維持0/17 クリア" },
+      { click: "ミッション 0/44" },
+      { click: "運用の維持0/18 クリア" },
       { click: "残すイメージを守りながらコンテナ教材を片付ける未着手" },
       { click: "開始" },
       { click: "ヒント（0/4）" },
@@ -143,14 +175,14 @@ export const SCENARIOS = [
   {
     name: "mission-categories",
     label: "ミッション: カテゴリ選択",
-    steps: [{ wait: 800 }, { click: "ミッション 0/43" }, { wait: 300 }],
+    steps: [{ wait: 800 }, { click: "ミッション 0/44" }, { wait: 300 }],
   },
   {
     name: "mission-list",
     label: "ミッション: カテゴリ内の一覧",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/43" },
+      { click: "ミッション 0/44" },
       { click: "環境セットアップ0/3 クリア" },
       { wait: 300 },
     ],
@@ -160,7 +192,7 @@ export const SCENARIOS = [
     label: "ミッション: 選んだ1件の手順",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/43" },
+      { click: "ミッション 0/44" },
       { click: "環境セットアップ0/3 クリア" },
       { click: "本番用の configuration を用意する未着手" },
       { click: "開始" },

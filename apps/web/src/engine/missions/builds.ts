@@ -1,5 +1,6 @@
 import { ContainerLab } from "@/engine/domains/container-lab";
 import { ImagePull } from "@/engine/domains/image-pull";
+import { KubeLabels } from "@/engine/domains/kube-labels";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
@@ -88,7 +89,7 @@ export const buildSatisfied = (world: World, assertion: BuildAssertion): boolean
         s.projectId === cluster.projectId &&
         s.cluster === cluster.name &&
         s.name === "hello" &&
-        s.targetDeployment === "hello" &&
+        KubeLabels.equal(s.selector, { app: "hello" }) &&
         s.type === "LoadBalancer" &&
         s.port === 80 &&
         s.targetPort === 8080,

@@ -1,4 +1,5 @@
 import { KubeEnv } from "@/engine/domains/kube-config";
+import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeDeployment, KubeName, KubeServiceType } from "@/engine/domains/kubernetes";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -11,22 +12,24 @@ export type WorkloadManifest =
       image: string;
       replicas: number | undefined;
       env: readonly KubeEnv[];
+      labels: KubeLabels;
+      selector: KubeLabels;
+      podLabels: KubeLabels;
     }>
   | Readonly<{
       kind: "service";
       name: string;
       type: KubeServiceType;
-      targetDeployment: string;
+      selector: KubeLabels;
+      labels: KubeLabels;
       port: number;
       targetPort: number;
     }>;
 
-const appLabel = (value: unknown, field: string): string => {
-  const labels = record(value, field);
-  fields(labels, ["app"], field);
-  if (typeof labels.app !== "string" || !Result.isOk(KubeName.parse(labels.app)))
-    return fail(`${field} requires a valid app label on gcloud-sim.`);
-  return labels.app;
+const labelMap = (value: unknown, required = false): KubeLabels => {
+  const parsed = KubeLabels.parse(value, required);
+  if (!Result.isOk(parsed)) return fail(parsed.error);
+  return parsed.value;
 };
 const environment = (value: unknown): readonly KubeEnv[] => {
   if (value === undefined) return [];
@@ -67,7 +70,8 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
     return fail("Unsupported workload apiVersion.");
   fields(r, ["apiVersion", "kind", "metadata", "spec"], "manifest");
   const meta = record(r.metadata, "metadata");
-  fields(meta, deployment ? ["name", "namespace", "labels"] : ["name", "namespace"], "metadata");
+  fields(meta, ["name", "namespace", "labels"], "metadata");
+  const labels = labelMap(meta.labels === undefined ? {} : meta.labels);
   if (meta.namespace !== undefined && meta.namespace !== "default")
     return fail("Only namespace default is supported on gcloud-sim.");
   if (typeof meta.name !== "string" || !Result.isOk(KubeName.parse(meta.name)))
@@ -78,7 +82,7 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
     const type = KubeServiceType.parse(typeof spec.type === "string" ? spec.type : "ClusterIP");
     if (!Option.isSome(type) || (spec.type !== undefined && typeof spec.type !== "string"))
       return fail("Unsupported Service type.");
-    const targetDeployment = appLabel(spec.selector, "Service.spec.selector");
+    const selector = labelMap(spec.selector, true);
     if (!Array.isArray(spec.ports) || spec.ports.length !== 1)
       return fail("Use exactly one Service port.");
     const port = record(spec.ports[0], "Service port");
@@ -94,7 +98,8 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
       kind: "service",
       name: meta.name,
       type: type.value,
-      targetDeployment,
+      selector,
+      labels,
       port: port.port,
       targetPort,
     };
@@ -106,14 +111,10 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
   fields(template, ["metadata", "spec"], "template");
   const templateMeta = record(template.metadata, "template.metadata");
   fields(templateMeta, ["labels"], "template.metadata");
-  if (
-    appLabel(selector.matchLabels, "selector.matchLabels") !== meta.name ||
-    appLabel(templateMeta.labels, "template.metadata.labels") !== meta.name ||
-    (meta.labels !== undefined && appLabel(meta.labels, "metadata.labels") !== meta.name)
-  )
-    return fail(
-      "Deployment selector and template labels must both be app=<deployment name> on gcloud-sim; the selector is immutable.",
-    );
+  const matchLabels = labelMap(selector.matchLabels, true);
+  const podLabels = labelMap(templateMeta.labels, true);
+  if (!KubeLabels.matches(matchLabels, podLabels))
+    return fail("Deployment selector must match template labels.");
   const pod = record(template.spec, "template.spec");
   fields(pod, ["containers"], "template.spec");
   if (!Array.isArray(pod.containers) || pod.containers.length !== 1)
@@ -141,5 +142,8 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
     image: container.image,
     replicas: spec.replicas,
     env,
+    labels,
+    selector: matchLabels,
+    podLabels,
   };
 };
