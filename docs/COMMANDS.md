@@ -552,3 +552,5 @@ gcloud-simはホストのファイルを読みません。TerraformとConfigMap/
 - https://docs.cloud.google.com/sdk/gcloud/reference/monitoring/policies/create
 - https://docs.cloud.google.com/sdk/gcloud/reference/monitoring/uptime/create
 - https://docs.cloud.google.com/sdk/gcloud/reference/logging/metrics/create
+
+PodのQoSは`kubectl get pods -o json` / `-o yaml` / `kubectl describe pods`の`status.qosClass`で確認できます。CPU・メモリのrequests/limitsから導出する読み取り専用の分類です。`status`はオブジェクト、一覧表示用の状態文字列は`displayStatus`です（詳細は[KUBERNETES.md](KUBERNETES.md)）。

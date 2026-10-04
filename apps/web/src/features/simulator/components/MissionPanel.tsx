@@ -48,6 +48,8 @@ const assertionLabel = (assertion: Mission["assertions"][number]): string => {
       return "HPAのファイルと設定を一致させ、再評価で3→6レプリカへ増やす";
     case "kubeHpaScaled":
       return "CPU requestとHPAを設定し、教材評価で2→4レプリカへ増やす";
+    case "kubeQosConfigured":
+      return "3つのDeploymentを1レプリカずつ作り、指定したresourcesで3種類のQoSをそろえる";
     case "kubeResourcesConfigured":
       return "2レプリカでrequestsを250m・128Mi、limitsを500m・256Miにし、ファイルと一致させる";
     case "kubeLabelsSwitched":

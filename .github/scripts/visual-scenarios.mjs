@@ -50,12 +50,40 @@ const configSteps = [
 ];
 export const SCENARIOS = [
   {
+    name: "mission-gke-qos",
+    label: "ミッション: PodのQoSを比較する",
+    steps: [
+      { wait: 800 },
+      { click: "ミッション 0/48" },
+      { click: "運用の維持0/22 クリア" },
+      { click: "requestsとlimitsからPodのQoSを比較する未着手" },
+      { click: "開始" },
+      { click: "ヒント（0/5）" },
+      { wait: 300 },
+    ],
+  },
+  {
+    name: "gke-qos-properties",
+    label: "GKE: Guaranteed PodのQoSとresources",
+    steps: [
+      { wait: 800 },
+      { type: "gcloud services enable container.googleapis.com" },
+      { type: "gcloud container clusters create qos-gke --zone=us-central1-a" },
+      { type: "kubectl create deployment qos-guaranteed --image=nginx:1" },
+      { type: "kubectl set resources deployment/qos-guaranteed --limits=cpu=500m,memory=256Mi" },
+      { type: "kubectl get pods -o yaml" },
+      { click: "qos-gke を展開する" },
+      { click: "deploy: qos-guaranteed" },
+      { wait: 300 },
+    ],
+  },
+  {
     name: "mission-gke-hpa-manifest",
     label: "ミッション: HPA設定ファイルの変更と再評価",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/47" },
-      { click: "運用の維持0/21 クリア" },
+      { click: "ミッション 0/48" },
+      { click: "運用の維持0/22 クリア" },
       { click: "HPAの設定ファイルを変更して再評価する未着手" },
       { click: "開始" },
       { click: "ヒント（0/6）" },
@@ -90,8 +118,8 @@ export const SCENARIOS = [
     label: "ミッション: CPU使用率によるPodの増加",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/47" },
-      { click: "運用の維持0/21 クリア" },
+      { click: "ミッション 0/48" },
+      { click: "運用の維持0/22 クリア" },
       { click: "CPU使用率に合わせてPodを増やす未着手" },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -119,8 +147,8 @@ export const SCENARIOS = [
     label: "ミッション: CPU・メモリの必要量と上限",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/47" },
-      { click: "運用の維持0/21 クリア" },
+      { click: "ミッション 0/48" },
+      { click: "運用の維持0/22 クリア" },
       { click: "CPU・メモリの必要量と上限を設定する未着手" },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -149,8 +177,8 @@ export const SCENARIOS = [
     label: "ミッション: 複数ラベルで公開先を切り替え",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/47" },
-      { click: "運用の維持0/21 クリア" },
+      { click: "ミッション 0/48" },
+      { click: "運用の維持0/22 クリア" },
       { click: "ラベルでServiceの公開先を切り替える未着手" },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -181,8 +209,8 @@ export const SCENARIOS = [
     label: "ミッション: マニフェスト更新とService接続先",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/47" },
-      { click: "運用の維持0/21 クリア" },
+      { click: "ミッション 0/48" },
+      { click: "運用の維持0/22 クリア" },
       { click: "マニフェストでアプリを更新しServiceの接続先を直す未着手" },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -210,8 +238,8 @@ export const SCENARIOS = [
     label: "ミッション: 設定ファイルをapplyして反映",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/47" },
-      { click: "運用の維持0/21 クリア" },
+      { click: "ミッション 0/48" },
+      { click: "運用の維持0/22 クリア" },
       { click: "設定ファイルをapplyしてPodへ反映する未着手" },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -233,8 +261,8 @@ export const SCENARIOS = [
     label: "ミッション: ConfigMap変更を再起動で反映",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/47" },
-      { click: "運用の維持0/21 クリア" },
+      { click: "ミッション 0/48" },
+      { click: "運用の維持0/22 クリア" },
       { click: "ConfigMapの変更をPodの再起動で反映する未着手" },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -246,8 +274,8 @@ export const SCENARIOS = [
     label: "ミッション: GKE更新失敗からの復旧",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/47" },
-      { click: "運用の維持0/21 クリア" },
+      { click: "ミッション 0/48" },
+      { click: "運用の維持0/22 クリア" },
       { click: "失敗したGKEの更新をロールバックする未着手" },
       { click: "開始" },
       { click: "ヒント（0/7）" },
@@ -259,8 +287,8 @@ export const SCENARIOS = [
     label: "ミッション: コンテナ教材の片付け",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/47" },
-      { click: "運用の維持0/21 クリア" },
+      { click: "ミッション 0/48" },
+      { click: "運用の維持0/22 クリア" },
       { click: "残すイメージを守りながらコンテナ教材を片付ける未着手" },
       { click: "開始" },
       { click: "ヒント（0/4）" },
@@ -270,14 +298,14 @@ export const SCENARIOS = [
   {
     name: "mission-categories",
     label: "ミッション: カテゴリ選択",
-    steps: [{ wait: 800 }, { click: "ミッション 0/47" }, { wait: 300 }],
+    steps: [{ wait: 800 }, { click: "ミッション 0/48" }, { wait: 300 }],
   },
   {
     name: "mission-list",
     label: "ミッション: カテゴリ内の一覧",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/47" },
+      { click: "ミッション 0/48" },
       { click: "環境セットアップ0/3 クリア" },
       { wait: 300 },
     ],
@@ -287,7 +315,7 @@ export const SCENARIOS = [
     label: "ミッション: 選んだ1件の手順",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/47" },
+      { click: "ミッション 0/48" },
       { click: "環境セットアップ0/3 クリア" },
       { click: "本番用の configuration を用意する未着手" },
       { click: "開始" },

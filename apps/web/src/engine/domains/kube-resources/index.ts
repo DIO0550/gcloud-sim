@@ -1,6 +1,7 @@
 import type { JsonRecord } from "@/types/Json";
 import { Result } from "@/utils/Result";
 
+export type KubeQosClass = "BestEffort" | "Burstable" | "Guaranteed";
 export type ResourceName = "cpu" | "memory";
 export type ResourceAmounts = Readonly<Partial<Record<ResourceName, string>>>;
 export type KubeResources = Readonly<{ requests: ResourceAmounts; limits: ResourceAmounts }>;
@@ -73,6 +74,17 @@ const amounts = (input: unknown): Result<ResourceAmounts, string> => {
 };
 
 export const KubeResources = {
+  /** Single-container QoS from validated quantities; zero does not count as a resource. */
+  qosClass(resources: KubeResources): KubeQosClass {
+    const amounts = names.map((name) => ({
+      request: Result.unwrap(quantity(name, resources.requests[name] ?? "0")).value,
+      limit: Result.unwrap(quantity(name, resources.limits[name] ?? "0")).value,
+    }));
+    if (amounts.every(({ request, limit }) => request > 0n && request === limit))
+      return "Guaranteed";
+    if (amounts.some(({ request, limit }) => request > 0n || limit > 0n)) return "Burstable";
+    return "BestEffort";
+  },
   /** Canonical request quantity in millicores; omitted requests have no utilization base. */
   cpuMilli(text: string | undefined): number {
     if (text === undefined) return 0;
