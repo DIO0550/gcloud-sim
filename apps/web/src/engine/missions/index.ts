@@ -46,6 +46,11 @@ import {
   containerSatisfied,
 } from "@/engine/missions/containers";
 import {
+  type KubernetesAssertion,
+  KubernetesMissions,
+  kubernetesSatisfied,
+} from "@/engine/missions/kubernetes";
+import {
   type ObservabilityAssertion,
   ObservabilityMissions,
   observabilitySatisfied,
@@ -72,6 +77,7 @@ export type MissionDomain = ValueOf<typeof MissionDomains>;
 /** World に対する述語（DJ-010: コマンド文字列ではなく状態で判定する）。値の語彙はドメインの型で閉じる。 */
 export type MissionAssertion =
   | BuildAssertion
+  | KubernetesAssertion
   | ArtifactLifecycleAssertion
   | ContainerAssertion
   | TerraformAssertion
@@ -213,6 +219,7 @@ const Missions: readonly Mission[] = [
   ...TerraformMissions,
   ...ContainerMissions,
   ...BuildMissions,
+  ...KubernetesMissions,
   ...ArtifactLifecycleMissions,
   {
     id: "m-setup-001",
@@ -667,6 +674,9 @@ const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: 
 
 const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
+    case "kubeImageUpdated":
+    case "kubeRollbackRecovered":
+      return kubernetesSatisfied(world, assertion);
     case "artifactReleasePromoted":
     case "containerCleanupComplete":
       return artifactLifecycleSatisfied(world, assertion);

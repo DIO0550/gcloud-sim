@@ -256,7 +256,7 @@ export type CommandOutput = Readonly<{
   messages: readonly OutputMessage[];
   records: readonly JsonRecord[];
   columns: readonly Column[];
-  defaultFormat: "table" | "yaml" | "none";
+  defaultFormat: "table" | "yaml" | "json" | "none";
   trailing: readonly OutputMessage[];
 }>;
 
