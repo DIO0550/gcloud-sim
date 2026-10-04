@@ -25,6 +25,7 @@ import { IamPolicy, type RoleName } from "@/engine/domains/iam-policy";
 import type { InstanceTemplate, ManagedInstanceGroup } from "@/engine/domains/instance-groups";
 import type { KmsKeyRing } from "@/engine/domains/kms";
 import { KubeConfig, KubeRuntime } from "@/engine/domains/kube-config";
+import { KubeHpa } from "@/engine/domains/kube-hpa";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeManifest } from "@/engine/domains/kube-manifest";
 import { KubeDeployment, type KubeService } from "@/engine/domains/kubernetes";
@@ -101,6 +102,7 @@ export type World = Readonly<{
   nodePools: readonly NodePool[];
   kubeDeployments: readonly KubeDeployment[];
   kubeServices: readonly KubeService[];
+  kubeHpas: readonly KubeHpa[];
   kubeConfigs: readonly KubeConfig[];
   kubeFiles: Readonly<Record<string, string>>;
   functions: readonly CloudFunction[];
@@ -233,10 +235,15 @@ const locationOf = <K extends LocatedCollection>(key: K, item: NamedItem<K>): st
  * `withNamed` の一意性・`replaceNamed` / `withoutNamed` の対象・`validate` の重複検査がこれで揃う。
  * `isLocated` が狭めるのは `key` だけで `item` は付いてこないので、ここ 1 箇所で結ぶ。
  */
-const identityOf = <K extends NamedCollection>(key: K, item: NamedItem<K>): string =>
-  isLocated(key)
-    ? `${item.projectId}/${locationOf<LocatedCollection>(key, item as NamedItem<LocatedCollection>)}/${item.name}`
-    : `${item.projectId}/${item.name}`;
+const identityOf = <K extends NamedCollection>(key: K, item: NamedItem<K>): string => {
+  if ("cluster" in item) {
+    const kind = "kind" in item ? `${item.kind}/` : "";
+    return `${item.projectId}/${item.cluster}/${kind}${item.name}`;
+  }
+  if (isLocated(key))
+    return `${item.projectId}/${locationOf<LocatedCollection>(key, item as NamedItem<LocatedCollection>)}/${item.name}`;
+  return `${item.projectId}/${item.name}`;
+};
 
 /** 実行時に全集合を回すための一覧。型 `NamedCollection` と食い違うと下の型検査で落ちる。 */
 const NamedCollectionKeys = [
@@ -260,6 +267,7 @@ const NamedCollectionKeys = [
   "nodePools",
   "kubeDeployments",
   "kubeServices",
+  "kubeHpas",
   "kubeConfigs",
   "functions",
   "sqlInstances",
@@ -1009,6 +1017,7 @@ export const World = {
       nodePools: world.nodePools.filter((p) => !belongs(p)),
       kubeDeployments: world.kubeDeployments.filter((d) => !belongs(d)),
       kubeServices: world.kubeServices.filter((s) => !belongs(s)),
+      kubeHpas: world.kubeHpas.filter((h) => !belongs(h)),
       kubeConfigs: world.kubeConfigs.filter((s) => !belongs(s)),
     };
   },
@@ -1333,6 +1342,13 @@ export const World = {
     );
     if (new Set(networks).size !== networks.length)
       return Result.err("Duplicate Kubernetes Pod network.");
+    const hpaTargets = world.kubeHpas.map((h) => `${h.projectId}/${h.cluster}/${h.target}`);
+    if (new Set(hpaTargets).size !== hpaTargets.length)
+      return Result.err("Only one HPA per Deployment is supported.");
+    for (const h of world.kubeHpas) {
+      const checked = KubeHpa.validate(h);
+      if (!Result.isOk(checked)) return Result.err(checked.error);
+    }
     for (const service of world.kubeServices) {
       if (
         !Result.isOk(KubeLabels.parse(service.labels)) ||
@@ -1452,6 +1468,7 @@ const validateReferences = (world: World): Result<World, string> => {
     ...world.nodePools,
     ...world.kubeDeployments,
     ...world.kubeServices,
+    ...world.kubeHpas,
     ...world.kubeConfigs,
   ].find((r) => !Option.isSome(World.findCluster(world, r.projectId, r.cluster)));
   if (clusterless !== undefined) {

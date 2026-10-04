@@ -17,6 +17,7 @@ import { Candidates, projectCommand } from "@/engine/commands/shared";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { ImagePull } from "@/engine/domains/image-pull";
 import { KubeConfig, KubeEnv, KubeRuntime } from "@/engine/domains/kube-config";
+import { KubeHpa } from "@/engine/domains/kube-hpa";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeManifest } from "@/engine/domains/kube-manifest";
 import { KubeResources } from "@/engine/domains/kube-resources";
@@ -34,6 +35,7 @@ import { type AlreadyExists, World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 import { createConfig, kubePermission, setEnv } from "./configuration";
+import { createHpa, hpasOf, reconcileHpa } from "./hpa";
 import { applyManifest } from "./manifests";
 
 /**
@@ -76,11 +78,24 @@ const usage = (message: string): CommandFailure => CommandFailure.invalidArgumen
 
 /** `deployment`, `deploy`, `deployments`, `deployment/web` の綴りを種別と名前に分ける。 */
 type ResourceRef = Readonly<{
-  kind: "deployment" | "service" | "pod" | "node" | "replicaset" | "configmap" | "secret" | "all";
+  kind:
+    | "deployment"
+    | "service"
+    | "pod"
+    | "node"
+    | "hpa"
+    | "replicaset"
+    | "configmap"
+    | "secret"
+    | "all";
   name: Option<string>;
 }>;
 
 const ResourceAliases: Readonly<Record<string, ResourceRef["kind"]>> = {
+  hpa: "hpa",
+  horizontalpodautoscaler: "hpa",
+  horizontalpodautoscalers: "hpa",
+  "horizontalpodautoscalers.autoscaling": "hpa",
   configmap: "configmap",
   configmaps: "configmap",
   cm: "configmap",
@@ -115,7 +130,7 @@ const parseResource = (type: string, name: Option<string>): Result<ResourceRef, 
     return Result.err(
       CommandFailure.invalidValue(
         "",
-        `error: the server doesn't have a resource type "${kindText}"\ngcloud-sim: 対応しているのは deployments / services / pods / nodes / replicasets / configmaps / secrets です。`,
+        `error: the server doesn't have a resource type "${kindText}"\ngcloud-sim: 対応しているのは deployments / services / pods / nodes / replicasets / configmaps / secrets / hpa です。`,
       ),
     );
   }
@@ -289,6 +304,31 @@ const collect = (
   );
   const services = World.kubeServicesOf(ctx.world, cluster);
   switch (ref.kind) {
+    case "hpa":
+      return Result.map(
+        pick(hpasOf(ctx.world, cluster), "horizontalpodautoscalers.autoscaling", ref.name),
+        (entries) => ({
+          rows: entries.map((h) => ({
+            ...KubeHpa.toRecord(h),
+            name: h.name,
+            reference: `Deployment/${h.target}`,
+            targets: KubeHpa.targets(h),
+            minPods: h.minReplicas,
+            maxPods: h.maxReplicas,
+            replicas: deployments.find((d) => d.name === h.target)?.replicas ?? 0,
+            age: age(h.createdAt, ctx.now),
+          })),
+          columns: [
+            Column.create("NAME", "name"),
+            Column.create("REFERENCE", "reference"),
+            Column.create("TARGETS", "targets"),
+            Column.create("MINPODS", "minPods"),
+            Column.create("MAXPODS", "maxPods"),
+            Column.create("REPLICAS", "replicas"),
+            Column.create("AGE", "age"),
+          ],
+        }),
+      );
     case "configmap":
     case "secret": {
       const configs = ctx.world.kubeConfigs.filter(
@@ -393,9 +433,17 @@ const collect = (
       const nodes = nodeRows(cluster, ctx.now).map((n) => ({ ...n, name: String(n.name) }));
       return Result.map(pick(nodes, "nodes", ref.name), (rows) => ({ rows, columns: NodeColumns }));
     }
-    case "all":
+    case "all": {
+      const allowed = kubePermission(ctx, "container.horizontalPodAutoscalers.list");
+      if (!Result.isOk(allowed)) return allowed;
       return Result.ok({
         rows: [
+          ...hpasOf(ctx.world, cluster).map((h) => ({
+            ...KubeHpa.toRecord(h),
+            name: `horizontalpodautoscaler.autoscaling/${h.name}`,
+            targets: KubeHpa.targets(h),
+            age: age(h.createdAt, ctx.now),
+          })),
           ...pods.map((p) => ({ ...p.row, name: `pod/${p.name}` })),
           ...services.map((s) => ({ ...serviceRow(s, ctx.now), name: `service/${s.name}` })),
           ...deployments.map((d) => ({
@@ -410,6 +458,7 @@ const collect = (
           Column.create("AGE", "age"),
         ],
       });
+    }
   }
 };
 
@@ -707,6 +756,16 @@ const remove = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   if (!Option.isSome(name))
     return Result.err(usage("resource(s) were provided, but no name was specified"));
   switch (ref.value.kind) {
+    case "hpa": {
+      const h = hpasOf(ctx.world, cluster.value).find((h) => h.name === name.value);
+      if (!h) return Result.err(notFound("horizontalpodautoscalers.autoscaling", name.value));
+      return Result.ok({
+        world: { ...ctx.world, kubeHpas: ctx.world.kubeHpas.filter((item) => item !== h) },
+        output: CommandOutput.messages(
+          OutputMessage.plain(`horizontalpodautoscaler.autoscaling/${h.name} deleted`),
+        ),
+      });
+    }
     case "configmap":
     case "secret": {
       const config = ctx.world.kubeConfigs.find(
@@ -1151,6 +1210,7 @@ const resourcePermission =
     );
     if (!Result.isOk(ref)) return fallback;
     const verb = action === "delete" ? "delete" : Option.isSome(ref.value.name) ? "get" : "list";
+    if (ref.value.kind === "hpa") return `container.horizontalPodAutoscalers.${verb}`;
     if (ref.value.kind === "service") return `container.services.${verb}`;
     if (ref.value.kind === "deployment") return `container.deployments.${verb}`;
     if (ref.value.kind === "secret") return `container.secrets.${verb}`;
@@ -1191,6 +1251,42 @@ const execEnvironment = (ctx: ProjectContext, args: ParsedArgs): CommandResult =
 };
 
 export const KubectlCommands: readonly CommandSpec[] = [
+  kubectl({
+    verb: "autoscale",
+    summary: "Create a CPU utilization HPA for one Deployment (explicit simulator evaluation).",
+    positionals: [TypePositional, NamePositional],
+    flags: [
+      Flag.integer("min", "Minimum replicas (default 1)."),
+      Flag.integer("max", "Maximum replicas (required, up to 1000)."),
+      Flag.integer("cpu-percent", "Target CPU percentage of requests (default 80)."),
+      Flag.string("name", "HPA name (default Deployment name)."),
+    ],
+    permission: "container.horizontalPodAutoscalers.create",
+    run: (ctx, args) => {
+      const cluster = currentCluster(ctx);
+      if (!Result.isOk(cluster)) return cluster;
+      const allowed = kubePermission(ctx, "container.deployments.get");
+      if (!Result.isOk(allowed)) return allowed;
+      const d = requireDeployment(ctx, cluster.value, args);
+      if (!Result.isOk(d)) return d;
+      return createHpa(ctx, cluster.value, d.value, args);
+    },
+  }),
+  projectCommand({
+    path: ["sim", "kubernetes", "reconcile"],
+    summary: "Evaluate one HPA cycle with explicit CPU usage per Pod; no real metrics or timers.",
+    positionals: [Positional.required("NAME", "HPA name.", Candidates.kubeHpas)],
+    flags: [
+      Flag.string("cpu", "Simulated CPU usage per Pod (e.g. 250m), required.", { singleUse: true }),
+    ],
+    permissions: ["container.horizontalPodAutoscalers.update", "container.deployments.update"],
+    requiredApis: [ContainerApi],
+    run: (ctx, args) => {
+      const cluster = currentCluster(ctx);
+      if (!Result.isOk(cluster)) return cluster;
+      return reconcileHpa(ctx, cluster.value, args);
+    },
+  }),
   ...(["configmap", "secret"] as const).map((kind) =>
     kubectl({
       verb: kind === "secret" ? "create secret generic" : "create configmap",

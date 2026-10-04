@@ -200,6 +200,14 @@ const BillingPermissions = [
   "billing.budgets.get",
 ] as const;
 
+const HpaPermissions = [
+  "container.horizontalPodAutoscalers.create",
+  "container.horizontalPodAutoscalers.update",
+  "container.horizontalPodAutoscalers.delete",
+  "container.horizontalPodAutoscalers.get",
+  "container.horizontalPodAutoscalers.list",
+] as const;
+
 const KubeConfigPermissions = [
   "container.configMaps.create",
   "container.configMaps.update",
@@ -216,6 +224,7 @@ const KubeConfigPermissions = [
 
 const ContainerPermissions = [
   ...KubeConfigPermissions,
+  ...HpaPermissions,
   "container.clusters.create",
   "container.clusters.delete",
   "container.clusters.get",
@@ -238,6 +247,7 @@ const ContainerPermissions = [
 
 const ContainerDeveloperPermissions = [
   ...KubeConfigPermissions,
+  ...HpaPermissions,
   "container.clusters.get",
   "container.clusters.list",
   "container.clusters.getCredentials",
@@ -449,6 +459,8 @@ const ViewerPermissions = [
   "pubsub.subscriptions.get",
   "compute.projects.get",
   "compute.disks.get",
+  "container.horizontalPodAutoscalers.get",
+  "container.horizontalPodAutoscalers.list",
   "container.deployments.get",
   "container.deployments.list",
   "container.services.get",
@@ -648,6 +660,8 @@ const Roles: readonly Role[] = [
     "container.configMaps.list",
     "container.clusters.get",
     "container.clusters.list",
+    "container.horizontalPodAutoscalers.get",
+    "container.horizontalPodAutoscalers.list",
     "container.deployments.get",
     "container.deployments.list",
     "container.pods.get",

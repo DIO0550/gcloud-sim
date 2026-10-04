@@ -97,7 +97,7 @@ kubectl rollout restart deployment/web
 kubectl exec deployment/web -- printenv APP_MODE
 ```
 
-`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全45件、GKE拡充分は8件です。
+`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全46件、GKE拡充分は9件です。
 
 `sim files write FILE --content='…'`で独自のYAML/JSONを書き、`read`で読み、`replace --search=… --replacement=…`で1か所を編集できます。ファイルは `.yaml` / `.yml` / `.json` の相対パスで、32ファイル・1ファイル64,000文字まで。Terraformとは別に保存し、Terraformのplanに影響しません。`sim files delete FILE`はファイルだけを消します。クラスタ上の設定を消す操作は `kubectl delete -f FILE` です。教材の上書きは `sim files load kubernetes-config --force` で明示します。
 
@@ -143,7 +143,7 @@ kubectl rollout history deployment/manifest-web
 
 Deployment/Serviceのapplyは対応するspec値を反映する限定モデルです。ConfigMap/Secretの管理キー処理とは異なり、last-applied annotationや三方向マージ・server-side applyは再現しません。ラベルmapは指定値で置換し、metadata.labels省略は空になります。複数コンテナ・名前付きポート・複数ポート・UDP・headless/ExternalName・Serviceのtype変更は未対応です。
 
-接続先は学習用の表示で、EndpointSliceリソース・probe・プロセスの待受ポート・実通信を確認するものではありません。Serviceだけを先に作ってもよく、Deploymentを削除してもServiceは残ります。Snapshot v13でラベル・selector・resourcesを保存します。
+接続先は学習用の表示で、EndpointSliceリソース・probe・プロセスの待受ポート・実通信を確認するものではありません。Serviceだけを先に作ってもよく、Deploymentを削除してもServiceは残ります。Snapshot v14でラベル・selector・resourcesとHPAを保存します。
 
 ## 複数ラベルとServiceの公開先切り替え
 
@@ -204,7 +204,7 @@ kubectl rollout undo deployment/resource-web
 
 新ミッション「CPU・メモリの必要量と上限を設定する」は、教材の不正設定を直し、2レプリカ・requests 250m/128Mi・limits 500m/256Miでファイルとクラスタをそろえると達成します。
 
-今回扱うのは設定・検証・履歴です。スケジューラ、ノード容量、Pending/Unschedulable、CPU throttling、OOMKill、QoS、使用量、HPA/VPA、LimitRange/ResourceQuotaは再現しません。Standard/Autopilot共通の限定モデルで、Autopilot独自の既定値・最小量・CPU/メモリ比率・自動調整も適用しません。未指定の量からクラスタ固有の値を推測することはありません。
+今回扱うのは設定・検証・履歴です。スケジューラ、ノード容量、Pending/Unschedulable、CPU throttling、OOMKill、QoS、使用量、VPA・HPAの定期評価/実測/安定化、LimitRange/ResourceQuotaは再現しません。Standard/Autopilot共通の限定モデルで、Autopilot独自の既定値・最小量・CPU/メモリ比率・自動調整も適用しません。未指定の量からクラスタ固有の値を推測することはありません。
 
 ## Secretの表示と権限
 
@@ -216,13 +216,13 @@ ConfigMap/Secretの操作はそれぞれ`container.configMaps.*`/`container.secr
 
 - history/statusは`container.deployments.get`、set image/restart/undoは`container.deployments.update`を要求します。学習用のcontainer.viewerにDeployment/Pod/Serviceの読み取り権限を補い、更新権限と分離しました。クラスタ/API/プロジェクト/アカウントも検証します。
 - namespaceはdefaultのみで、別namespaceを指定した操作は拒否します。`get -o json`はJSONの単一リソースまたはList、`-o yaml`は従来のYAML表示です。出力には教材用の列も含みます。
-- Snapshot v13はコンテナのresourcesを現在のtemplateと履歴に追加します。v12からはラベル・selector・Podネットワークを含む全状態を保持し、resourcesは未指定として補完します。v11からはファイル・apply管理キー・環境変数・履歴・Pod識別子を保持し、Deploymentと過去templateのラベルを`app: 名前`、Service selectorを旧接続先の`app`ラベルへ移行します。導出するPod IPは再割当てになります。v10からは既存の設定・環境変数・履歴・Pod識別子とTerraform/Docker状態を保持し、空の仮想ファイル・管理キーを補完します。v9からの移行は既存の履歴とPod識別子を保持し、空の設定/環境変数を補完します。v1〜v8は現在のイメージ・世代を1件の履歴として移行し、過去のイメージは推測しません。v8のDocker/レジストリ/ビルド履歴・ノードSA・Terraform状態を保持します。移行後に新しく更新した分からrollbackできます。
+- Snapshot v14はHPAと前回の教材評価を追加し、v13のresources・履歴・ラベル・Podネットワーク・設定・ファイルを保持して空のHPA集合を補完します。v13はコンテナのresourcesを現在のtemplateと履歴に追加します。v12からはラベル・selector・Podネットワークを含む全状態を保持し、resourcesは未指定として補完します。v11からはファイル・apply管理キー・環境変数・履歴・Pod識別子を保持し、Deploymentと過去templateのラベルを`app: 名前`、Service selectorを旧接続先の`app`ラベルへ移行します。導出するPod IPは再割当てになります。v10からは既存の設定・環境変数・履歴・Pod識別子とTerraform/Docker状態を保持し、空の仮想ファイル・管理キーを補完します。v9からの移行は既存の履歴とPod識別子を保持し、空の設定/環境変数を補完します。v1〜v8は現在のイメージ・世代を1件の履歴として移行し、過去のイメージは推測しません。v8のDocker/レジストリ/ビルド履歴・ノードSA・Terraform状態を保持します。移行後に新しく更新した分からrollbackできます。
 - PodはDeploymentから導出します。レプリカ上限はシミュレーターの表示・保存保護のため1000です。実際のKubernetesの上限を表す値ではありません。
 - 即時に切り替わる簡略モデルです。ローリング更新中の旧/新Podの共存、maxSurge/maxUnavailable、スケジューラ、進行待ち・timeout、probe、実ネットワーク通信は再現しません。失敗した更新中に旧Podを稼働させ続ける動作も未対応です。
 - ReplicaSetは読み取り専用の導出状態です。templateの識別子/Pod名は疑似値で、実際のハッシュ・annotationsは再現しません。イメージ変更/restartごとに新しいtemplateを作り、undoでは保存したtemplateを再利用します。
 - `.pkg.dev`以外のイメージは従来の簡略な成功モデルです。実在タグ/コンテナの起動可否の確認はしません。異常系ミッションでは存在確認できる教材レジストリを使います。
 
-namespace、ConfigMap/Secretのvolumeマウント・ラベル、複数コンテナを含むmanifest、readiness/liveness、HPA/VPA、StatefulSet/PVC、NetworkPolicy、ノードプール設定やWorkload Identity等は残作業です。Issue #15は閉じません。
+namespace、ConfigMap/Secretのvolumeマウント・ラベル、複数コンテナを含むmanifest、readiness/liveness、VPA・HPAの定期評価/実測/安定化、StatefulSet/PVC、NetworkPolicy、ノードプール設定やWorkload Identity等は残作業です。Issue #15は閉じません。
 
 参照: [ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/)、[Secret](https://kubernetes.io/docs/concepts/configuration/secret/)、[kubectl set env](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_set/kubectl_set_env/)、[Deploymentの更新とロールバック](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)、[kubectl set image](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_set/kubectl_set_image/)、[kubectl rollout undo](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_rollout/kubectl_rollout_undo/)、[GKEのロールと権限](https://docs.cloud.google.com/iam/docs/roles-permissions/container)。
 
@@ -231,3 +231,34 @@ namespace、ConfigMap/Secretのvolumeマウント・ラベル、複数コンテ�
 ワークロード設定の参照: [ラベルとselector](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/)、[Deploymentのselector](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#selector)、[Serviceの定義](https://kubernetes.io/docs/concepts/services-networking/service/#defining-a-service)。
 
 リソース設定の参照: [コンテナのrequests/limits](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/)、[kubectl set resources](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_set/kubectl_set_resources/)。
+
+
+## CPUのHPAを1回ずつ評価する
+
+```sh
+gcloud services enable container.googleapis.com
+gcloud container clusters create-auto hpa-gke --region=us-central1
+kubectl create deployment hpa-web --image=nginx:1 --replicas=2
+kubectl autoscale deployment/hpa-web --min=1 --max=5 --cpu-percent=50
+sim kubernetes reconcile hpa-web --cpu=250m
+# MissingCpuRequest: CPU requestがないので増減しない
+kubectl set resources deployment/hpa-web --requests=cpu=250m
+sim kubernetes reconcile hpa-web --cpu=250m
+# 2 -> 4 replicas
+kubectl get hpa
+kubectl describe hpa hpa-web
+sim kubernetes reconcile hpa-web --cpu=10m
+# 4 -> 1 replicas（この教材では縮小の安定化待機を省略）
+kubectl delete hpa hpa-web
+```
+
+- `autoscale`はDeploymentを対象にHPAを作成します。`--max`必須、`--min`既定1、`--cpu-percent`既定80、`--name`既定はDeployment名です。範囲は`1 <= min <= max <= 1000`、目標使用率は1〜1000の整数に限定します。1 Deploymentにつき1 HPAのみです。作成時にはスケールしません。
+- `sim kubernetes reconcile NAME --cpu=量`は**本物のkubectlにはない教材用コマンド**です。評価前の全Podに同じ1 PodあたりCPU使用量を与え、1回だけ評価します。サンプルは非負、最大1000000000mです。繰り返し実行すると、その時点のレプリカ数を基に再計算します。スケール後の負荷分散を自動計算しません。
+- 使用率は`CPU使用量 / CPU request`です。必要数を`ceil(現在のレプリカ数 × CPU使用量 × 100 / (CPU request × 目標使用率))`で計算し、最小・最大で制限します。比率が目標の±10%以内なら現在数を維持し、範囲外の現在数は最小・最大へ戻します。数量の計算には整数を使います。使用率表示は整数へ切り捨てますが、判定は数量比で計算する簡略モデルです。
+- request未指定/0は`MissingCpuRequest`、0レプリカは`ScalingDisabled`、対象削除後は`TargetNotFound`として増減を止めます。1つでも起動できないPodがあれば`PodsNotReady`で止めます。実際のHPAが行う欠測・未準備Podへの保守的な補正は再現しません。
+- スケールはtemplate revisionを作らず、既存Podと起動時の環境変数を維持します。増やしたPodは現在のConfigMap/Secretを読みます。Service接続先も更新されます。HPAを削除してもDeploymentは残り、Deploymentを削除してもHPAは残ります。クラスタ削除でHPAも消えます。
+- `get/describe hpa`とツリーのプロパティでは、設定と**前回の教材評価**を確認します。評価時の入力・レプリカ数・判定をSnapshot v14に保存します。`TARGETS`とJSONのstatusは前回評価の値で、現在の実測値ではありません。設定変更・手動scale・再読込・getだけでは再評価しません。JSONの`simulator.lastEvaluation`に評価時刻と入力を示します。
+- HPA作成は`container.horizontalPodAutoscalers.create`と対象Deploymentのget、参照・削除はHPAのget/list/deleteを要求します。教材評価にはHPAとDeployment双方のupdateを要求します。実際のHPAコントローラーの権限モデルとは異なります。プロジェクト・現在クラスタ・API有効化を検証し、namespaceはdefaultのみです。
+- Metrics Server、`kubectl top`、定期評価、カスタム/メモリメトリクス、スケール速度制限、縮小の安定化ウィンドウ、VPA、HPA manifestのapply/patch/editは未対応です。CPU limitsによるthrottlingやノード容量も計算しません。実際のHPAと同じ時間的挙動を保証するものではありません。
+
+参照: [Kubernetes HPAのアルゴリズム](https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/)、[GKEのHPA](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/horizontalpodautoscaler)。

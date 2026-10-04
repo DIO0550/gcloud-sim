@@ -21,7 +21,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（299）
+## 実装済み（301）
 
 ### Cloud Build
 
@@ -357,18 +357,23 @@ GCS backend使用時、stateを読むshow/output/state list/showにもstorage.ob
 
 ### `kubectl`
 
+HPAは`autoscale`で作成し、`get/describe/delete hpa`で確認・削除できます。`get all`はHPAのlist権限も要求します。CPU使用量は`sim kubernetes reconcile NAME --cpu=250m`で1 Podあたりの値を明示し、1回だけ評価します（実測や定期実行はありません）。
+
+
 | コマンド | 必要な権限 | 必要な API | フラグ |
 |---|---|---|---|
 | `kubectl create configmap` | `container.configMaps.create` | `container.googleapis.com` | `--from-literal`（繰り返し可） `--namespace` |
 | `kubectl create secret generic` | `container.secrets.create` | `container.googleapis.com` | `--from-literal`（繰り返し可） `--namespace` |
 | `kubectl set env` | 更新: `container.deployments.update`、一覧: `container.deployments.get`、取込元のgetも必要 | `container.googleapis.com` | `--from` `--keys` `--prefix` `--list` `--namespace` |
 | `kubectl exec` | `container.pods.exec` | `container.googleapis.com` | `--namespace`（printenv/envのみ） |
-| `kubectl get` | Deployment/Service/ConfigMap/Secret: 対象のget/list、その他: `container.pods.list` | `container.googleapis.com` | `--output` `--selector` (`-l`) `--namespace` |
+| `kubectl get` | Deployment/Service/ConfigMap/Secret/HPA: 対象のget/list、その他: `container.pods.list` | `container.googleapis.com` | `--output` `--selector` (`-l`) `--namespace` |
 | `kubectl apply` | 仮想ファイル: 対象のgetとcreate/update、固定教材: `container.deployments.update` | `container.googleapis.com` | `--filename` `--namespace` |
 | `kubectl create` | 仮想ファイル: 対象のcreate、Deployment/固定教材: `container.deployments.create` | `container.googleapis.com` | `--filename` `--image` `--replicas` `--namespace` |
-| `kubectl delete` | Deployment/Service/ConfigMap/Secret: 対象のdelete、その他・固定教材: `container.deployments.delete` | `container.googleapis.com` | `--filename` `--namespace` |
-| `kubectl describe` | Deployment/Service/ConfigMap/Secret: 対象のget/list、その他: `container.pods.get` | `container.googleapis.com` | `--namespace` |
+| `kubectl delete` | Deployment/Service/ConfigMap/Secret/HPA: 対象のdelete、その他・固定教材: `container.deployments.delete` | `container.googleapis.com` | `--filename` `--namespace` |
+| `kubectl describe` | Deployment/Service/ConfigMap/Secret/HPA: 対象のget/list、その他: `container.pods.get` | `container.googleapis.com` | `--namespace` |
 | `kubectl expose` | `container.services.create` | `container.googleapis.com` | `--type` `--port` `--target-port` `--name` `--namespace` |
+| `kubectl autoscale` | `container.horizontalPodAutoscalers.create`、`container.deployments.get` | `container.googleapis.com` | `--min` `--max` `--cpu-percent` `--name` `--namespace` |
+| `sim kubernetes reconcile` | `container.horizontalPodAutoscalers.update`、`container.deployments.update` | `container.googleapis.com` | `--cpu`（1 Podあたりの教材用使用量） |
 | `kubectl scale` | `container.deployments.update` | `container.googleapis.com` | `--replicas` `--namespace` |
 | `kubectl set resources` | `container.deployments.update` | `container.googleapis.com` | `--requests` `--limits` `--containers` (`-c`) `--namespace` |
 | `kubectl set image` | `container.deployments.update` | `container.googleapis.com` | `--namespace` |

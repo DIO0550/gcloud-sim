@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { ImagePull } from "@/engine/domains/image-pull";
 import { KubeEnv, KubeRuntime } from "@/engine/domains/kube-config";
+import { KubeHpa } from "@/engine/domains/kube-hpa";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
@@ -490,6 +491,57 @@ export const KubeConfigProperties = ({
             c.kind === "secret" ? `${new TextEncoder().encode(e.value).length} bytes` : e.value,
         }))}
       />
+    </>
+  );
+};
+
+export const KubeHpaProperties = ({
+  world,
+  selection,
+}: SelectionProps<"kube-hpa">): ReactElement => {
+  const h = world.kubeHpas.find(
+    (h) =>
+      h.projectId === selection.projectId &&
+      h.cluster === selection.cluster &&
+      h.name === selection.name,
+  );
+  if (!h) return <NotFound what="HPA" />;
+  const d = world.kubeDeployments.find(
+    (d) => d.projectId === h.projectId && d.cluster === h.cluster && d.name === h.target,
+  );
+  return (
+    <>
+      <Section
+        title="CPUによるレプリカ調整"
+        rows={[
+          { label: "対象", value: `Deployment/${h.target}` },
+          { label: "最小 / 最大", value: `${h.minReplicas} / ${h.maxReplicas}` },
+          { label: "CPU使用率の目標", value: `${h.targetCpu}%（request比）` },
+          { label: "現在のレプリカ数", value: d ? String(d.replicas) : "対象なし" },
+        ]}
+      />
+      {Option.isSome(h.lastEvaluation) ? (
+        <Section
+          title="前回の教材評価"
+          rows={[
+            { label: "評価時刻", value: h.lastEvaluation.value.evaluatedAt },
+            { label: "入力CPU（1 Pod）", value: `${h.lastEvaluation.value.cpuMilli}m` },
+            { label: "CPU使用率 / 目標", value: KubeHpa.targets(h) },
+            {
+              label: "レプリカ数",
+              value: `${h.lastEvaluation.value.currentReplicas} → ${h.lastEvaluation.value.desiredReplicas}`,
+            },
+            { label: "判定", value: h.lastEvaluation.value.reason },
+          ]}
+        />
+      ) : (
+        <p className="mb-3 text-sm text-muted">
+          未評価です。sim kubernetes reconcileでCPU使用量を指定してください。
+        </p>
+      )}
+      <p className="mb-3 text-sm text-muted">
+        明示したCPU使用量を1回ずつ評価します。前回の値は実測値ではありません。定期実行・安定化待機は再現しません。
+      </p>
     </>
   );
 };

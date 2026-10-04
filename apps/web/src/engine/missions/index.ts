@@ -46,6 +46,11 @@ import {
   containerSatisfied,
 } from "@/engine/missions/containers";
 import {
+  type KubeHpaAssertion,
+  KubeHpaMissions,
+  kubeHpaSatisfied,
+} from "@/engine/missions/kube-hpa";
+import {
   type KubernetesAssertion,
   KubernetesMissions,
   kubernetesSatisfied,
@@ -95,6 +100,7 @@ export type MissionAssertion =
   | BuildAssertion
   | KubeWorkloadAssertion
   | KubeLabelAssertion
+  | KubeHpaAssertion
   | KubeResourceAssertion
   | KubeConfigurationAssertion
   | KubernetesAssertion
@@ -243,6 +249,7 @@ const Missions: readonly Mission[] = [
   ...KubeWorkloadMissions,
   ...KubeLabelMissions,
   ...KubeResourceMissions,
+  ...KubeHpaMissions,
   ...KubeConfigurationMissions,
   ...ArtifactLifecycleMissions,
   {
@@ -698,6 +705,8 @@ const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: 
 
 const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
+    case "kubeHpaScaled":
+      return kubeHpaSatisfied(world);
     case "kubeResourcesConfigured":
       return kubeResourcesSatisfied(world);
     case "kubeLabelsSwitched":
