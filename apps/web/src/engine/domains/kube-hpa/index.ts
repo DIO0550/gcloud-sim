@@ -41,6 +41,17 @@ const measured = (e: HpaEvaluation) =>
   e.requestMilli > 0 &&
   !["TargetNotFound", "ScalingDisabled", "MissingCpuRequest", "PodsNotReady"].includes(e.reason);
 export const KubeHpa = {
+  sameSpec(
+    a: Pick<KubeHpa, "target" | "minReplicas" | "maxReplicas" | "targetCpu">,
+    b: Pick<KubeHpa, "target" | "minReplicas" | "maxReplicas" | "targetCpu">,
+  ): boolean {
+    return (
+      a.target === b.target &&
+      a.minReplicas === b.minReplicas &&
+      a.maxReplicas === b.maxReplicas &&
+      a.targetCpu === b.targetCpu
+    );
+  },
   validate(h: KubeHpa): Result<KubeHpa, string> {
     if (!validName(h.name) || !validName(h.target))
       return Result.err("HPA and target names must be DNS labels of at most 63 characters.");

@@ -357,7 +357,7 @@ GCS backend使用時、stateを読むshow/output/state list/showにもstorage.ob
 
 ### `kubectl`
 
-HPAは`autoscale`で作成し、`get/describe/delete hpa`で確認・削除できます。`get all`はHPAのlist権限も要求します。CPU使用量は`sim kubernetes reconcile NAME --cpu=250m`で1 Podあたりの値を明示し、1回だけ評価します（実測や定期実行はありません）。
+HPAは`autoscale`またはautoscaling/v2の仮想YAML/JSONで作成し、`get/describe/delete hpa`で確認・削除できます。HPAファイルの`create/apply/delete -f`にも対応し、applyは目標値・レプリカ範囲・対象を置き換えます。`get all`はHPAのlist権限も要求します。CPU使用量は`sim kubernetes reconcile NAME --cpu=250m`で1 Podあたりの値を明示し、1回だけ評価します（実測や定期実行はありません）。
 
 
 | コマンド | 必要な権限 | 必要な API | フラグ |
@@ -499,7 +499,7 @@ HPAは`autoscale`で作成し、`get/describe/delete hpa`で確認・削除で�
 
 ## サンプルファイル
 
-gcloud-simはホストのファイルを読みません。TerraformとConfigMap/Secret/Deployment/Serviceは `sim files` で編集できる仮想ファイルを読みます。`sim files load kubernetes-config` 、`sim files load kubernetes-workload` 、`sim files load kubernetes-labels` または `sim files load kubernetes-resources` でYAML教材を読み込み、`kubectl create/apply/delete -f FILE` で操作できます（詳細は [KUBERNETES.md](KUBERNETES.md)）。Kubernetesのファイルは正規化した相対パスで一致し、同名の仮想ファイルが固定教材より優先します。仮想ファイルがない場合の `deployment.yaml` / `service.yaml` と、他サービスの次の操作は固定サンプルを使います（kubectl以外はディレクトリ部分を無視）。無い名前は本物と同じ `No such file or directory`（E-005）になる。`gcloud storage cp ./x gs://b` のように名前しか使わない経路は任意のパスを受ける。
+gcloud-simはホストのファイルを読みません。TerraformとConfigMap/Secret/Deployment/Service/HPAは `sim files` で編集できる仮想ファイルを読みます。`sim files load kubernetes-config` 、`sim files load kubernetes-workload` 、`sim files load kubernetes-labels` 、`sim files load kubernetes-resources` または `sim files load kubernetes-hpa` でYAML教材を読み込み、`kubectl create/apply/delete -f FILE` で操作できます（詳細は [KUBERNETES.md](KUBERNETES.md)）。Kubernetesのファイルは正規化した相対パスで一致し、同名の仮想ファイルが固定教材より優先します。仮想ファイルがない場合の `deployment.yaml` / `service.yaml` と、他サービスの次の操作は固定サンプルを使います（kubectl以外はディレクトリ部分を無視）。無い名前は本物と同じ `No such file or directory`（E-005）になる。`gcloud storage cp ./x gs://b` のように名前しか使わない経路は任意のパスを受ける。
 
 | ファイル | 受けるコマンド | 中身 |
 |---|---|---|
