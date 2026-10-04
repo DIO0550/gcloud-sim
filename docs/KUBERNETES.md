@@ -97,7 +97,7 @@ kubectl rollout restart deployment/web
 kubectl exec deployment/web -- printenv APP_MODE
 ```
 
-`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全46件、GKE拡充分は9件です。
+`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全47件、GKE拡充分は10件です。
 
 `sim files write FILE --content='…'`で独自のYAML/JSONを書き、`read`で読み、`replace --search=… --replacement=…`で1か所を編集できます。ファイルは `.yaml` / `.yml` / `.json` の相対パスで、32ファイル・1ファイル64,000文字まで。Terraformとは別に保存し、Terraformのplanに影響しません。`sim files delete FILE`はファイルだけを消します。クラスタ上の設定を消す操作は `kubectl delete -f FILE` です。教材の上書きは `sim files load kubernetes-config --force` で明示します。
 
@@ -258,7 +258,37 @@ kubectl delete hpa hpa-web
 - request未指定/0は`MissingCpuRequest`、0レプリカは`ScalingDisabled`、対象削除後は`TargetNotFound`として増減を止めます。1つでも起動できないPodがあれば`PodsNotReady`で止めます。実際のHPAが行う欠測・未準備Podへの保守的な補正は再現しません。
 - スケールはtemplate revisionを作らず、既存Podと起動時の環境変数を維持します。増やしたPodは現在のConfigMap/Secretを読みます。Service接続先も更新されます。HPAを削除してもDeploymentは残り、Deploymentを削除してもHPAは残ります。クラスタ削除でHPAも消えます。
 - `get/describe hpa`とツリーのプロパティでは、設定と**前回の教材評価**を確認します。評価時の入力・レプリカ数・判定をSnapshot v14に保存します。`TARGETS`とJSONのstatusは前回評価の値で、現在の実測値ではありません。設定変更・手動scale・再読込・getだけでは再評価しません。JSONの`simulator.lastEvaluation`に評価時刻と入力を示します。
-- HPA作成は`container.horizontalPodAutoscalers.create`と対象Deploymentのget、参照・削除はHPAのget/list/deleteを要求します。教材評価にはHPAとDeployment双方のupdateを要求します。実際のHPAコントローラーの権限モデルとは異なります。プロジェクト・現在クラスタ・API有効化を検証し、namespaceはdefaultのみです。
-- Metrics Server、`kubectl top`、定期評価、カスタム/メモリメトリクス、スケール速度制限、縮小の安定化ウィンドウ、VPA、HPA manifestのapply/patch/editは未対応です。CPU limitsによるthrottlingやノード容量も計算しません。実際のHPAと同じ時間的挙動を保証するものではありません。
+- `kubectl autoscale`によるHPA作成は`container.horizontalPodAutoscalers.create`と対象Deploymentのget、参照・削除はHPAのget/list/deleteを要求します。教材評価にはHPAとDeployment双方のupdateを要求します。実際のHPAコントローラーの権限モデルとは異なります。プロジェクト・現在クラスタ・API有効化を検証し、namespaceはdefaultのみです。
+- Metrics Server、`kubectl top`、定期評価、カスタム/メモリメトリクス、スケール速度制限、縮小の安定化ウィンドウ、VPA、HPAのpatch/editは未対応です。CPU limitsによるthrottlingやノード容量も計算しません。実際のHPAと同じ時間的挙動を保証するものではありません。
 
 参照: [Kubernetes HPAのアルゴリズム](https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/)、[GKEのHPA](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/horizontalpodautoscaler)。
+
+
+## HPAの設定ファイルをapplyする
+
+```sh
+gcloud services enable container.googleapis.com
+gcloud container clusters create-auto hpa-manifest-gke --region=us-central1
+sim files load kubernetes-hpa
+kubectl apply -f autoscale-web.yaml
+kubectl apply -f autoscale-hpa.yaml
+sim kubernetes reconcile autoscale-web --cpu=1
+# 上限3レプリカで停止（TooManyReplicas）
+sim files replace autoscale-hpa.yaml --search='maxReplicas: 3' --replacement='maxReplicas: 6'
+sim files replace autoscale-hpa.yaml --search='averageUtilization: 80' --replacement='averageUtilization: 50'
+kubectl apply -f autoscale-hpa.yaml
+# Deploymentは3のまま。前回の教材評価を消し、TARGETSは<unknown>/50%になる
+sim kubernetes reconcile autoscale-web --cpu=250m
+# 3 -> 6 replicas
+kubectl apply -f autoscale-web.yaml
+kubectl apply -f autoscale-hpa.yaml
+# Deploymentのreplicasは省略済みなので6を維持。同じHPA設定なら評価結果も保持
+```
+
+- `autoscaling/v2`の`HorizontalPodAutoscaler`を`kubectl create/apply/delete -f`で扱えます。対応フィールドはmetadata.name/namespace、spec.scaleTargetRef、minReplicas、maxReplicas、metricsです。default namespace、apps/v1 Deploymentへの参照、CPU Resource/Utilizationメトリクス1個に限定します。metadata.labels/annotations、behavior、status、他メトリクス等は拒否します。
+- minReplicas省略は1です。maxReplicasと、metrics内のaverageUtilizationは明示必須です。メトリクス省略時の既定値補完はこの教材では行いません。レプリカ範囲・目標使用率・数量の制限は前節と共通です。
+- applyでは対象・最小/最大レプリカ数・目標使用率をファイルの設定で置き換え、作成日時は保持します。同じ設定なら`unchanged`となり前回評価も保持します。変更した場合は前回評価を消します。これは古い条件での評価と新しい設定を混同しないための教材の仕様です。DeploymentのPodやレプリカ数はapplyだけでは変えません。
+- ファイルからはDeploymentより先にHPAを作成できます。対象がない状態のreconcileは`TargetNotFound`を表示します。対象名変更も可能ですが、同一クラスタ内で別HPAと対象Deploymentが重複する場合は拒否します。
+- HPAファイルの操作は`container.horizontalPodAutoscalers`のcreate/deleteを要求し、applyはgetとcreate/updateを要求します。HPA設定の変更だけならDeploymentのget/updateは要求しません。同じ内容の再applyもupdate権限を要求する既存の教材方針に従います。実際にレプリカを変える教材評価には、前節の両方のupdate権限が必要です。
+- 混在ファイルは全体が成功した場合だけ確定します。途中の不正設定・権限不足・対象重複・削除対象不足では先行リソースも変更しません。本物のkubectlの逐次適用との違いです。deleteはファイルのHPA名で削除し、対象Deploymentを残します。
+- ファイルと設定・評価は既存のSnapshot v14に保存します。新しい保存形式への移行は不要です。HPAのpatch/edit、複数フィールド管理者の三方向マージ、Metrics Server・定期評価等は未対応です。

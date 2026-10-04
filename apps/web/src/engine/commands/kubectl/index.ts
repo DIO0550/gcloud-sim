@@ -1353,7 +1353,7 @@ export const KubectlCommands: readonly CommandSpec[] = [
   }),
   kubectl({
     verb: "apply",
-    summary: "Apply virtual ConfigMap/Secret/Deployment/Service YAML/JSON or fixed samples.",
+    summary: "Apply virtual ConfigMap/Secret/Deployment/Service/HPA YAML/JSON or fixed samples.",
     positionals: [],
     flags: [FileFlag],
     permission: () => undefined,

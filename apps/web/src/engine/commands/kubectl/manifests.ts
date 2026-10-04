@@ -11,6 +11,7 @@ import type { GkeCluster } from "@/engine/domains/managed-services";
 import { World } from "@/engine/domains/world";
 import { Result } from "@/utils/Result";
 import { kubePermission } from "./configuration";
+import { applyHpa } from "./hpa-manifests";
 import { applyWorkload } from "./workload-manifests";
 
 /** Validate the entire file and permissions before committing any simulated resource. */
@@ -25,6 +26,13 @@ export const applyManifest = (
   let world = ctx.world;
   const messages: OutputMessage[] = [];
   for (const manifest of parsed.value) {
+    if (manifest.kind === "hpa") {
+      const applied = applyHpa({ ...ctx, world }, cluster, manifest, action);
+      if (!Result.isOk(applied)) return applied;
+      world = applied.value.world;
+      messages.push(...applied.value.output.messages);
+      continue;
+    }
     if (manifest.kind === "deployment" || manifest.kind === "service") {
       const applied = applyWorkload({ ...ctx, world }, cluster, manifest, action);
       if (!Result.isOk(applied)) return applied;

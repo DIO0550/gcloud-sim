@@ -2,6 +2,7 @@ import { isAlias, parseAllDocuments, visit } from "yaml";
 import { KubeConfig as Configuration, type KubeConfig } from "@/engine/domains/kube-config";
 import { Result } from "@/utils/Result";
 
+import { type HpaManifest, parseHpa } from "./hpa";
 import { fail, fields, record } from "./validation";
 import { parseWorkload, type WorkloadManifest } from "./workloads";
 
@@ -10,7 +11,7 @@ export type ConfigManifest = Readonly<{
   name: string;
   data: KubeConfig["data"];
 }>;
-export type KubeManifest = ConfigManifest | WorkloadManifest;
+export type KubeManifest = ConfigManifest | WorkloadManifest | HpaManifest;
 const strings = (value: unknown, field: string): [string, string][] =>
   Object.entries(value === undefined ? {} : record(value, field)).map(([key, value]) => {
     if (typeof value !== "string")
@@ -29,9 +30,12 @@ const decode = (value: string): string => {
 };
 const parseResource = (value: unknown): KubeManifest => {
   const r = record(value, "manifest");
+  if (r.kind === "HorizontalPodAutoscaler") return parseHpa(r);
   if (r.kind === "Deployment" || r.kind === "Service") return parseWorkload(r);
   if (r.apiVersion !== "v1" || (r.kind !== "ConfigMap" && r.kind !== "Secret"))
-    return fail("Virtual manifests support ConfigMap, Secret, apps/v1 Deployment and v1 Service.");
+    return fail(
+      "Virtual manifests support ConfigMap, Secret, apps/v1 Deployment, v1 Service and autoscaling/v2 HorizontalPodAutoscaler.",
+    );
   const secret = r.kind === "Secret";
   fields(
     r,
@@ -141,6 +145,49 @@ spec:
 `;
 
 export const KubeManifestExamples: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  "kubernetes-hpa": {
+    "autoscale-web.yaml": `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autoscale-web
+spec:
+  selector:
+    matchLabels:
+      app: autoscale-web
+  template:
+    metadata:
+      labels:
+        app: autoscale-web
+    spec:
+      containers:
+        - name: autoscale-web
+          image: nginx:1
+          resources:
+            requests:
+              cpu: 250m
+            limits:
+              cpu: "1"
+`,
+    "autoscale-hpa.yaml": `apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: autoscale-web
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: autoscale-web
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
+`,
+  },
   "kubernetes-resources": {
     "resource-web.yaml": `apiVersion: apps/v1
 kind: Deployment
