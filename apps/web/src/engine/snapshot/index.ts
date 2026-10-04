@@ -59,6 +59,7 @@ import type {
 import type { KmsKeyRing } from "@/engine/domains/kms";
 import type { KubeConfig, KubeEnv } from "@/engine/domains/kube-config";
 import { type HpaEvaluation, HpaReasons, type KubeHpa } from "@/engine/domains/kube-hpa";
+import { KubeLiveness, type LivenessProbe } from "@/engine/domains/kube-liveness";
 import { KubeReadiness, type ReadinessProbe } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import {
@@ -122,11 +123,12 @@ import { Result } from "@/utils/Result";
  * v13 はコンテナのCPU/メモリrequests・limitsをtemplateと履歴に持つ。
  * v14 はHPAの設定と前回の教材評価を持つ。
  * v15 はreadinessProbeとPodごとの明示した応答の判定を持つ。
+ * v16 はlivenessProbeとPod内コンテナの再起動回数・判定を持つ。
  */
-export const SchemaVersion = 15;
+export const SchemaVersion = 16;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
-const MigratableVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] as const;
+const MigratableVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
 export type Snapshot = Readonly<{
@@ -559,6 +561,8 @@ const kubeResources: Decoder<KubeResources> = (value, path) =>
   Result.mapErr(KubeResources.parse(value), (reason) => `${path}: ${reason}`);
 const readinessProbe: Decoder<ReadinessProbe> = (value, path) =>
   Result.mapErr(KubeReadiness.parse(value), (reason) => `${path}: ${reason}`);
+const livenessProbe: Decoder<LivenessProbe> = (value, path) =>
+  Result.mapErr(KubeLiveness.parse(value), (reason) => `${path}: ${reason}`);
 const kubeDeployment = D.object<KubeDeployment>({
   labels: stringMap,
   selector: stringMap,
@@ -566,6 +570,7 @@ const kubeDeployment = D.object<KubeDeployment>({
   podNetwork: D.number,
   resources: kubeResources,
   readinessProbe: D.option(readinessProbe),
+  livenessProbe: D.option(livenessProbe),
   projectId: string,
   cluster: string,
   name: string,
@@ -584,6 +589,7 @@ const kubeDeployment = D.object<KubeDeployment>({
         "env",
         "resources",
         "readiness",
+        "liveness",
         "labels",
         "restart",
         "undo",
@@ -592,10 +598,20 @@ const kubeDeployment = D.object<KubeDeployment>({
       podLabels: stringMap,
       resources: kubeResources,
       readinessProbe: D.option(readinessProbe),
+      livenessProbe: D.option(livenessProbe),
       env: D.array(kubeEnv),
     }),
   ),
   env: D.array(kubeEnv),
+  podLiveness: D.array(
+    D.object({
+      podName: string,
+      statusCode: D.number,
+      failures: D.number,
+      restarts: D.number,
+      restarted: D.boolean,
+    }),
+  ),
   podReadiness: D.array(
     D.object({
       podName: string,
@@ -982,8 +998,13 @@ const migrateResourceDeployment = (
   };
 };
 
-const migrateKubeDeployment = (version: number, value: unknown, podNetwork: number): unknown => {
+const migrateReadinessDeployment = (
+  version: number,
+  value: unknown,
+  podNetwork: number,
+): unknown => {
   const d = migrateResourceDeployment(version, value, podNetwork);
+  if (version >= 15) return d;
   if (!isRecord(d)) return d;
   return {
     ...d,
@@ -991,6 +1012,19 @@ const migrateKubeDeployment = (version: number, value: unknown, podNetwork: numb
     podReadiness: [],
     revisions: Array.isArray(d.revisions)
       ? d.revisions.map((r) => (isRecord(r) ? { ...r, readinessProbe: Option.none } : r))
+      : d.revisions,
+  };
+};
+
+const migrateKubeDeployment = (version: number, value: unknown, podNetwork: number): unknown => {
+  const d = migrateReadinessDeployment(version, value, podNetwork);
+  if (!isRecord(d)) return d;
+  return {
+    ...d,
+    livenessProbe: Option.none,
+    podLiveness: [],
+    revisions: Array.isArray(d.revisions)
+      ? d.revisions.map((r) => (isRecord(r) ? { ...r, livenessProbe: Option.none } : r))
       : d.revisions,
   };
 };

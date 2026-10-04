@@ -102,7 +102,7 @@ test("YAML and JSON create/apply preserve identical HPA state and existing evalu
     execute(s, "kubectl apply -f autoscale-web.yaml", "kubectl apply -f autoscale-hpa.yaml").world,
   ).toEqual(s.world);
   expect(restore(s).world).toEqual(s.world);
-  expect(Snapshot.create(s.world, Now).schemaVersion).toBe(15);
+  expect(Snapshot.create(s.world, Now).schemaVersion).toBe(16);
   rejected(s, "kubectl create -f autoscale-hpa.yaml", "already exists");
 });
 test("configuration changes clear the sample, preserve creation time and Pods, and require explicit reevaluation", () => {

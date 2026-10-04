@@ -71,7 +71,7 @@ export const KubeReadiness = {
   sampleFields(d: KubeDeployment, podName: string): JsonRecord {
     if (!Option.isSome(d.readinessProbe)) return {};
     return {
-      simulator: { readinessSample: d.podReadiness.find((p) => p.podName === podName) ?? null },
+      readinessSample: d.podReadiness.find((p) => p.podName === podName) ?? null,
     };
   },
   summary(d: KubeDeployment, podName: string): string {

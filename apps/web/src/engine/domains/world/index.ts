@@ -27,6 +27,7 @@ import type { KmsKeyRing } from "@/engine/domains/kms";
 import { KubeConfig, KubeRuntime } from "@/engine/domains/kube-config";
 import { KubeHpa } from "@/engine/domains/kube-hpa";
 import { KubeLabels } from "@/engine/domains/kube-labels";
+import { KubeLiveness } from "@/engine/domains/kube-liveness";
 import { KubeManifest } from "@/engine/domains/kube-manifest";
 import { KubeReadiness } from "@/engine/domains/kube-readiness";
 import { KubeDeployment, type KubeService } from "@/engine/domains/kubernetes";
@@ -1078,7 +1079,9 @@ export const World = {
         kubeDeployments: [
           ...world.kubeDeployments,
           KubeReadiness.reconcile(
-            KubeRuntime.reconcile(world.kubeConfigs, { ...deployment, podNetwork }),
+            KubeLiveness.reconcile(
+              KubeRuntime.reconcile(world.kubeConfigs, { ...deployment, podNetwork }),
+            ),
           ),
         ],
       }),
@@ -1091,7 +1094,9 @@ export const World = {
       kubeDeployments: replaceBy(
         world.kubeDeployments,
         sameInCluster(deployment),
-        KubeReadiness.reconcile(KubeRuntime.reconcile(world.kubeConfigs, deployment)),
+        KubeReadiness.reconcile(
+          KubeLiveness.reconcile(KubeRuntime.reconcile(world.kubeConfigs, deployment)),
+        ),
       ),
     };
   },

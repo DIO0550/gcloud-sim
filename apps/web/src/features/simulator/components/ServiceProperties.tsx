@@ -3,6 +3,7 @@ import { ImagePull } from "@/engine/domains/image-pull";
 import { KubeEnv, KubeRuntime } from "@/engine/domains/kube-config";
 import { KubeHpa } from "@/engine/domains/kube-hpa";
 import { KubeLabels } from "@/engine/domains/kube-labels";
+import { KubeLiveness } from "@/engine/domains/kube-liveness";
 import { KubeReadiness } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
@@ -131,6 +132,28 @@ export const KubeDeploymentProperties = ({
             { label: "limits", value: KubeResources.text(d.resources.limits) },
           ]}
         />
+      )}
+      {Option.isSome(d.livenessProbe) && (
+        <>
+          <Section
+            title="Liveness（HTTP）"
+            rows={[
+              {
+                label: "path / port",
+                value: `${d.livenessProbe.value.httpGet.path} : ${d.livenessProbe.value.httpGet.port}`,
+              },
+              { label: "失敗閾値", value: String(d.livenessProbe.value.failureThreshold) },
+              ...KubePod.fromDeployment(d).map((p) => ({
+                label: p.name,
+                value: KubeLiveness.summary(d, p.name),
+              })),
+            ]}
+          />
+          <p className="mb-3 text-sm text-muted">
+            probe
+            --kind=livenessで評価します。連続失敗で同じPod内のコンテナを再起動し、readinessは未評価に戻ります。
+          </p>
+        </>
       )}
       {Option.isSome(d.readinessProbe) && (
         <>

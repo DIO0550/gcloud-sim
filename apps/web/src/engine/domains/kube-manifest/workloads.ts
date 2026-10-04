@@ -1,5 +1,6 @@
 import { KubeEnv } from "@/engine/domains/kube-config";
 import { KubeLabels } from "@/engine/domains/kube-labels";
+import { KubeLiveness, type LivenessProbe } from "@/engine/domains/kube-liveness";
 import { KubeReadiness, type ReadinessProbe } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeDeployment, KubeName, KubeServiceType } from "@/engine/domains/kubernetes";
@@ -16,6 +17,7 @@ export type WorkloadManifest =
       env: readonly KubeEnv[];
       resources: KubeResources;
       readinessProbe: Option<ReadinessProbe>;
+      livenessProbe: Option<LivenessProbe>;
       labels: KubeLabels;
       selector: KubeLabels;
       podLabels: KubeLabels;
@@ -124,7 +126,11 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
   if (!Array.isArray(pod.containers) || pod.containers.length !== 1)
     return fail("Use exactly one container.");
   const container = record(pod.containers[0], "container");
-  fields(container, ["name", "image", "env", "resources", "readinessProbe"], "container");
+  fields(
+    container,
+    ["name", "image", "env", "resources", "readinessProbe", "livenessProbe"],
+    "container",
+  );
   if (container.name !== meta.name)
     return fail("Container name must equal Deployment name on gcloud-sim.");
   if (typeof container.image !== "string") return fail("Container image must be a string.");
@@ -135,6 +141,10 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
     ? Result.ok(Option.none)
     : Result.map(KubeReadiness.parse(container.readinessProbe), Option.some);
   if (!Result.isOk(probe)) return fail(probe.error);
+  const liveness: Result<Option<LivenessProbe>, string> = container.livenessProbe === undefined
+    ? Result.ok(Option.none)
+    : Result.map(KubeLiveness.parse(container.livenessProbe), Option.some);
+  if (!Result.isOk(liveness)) return fail(liveness.error);
   const resources = KubeResources.parse(
     container.resources === undefined ? {} : container.resources,
   );
@@ -156,6 +166,7 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
     env,
     resources: resources.value,
     readinessProbe: probe.value,
+    livenessProbe: liveness.value,
     labels,
     selector: matchLabels,
     podLabels,
