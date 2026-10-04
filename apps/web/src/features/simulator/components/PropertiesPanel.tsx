@@ -40,6 +40,7 @@ import {
   DnsZoneProperties,
   FunctionProperties,
   KeyRingProperties,
+  KubeConfigProperties,
   KubeDeploymentProperties,
   KubeServiceProperties,
   LogSinkProperties,
@@ -110,6 +111,8 @@ const Body = ({
       return <NodePoolProperties world={world} selection={selection} />;
     case "kube-deployment":
       return <KubeDeploymentProperties world={world} selection={selection} />;
+    case "kube-config":
+      return <KubeConfigProperties world={world} selection={selection} />;
     case "kube-service":
       return <KubeServiceProperties world={world} selection={selection} />;
     case "run-service":
@@ -180,6 +183,7 @@ const titleOf = (selection: TreeSelection): string => {
     case "node-pool":
     case "kube-deployment":
     case "kube-service":
+    case "kube-config":
     case "run-service":
     case "function":
     case "sql-instance":
@@ -249,6 +253,8 @@ const kindLabel = (selection: TreeSelection): string => {
       return `container#nodePool · clusters/${selection.cluster}`;
     case "kube-deployment":
       return `apps/v1 Deployment · clusters/${selection.cluster}`;
+    case "kube-config":
+      return `v1 ${selection.resourceKind} · clusters/${selection.cluster}`;
     case "kube-service":
       return `v1 Service · clusters/${selection.cluster}`;
     case "run-service":

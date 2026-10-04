@@ -16,6 +16,7 @@ import {
 import { Candidates, projectCommand } from "@/engine/commands/shared";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { ImagePull } from "@/engine/domains/image-pull";
+import { KubeConfig, KubeEnv, KubeRuntime } from "@/engine/domains/kube-config";
 import {
   KubeDeployment,
   KubePod,
@@ -28,6 +29,7 @@ import { SampleFile } from "@/engine/domains/sample-files";
 import { type AlreadyExists, World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
+import { createConfig, kubePermission, setEnv } from "./configuration";
 
 /**
  * `kubectl`（TBD-007）。コンテキストは `get-credentials` が書いた `container/cluster` で、
@@ -69,11 +71,16 @@ const usage = (message: string): CommandFailure => CommandFailure.invalidArgumen
 
 /** `deployment`, `deploy`, `deployments`, `deployment/web` の綴りを種別と名前に分ける。 */
 type ResourceRef = Readonly<{
-  kind: "deployment" | "service" | "pod" | "node" | "replicaset" | "all";
+  kind: "deployment" | "service" | "pod" | "node" | "replicaset" | "configmap" | "secret" | "all";
   name: Option<string>;
 }>;
 
 const ResourceAliases: Readonly<Record<string, ResourceRef["kind"]>> = {
+  configmap: "configmap",
+  configmaps: "configmap",
+  cm: "configmap",
+  secret: "secret",
+  secrets: "secret",
   rs: "replicaset",
   replicaset: "replicaset",
   replicasets: "replicaset",
@@ -103,7 +110,7 @@ const parseResource = (type: string, name: Option<string>): Result<ResourceRef, 
     return Result.err(
       CommandFailure.invalidValue(
         "",
-        `error: the server doesn't have a resource type "${kindText}"\ngcloud-sim: 対応しているのは deployments / services / pods / nodes です。`,
+        `error: the server doesn't have a resource type "${kindText}"\ngcloud-sim: 対応しているのは deployments / services / pods / nodes / replicasets / configmaps / secrets です。`,
       ),
     );
   }
@@ -154,20 +161,26 @@ const age = (createdAt: string, now: string): string => {
   return `${Math.floor(seconds / 86400)}d`;
 };
 
-const deploymentRow = (d: KubeDeployment, now: string, error: string): JsonRecord => ({
+const deploymentRow = (
+  d: KubeDeployment,
+  now: string,
+  error: string,
+  ready = error ? 0 : d.replicas,
+): JsonRecord => ({
   ...KubeDeployment.toRecord(d),
   status: {
     replicas: d.replicas,
-    readyReplicas: error ? 0 : d.replicas,
-    availableReplicas: error ? 0 : d.replicas,
+    readyReplicas: ready,
+    availableReplicas: ready,
     updatedReplicas: d.replicas,
     observedGeneration: d.generation,
   },
   name: d.name,
-  ready: `${error ? 0 : d.replicas}/${d.replicas}`,
-  imagePullError: error,
+  ready: `${ready}/${d.replicas}`,
+  imagePullError: error.startsWith("ImagePull") ? error : "",
+  containerError: error,
   upToDate: d.replicas,
-  available: error ? 0 : d.replicas,
+  available: ready,
   age: age(d.createdAt, now),
 });
 
@@ -178,13 +191,35 @@ const podRow = (
   error: string,
 ): JsonRecord => ({
   ...KubePod.toRecord(pod),
+  spec: {
+    containers: [
+      { name: deployment.name, image: pod.image, env: deployment.env.map(KubeEnv.toRecord) },
+    ],
+  },
   name: pod.name,
   ready: error ? "0/1" : "1/1",
-  status: error ? "ImagePullBackOff" : pod.status,
-  imagePullError: error,
+  status: error ? (error.split(":")[0] ?? "Pending") : pod.status,
+  imagePullError: error.startsWith("ImagePull") ? error : "",
+  containerError: error,
   restarts: pod.restarts,
   age: age(deployment.createdAt, now),
 });
+
+const podError = (world: World, cluster: GkeCluster, d: KubeDeployment, name: string): string =>
+  ImagePull.error(world, cluster, d.image) || KubeRuntime.error(world.kubeConfigs, d, name);
+const deploymentErrors = (
+  world: World,
+  cluster: GkeCluster,
+  d: KubeDeployment,
+): readonly string[] => KubePod.fromDeployment(d).map((p) => podError(world, cluster, d, p.name));
+const deploymentListing = (
+  ctx: ProjectContext,
+  cluster: GkeCluster,
+  d: KubeDeployment,
+): JsonRecord => {
+  const errors = deploymentErrors(ctx.world, cluster, d);
+  return deploymentRow(d, ctx.now, errors.find(Boolean) ?? "", errors.filter((e) => !e).length);
+};
 
 const serviceRow = (s: KubeService, now: string): JsonRecord => ({
   ...KubeService.toRecord(s),
@@ -233,21 +268,45 @@ const collect = (
   ctx: ProjectContext,
   cluster: GkeCluster,
   ref: ResourceRef,
+  describe = false,
 ): Result<Listing, CommandFailure> => {
   const deployments = World.kubeDeploymentsOf(ctx.world, cluster);
   const pods = deployments.flatMap((d) =>
     KubePod.fromDeployment(d).map((pod) => ({
       name: pod.name,
-      row: podRow(pod, d, ctx.now, ImagePull.error(ctx.world, cluster, d.image)),
+      row: podRow(pod, d, ctx.now, podError(ctx.world, cluster, d, pod.name)),
     })),
   );
   const services = World.kubeServicesOf(ctx.world, cluster);
   switch (ref.kind) {
+    case "configmap":
+    case "secret": {
+      const configs = ctx.world.kubeConfigs.filter(
+        (c) =>
+          c.projectId === cluster.projectId && c.cluster === cluster.name && c.kind === ref.kind,
+      );
+      return Result.map(pick(configs, ref.kind, ref.name), (entries) => ({
+        rows: entries.map((c) => ({
+          ...KubeConfig.toRecord(c, describe),
+          name: c.name,
+          count: c.data.length,
+          age: age(c.createdAt, ctx.now),
+        })),
+        columns: [
+          Column.create("NAME", "name"),
+          ...(ref.kind === "secret" ? [Column.create("TYPE", "type")] : []),
+          Column.create("DATA", "count"),
+          Column.create("AGE", "age"),
+        ],
+      }));
+    }
     case "replicaset": {
       const rows = deployments.flatMap((d) =>
         d.revisions.map((r) => {
           const replicas = r.revision === d.revision ? d.replicas : 0;
-          const ready = ImagePull.error(ctx.world, cluster, r.image) ? 0 : replicas;
+          const ready = replicas
+            ? deploymentErrors(ctx.world, cluster, d).filter((e) => !e).length
+            : 0;
           const name = `${d.name}-${KubeDeployment.replicaSetHash(d, r.templateId)}`;
           return {
             apiVersion: "apps/v1",
@@ -264,7 +323,11 @@ const collect = (
             },
             spec: {
               replicas,
-              template: { spec: { containers: [{ name: d.name, image: r.image }] } },
+              template: {
+                spec: {
+                  containers: [{ name: d.name, image: r.image, env: r.env.map(KubeEnv.toRecord) }],
+                },
+              },
             },
             status: { replicas, readyReplicas: ready },
           };
@@ -282,9 +345,7 @@ const collect = (
     }
     case "deployment":
       return Result.map(pick(deployments, "deployments.apps", ref.name), (rows) => ({
-        rows: rows.map((d) =>
-          deploymentRow(d, ctx.now, ImagePull.error(ctx.world, cluster, d.image)),
-        ),
+        rows: rows.map((d) => deploymentListing(ctx, cluster, d)),
         columns: DeploymentColumns,
       }));
     case "service":
@@ -307,7 +368,7 @@ const collect = (
           ...pods.map((p) => ({ ...p.row, name: `pod/${p.name}` })),
           ...services.map((s) => ({ ...serviceRow(s, ctx.now), name: `service/${s.name}` })),
           ...deployments.map((d) => ({
-            ...deploymentRow(d, ctx.now, ImagePull.error(ctx.world, cluster, d.image)),
+            ...deploymentListing(ctx, cluster, d),
             name: `deployment.apps/${d.name}`,
           })),
         ],
@@ -552,6 +613,26 @@ const remove = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   if (!Option.isSome(name))
     return Result.err(usage("resource(s) were provided, but no name was specified"));
   switch (ref.value.kind) {
+    case "configmap":
+    case "secret": {
+      const config = ctx.world.kubeConfigs.find(
+        (c) =>
+          c.projectId === cluster.value.projectId &&
+          c.cluster === cluster.value.name &&
+          c.kind === ref.value.kind &&
+          c.name === name.value,
+      );
+      if (!config) return Result.err(notFound(ref.value.kind, name.value));
+      return Result.ok({
+        world: World.withKubeConfigs(
+          ctx.world,
+          ctx.world.kubeConfigs.filter((c) => c !== config),
+        ),
+        output: CommandOutput.messages(
+          OutputMessage.plain(`${config.kind}/${config.name} deleted`),
+        ),
+      });
+    }
     case "deployment": {
       const deployment = World.findKubeDeployment(ctx.world, cluster.value, name.value);
       if (!Option.isSome(deployment)) return Result.err(notFound("deployments.apps", name.value));
@@ -603,7 +684,7 @@ const describe = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   if (!Result.isOk(cluster)) return cluster;
   const ref = parseResource(ParsedArgs.requiredPositional(args, 0), ParsedArgs.positional(args, 1));
   if (!Result.isOk(ref)) return ref;
-  const collected = collect(ctx, cluster.value, ref.value);
+  const collected = collect(ctx, cluster.value, ref.value, true);
   if (!Result.isOk(collected)) return collected;
   return Result.ok({ world: ctx.world, output: CommandOutput.yamlList(collected.value.rows) });
 };
@@ -701,7 +782,7 @@ const rollout = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   const d = deployment.value;
   switch (verb) {
     case "status": {
-      const error = d.replicas > 0 ? ImagePull.error(ctx.world, cluster.value, d.image) : "";
+      const error = deploymentErrors(ctx.world, cluster.value, d).find(Boolean) ?? "";
       if (error)
         return Result.err(
           CommandFailure.invalidState(`Deployment ${d.name} is not ready: ${error}`),
@@ -744,7 +825,11 @@ const rollout = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
             output: CommandOutput.yaml({
               revision: record.revision,
               kind: "PodTemplate",
-              spec: { containers: [{ name: d.name, image: record.image }] },
+              spec: {
+                containers: [
+                  { name: d.name, image: record.image, env: record.env.map(KubeEnv.toRecord) },
+                ],
+              },
             }),
           });
         }
@@ -777,7 +862,7 @@ const logs = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
     KubePod.fromDeployment(d).some((p) => p.name === name),
   );
   if (owner === undefined) return Result.err(notFound("pods", name));
-  const error = ImagePull.error(ctx.world, cluster.value, owner.image);
+  const error = podError(ctx.world, cluster.value, owner, name);
   if (error) return Result.err(CommandFailure.invalidState(`Container is waiting: ${error}`));
   return Result.ok({
     world: ctx.world,
@@ -887,7 +972,7 @@ type KubectlSeed = Readonly<{
   summary: string;
   positionals: readonly PositionalSpec[];
   flags: readonly FlagSpec[];
-  permission: string;
+  permission: string | ((args: ParsedArgs) => string);
   run: (ctx: ProjectContext, args: ParsedArgs) => CommandResult;
 }>;
 
@@ -897,23 +982,123 @@ const kubectl = (seed: KubectlSeed): CommandSpec =>
     summary: seed.summary,
     positionals: seed.positionals,
     flags: [...seed.flags, NamespaceFlag],
-    permission: seed.permission,
+    permissions: typeof seed.permission === "string" ? [seed.permission] : [],
     requiredApis: [ContainerApi],
     run: (ctx, args) => {
       const namespace = Option.unwrapOr(ParsedArgs.string(args, "namespace"), "default");
       if (namespace !== "default")
         return Result.err(usage("Only namespace default is supported on gcloud-sim."));
+      if (typeof seed.permission === "function") {
+        const allowed = kubePermission(ctx, seed.permission(args));
+        if (!Result.isOk(allowed)) return allowed;
+      }
       return seed.run(ctx, args);
     },
   });
 
+const resourcePermission =
+  (action: string, fallback: string) =>
+  (args: ParsedArgs): string => {
+    const ref = parseResource(
+      ParsedArgs.requiredPositional(args, 0),
+      ParsedArgs.positional(args, 1),
+    );
+    if (!Result.isOk(ref)) return fallback;
+    const verb = action === "delete" ? "delete" : Option.isSome(ref.value.name) ? "get" : "list";
+    if (ref.value.kind === "secret") return `container.secrets.${verb}`;
+    if (ref.value.kind === "configmap") return `container.configMaps.${verb}`;
+    return fallback;
+  };
+const execEnvironment = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+  const cluster = currentCluster(ctx);
+  if (!Result.isOk(cluster)) return cluster;
+  const [resource, command, key, ...extra] = args.positionals;
+  if ((command !== "printenv" && command !== "env") || extra.length || (command === "env" && key))
+    return Result.err(
+      usage("Only exec POD -- printenv [KEY] or env is simulated; no shell is executed."),
+    );
+  const d = World.kubeDeploymentsOf(ctx.world, cluster.value).find(
+    (d) =>
+      resource === `deployment/${d.name}` ||
+      KubePod.fromDeployment(d).some((p) => p.name === resource || `pod/${p.name}` === resource),
+  );
+  if (!d) return Result.err(notFound("pods", resource ?? ""));
+  const name = resource?.startsWith("deployment/")
+    ? KubePod.fromDeployment(d)[0]?.name
+    : resource?.replace(/^pod\//, "");
+  if (!name) return Result.err(usage("Deployment has no Pods."));
+  const error = podError(ctx.world, cluster.value, d, name);
+  if (error) return Result.err(CommandFailure.invalidState(`Container is waiting: ${error}`));
+  const env = KubeRuntime.environment(ctx.world.kubeConfigs, d, name);
+  if (!Result.isOk(env)) return Result.err(CommandFailure.invalidState(env.error));
+  if (key && !env.value.values.some((e) => e.name === key))
+    return Result.err(usage(`Environment variable ${key} is not set.`));
+  const values = env.value.values.filter((e) => !key || e.name === key);
+  return Result.ok({
+    world: ctx.world,
+    output: CommandOutput.messages(
+      ...values.map((e) => OutputMessage.plain(key ? e.value : `${e.name}=${e.value}`)),
+    ),
+  });
+};
+
 export const KubectlCommands: readonly CommandSpec[] = [
+  ...(["configmap", "secret"] as const).map((kind) =>
+    kubectl({
+      verb: kind === "secret" ? "create secret generic" : "create configmap",
+      summary: `Create a ${kind} from repeated --from-literal=KEY=VALUE (default namespace).`,
+      positionals: [Positional.required("NAME", "Configuration name.")],
+      flags: [Flag.literals("from-literal", "One KEY=VALUE per flag; repeat to add keys.")],
+      permission: `container.${kind === "secret" ? "secrets" : "configMaps"}.create`,
+      run: (ctx, args) =>
+        Result.flatMap(currentCluster(ctx), (cluster) => createConfig(ctx, args, cluster, kind)),
+    }),
+  ),
+  kubectl({
+    verb: "set env",
+    summary: "Set/remove environment variables or import ConfigMap/Secret key references.",
+    positionals: [
+      TypePositional,
+      {
+        ...Positional.variadic("NAME_OR_ENV", "Deployment name, KEY=VALUE or KEY-."),
+        required: false,
+      },
+    ],
+    flags: [
+      Flag.string("from", "configmap/NAME or secret/NAME.", {
+        singleUse: true,
+        candidates: Candidates.kubeConfigs,
+      }),
+      Flag.list("keys", "Comma-separated source keys.", { singleUse: true }),
+      Flag.string("prefix", "Prefix for imported variable names.", { singleUse: true }),
+      Flag.boolean("list", "List template variables without resolving secrets."),
+    ],
+    permission: (args) =>
+      ParsedArgs.boolean(args, "list")
+        ? "container.deployments.get"
+        : "container.deployments.update",
+    run: (ctx, args) =>
+      Result.flatMap(currentCluster(ctx), (cluster) =>
+        Result.flatMap(requireDeployment(ctx, cluster, args), (d) => setEnv(ctx, args, cluster, d)),
+      ),
+  }),
+  kubectl({
+    verb: "exec",
+    summary: "Inspect simulated Pod environment with printenv or env (no shell execution).",
+    positionals: [
+      Positional.required("POD", "Pod name or deployment/NAME."),
+      Positional.variadic("COMMAND", "-- printenv [KEY] or -- env."),
+    ],
+    flags: [],
+    permission: "container.pods.exec",
+    run: execEnvironment,
+  }),
   kubectl({
     verb: "get",
     summary: "Display one or many resources.",
     positionals: [TypePositional, NamePositional],
     flags: [OutputFlag],
-    permission: "container.pods.list",
+    permission: resourcePermission("list", "container.pods.list"),
     run: get,
   }),
   kubectl({
@@ -927,7 +1112,12 @@ export const KubectlCommands: readonly CommandSpec[] = [
   kubectl({
     verb: "create",
     summary: "Create a resource from a file or from the command line (deployment).",
-    positionals: [Positional.optional("TYPE", "Resource type (deployment)."), NamePositional],
+    positionals: [
+      Positional.optional("TYPE", "Resource type (deployment, configmap, secret).", () => [
+        "deployment",
+      ]),
+      NamePositional,
+    ],
     flags: [
       FileFlag,
       Flag.string("image", "Image name to run."),
@@ -941,7 +1131,7 @@ export const KubectlCommands: readonly CommandSpec[] = [
     summary: "Delete resources.",
     positionals: [Positional.optional("TYPE[/NAME]", "Resource type."), NamePositional],
     flags: [FileFlag],
-    permission: "container.deployments.delete",
+    permission: resourcePermission("delete", "container.deployments.delete"),
     run: remove,
   }),
   kubectl({
@@ -949,7 +1139,7 @@ export const KubectlCommands: readonly CommandSpec[] = [
     summary: "Show details of a specific resource or group of resources.",
     positionals: [TypePositional, NamePositional],
     flags: [],
-    permission: "container.pods.get",
+    permission: resourcePermission("get", "container.pods.get"),
     run: describe,
   }),
   kubectl({

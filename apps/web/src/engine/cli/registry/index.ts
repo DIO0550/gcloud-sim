@@ -294,10 +294,15 @@ export const CommandRegistry = {
     }
     const index = positionalCount(resolved.value.rest, flags);
     const positional = positionalAt(spec.positionals, index);
-    return evaluate(
-      Option.flatMap(positional, (p) => p.candidates),
-      partial,
-    );
+    return [
+      ...new Set([
+        ...childrenOf(registry, tokens).filter((c) => c.startsWith(partial)),
+        ...evaluate(
+          Option.flatMap(positional, (p) => p.candidates),
+          partial,
+        ),
+      ]),
+    ].toSorted();
   },
 
   /** 実装済みかどうかに関わらず、登録されているコマンドのパス。docs とテストが数える。 */

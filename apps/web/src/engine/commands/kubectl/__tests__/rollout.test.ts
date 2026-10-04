@@ -228,7 +228,7 @@ test("v8 migration preserves local/registry state and node identity, without inv
   expect(imported.world.containerLab).toEqual(s.world.containerLab);
   expect(imported.world.clusters).toEqual(s.world.clusters);
   expect(deployment(imported).revisions).toEqual([
-    { revision: 3, templateId: 3, image: `${image}:v2`, reason: "migrated" },
+    { revision: 3, templateId: 3, image: `${image}:v2`, reason: "migrated", env: [] },
   ]);
   rejected(imported, "kubectl rollout undo deployment/hello --to-revision=1", "not retained");
   execute(

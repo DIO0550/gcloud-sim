@@ -30,19 +30,55 @@ export const FROZEN_TIME = Date.UTC(2026, 0, 1, 12, 0, 0);
  * storage に { キー: 値 } を書くと、撮る前に localStorage へ JSON で置く。
  *
  * steps に書けるもの:
- * - { click: "ボタンの文字" }        文字がちょうど一致するボタンを押す
+ * - { click: "ボタンの文字" }        文字またはaria-labelがちょうど一致するボタンを押す
  * - { type: "gcloud ..." }           端末に 1 行打って Enter する（Console の画面に出すリソースを作る）
  * - { fill: ["ラベル", "値"] }       そのラベルの入力欄に値を入れる
  * - { wait: 400 }                    ミリ秒待つ
  */
+const configSteps = [
+  { wait: 800 },
+  { type: "gcloud services enable container.googleapis.com" },
+  { type: "gcloud container clusters create-auto config-gke --region=us-central1" },
+  { type: "kubectl create deployment config-web --image=nginx:1 --replicas=2" },
+  { type: "kubectl create configmap app-config --from-literal=APP_MODE=production" },
+  { type: "kubectl create secret generic app-secret --from-literal=API_TOKEN=demo-token" },
+  { type: "kubectl set env deployment/config-web --from=configmap/app-config" },
+  { type: "kubectl set env deployment/config-web --from=secret/app-secret" },
+  { type: "kubectl set env deployment/config-web LOG_LEVEL=info" },
+  { type: "kubectl rollout restart deployment/config-web" },
+  { click: "config-gke を展開する" },
+];
 export const SCENARIOS = [
+  {
+    name: "gke-env-properties",
+    label: "GKE: 環境変数と更新履歴",
+    steps: [...configSteps, { click: "deploy: config-web" }, { wait: 300 }],
+  },
+  {
+    name: "gke-secret-properties",
+    label: "GKE: Secretの値を隠したプロパティ",
+    steps: [...configSteps, { click: "secret: app-secret" }, { wait: 300 }],
+  },
+  {
+    name: "mission-gke-config",
+    label: "ミッション: ConfigMap変更を再起動で反映",
+    steps: [
+      { wait: 800 },
+      { click: "ミッション 0/41" },
+      { click: "運用の維持0/15 クリア" },
+      { click: "ConfigMapの変更をPodの再起動で反映する未着手" },
+      { click: "開始" },
+      { click: "ヒント（0/5）" },
+      { wait: 300 },
+    ],
+  },
   {
     name: "mission-gke-rollback",
     label: "ミッション: GKE更新失敗からの復旧",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/39" },
-      { click: "運用の維持0/14 クリア" },
+      { click: "ミッション 0/41" },
+      { click: "運用の維持0/15 クリア" },
       { click: "失敗したGKEの更新をロールバックする未着手" },
       { click: "開始" },
       { click: "ヒント（0/7）" },
@@ -54,8 +90,8 @@ export const SCENARIOS = [
     label: "ミッション: コンテナ教材の片付け",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/39" },
-      { click: "運用の維持0/14 クリア" },
+      { click: "ミッション 0/41" },
+      { click: "運用の維持0/15 クリア" },
       { click: "残すイメージを守りながらコンテナ教材を片付ける未着手" },
       { click: "開始" },
       { click: "ヒント（0/4）" },
@@ -65,14 +101,14 @@ export const SCENARIOS = [
   {
     name: "mission-categories",
     label: "ミッション: カテゴリ選択",
-    steps: [{ wait: 800 }, { click: "ミッション 0/39" }, { wait: 300 }],
+    steps: [{ wait: 800 }, { click: "ミッション 0/41" }, { wait: 300 }],
   },
   {
     name: "mission-list",
     label: "ミッション: カテゴリ内の一覧",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/39" },
+      { click: "ミッション 0/41" },
       { click: "環境セットアップ0/3 クリア" },
       { wait: 300 },
     ],
@@ -82,7 +118,7 @@ export const SCENARIOS = [
     label: "ミッション: 選んだ1件の手順",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/39" },
+      { click: "ミッション 0/41" },
       { click: "環境セットアップ0/3 クリア" },
       { click: "本番用の configuration を用意する未着手" },
       { click: "開始" },

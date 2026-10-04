@@ -290,7 +290,10 @@ const resetStorage = (entries) => {
 
 const clickByText = (text) => {
   const buttons = [...document.querySelectorAll("button")];
-  const target = buttons.find((button) => (button.textContent ?? "").trim() === text);
+  const target = buttons.find(
+    (button) =>
+      (button.textContent ?? "").trim() === text || button.getAttribute("aria-label") === text,
+  );
   if (!target) {
     return {
       ok: false,

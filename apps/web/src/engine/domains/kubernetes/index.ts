@@ -1,3 +1,4 @@
+import { KubeEnv, type PodEnvironment } from "@/engine/domains/kube-config";
 import type { JsonRecord } from "@/types/Json";
 import type { ValueOf } from "@/types/ValueOf";
 import { Option } from "@/utils/Option";
@@ -24,13 +25,16 @@ export type KubeRevision = Readonly<{
   revision: number;
   templateId: number;
   image: string;
-  reason: "create" | "image" | "restart" | "undo" | "migrated";
+  reason: "create" | "image" | "env" | "restart" | "undo" | "migrated";
+  env: readonly KubeEnv[];
 }>;
 export type KubeDeployment = Readonly<{
   projectId: string;
   cluster: string;
   name: string;
   image: string;
+  env: readonly KubeEnv[];
+  podEnvironments: readonly PodEnvironment[];
   replicas: number;
   /** Specの世代。Pod templateのrevisionとは別に管理する。 */
   generation: number;
@@ -47,16 +51,18 @@ const newRevision = (
   image: string,
   reason: KubeRevision["reason"],
   templateId = d.revision + 1,
+  env = d.env,
 ): KubeDeployment => {
   const revision = d.revision + 1;
   return {
     ...d,
     image,
+    env,
     generation: d.generation + 1,
     revision,
     revisions: [
       ...d.revisions.filter((r) => r.templateId !== templateId),
-      { revision, image, templateId, reason },
+      { revision, image, templateId, reason, env },
     ].slice(-11),
     podSequence: d.podSequence + 1,
     podIncarnations: Array.from({ length: d.replicas }, () => d.podSequence + 1),
@@ -90,10 +96,12 @@ export const KubeDeployment = {
       cluster: seed.cluster,
       name,
       image: seed.image,
+      env: [],
+      podEnvironments: [],
       replicas,
       generation: 1,
       revision: 1,
-      revisions: [{ revision: 1, templateId: 1, image: seed.image, reason: "create" }],
+      revisions: [{ revision: 1, templateId: 1, image: seed.image, reason: "create", env: [] }],
       podIncarnations: Array.from({ length: replicas }, () => 0),
       podSequence: 0,
       createdAt: seed.createdAt,
@@ -132,6 +140,11 @@ export const KubeDeployment = {
     return { ...newRevision(scaled, image, "image"), generation: deployment.generation + 1 };
   },
 
+  withEnv(deployment: KubeDeployment, env: readonly KubeEnv[]): KubeDeployment {
+    if (JSON.stringify(env) === JSON.stringify(deployment.env)) return deployment;
+    return newRevision(deployment, deployment.image, "env", undefined, env);
+  },
+
   /** `rollout restart`。同じイメージで新しいtemplateとrevisionを作る。 */
   restarted(deployment: KubeDeployment): KubeDeployment {
     return newRevision(deployment, deployment.image, "restart");
@@ -145,7 +158,9 @@ export const KubeDeployment = {
     if (!previous)
       return Result.err("Requested revision is not retained; inspect rollout history first.");
     if (previous.revision === deployment.revision) return Result.ok(deployment);
-    return Result.ok(newRevision(deployment, previous.image, "undo", previous.templateId));
+    return Result.ok(
+      newRevision(deployment, previous.image, "undo", previous.templateId, previous.env),
+    );
   },
 
   replacePod(deployment: KubeDeployment, index: number): KubeDeployment {
@@ -159,6 +174,10 @@ export const KubeDeployment = {
   },
 
   validate(d: KubeDeployment): Result<KubeDeployment, string> {
+    if (!KubeEnv.validate(d.env) || d.revisions.some((r) => !KubeEnv.validate(r.env)))
+      return Result.err("Invalid Deployment environment.");
+    if (JSON.stringify(d.env) !== JSON.stringify(d.revisions.at(-1)?.env))
+      return Result.err("Deployment environment differs from current revision.");
     const positive = (n: number) => Number.isSafeInteger(n) && n > 0;
     const latest = d.revisions.at(-1);
     if (
@@ -169,6 +188,18 @@ export const KubeDeployment = {
       d.generation < d.revision
     )
       return Result.err("Invalid Deployment identity, replicas or generation.");
+    const names = new Set(KubePod.fromDeployment(d).map((p) => p.name));
+    if (
+      new Set(d.podEnvironments.map((p) => p.podName)).size !== d.podEnvironments.length ||
+      d.podEnvironments.some(
+        (p) =>
+          !names.has(p.podName) ||
+          p.values.length !== d.env.length ||
+          new Set(p.values.map((e) => e.name)).size !== p.values.length ||
+          p.values.some((e) => !d.env.some((v) => v.name === e.name)),
+      )
+    )
+      return Result.err("Invalid saved Pod environment.");
     if (
       !latest ||
       d.revisions.length > 11 ||
@@ -230,7 +261,15 @@ export const KubeDeployment = {
         selector: { matchLabels: { app: deployment.name } },
         template: {
           metadata: { labels: { app: deployment.name } },
-          spec: { containers: [{ name: deployment.name, image: deployment.image }] },
+          spec: {
+            containers: [
+              {
+                name: deployment.name,
+                image: deployment.image,
+                env: deployment.env.map(KubeEnv.toRecord),
+              },
+            ],
+          },
         },
       },
       status: {

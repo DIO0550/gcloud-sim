@@ -63,6 +63,11 @@ import {
 import type { ValueOf } from "@/types/ValueOf";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
+import {
+  type KubeConfigurationAssertion,
+  KubeConfigurationMissions,
+  kubeConfigurationSatisfied,
+} from "./kube-configuration";
 
 /** ACE の 5 ドメイン（設計書 6.2 Mission.domain）。 */
 export const MissionDomains = {
@@ -77,6 +82,7 @@ export type MissionDomain = ValueOf<typeof MissionDomains>;
 /** World に対する述語（DJ-010: コマンド文字列ではなく状態で判定する）。値の語彙はドメインの型で閉じる。 */
 export type MissionAssertion =
   | BuildAssertion
+  | KubeConfigurationAssertion
   | KubernetesAssertion
   | ArtifactLifecycleAssertion
   | ContainerAssertion
@@ -220,6 +226,7 @@ const Missions: readonly Mission[] = [
   ...ContainerMissions,
   ...BuildMissions,
   ...KubernetesMissions,
+  ...KubeConfigurationMissions,
   ...ArtifactLifecycleMissions,
   {
     id: "m-setup-001",
@@ -674,6 +681,9 @@ const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: 
 
 const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
+    case "kubeConfigInjected":
+    case "kubeConfigRefreshed":
+      return kubeConfigurationSatisfied(world, assertion);
     case "kubeImageUpdated":
     case "kubeRollbackRecovered":
       return kubernetesSatisfied(world, assertion);

@@ -202,7 +202,21 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
       `svc: ${s.name}`,
     ),
   );
-  return [...pools, ...deployments, ...services];
+  const configs = world.kubeConfigs
+    .filter((c) => c.projectId === id && c.cluster === cluster.name)
+    .map((c) =>
+      leaf(
+        {
+          kind: "kube-config",
+          resourceKind: c.kind,
+          projectId: id,
+          cluster: c.cluster,
+          name: c.name,
+        },
+        `${c.kind}: ${c.name}`,
+      ),
+    );
+  return [...pools, ...deployments, ...services, ...configs];
 };
 
 const gkeNodes = (world: World, id: string): readonly TreeNode[] =>

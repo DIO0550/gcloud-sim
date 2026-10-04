@@ -144,9 +144,9 @@ test("World を置き換えると選択と shell 状態がリセットされ設�
 test("import の失敗は importError に入り、設定を閉じると消える", () => {
   const failed = simulatorReducer(start(), {
     type: "importFailed",
-    message: "schemaVersion 10 は未対応です。",
+    message: "schemaVersion 11 は未対応です。",
   });
-  expect(failed.importError).toEqual(Option.some("schemaVersion 10 は未対応です。"));
+  expect(failed.importError).toEqual(Option.some("schemaVersion 11 は未対応です。"));
   expect(simulatorReducer(failed, { type: "settingsToggled", open: false }).importError).toEqual(
     Option.none,
   );

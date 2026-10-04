@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import { ImagePull } from "@/engine/domains/image-pull";
+import { KubeEnv, KubeRuntime } from "@/engine/domains/kube-config";
 
 import { KubePod, KubeService } from "@/engine/domains/kubernetes";
 import { CloudRunService, GkeCluster } from "@/engine/domains/managed-services";
@@ -121,11 +122,17 @@ export const KubeDeploymentProperties = ({
         }))}
       />
       <Section
+        title="環境変数（Pod template）"
+        rows={d.env.map((e) => ({ label: e.name, value: KubeEnv.display(e) }))}
+      />
+      <Section
         title="Pod"
         rows={KubePod.fromDeployment(d).map((p) => ({
           label: p.name,
           value: Option.isSome(cluster)
-            ? ImagePull.error(world, cluster.value, d.image) || `${p.status} ${p.ip}`
+            ? ImagePull.error(world, cluster.value, d.image) ||
+              KubeRuntime.error(world.kubeConfigs, d, p.name) ||
+              `${p.status} ${p.ip}`
             : "Unknown",
         }))}
       />
@@ -425,5 +432,39 @@ export const ObservabilityProperties = ({
         value: String(value),
       }))}
     />
+  );
+};
+
+export const KubeConfigProperties = ({
+  world,
+  selection,
+}: SelectionProps<"kube-config">): ReactElement => {
+  const c = world.kubeConfigs.find(
+    (c) =>
+      c.projectId === selection.projectId &&
+      c.cluster === selection.cluster &&
+      c.kind === selection.resourceKind &&
+      c.name === selection.name,
+  );
+  if (!c) return <NotFound what={selection.resourceKind} />;
+  return (
+    <>
+      <Section
+        title="基本"
+        rows={[
+          { label: "cluster", value: c.cluster },
+          { label: "namespace", value: "default" },
+          { label: "kind", value: c.kind },
+        ]}
+      />
+      <Section
+        title={c.kind === "secret" ? "データ（値は非表示）" : "データ"}
+        rows={c.data.map((e) => ({
+          label: e.key,
+          value:
+            c.kind === "secret" ? `${new TextEncoder().encode(e.value).length} bytes` : e.value,
+        }))}
+      />
+    </>
   );
 };

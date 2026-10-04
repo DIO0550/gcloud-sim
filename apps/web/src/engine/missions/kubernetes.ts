@@ -1,5 +1,7 @@
 import { ContainerLab } from "@/engine/domains/container-lab";
 import { ImagePull } from "@/engine/domains/image-pull";
+import { KubeRuntime } from "@/engine/domains/kube-config";
+import { KubePod } from "@/engine/domains/kubernetes";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
@@ -58,6 +60,8 @@ export const kubernetesSatisfied = (world: World, assertion: KubernetesAssertion
     (d) => d.projectId === F.devProjectId && d.cluster === cluster.name && d.name === "hello",
   );
   if (!d || ImagePull.error(world, cluster, d.image)) return false;
+  if (KubePod.fromDeployment(d).some((p) => KubeRuntime.error(world.kubeConfigs, d, p.name)))
+    return false;
   const recipe = assertion.kind === "kubeImageUpdated" ? "hello-web-v2" : "hello-web";
   const tag = assertion.kind === "kubeImageUpdated" ? "v2" : "v1";
   const ref = ContainerLab.registryReference(`${image}:${tag}`);

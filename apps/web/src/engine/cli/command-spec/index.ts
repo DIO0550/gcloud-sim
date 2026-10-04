@@ -31,7 +31,7 @@ export type FlagSpec =
   | (FlagBase & Readonly<{ kind: "string"; candidates: Option<CandidateSource> }>)
   | (FlagBase & Readonly<{ kind: "boolean" }>)
   | (FlagBase & Readonly<{ kind: "enum"; choices: readonly string[] }>)
-  | (FlagBase & Readonly<{ kind: "list" }>)
+  | (FlagBase & Readonly<{ kind: "list"; literalRepeat?: boolean }>)
   | (FlagBase & Readonly<{ kind: "keyvalue" }>)
   | (FlagBase & Readonly<{ kind: "integer" }>);
 
@@ -93,6 +93,9 @@ export const Flag = {
   },
   list(name: string, description: string, options: FlagOptions = {}): FlagSpec {
     return { kind: "list", ...base(name, description, options) };
+  },
+  literals(name: string, description: string): FlagSpec {
+    return { kind: "list", literalRepeat: true, ...base(name, description, {}) };
   },
   keyvalue(name: string, description: string, options: FlagOptions = {}): FlagSpec {
     return { kind: "keyvalue", ...base(name, description, options) };
