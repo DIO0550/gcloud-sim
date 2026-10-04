@@ -1,4 +1,5 @@
 import { KubeEnv, type PodEnvironment } from "@/engine/domains/kube-config";
+import { KubeLabels } from "@/engine/domains/kube-labels";
 import type { JsonRecord } from "@/types/Json";
 import type { ValueOf } from "@/types/ValueOf";
 import { Option } from "@/utils/Option";
@@ -25,8 +26,9 @@ export type KubeRevision = Readonly<{
   revision: number;
   templateId: number;
   image: string;
-  reason: "create" | "image" | "env" | "restart" | "undo" | "migrated";
+  reason: "create" | "image" | "env" | "labels" | "restart" | "undo" | "migrated";
   env: readonly KubeEnv[];
+  podLabels: KubeLabels;
 }>;
 export type KubeDeployment = Readonly<{
   projectId: string;
@@ -35,6 +37,11 @@ export type KubeDeployment = Readonly<{
   image: string;
   env: readonly KubeEnv[];
   podEnvironments: readonly PodEnvironment[];
+  labels: KubeLabels;
+  selector: KubeLabels;
+  podLabels: KubeLabels;
+  /** Unique /22 slot within the simulated cluster; independent of template revision. */
+  podNetwork: number;
   replicas: number;
   /** Specの世代。Pod templateのrevisionとは別に管理する。 */
   generation: number;
@@ -52,17 +59,19 @@ const newRevision = (
   reason: KubeRevision["reason"],
   templateId = d.revision + 1,
   env = d.env,
+  podLabels = d.podLabels,
 ): KubeDeployment => {
   const revision = d.revision + 1;
   return {
     ...d,
     image,
     env,
+    podLabels,
     generation: d.generation + 1,
     revision,
     revisions: [
       ...d.revisions.filter((r) => r.templateId !== templateId),
-      { revision, image, templateId, reason, env },
+      { revision, image, templateId, reason, env, podLabels },
     ].slice(-11),
     podSequence: d.podSequence + 1,
     podIncarnations: Array.from({ length: d.replicas }, () => d.podSequence + 1),
@@ -83,9 +92,24 @@ export const KubeDeployment = {
       name: string;
       image: string;
       replicas: Option<number>;
+      labels?: KubeLabels;
+      selector?: KubeLabels;
+      podLabels?: KubeLabels;
       createdAt: string;
     }>,
   ): Result<KubeDeployment, string> {
+    const labels = seed.labels ?? { app: seed.name };
+    const selector = seed.selector ?? { app: seed.name };
+    const podLabels = seed.podLabels ?? { app: seed.name };
+    if (
+      ![
+        KubeLabels.parse(labels),
+        KubeLabels.parse(selector, true),
+        KubeLabels.parse(podLabels),
+      ].every(Result.isOk) ||
+      !KubeLabels.matches(selector, podLabels)
+    )
+      return Result.err("Deployment selector must match valid Pod labels.");
     const replicas = Option.unwrapOr(seed.replicas, 1);
     if (!validReplicas(replicas))
       return Result.err("Replicas must be an integer from 0 to 1000 on gcloud-sim.");
@@ -98,10 +122,16 @@ export const KubeDeployment = {
       image: seed.image,
       env: [],
       podEnvironments: [],
+      labels,
+      selector,
+      podLabels,
+      podNetwork: 0,
       replicas,
       generation: 1,
       revision: 1,
-      revisions: [{ revision: 1, templateId: 1, image: seed.image, reason: "create", env: [] }],
+      revisions: [
+        { revision: 1, templateId: 1, image: seed.image, reason: "create", env: [], podLabels },
+      ],
       podIncarnations: Array.from({ length: replicas }, () => 0),
       podSequence: 0,
       createdAt: seed.createdAt,
@@ -146,13 +176,27 @@ export const KubeDeployment = {
     image: string,
     replicas: number,
     env: readonly KubeEnv[],
+    podLabels = deployment.podLabels,
+    labels = deployment.labels,
   ): KubeDeployment {
-    const scaled = Result.unwrap(KubeDeployment.withReplicas(deployment, replicas));
-    if (image === deployment.image && JSON.stringify(env) === JSON.stringify(deployment.env))
+    const metadata = KubeLabels.equal(labels, deployment.labels)
+      ? deployment
+      : { ...deployment, labels };
+    const scaled = Result.unwrap(KubeDeployment.withReplicas(metadata, replicas));
+    if (
+      image === deployment.image &&
+      JSON.stringify(env) === JSON.stringify(deployment.env) &&
+      KubeLabels.equal(podLabels, deployment.podLabels)
+    )
       return scaled;
-    const reason = image === deployment.image ? "env" : "image";
+    const reason =
+      image !== deployment.image
+        ? "image"
+        : JSON.stringify(env) !== JSON.stringify(deployment.env)
+          ? "env"
+          : "labels";
     return {
-      ...newRevision(scaled, image, reason, undefined, env),
+      ...newRevision(scaled, image, reason, undefined, env, podLabels),
       generation: deployment.generation + 1,
     };
   },
@@ -176,7 +220,14 @@ export const KubeDeployment = {
       return Result.err("Requested revision is not retained; inspect rollout history first.");
     if (previous.revision === deployment.revision) return Result.ok(deployment);
     return Result.ok(
-      newRevision(deployment, previous.image, "undo", previous.templateId, previous.env),
+      newRevision(
+        deployment,
+        previous.image,
+        "undo",
+        previous.templateId,
+        previous.env,
+        previous.podLabels,
+      ),
     );
   },
 
@@ -191,6 +242,24 @@ export const KubeDeployment = {
   },
 
   validate(d: KubeDeployment): Result<KubeDeployment, string> {
+    if (!Number.isInteger(d.podNetwork) || d.podNetwork < 0 || d.podNetwork >= 16384)
+      return Result.err("Invalid Deployment Pod network.");
+    if (
+      ![
+        KubeLabels.parse(d.labels),
+        KubeLabels.parse(d.selector, true),
+        KubeLabels.parse(d.podLabels),
+      ].every(Result.isOk) ||
+      !KubeLabels.matches(d.selector, d.podLabels) ||
+      d.revisions.some(
+        (r) =>
+          !Result.isOk(KubeLabels.parse(r.podLabels)) ||
+          !KubeLabels.matches(d.selector, r.podLabels),
+      )
+    )
+      return Result.err("Invalid Deployment labels or selector.");
+    if (!KubeLabels.equal(d.podLabels, d.revisions.at(-1)?.podLabels ?? {}))
+      return Result.err("Pod labels differ from current revision.");
     if (!KubeEnv.validate(d.env) || d.revisions.some((r) => !KubeEnv.validate(r.env)))
       return Result.err("Invalid Deployment environment.");
     if (JSON.stringify(d.env) !== JSON.stringify(d.revisions.at(-1)?.env))
@@ -271,13 +340,13 @@ export const KubeDeployment = {
         generation: deployment.generation,
         annotations: { "deployment.kubernetes.io/revision": String(deployment.revision) },
         creationTimestamp: deployment.createdAt,
-        labels: { app: deployment.name },
+        labels: deployment.labels,
       },
       spec: {
         replicas: deployment.replicas,
-        selector: { matchLabels: { app: deployment.name } },
+        selector: { matchLabels: deployment.selector },
         template: {
-          metadata: { labels: { app: deployment.name } },
+          metadata: { labels: deployment.podLabels },
           spec: {
             containers: [
               {
@@ -304,6 +373,7 @@ export const KubeDeployment = {
 export type KubePod = Readonly<{
   name: string;
   deployment: string;
+  labels: KubeLabels;
   image: string;
   status: "Running";
   restarts: 0;
@@ -332,10 +402,11 @@ export const KubePod = {
       return {
         name: `${deployment.name}-${hash}-${suffix}`,
         deployment: deployment.name,
+        labels: deployment.podLabels,
         image: deployment.image,
         status: "Running",
         restarts: 0,
-        ip: `10.8.${templateId % 256}.${(i + 2) % 256}`,
+        ip: `10.${deployment.podNetwork >> 6}.${(deployment.podNetwork % 64) * 4 + ((i + 2) >> 8)}.${(i + 2) % 256}`,
       };
     });
   },
@@ -344,7 +415,7 @@ export const KubePod = {
     return {
       apiVersion: "v1",
       kind: "Pod",
-      metadata: { name: pod.name, namespace: "default", labels: { app: pod.deployment } },
+      metadata: { name: pod.name, namespace: "default", labels: pod.labels },
       spec: { containers: [{ name: pod.deployment, image: pod.image }] },
       status: { phase: pod.status, podIP: pod.ip },
     };
@@ -375,8 +446,8 @@ export type KubeService = Readonly<{
   cluster: string;
   name: string;
   type: KubeServiceType;
-  /** `selector: app=<deployment>` の対象 */
-  targetDeployment: string;
+  selector: KubeLabels;
+  labels: KubeLabels;
   port: number;
   targetPort: number;
   clusterIp: string;
@@ -390,7 +461,8 @@ export type KubeServiceSeed = Readonly<{
   cluster: string;
   name: string;
   type: KubeServiceType;
-  targetDeployment: string;
+  selector: KubeLabels;
+  labels?: KubeLabels;
   port: number;
   targetPort: Option<number>;
   /** 採番済みの IP。ClusterIP と（LoadBalancer なら）外部 IP */
@@ -407,12 +479,18 @@ export const KubeService = {
    * @returns 作った Service。名前の形式が悪ければ理由
    */
   create(seed: KubeServiceSeed): Result<KubeService, string> {
+    if (
+      !Result.isOk(KubeLabels.parse(seed.selector, true)) ||
+      !Result.isOk(KubeLabels.parse(seed.labels ?? {}))
+    )
+      return Result.err("Invalid Service labels or selector.");
     return Result.map(KubeName.parse(seed.name), (name) => ({
       projectId: seed.projectId,
       cluster: seed.cluster,
       name,
       type: seed.type,
-      targetDeployment: seed.targetDeployment,
+      selector: seed.selector,
+      labels: seed.labels ?? {},
       port: seed.port,
       targetPort: Option.unwrapOr(seed.targetPort, seed.port),
       clusterIp: seed.clusterIp,
@@ -433,10 +511,15 @@ export const KubeService = {
     return {
       apiVersion: "v1",
       kind: "Service",
-      metadata: { name: service.name, namespace: "default", creationTimestamp: service.createdAt },
+      metadata: {
+        name: service.name,
+        namespace: "default",
+        creationTimestamp: service.createdAt,
+        labels: service.labels,
+      },
       spec: {
         type: service.type,
-        selector: { app: service.targetDeployment },
+        selector: service.selector,
         clusterIP: service.clusterIp,
         ports: [{ protocol: "TCP", port: service.port, targetPort: service.targetPort }],
       },

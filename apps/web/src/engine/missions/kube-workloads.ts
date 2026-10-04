@@ -1,3 +1,4 @@
+import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeManifest } from "@/engine/domains/kube-manifest";
 import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
 import type { World } from "@/engine/domains/world";
@@ -40,7 +41,7 @@ export const kubeWorkloadSatisfied = (world: World): boolean => {
     d.replicas !== 2 ||
     d.env.length !== 0 ||
     !d.revisions.some((r) => r.image === "nginx:1") ||
-    s.targetDeployment !== d.name ||
+    !KubeLabels.equal(s.selector, { app: d.name }) ||
     s.type !== "LoadBalancer" ||
     s.port !== 80 ||
     s.targetPort !== 80 ||
@@ -64,7 +65,7 @@ export const kubeWorkloadSatisfied = (world: World): boolean => {
         m.kind === "service" &&
         m.name === s.name &&
         m.type === s.type &&
-        m.targetDeployment === s.targetDeployment &&
+        KubeLabels.equal(m.selector, s.selector) &&
         m.port === s.port &&
         m.targetPort === s.targetPort,
     )

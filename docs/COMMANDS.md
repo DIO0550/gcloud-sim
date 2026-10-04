@@ -363,7 +363,7 @@ GCS backend使用時、stateを読むshow/output/state list/showにもstorage.ob
 | `kubectl create secret generic` | `container.secrets.create` | `container.googleapis.com` | `--from-literal`（繰り返し可） `--namespace` |
 | `kubectl set env` | 更新: `container.deployments.update`、一覧: `container.deployments.get`、取込元のgetも必要 | `container.googleapis.com` | `--from` `--keys` `--prefix` `--list` `--namespace` |
 | `kubectl exec` | `container.pods.exec` | `container.googleapis.com` | `--namespace`（printenv/envのみ） |
-| `kubectl get` | Deployment/Service/ConfigMap/Secret: 対象のget/list、その他: `container.pods.list` | `container.googleapis.com` | `--output` `--namespace` |
+| `kubectl get` | Deployment/Service/ConfigMap/Secret: 対象のget/list、その他: `container.pods.list` | `container.googleapis.com` | `--output` `--selector` (`-l`) `--namespace` |
 | `kubectl apply` | 仮想ファイル: 対象のgetとcreate/update、固定教材: `container.deployments.update` | `container.googleapis.com` | `--filename` `--namespace` |
 | `kubectl create` | 仮想ファイル: 対象のcreate、Deployment/固定教材: `container.deployments.create` | `container.googleapis.com` | `--filename` `--image` `--replicas` `--namespace` |
 | `kubectl delete` | Deployment/Service/ConfigMap/Secret: 対象のdelete、その他・固定教材: `container.deployments.delete` | `container.googleapis.com` | `--filename` `--namespace` |
@@ -493,7 +493,7 @@ GCS backend使用時、stateを読むshow/output/state list/showにもstorage.ob
 
 ## サンプルファイル
 
-gcloud-simはホストのファイルを読みません。TerraformとConfigMap/Secret/Deployment/Serviceは `sim files` で編集できる仮想ファイルを読みます。`sim files load kubernetes-config` または `sim files load kubernetes-workload` でYAML教材を読み込み、`kubectl create/apply/delete -f FILE` で操作できます（詳細は [KUBERNETES.md](KUBERNETES.md)）。Kubernetesのファイルは正規化した相対パスで一致し、同名の仮想ファイルが固定教材より優先します。仮想ファイルがない場合の `deployment.yaml` / `service.yaml` と、他サービスの次の操作は固定サンプルを使います（kubectl以外はディレクトリ部分を無視）。無い名前は本物と同じ `No such file or directory`（E-005）になる。`gcloud storage cp ./x gs://b` のように名前しか使わない経路は任意のパスを受ける。
+gcloud-simはホストのファイルを読みません。TerraformとConfigMap/Secret/Deployment/Serviceは `sim files` で編集できる仮想ファイルを読みます。`sim files load kubernetes-config` 、`sim files load kubernetes-workload` または `sim files load kubernetes-labels` でYAML教材を読み込み、`kubectl create/apply/delete -f FILE` で操作できます（詳細は [KUBERNETES.md](KUBERNETES.md)）。Kubernetesのファイルは正規化した相対パスで一致し、同名の仮想ファイルが固定教材より優先します。仮想ファイルがない場合の `deployment.yaml` / `service.yaml` と、他サービスの次の操作は固定サンプルを使います（kubectl以外はディレクトリ部分を無視）。無い名前は本物と同じ `No such file or directory`（E-005）になる。`gcloud storage cp ./x gs://b` のように名前しか使わない経路は任意のパスを受ける。
 
 | ファイル | 受けるコマンド | 中身 |
 |---|---|---|

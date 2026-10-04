@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { ImagePull } from "@/engine/domains/image-pull";
 import { KubeEnv, KubeRuntime } from "@/engine/domains/kube-config";
+import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
 
 import { KubePod, KubeService } from "@/engine/domains/kubernetes";
@@ -109,6 +110,9 @@ export const KubeDeploymentProperties = ({
         rows={[
           { label: "cluster", value: d.cluster },
           { label: "image", value: d.image },
+          { label: "labels", value: KubeLabels.text(d.labels) },
+          { label: "selector", value: KubeLabels.text(d.selector) },
+          { label: "Pod labels", value: KubeLabels.text(d.podLabels) },
           { label: "replicas", value: String(d.replicas) },
           { label: "generation", value: String(d.generation) },
           { label: "revision", value: String(d.revision) },
@@ -155,7 +159,15 @@ export const KubeServiceProperties = ({
       rows={[
         { label: "cluster", value: s.cluster },
         { label: "type", value: s.type },
-        { label: "selector", value: `app=${s.targetDeployment}` },
+        { label: "labels", value: KubeLabels.text(s.labels) },
+        { label: "selector", value: KubeLabels.text(s.selector) },
+        {
+          label: "backend Pods",
+          value:
+            KubeServiceRouting.backends(world, s)
+              .map((b) => b.pod)
+              .join(", ") || Absent,
+        },
         { label: "targetPort", value: String(s.targetPort) },
         { label: "endpoints", value: KubeServiceRouting.endpoints(world, s).join(", ") || Absent },
         { label: "ports", value: KubeService.portsText(s) },

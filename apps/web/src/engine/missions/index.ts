@@ -68,6 +68,7 @@ import {
   KubeConfigurationMissions,
   kubeConfigurationSatisfied,
 } from "./kube-configuration";
+import { type KubeLabelAssertion, KubeLabelMissions, kubeLabelsSatisfied } from "./kube-labels";
 import {
   type KubeWorkloadAssertion,
   KubeWorkloadMissions,
@@ -88,6 +89,7 @@ export type MissionDomain = ValueOf<typeof MissionDomains>;
 export type MissionAssertion =
   | BuildAssertion
   | KubeWorkloadAssertion
+  | KubeLabelAssertion
   | KubeConfigurationAssertion
   | KubernetesAssertion
   | ArtifactLifecycleAssertion
@@ -233,6 +235,7 @@ const Missions: readonly Mission[] = [
   ...BuildMissions,
   ...KubernetesMissions,
   ...KubeWorkloadMissions,
+  ...KubeLabelMissions,
   ...KubeConfigurationMissions,
   ...ArtifactLifecycleMissions,
   {
@@ -688,6 +691,8 @@ const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: 
 
 const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
+    case "kubeLabelsSwitched":
+      return kubeLabelsSatisfied(world);
     case "kubeWorkloadApplied":
       return kubeWorkloadSatisfied(world);
     case "kubeConfigInjected":

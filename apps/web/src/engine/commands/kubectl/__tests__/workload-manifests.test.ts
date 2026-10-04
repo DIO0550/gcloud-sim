@@ -279,7 +279,7 @@ const invalidManifests = [
   { ...deployment(), apiVersion: "v1" },
   { ...deployment(), metadata: { name: "Bad" } },
   { ...deployment(), metadata: { name: "web", namespace: "other" } },
-  { ...deployment(), metadata: { name: "web", labels: { tier: "app" } } },
+  { ...deployment(), metadata: { name: "web", labels: { tier: true } } },
   { ...deployment(), spec: { ...deployment().spec, replicas: -1 } },
   { ...deployment(), spec: { ...deployment().spec, replicas: 1001 } },
   { ...deployment(), spec: { ...deployment().spec, replicas: "2" } },
@@ -301,7 +301,7 @@ const invalidManifests = [
   deployment("nginx:1", 2, [
     { name: "A", value: "x", valueFrom: { secretKeyRef: { name: "s", key: "k" } } },
   ]),
-  { ...service(), spec: { ...service().spec, selector: { tier: "web" } } },
+  { ...service(), spec: { ...service().spec, selector: {} } },
   { ...service(), spec: { ...service().spec, type: "ExternalName" } },
   { ...service(), spec: { ...service().spec, type: null } },
   { ...service(), spec: { ...service().spec, clusterIP: "None" } },

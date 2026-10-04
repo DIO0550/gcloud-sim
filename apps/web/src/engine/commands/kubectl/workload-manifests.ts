@@ -5,6 +5,7 @@ import {
   OutputMessage,
   type ProjectContext,
 } from "@/engine/cli/command-spec";
+import { KubeLabels } from "@/engine/domains/kube-labels";
 import type { WorkloadManifest } from "@/engine/domains/kube-manifest/workloads";
 import { KubeDeployment, KubeService } from "@/engine/domains/kubernetes";
 import type { GkeCluster } from "@/engine/domains/managed-services";
@@ -49,11 +50,19 @@ export const applyWorkload = (
     if (Option.isSome(current)) {
       if (action === "delete")
         return finish(World.withoutKubeDeployment(ctx.world, current.value), "deleted");
+      if (!KubeLabels.equal(current.value.selector, manifest.selector))
+        return Result.err(
+          CommandFailure.invalidArgumentWith(
+            "Deployment spec.selector is immutable; recreate the Deployment to change it.",
+          ),
+        );
       const next = KubeDeployment.withManifest(
         current.value,
         manifest.image,
         manifest.replicas ?? current.value.replicas,
         manifest.env,
+        manifest.podLabels,
+        manifest.labels,
       );
       if (next === current.value) return finish(ctx.world, "unchanged");
       return finish(World.replaceKubeDeployment(ctx.world, next), "configured");
@@ -63,6 +72,9 @@ export const applyWorkload = (
       cluster: cluster.name,
       name: manifest.name,
       image: manifest.image,
+      labels: manifest.labels,
+      selector: manifest.selector,
+      podLabels: manifest.podLabels,
       replicas: Option.fromNullable(manifest.replicas),
       createdAt: ctx.now,
     });
@@ -90,9 +102,16 @@ export const applyWorkload = (
       ...service,
       port: manifest.port,
       targetPort: manifest.targetPort,
-      targetDeployment: manifest.targetDeployment,
+      selector: manifest.selector,
+      labels: manifest.labels,
     };
-    if (JSON.stringify(next) === JSON.stringify(service)) return finish(ctx.world, "unchanged");
+    if (
+      next.port === service.port &&
+      next.targetPort === service.targetPort &&
+      KubeLabels.equal(next.labels, service.labels) &&
+      KubeLabels.equal(next.selector, service.selector)
+    )
+      return finish(ctx.world, "unchanged");
     return finish(
       { ...ctx.world, kubeServices: ctx.world.kubeServices.map((s) => (s === service ? next : s)) },
       "configured",

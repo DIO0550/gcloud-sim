@@ -23,7 +23,7 @@
   試行錯誤できる。エラーの下に `gcloud-sim: hint:` で「その権限を含むロール」を出す
 - **リソースツリー**: 組織 → フォルダ → プロジェクト → リソース。クリックでプロパティと
   IAM の継承元、ダブルクリックで `describe` を入力行に挿入
-- **ミッション**: 42 本（ACE の 5 ドメインからカテゴリ→ミッション→手順を選択）。状態に対するアサーションでクリア判定する
+- **ミッション**: 44 本（ACE の 5 ドメインからカテゴリ→ミッション→手順を選択）。状態に対するアサーションでクリア判定する
   （コマンドの文字列一致ではない）
 - **保存**: コマンドごとに localStorage へ自動保存。設定から JSON の export / import / リセット
 - **kubectl**: `gcloud container clusters get-credentials` したクラスタに対して、Deployment / Service / Pod を
@@ -288,7 +288,7 @@ PR を出すと、そのブランチのサイトが
 static export をビルドして主要画面を撮り、main の画像（baseline）と画素で突き合わせる。
 
 撮る画面は [`visual-scenarios.mjs`](.github/scripts/visual-scenarios.mjs) に並べてある。
-今はトップ・設定・Console・ミッション・GKE の 16 画面を **PC 幅（1440px）とスマホ幅（430px）**の 2 通りで撮る。
+今はトップ・設定・Console・ミッション・GKE の 18 画面を **PC 幅（1440px）とスマホ幅（430px）**の 2 通りで撮る。
 画面を足したいときはこのファイルに 1 つ足すだけでよく、workflow は触らない。
 手順はボタンの文字で押す（`click`）、待つ（`wait`）、端末に 1 行打つ（`type`）、入力欄に入れる（`fill`）の 4 つ。画面に固有の操作が要るときは
 [`visual-regression.mjs`](.github/scripts/visual-regression.mjs) の `applyStep` に足す。

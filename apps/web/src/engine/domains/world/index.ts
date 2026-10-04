@@ -25,6 +25,7 @@ import { IamPolicy, type RoleName } from "@/engine/domains/iam-policy";
 import type { InstanceTemplate, ManagedInstanceGroup } from "@/engine/domains/instance-groups";
 import type { KmsKeyRing } from "@/engine/domains/kms";
 import { KubeConfig, KubeRuntime } from "@/engine/domains/kube-config";
+import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeManifest } from "@/engine/domains/kube-manifest";
 import { KubeDeployment, type KubeService } from "@/engine/domains/kubernetes";
 import {
@@ -1050,6 +1051,15 @@ export const World = {
   },
 
   withKubeDeployment(world: World, deployment: KubeDeployment): Result<World, AlreadyExists> {
+    const used = new Set(
+      world.kubeDeployments
+        .filter((d) => d.projectId === deployment.projectId && d.cluster === deployment.cluster)
+        .map((d) => d.podNetwork),
+    );
+    let podNetwork = 0;
+    while (used.has(podNetwork)) podNetwork += 1;
+    if (podNetwork >= 16384)
+      return Result.err({ resource: "all simulated Pod networks (16384 per cluster)" });
     return addUnique(
       world.kubeDeployments.some(sameInCluster(deployment)),
       `deployments.apps "${deployment.name}"`,
@@ -1057,7 +1067,7 @@ export const World = {
         ...world,
         kubeDeployments: [
           ...world.kubeDeployments,
-          KubeRuntime.reconcile(world.kubeConfigs, deployment),
+          KubeRuntime.reconcile(world.kubeConfigs, { ...deployment, podNetwork }),
         ],
       }),
     );
@@ -1317,6 +1327,18 @@ export const World = {
     for (const deployment of world.kubeDeployments) {
       const checked = KubeDeployment.validate(deployment);
       if (!Result.isOk(checked)) return Result.err(checked.error);
+    }
+    const networks = world.kubeDeployments.map(
+      (d) => `${d.projectId}/${d.cluster}/${d.podNetwork}`,
+    );
+    if (new Set(networks).size !== networks.length)
+      return Result.err("Duplicate Kubernetes Pod network.");
+    for (const service of world.kubeServices) {
+      if (
+        !Result.isOk(KubeLabels.parse(service.labels)) ||
+        !Result.isOk(KubeLabels.parse(service.selector, true))
+      )
+        return Result.err("Invalid Service labels or selector.");
     }
     const configIds = world.kubeConfigs.map(
       (c) => `${c.projectId}/${c.cluster}/${c.kind}/${c.name}`,
