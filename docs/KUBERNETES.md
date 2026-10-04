@@ -56,7 +56,7 @@ kubectl set env deployment/web --list
 kubectl exec deployment/web -- printenv APP_MODE
 ```
 
-ConfigMapは`cm/configmap/configmaps`、Secretは`secret/secrets`でget/describe/deleteできます。設定はプロジェクト・クラスタごとに分かれ、HPAの対象は同じnamespace内で解決します。クラスタ削除で設定も消えます。`--from-literal`は1キーずつ繰り返せ、値にカンマ・空文字・日本語を含められます。同じキーの重複はエラーです。名前は学習用にDNSラベル（63文字以内）、データは100キー/1 MiB以内に制限します。
+ConfigMapは`cm/configmap/configmaps`、Secretは`secret/secrets`でget/describe/deleteできます。設定はプロジェクト・クラスタ・namespaceごとに分かれ、Podの設定参照は同じnamespace内で解決します。クラスタ削除で設定も消えます。`--from-literal`は1キーずつ繰り返せ、値にカンマ・空文字・日本語を含められます。同じキーの重複はエラーです。名前は学習用にDNSラベル（63文字以内）、データは100キー/1 MiB以内に制限します。
 
 `set env`は単一Deployment/単一コンテナのtemplateを変更します。直接の`KEY=VALUE`、削除`KEY-`、`--from=configmap/NAME|secret/NAME`を使えます。取込元を指定すると値そのものではなくキー参照を保存します。`--keys=KEY1,KEY2`で選択でき、`--prefix=APP_`で接頭辞を付けられます。取込キーは大文字にし、英数字とアンダースコア以外を`_`に変換します。変換後の衝突、存在しないキー、取得権限不足は変更前に拒否します。この教材の環境変数名は`[A-Za-z_][A-Za-z0-9_]*`、最大100個です。
 
@@ -143,7 +143,7 @@ kubectl rollout history deployment/manifest-web
 
 Deployment/Serviceのapplyは対応するspec値を反映する限定モデルです。ConfigMap/Secretの管理キー処理とは異なり、last-applied annotationや三方向マージ・server-side applyは再現しません。ラベルmapは指定値で置換し、metadata.labels省略は空になります。複数コンテナ・名前付きポート・複数ポート・UDP・headless/ExternalName・Serviceのtype変更は未対応です。
 
-接続先は学習用の表示で、EndpointSliceリソース・プロセスの待受ポート・実通信を確認するものではありません。Serviceだけを先に作ってもよく、Deploymentを削除してもServiceは残ります。Snapshot v18でnamespace・ラベル・selector・resources・HPAとreadiness/liveness/startup設定・評価・共通再起動回数を保存します。
+接続先は学習用の表示で、EndpointSliceリソース・プロセスの待受ポート・実通信を確認するものではありません。Serviceだけを先に作ってもよく、Deploymentを削除してもServiceは残ります。Snapshot v19でnamespace・コンテキスト既定値・ラベル・selector・resources・HPAとreadiness/liveness/startup設定・評価・共通再起動回数を保存します。
 
 ## 複数ラベルとServiceの公開先切り替え
 
@@ -251,7 +251,7 @@ ConfigMap/Secretの操作はそれぞれ`container.configMaps.*`/`container.secr
 ## 権限・保存・再現範囲
 
 - history/statusは`container.deployments.get`、set image/restart/undoは`container.deployments.update`を要求します。学習用のcontainer.viewerにDeployment/Pod/Serviceの読み取り権限を補い、更新権限と分離しました。クラスタ/API/プロジェクト/アカウントも検証します。
-- namespaceは省略時default、`-n/--namespace`で指定します。同名リソースはnamespaceごとに独立し、Service・設定注入・HPAも同じnamespace内で解決します。`get -o json`はJSONの単一リソースまたはList、`-o yaml`は従来のYAML表示です。出力には教材用の列も含みます。
+- namespaceは省略時コンテキストの既定値（未設定ならdefault）、`-n/--namespace`で指定します。同名リソースはnamespaceごとに独立し、Service・設定注入・HPAも同じnamespace内で解決します。`get -o json`はJSONの単一リソースまたはList、`-o yaml`は従来のYAML表示です。出力には教材用の列も含みます。
 - Snapshot v18は各リソースのnamespaceとカスタムnamespace集合を追加し、v1〜v17の全リソースをdefaultへ移行します。v17のprobe判定・再起動回数・環境変数・履歴・HPA・仮想ファイル等はそのまま保持します。Snapshot v17はstartupProbe・起動判定とprobe種別によらないPod内コンテナの累計再起動回数を追加します。v16のliveness応答に保存した回数を共通カウンタへ移行し、readiness/livenessの設定・判定とHPA・履歴・環境変数・ファイル等を保持します。v16はlivenessProbeをtemplate/履歴に、連続失敗・最後の応答・再起動回数をPod名ごとに追加します。v15からはreadiness設定/評価・HPA・resources・履歴・環境変数・ファイル等を保持し、liveness未指定と空の評価集合を補完します。v15はreadinessProbeをtemplate/履歴、応答判定をPod名ごとに追加します。v14からはHPAの設定と評価・resources・履歴・環境変数・ファイル等を保持し、probe未指定と空の評価集合を補完します。v14はHPAと前回の教材評価を追加し、v13のresources・履歴・ラベル・Podネットワーク・設定・ファイルを保持して空のHPA集合を補完します。v13はコンテナのresourcesを現在のtemplateと履歴に追加します。v12からはラベル・selector・Podネットワークを含む全状態を保持し、resourcesは未指定として補完します。v11からはファイル・apply管理キー・環境変数・履歴・Pod識別子を保持し、Deploymentと過去templateのラベルを`app: 名前`、Service selectorを旧接続先の`app`ラベルへ移行します。導出するPod IPは再割当てになります。v10からは既存の設定・環境変数・履歴・Pod識別子とTerraform/Docker状態を保持し、空の仮想ファイル・管理キーを補完します。v9からの移行は既存の履歴とPod識別子を保持し、空の設定/環境変数を補完します。v1〜v8は現在のイメージ・世代を1件の履歴として移行し、過去のイメージは推測しません。v8のDocker/レジストリ/ビルド履歴・ノードSA・Terraform状態を保持します。移行後に新しく更新した分からrollbackできます。
 - PodはDeploymentから導出します。レプリカ上限はシミュレーターの表示・保存保護のため1000です。実際のKubernetesの上限を表す値ではありません。
 - 即時に切り替わる簡略モデルです。ローリング更新中の旧/新Podの共存、maxSurge/maxUnavailable、スケジューラ、進行待ち・timeout、プローブの実通信/タイマー、実ネットワーク通信は再現しません。失敗した更新中に旧Podを稼働させ続ける動作も未対応です。
@@ -491,12 +491,33 @@ kubectl describe service web-service -n production
 
 各クラスタには`default`・`kube-system`・`kube-public`・`kube-node-lease`を導出します。組み込みnamespace内のシステムPodや実コントローラーは作りません。組み込みnamespaceの作成時刻は持たないためAGEは`<unknown>`です。カスタムnamespaceは`kubectl create namespace NAME`（`ns`別名）または`apiVersion: v1`・`kind: Namespace`・`metadata.name`だけのmanifestで作れます。名前は小文字DNSラベル・63文字まで。Namespaceのlabels/annotations/specは未対応で、導出するmetadata.nameラベルだけを表示します。
 
-Deployment・Pod・ReplicaSet・Service・ConfigMap・Secret・HPAをnamespaceごとに識別します。各kubectl操作と`sim kubernetes probe/reconcile`の`-n/--namespace`はその1回の対象を指定し、省略時は`default`です。存在しないnamespaceはNotFoundで拒否します。namespaceとNode自体の操作はクラスタ単位です。リソースの作成・取得・更新・削除・rollout・環境変数・resources・probe・HPAは同名の別namespaceを変更しません。Podの名前は別namespaceで同じになる場合がありますが、仮想Pod IPはクラスタ内で重複しません。
+Deployment・Pod・ReplicaSet・Service・ConfigMap・Secret・HPAをnamespaceごとに識別します。各kubectl操作と`sim kubernetes probe/reconcile`の`-n/--namespace`はその1回の対象を指定し、省略時はコンテキストの既定namespace（未設定なら`default`）です。存在しないnamespaceはNotFoundで拒否します。namespaceとNode自体の操作はクラスタ単位です。リソースの作成・取得・更新・削除・rollout・環境変数・resources・probe・HPAは同名の別namespaceを変更しません。Podの名前は別namespaceで同じになる場合がありますが、仮想Pod IPはクラスタ内で重複しません。
 
 ConfigMap/Secret参照、Service selector、HPA targetは同じnamespace内だけで解決します。別namespaceの同名ConfigMapが存在していても、ローカルの設定が欠けていれば新しいPodはCreateContainerConfigErrorです。起動済みPodの環境変数キャッシュは従来どおり保持します。namespace自体はRBACやNetworkPolicyではなく、この教材では権限はプロジェクト単位・通信も未再現です。
 
 manifestのnamespaceは省略するとコマンドのnamespaceを使います。`-n`なしでmetadata.namespaceを指定すればそのnamespaceへ適用します。`-n`を明示した場合は全リソースの明示namespaceと一致する必要があり、不一致は全体を拒否します。1ファイルに同名の別namespaceリソースを置けますが、namespaceを解決した後に重複するリソースは拒否します。Namespaceとリソースを同じファイルに書く場合はNamespaceを先に書きます。後続の検証・権限で失敗すると、先行Namespaceも含めファイル全体の変更を戻す教材用の原子的操作です。
 
-`kubectl get -A/--all-namespaces`はNAMESPACE列付きの一覧を返します。JSON/YAMLでもmetadata.namespaceを確認できます。`-A`と`-n`・個別名の組み合わせは未対応として拒否します。`-A`はgetだけに対応します。ツリーではカスタムnamespaceの下へリソースをまとめ、各プロパティとダブルクリックのdescribeコマンドにnamespaceを反映します。補完は現在クラスタのnamespace名・リソース名を候補にし、リソース名の候補は全namespaceを含みます。現在コンテキストの既定namespace変更・root位置のフラグ・namespace RBAC・ラベル操作等は未対応です。
+`kubectl get -A/--all-namespaces`はNAMESPACE列付きの一覧を返します。JSON/YAMLでもmetadata.namespaceを確認できます。`-A`と`-n`・個別名の組み合わせは未対応として拒否します。`-A`はgetだけに対応します。ツリーではカスタムnamespaceの下へリソースをまとめ、各プロパティとダブルクリックのdescribeコマンドにnamespaceを反映します。補完は現在クラスタのnamespace名・リソース名を候補にし、リソース名の候補は全namespaceを含みます。現在コンテキストの既定namespaceは下記のset-contextで変更できます。root位置のフラグ・namespace RBAC・ラベル操作等は未対応です。
 
-`kubectl delete namespace NAME`は同じプロジェクト・クラスタ・namespace内の全Deployment（導出Pod/ReplicaSetを含む）・Service・ConfigMap・Secret・HPAを即時削除します。組み込みnamespaceは削除対象外です。実際のTerminating/finalizer/終了待ち・削除保護は再現しません。必要な権限は`container.namespaces.create/get/list/update/delete`で、namespace削除はそのdelete権限で子リソースも削除する教材モデルです。admin/developerへ追加し、viewerはget/listだけを持ちます。クラスタ削除でもカスタムnamespaceを削除します。Snapshot v18はこの分離を保存し、旧データはdefaultとして保持します。
+`kubectl delete namespace NAME`は同じプロジェクト・クラスタ・namespace内の全Deployment（導出Pod/ReplicaSetを含む）・Service・ConfigMap・Secret・HPAを即時削除します。組み込みnamespaceは削除対象外です。実際のTerminating/finalizer/終了待ち・削除保護は再現しません。必要な権限は`container.namespaces.create/get/list/update/delete`で、namespace削除はそのdelete権限で子リソースも削除する教材モデルです。admin/developerへ追加し、viewerはget/listだけを持ちます。クラスタ削除でもカスタムnamespaceを削除します。Snapshot v19はこの分離とコンテキストの既定namespaceを保存します。v18は既定namespace未設定でそのまま保持し、v1〜v17はリソースをdefaultへ移行します。
+
+
+## コンテキストの既定namespace
+
+```sh
+kubectl config set-context --current --namespace=staging
+kubectl config get-contexts
+kubectl get deployments
+kubectl get deployment web -n production
+kubectl config set-context gke_ace-dev-01_us-central1-a_namespace-gke --namespace=production
+kubectl config view
+kubectl config set-context --current --namespace=''
+```
+
+`set-context`は`--current`か既存CONTEXT名を1つ指定し、`--namespace`を必須にします。短いクラスタ名も使えます。1クラスタにつき1コンテキストを導出する教材モデルで、新しいコンテキストの作成・cluster/user/credentialsの変更・rename/delete-context・viewのminify/jsonpathは未対応です。名前付きの設定は現在の選択を変えません。
+
+既定namespaceはプロジェクト/ロケーション/クラスタごとに保持し、use-context・get-credentials・gcloud configurationの切り替えや保存復元でも維持します。空文字は設定解除で、未設定時はdefaultを使います。namespaceの存在は設定時には要求せず、存在しない場合は後のリソース操作でNotFoundになります。namespaceを削除しても既定値は残るため、config操作または明示-nで復帰できます。クラスタ削除ではそのコンテキスト設定も消します。
+
+通常のコマンドは「明示-n → コンテキスト既定値 → default」の順で決定します。manifestのmetadata.namespaceが明示されていればその値を使い、明示-nとの不一致だけを拒否します。get -Aは既定値によらず全namespaceを表示します。sim kubernetes probe/reconcileも同じ優先順です。get-contextsはNAMESPACE列、viewはcontext.namespace、端末見出しは明示した既定値を表示します。ツリーからのdescribeはdefaultも含めnamespaceを明示し、既定値で別環境の同名リソースを選ばないようにします。
+
+config操作も既存のkubectlと同じAPI/プロジェクト/container.clusters.get確認を通る教材仕様です。ローカル設定だけを更新し、クラウドリソース・revision・Podを変えず、viewerでも変更できます。Snapshot v19で設定を保存し、v1〜v18は未設定へ補完します。v18のnamespace・probe・HPA・履歴・設定・仮想ファイル等は変更しません。

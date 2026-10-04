@@ -4,6 +4,7 @@ import { type ReactElement, useCallback, useEffect } from "react";
 import { Tab } from "@/components/Tab";
 import { TextButton } from "@/components/TextButton";
 import { Engine } from "@/engine";
+import { KubeContext } from "@/engine/domains/kube-context";
 import { World as WorldOps } from "@/engine/domains/world";
 import { Mission } from "@/engine/missions";
 import { ChangeLog } from "@/features/simulator/components/ChangeLog";
@@ -57,6 +58,12 @@ const Tabs: readonly Readonly<{ tab: PanelTab; label: (missions: string) => stri
 export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
   const [state, dispatch] = useSimulator(start);
   const { world, saveState } = state;
+  const namespace = Option.flatMap(WorldOps.currentProjectId(world), (projectId) =>
+    Option.flatMap(KubeContext.current(world, projectId), (cluster) =>
+      Option.fromNullable(KubeContext.configuredNamespace(world, cluster)),
+    ),
+  );
+  const terminalCaption = `configuration: ${world.config.activeConfiguration}${Option.isSome(namespace) ? ` · namespace: ${namespace.value}` : ""}`;
 
   // World が変わるたびに保存する（localStorage との同期。UC-005 自動保存）。
   useEffect(() => {
@@ -170,7 +177,7 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
               onSubmit={submit}
               completionCandidates={completionCandidates}
               createView={io.createTerminalView}
-              caption={`configuration: ${world.config.activeConfiguration}`}
+              caption={terminalCaption}
               status={
                 <span className={saveState.kind === "saved" ? "text-ok" : "text-danger"}>
                   {saveState.kind === "saved"

@@ -26,6 +26,7 @@ import type { InstanceTemplate, ManagedInstanceGroup } from "@/engine/domains/in
 import type { KmsKeyRing } from "@/engine/domains/kms";
 import { KubeConfig, KubeRuntime } from "@/engine/domains/kube-config";
 import { KubeContainer } from "@/engine/domains/kube-container";
+import { KubeContext } from "@/engine/domains/kube-context";
 import { KubeHpa } from "@/engine/domains/kube-hpa";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeLiveness } from "@/engine/domains/kube-liveness";
@@ -106,6 +107,7 @@ export type World = Readonly<{
   instanceGroups: readonly ManagedInstanceGroup[];
   nodePools: readonly NodePool[];
   kubeNamespaces: readonly KubeNamespace[];
+  kubeContextNamespaces: Readonly<Record<string, string>>;
   kubeDeployments: readonly KubeDeployment[];
   kubeServices: readonly KubeService[];
   kubeHpas: readonly KubeHpa[];
@@ -1029,6 +1031,11 @@ export const World = {
       ...World.withoutNamed(world, "clusters", cluster),
       nodePools: world.nodePools.filter((p) => !belongs(p)),
       kubeNamespaces: world.kubeNamespaces.filter((n) => !belongs(n)),
+      kubeContextNamespaces: Object.fromEntries(
+        Object.entries(world.kubeContextNamespaces).filter(
+          ([key]) => key !== KubeContext.name(cluster),
+        ),
+      ),
       kubeDeployments: world.kubeDeployments.filter((d) => !belongs(d)),
       kubeServices: world.kubeServices.filter((s) => !belongs(s)),
       kubeHpas: world.kubeHpas.filter((h) => !belongs(h)),
@@ -1375,6 +1382,13 @@ export const World = {
    * @returns 満たしていれば同じ World。満たさなければ最初に見つけた違反
    */
   validate(world: World): Result<World, string> {
+    for (const [name, namespace] of Object.entries(world.kubeContextNamespaces)) {
+      if (
+        !KubeNamespace.valid(namespace) ||
+        !world.clusters.some((c) => KubeContext.name(c) === name)
+      )
+        return Result.err("Invalid Kubernetes context namespace.");
+    }
     if (!KubeManifest.validFiles(world.kubeFiles))
       return Result.err("Invalid Kubernetes virtual files.");
     for (const n of world.kubeNamespaces) {

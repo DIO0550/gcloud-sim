@@ -128,11 +128,12 @@ import { Result } from "@/utils/Result";
  * v16 はlivenessProbeとPod内コンテナの再起動回数・判定を持つ。
  * v17 はstartupProbeと起動判定、probe間で共通の再起動回数を持つ。
  * v18 はカスタムnamespaceと各Kubernetesリソースのnamespaceを持つ。
+ * v19 はコンテキストごとの既定namespaceを持つ。
  */
-export const SchemaVersion = 18;
+export const SchemaVersion = 19;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
-const MigratableVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17] as const;
+const MigratableVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
 export type Snapshot = Readonly<{
@@ -891,6 +892,7 @@ const world = D.object<World>({
   kubeHpas: D.array(kubeHpa),
   kubeConfigs: D.array(kubeConfig),
   kubeFiles: D.record(string),
+  kubeContextNamespaces: D.record(string),
   functions: D.array(cloudFunction),
   appEngineApps: D.array(appEngineApp),
   appVersions: D.array(appVersion),
@@ -1091,11 +1093,13 @@ const withDefaultNamespace = (value: unknown): unknown =>
 
 const migrate = (version: number, value: unknown): unknown => {
   if (version === SchemaVersion) return value;
+  if (version === 18 && isRecord(value)) return { ...value, kubeContextNamespaces: {} };
   const old = version === 1 ? migrateV1(value) : value;
   const networks = new Map<string, number>();
   const previous = isRecord(old)
     ? {
         ...old,
+        kubeContextNamespaces: {},
         kubeNamespaces: [],
         kubeFiles: version >= 11 ? old.kubeFiles : {},
         kubeHpas: version >= 14 ? withDefaultNamespace(old.kubeHpas) : [],
