@@ -147,7 +147,7 @@ const MissionBrief = ({
       {revealed > 0 && (
         <ol className="mb-3 list-decimal space-y-1 rounded bg-canvas px-4 py-2 text-sm">
           {mission.hints.slice(0, revealed).map((hint) => (
-            <li key={hint} className="ml-4 font-mono text-xs">
+            <li key={hint} className="ml-4 break-all font-mono text-xs">
               {hint}
             </li>
           ))}
