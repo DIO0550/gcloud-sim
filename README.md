@@ -23,11 +23,11 @@
   試行錯誤できる。エラーの下に `gcloud-sim: hint:` で「その権限を含むロール」を出す
 - **リソースツリー**: 組織 → フォルダ → プロジェクト → リソース。クリックでプロパティと
   IAM の継承元、ダブルクリックで `describe` を入力行に挿入
-- **ミッション**: 48 本（ACE の 5 ドメインからカテゴリ→ミッション→手順を選択）。状態に対するアサーションでクリア判定する
+- **ミッション**: 49 本（ACE の 5 ドメインからカテゴリ→ミッション→手順を選択）。状態に対するアサーションでクリア判定する
   （コマンドの文字列一致ではない）
 - **保存**: コマンドごとに localStorage へ自動保存。設定から JSON の export / import / リセット
 - **kubectl**: `gcloud container clusters get-credentials` したクラスタに対して、Deployment / Service / Pod を
-  `apply` / `expose` / `scale` / `autoscale` / `rollout` などで動かせる（ConfigMap/Secret・単一コンテナのDeployment/Service・CPU HPAは編集可能なYAML/JSONに対応）
+  `apply` / `expose` / `scale` / `autoscale` / `rollout` などで動かせる（ConfigMap/Secret・単一コンテナのDeployment/Service・CPU HPAは編集可能なYAML/JSONに対応）。HTTP readinessProbeと応答コードによる明示評価で、未準備PodをServiceの接続先から外す練習もできる
 - **Console 風 GUI**（Phase 2）: ヘッダーの CLI / Console で切り替える。IAM・サービスアカウント・ロール・予算・
   VM・ファイアウォール・サブネット・バケット・クラスタ・Cloud Run の画面を持ち、作成フォームには
   「同等のコマンドライン」が出る。送信したものはターミナルにも `# Console:` 付きで残る

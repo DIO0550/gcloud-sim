@@ -81,6 +81,11 @@ import {
 import { type KubeLabelAssertion, KubeLabelMissions, kubeLabelsSatisfied } from "./kube-labels";
 import { type KubeQosAssertion, KubeQosMissions, kubeQosSatisfied } from "./kube-qos";
 import {
+  type KubeReadinessAssertion,
+  KubeReadinessMissions,
+  kubeReadinessSatisfied,
+} from "./kube-readiness";
+import {
   type KubeResourceAssertion,
   KubeResourceMissions,
   kubeResourcesSatisfied,
@@ -108,6 +113,7 @@ export type MissionAssertion =
   | KubeLabelAssertion
   | KubeHpaManifestAssertion
   | KubeHpaAssertion
+  | KubeReadinessAssertion
   | KubeQosAssertion
   | KubeResourceAssertion
   | KubeConfigurationAssertion
@@ -258,6 +264,7 @@ const Missions: readonly Mission[] = [
   ...KubeLabelMissions,
   ...KubeResourceMissions,
   ...KubeQosMissions,
+  ...KubeReadinessMissions,
   ...KubeHpaMissions,
   ...KubeHpaManifestMissions,
   ...KubeConfigurationMissions,
@@ -719,6 +726,8 @@ const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
       return kubeHpaManifestSatisfied(world);
     case "kubeHpaScaled":
       return kubeHpaSatisfied(world);
+    case "kubeReadinessRouted":
+      return kubeReadinessSatisfied(world);
     case "kubeQosConfigured":
       return kubeQosSatisfied(world);
     case "kubeResourcesConfigured":

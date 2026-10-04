@@ -1,6 +1,7 @@
 import { ImagePull } from "@/engine/domains/image-pull";
 import { KubeRuntime } from "@/engine/domains/kube-config";
 import { KubeLabels } from "@/engine/domains/kube-labels";
+import { KubeReadiness } from "@/engine/domains/kube-readiness";
 import { KubePod, type KubeService } from "@/engine/domains/kubernetes";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
@@ -20,7 +21,9 @@ export const KubeServiceRouting = {
       )
         return [];
       return KubePod.fromDeployment(d)
-        .filter((p) => !KubeRuntime.error(world.kubeConfigs, d, p.name))
+        .filter(
+          (p) => !KubeRuntime.error(world.kubeConfigs, d, p.name) && KubeReadiness.ready(d, p.name),
+        )
         .map((p) => ({
           deployment: d.name,
           pod: p.name,

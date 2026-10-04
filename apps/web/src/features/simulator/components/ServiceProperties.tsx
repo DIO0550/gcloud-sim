@@ -3,6 +3,7 @@ import { ImagePull } from "@/engine/domains/image-pull";
 import { KubeEnv, KubeRuntime } from "@/engine/domains/kube-config";
 import { KubeHpa } from "@/engine/domains/kube-hpa";
 import { KubeLabels } from "@/engine/domains/kube-labels";
+import { KubeReadiness } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
 
@@ -131,6 +132,31 @@ export const KubeDeploymentProperties = ({
           ]}
         />
       )}
+      {Option.isSome(d.readinessProbe) && (
+        <>
+          <Section
+            title="Readiness（HTTP）"
+            rows={[
+              {
+                label: "path / port",
+                value: `${d.readinessProbe.value.httpGet.path} : ${d.readinessProbe.value.httpGet.port}`,
+              },
+              {
+                label: "成功 / 失敗閾値",
+                value: `${d.readinessProbe.value.successThreshold} / ${d.readinessProbe.value.failureThreshold}`,
+              },
+              ...KubePod.fromDeployment(d).map((p) => ({
+                label: p.name,
+                value: KubeReadiness.summary(d, p.name),
+              })),
+            ]}
+          />
+          <p className="mb-3 text-sm text-muted">
+            sim kubernetes
+            probeでHTTP応答を指定して判定します。未準備のPodはServiceの接続先から外れます。
+          </p>
+        </>
+      )}
       <Section
         title="更新履歴（最大11件）"
         rows={d.revisions.map((r) => ({
@@ -144,14 +170,15 @@ export const KubeDeploymentProperties = ({
       />
       <Section
         title="Pod"
-        rows={KubePod.fromDeployment(d).map((p) => ({
-          label: p.name,
-          value: Option.isSome(cluster)
-            ? ImagePull.error(world, cluster.value, d.image) ||
-              KubeRuntime.error(world.kubeConfigs, d, p.name) ||
-              `${p.status} ${p.ip}`
-            : "Unknown",
-        }))}
+        rows={KubePod.fromDeployment(d).map((p) => {
+          if (!Option.isSome(cluster)) return { label: p.name, value: "Unknown" };
+          const error =
+            ImagePull.error(world, cluster.value, d.image) ||
+            KubeRuntime.error(world.kubeConfigs, d, p.name);
+          if (error) return { label: p.name, value: error };
+          if (!p.ready) return { label: p.name, value: `${p.status} (NotReady) ${p.ip}` };
+          return { label: p.name, value: `${p.status} ${p.ip}` };
+        })}
       />
     </>
   );

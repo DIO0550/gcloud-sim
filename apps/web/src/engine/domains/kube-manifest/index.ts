@@ -145,6 +145,43 @@ spec:
 `;
 
 export const KubeManifestExamples: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  "kubernetes-readiness": {
+    "ready-web.yaml": `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ready-web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ready-web
+  template:
+    metadata:
+      labels:
+        app: ready-web
+    spec:
+      containers:
+        - name: ready-web
+          image: nginx:1
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            successThreshold: 2
+            failureThreshold: 2
+`,
+    "ready-service.yaml": `apiVersion: v1
+kind: Service
+metadata:
+  name: ready-service
+spec:
+  selector:
+    app: ready-web
+  ports:
+    - port: 80
+      targetPort: 8080
+`,
+  },
   "kubernetes-hpa": {
     "autoscale-web.yaml": `apiVersion: apps/v1
 kind: Deployment

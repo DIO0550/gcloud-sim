@@ -1,5 +1,6 @@
 import { KubeEnv } from "@/engine/domains/kube-config";
 import { KubeLabels } from "@/engine/domains/kube-labels";
+import { KubeReadiness, type ReadinessProbe } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeDeployment, KubeName, KubeServiceType } from "@/engine/domains/kubernetes";
 import { Option } from "@/utils/Option";
@@ -14,6 +15,7 @@ export type WorkloadManifest =
       replicas: number | undefined;
       env: readonly KubeEnv[];
       resources: KubeResources;
+      readinessProbe: Option<ReadinessProbe>;
       labels: KubeLabels;
       selector: KubeLabels;
       podLabels: KubeLabels;
@@ -122,13 +124,17 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
   if (!Array.isArray(pod.containers) || pod.containers.length !== 1)
     return fail("Use exactly one container.");
   const container = record(pod.containers[0], "container");
-  fields(container, ["name", "image", "env", "resources"], "container");
+  fields(container, ["name", "image", "env", "resources", "readinessProbe"], "container");
   if (container.name !== meta.name)
     return fail("Container name must equal Deployment name on gcloud-sim.");
   if (typeof container.image !== "string") return fail("Container image must be a string.");
   if (spec.replicas !== undefined && typeof spec.replicas !== "number")
     return fail("replicas must be an integer.");
   const env = environment(container.env);
+  const probe: Result<Option<ReadinessProbe>, string> = container.readinessProbe === undefined
+    ? Result.ok(Option.none)
+    : Result.map(KubeReadiness.parse(container.readinessProbe), Option.some);
+  if (!Result.isOk(probe)) return fail(probe.error);
   const resources = KubeResources.parse(
     container.resources === undefined ? {} : container.resources,
   );
@@ -149,6 +155,7 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
     replicas: spec.replicas,
     env,
     resources: resources.value,
+    readinessProbe: probe.value,
     labels,
     selector: matchLabels,
     podLabels,
