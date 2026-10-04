@@ -8,6 +8,7 @@ import {
 } from "@/engine/cli/command-spec";
 import { ImagePull } from "@/engine/domains/image-pull";
 import { KubeRuntime } from "@/engine/domains/kube-config";
+import { KubeLiveness } from "@/engine/domains/kube-liveness";
 import { KubeReadiness } from "@/engine/domains/kube-readiness";
 import { KubePod } from "@/engine/domains/kubernetes";
 import type { GkeCluster } from "@/engine/domains/managed-services";
@@ -15,20 +16,24 @@ import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
-export const probeReadiness = (
+export const probeContainers = (
   ctx: ProjectContext,
   cluster: GkeCluster,
   args: ParsedArgs,
 ): CommandResult => {
   const invalid = (reason: string) => Result.err(CommandFailure.invalidArgumentWith(reason));
+  const kind = Option.unwrapOr(ParsedArgs.string(args, "kind"), "readiness");
+  if (kind !== "readiness" && kind !== "liveness")
+    return invalid("--kind must be readiness or liveness.");
   const name = ParsedArgs.requiredPositional(args, 0);
   const found = World.findKubeDeployment(ctx.world, cluster, name);
   if (!Option.isSome(found))
     return Result.err(CommandFailure.notFoundWith(`deployment "${name}" not found`));
   const d = found.value;
-  if (!Option.isSome(d.readinessProbe))
-    return invalid("Deployment has no readinessProbe; configure it with a manifest first.");
-  const probe = d.readinessProbe.value;
+  const configured = kind === "liveness" ? d.livenessProbe : d.readinessProbe;
+  if (!Option.isSome(configured))
+    return invalid(`Deployment has no ${kind}Probe; configure it with a manifest first.`);
+  const probe = configured.value;
   const code = ParsedArgs.integer(args, "status-code");
   if (!Option.isSome(code) || code.value < 100 || code.value > 599)
     return invalid("--status-code must be an HTTP response code from 100 to 599.");
@@ -43,6 +48,32 @@ export const probeReadiness = (
       ImagePull.error(ctx.world, cluster, d.image) ||
       KubeRuntime.error(ctx.world.kubeConfigs, d, pod.name);
     if (error) return Result.err(CommandFailure.invalidState(`Cannot probe ${pod.name}: ${error}`));
+  }
+  if (kind === "liveness") {
+    const samples = pods.map((p) =>
+      KubeLiveness.evaluate(
+        probe,
+        p.name,
+        d.podLiveness.find((s) => s.podName === p.name),
+        code.value,
+      ),
+    );
+    if (samples.some((s) => !Number.isSafeInteger(s.restarts)))
+      return invalid("Container restart count limit reached.");
+    const world = World.replaceKubeDeployment(ctx.world, KubeLiveness.withSamples(d, samples));
+    return Result.ok({
+      world,
+      output: CommandOutput.messages(
+        ...samples.map((s) =>
+          OutputMessage.plain(
+            `${s.podName}: ${s.restarted ? "Container restarted" : "No restart"} (HTTP ${s.statusCode}, failure=${s.failures}, RESTARTS=${s.restarts})`,
+          ),
+        ),
+        OutputMessage.hint(
+          "gcloud-sim: liveness応答を1回評価しました。閾値に達すると同じPod内のコンテナを即時再起動し、環境変数を読み直し、readinessを未評価に戻します。実通信・定期実行・待機・backoffは再現しません。",
+        ),
+      ),
+    });
   }
   const samples = pods.map((p) =>
     KubeReadiness.evaluate(

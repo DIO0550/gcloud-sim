@@ -19,6 +19,7 @@ import { ImagePull } from "@/engine/domains/image-pull";
 import { KubeConfig, KubeEnv, KubeRuntime } from "@/engine/domains/kube-config";
 import { KubeHpa } from "@/engine/domains/kube-hpa";
 import { KubeLabels } from "@/engine/domains/kube-labels";
+import { KubeLiveness } from "@/engine/domains/kube-liveness";
 import { KubeManifest } from "@/engine/domains/kube-manifest";
 import { KubeReadiness } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
@@ -38,7 +39,7 @@ import { Result } from "@/utils/Result";
 import { createConfig, kubePermission, setEnv } from "./configuration";
 import { createHpa, hpasOf, reconcileHpa } from "./hpa";
 import { applyManifest } from "./manifests";
-import { probeReadiness } from "./readiness";
+import { probeContainers } from "./probes";
 
 /**
  * `kubectl`（TBD-007）。コンテキストは `get-credentials` が書いた `container/cluster` で、
@@ -206,6 +207,16 @@ const deploymentRow = (
   age: age(d.createdAt, now),
 });
 
+const probeSampleFields = (d: KubeDeployment, podName: string): JsonRecord => {
+  if (!Option.isSome(d.readinessProbe) && !Option.isSome(d.livenessProbe)) return {};
+  return {
+    simulator: {
+      ...KubeReadiness.sampleFields(d, podName),
+      ...KubeLiveness.sampleFields(d, podName),
+    },
+  };
+};
+
 const podRow = (
   pod: KubePod,
   deployment: KubeDeployment,
@@ -221,6 +232,7 @@ const podRow = (
         env: deployment.env.map(KubeEnv.toRecord),
         ...KubeResources.toContainerFields(deployment.resources),
         ...KubeReadiness.fields(deployment.readinessProbe),
+        ...KubeLiveness.fields(deployment.livenessProbe),
       },
     ],
   },
@@ -230,6 +242,7 @@ const podRow = (
     phase: error ? "Pending" : pod.status,
     podIP: pod.ip,
     qosClass: KubeResources.qosClass(pod.resources),
+    ...KubePod.containerStatus(pod, error),
     conditions: [
       {
         type: "Ready",
@@ -242,7 +255,7 @@ const podRow = (
   imagePullError: error.startsWith("ImagePull") ? error : "",
   containerError: error,
   readiness: KubeReadiness.reason(deployment, pod.name),
-  ...KubeReadiness.sampleFields(deployment, pod.name),
+  ...probeSampleFields(deployment, pod.name),
   restarts: pod.restarts,
   age: age(deployment.createdAt, now),
 });
@@ -409,6 +422,7 @@ const collect = (
                       env: r.env.map(KubeEnv.toRecord),
                       ...KubeResources.toContainerFields(r.resources),
                       ...KubeReadiness.fields(r.readinessProbe),
+                      ...KubeLiveness.fields(r.livenessProbe),
                     },
                   ],
                 },
@@ -1050,6 +1064,7 @@ const rollout = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
                     env: record.env.map(KubeEnv.toRecord),
                     ...KubeResources.toContainerFields(record.resources),
                     ...KubeReadiness.fields(record.readinessProbe),
+                    ...KubeLiveness.fields(record.livenessProbe),
                   },
                 ],
               },
@@ -1301,9 +1316,10 @@ export const KubectlCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["sim", "kubernetes", "probe"],
     summary:
-      "Apply one simulated HTTP readiness response to Deployment Pods (no real request or timers).",
+      "Apply one simulated HTTP readiness/liveness response to Deployment Pods (no real request or timers).",
     positionals: [Positional.required("NAME", "Deployment name.", Candidates.kubeDeployments)],
     flags: [
+      Flag.string("kind", "readiness (default) or liveness.", { singleUse: true }),
       Flag.integer("status-code", "HTTP response code 100..599, required.", { singleUse: true }),
       Flag.string("pod", "Probe only this Pod; omitted selects all Deployment Pods.", {
         singleUse: true,
@@ -1314,7 +1330,7 @@ export const KubectlCommands: readonly CommandSpec[] = [
     run: (ctx, args) => {
       const cluster = currentCluster(ctx);
       if (!Result.isOk(cluster)) return cluster;
-      return probeReadiness(ctx, cluster.value, args);
+      return probeContainers(ctx, cluster.value, args);
     },
   }),
   projectCommand({

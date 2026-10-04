@@ -97,7 +97,7 @@ kubectl rollout restart deployment/web
 kubectl exec deployment/web -- printenv APP_MODE
 ```
 
-`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全49件、GKE拡充分は12件です。
+`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全50件、GKE拡充分は13件です。
 
 `sim files write FILE --content='…'`で独自のYAML/JSONを書き、`read`で読み、`replace --search=… --replacement=…`で1か所を編集できます。ファイルは `.yaml` / `.yml` / `.json` の相対パスで、32ファイル・1ファイル64,000文字まで。Terraformとは別に保存し、Terraformのplanに影響しません。`sim files delete FILE`はファイルだけを消します。クラスタ上の設定を消す操作は `kubectl delete -f FILE` です。教材の上書きは `sim files load kubernetes-config --force` で明示します。
 
@@ -133,7 +133,7 @@ kubectl rollout history deployment/manifest-web
 | 対象 | 対応するフィールド・動作 |
 | --- | --- |
 | Deployment | `apps/v1`、metadata.name、namespaceはdefault、replicasは0〜1000。metadata.labelsとtemplate.metadata.labelsは独立した文字列map。非空のselector.matchLabelsはPodラベルの部分集合で、作成後は変更不可 |
-| コンテナ | 1個のみ、nameはDeployment名と同じ。image・env・resources（CPU/メモリのrequests/limits）を指定。envは文字列value（省略なら空文字）またはconfigMapKeyRef/secretKeyRef。HTTP readinessProbeにも限定対応。optional・envFrom・ports・volume・liveness/startupProbe等は未対応 |
+| コンテナ | 1個のみ、nameはDeployment名と同じ。image・env・resources（CPU/メモリのrequests/limits）を指定。envは文字列value（省略なら空文字）またはconfigMapKeyRef/secretKeyRef。HTTP readinessProbe/livenessProbeにも限定対応。optional・envFrom・ports・volume・startupProbe等は未対応 |
 | Service | `v1`、ClusterIP/NodePort/LoadBalancer、selectorは非空の文字列map。metadata.labelsは省略可能。TCPの1ポート、port/targetPortは1〜65535の整数。省略時のtypeはClusterIP、targetPortはportと同じ |
 | 更新 | Deploymentのimage・env・Podラベル・resources・replicasを一度に変更してもtemplate revisionは1つだけ進む。replicasだけならrevisionと既存Podを保持。env省略は空、replicas省略は新規なら1・更新なら現在の値を保持 |
 | Service再適用 | selectorとport/targetPortの変更はClusterIP・外部IP・作成日時を保持。typeの変更はこの教材では拒否し、明示的な削除・再作成が必要 |
@@ -143,7 +143,7 @@ kubectl rollout history deployment/manifest-web
 
 Deployment/Serviceのapplyは対応するspec値を反映する限定モデルです。ConfigMap/Secretの管理キー処理とは異なり、last-applied annotationや三方向マージ・server-side applyは再現しません。ラベルmapは指定値で置換し、metadata.labels省略は空になります。複数コンテナ・名前付きポート・複数ポート・UDP・headless/ExternalName・Serviceのtype変更は未対応です。
 
-接続先は学習用の表示で、EndpointSliceリソース・プロセスの待受ポート・実通信を確認するものではありません。Serviceだけを先に作ってもよく、Deploymentを削除してもServiceは残ります。Snapshot v15でラベル・selector・resources・HPAとreadiness設定/評価を保存します。
+接続先は学習用の表示で、EndpointSliceリソース・プロセスの待受ポート・実通信を確認するものではありません。Serviceだけを先に作ってもよく、Deploymentを削除してもServiceは残ります。Snapshot v16でラベル・selector・resources・HPAとreadiness/liveness設定・評価・再起動回数を保存します。
 
 ## 複数ラベルとServiceの公開先切り替え
 
@@ -252,13 +252,13 @@ ConfigMap/Secretの操作はそれぞれ`container.configMaps.*`/`container.secr
 
 - history/statusは`container.deployments.get`、set image/restart/undoは`container.deployments.update`を要求します。学習用のcontainer.viewerにDeployment/Pod/Serviceの読み取り権限を補い、更新権限と分離しました。クラスタ/API/プロジェクト/アカウントも検証します。
 - namespaceはdefaultのみで、別namespaceを指定した操作は拒否します。`get -o json`はJSONの単一リソースまたはList、`-o yaml`は従来のYAML表示です。出力には教材用の列も含みます。
-- Snapshot v15はreadinessProbeをtemplate/履歴、応答判定をPod名ごとに追加します。v14からはHPAの設定と評価・resources・履歴・環境変数・ファイル等を保持し、probe未指定と空の評価集合を補完します。v14はHPAと前回の教材評価を追加し、v13のresources・履歴・ラベル・Podネットワーク・設定・ファイルを保持して空のHPA集合を補完します。v13はコンテナのresourcesを現在のtemplateと履歴に追加します。v12からはラベル・selector・Podネットワークを含む全状態を保持し、resourcesは未指定として補完します。v11からはファイル・apply管理キー・環境変数・履歴・Pod識別子を保持し、Deploymentと過去templateのラベルを`app: 名前`、Service selectorを旧接続先の`app`ラベルへ移行します。導出するPod IPは再割当てになります。v10からは既存の設定・環境変数・履歴・Pod識別子とTerraform/Docker状態を保持し、空の仮想ファイル・管理キーを補完します。v9からの移行は既存の履歴とPod識別子を保持し、空の設定/環境変数を補完します。v1〜v8は現在のイメージ・世代を1件の履歴として移行し、過去のイメージは推測しません。v8のDocker/レジストリ/ビルド履歴・ノードSA・Terraform状態を保持します。移行後に新しく更新した分からrollbackできます。
+- Snapshot v16はlivenessProbeをtemplate/履歴に、連続失敗・最後の応答・再起動回数をPod名ごとに追加します。v15からはreadiness設定/評価・HPA・resources・履歴・環境変数・ファイル等を保持し、liveness未指定と空の評価集合を補完します。v15はreadinessProbeをtemplate/履歴、応答判定をPod名ごとに追加します。v14からはHPAの設定と評価・resources・履歴・環境変数・ファイル等を保持し、probe未指定と空の評価集合を補完します。v14はHPAと前回の教材評価を追加し、v13のresources・履歴・ラベル・Podネットワーク・設定・ファイルを保持して空のHPA集合を補完します。v13はコンテナのresourcesを現在のtemplateと履歴に追加します。v12からはラベル・selector・Podネットワークを含む全状態を保持し、resourcesは未指定として補完します。v11からはファイル・apply管理キー・環境変数・履歴・Pod識別子を保持し、Deploymentと過去templateのラベルを`app: 名前`、Service selectorを旧接続先の`app`ラベルへ移行します。導出するPod IPは再割当てになります。v10からは既存の設定・環境変数・履歴・Pod識別子とTerraform/Docker状態を保持し、空の仮想ファイル・管理キーを補完します。v9からの移行は既存の履歴とPod識別子を保持し、空の設定/環境変数を補完します。v1〜v8は現在のイメージ・世代を1件の履歴として移行し、過去のイメージは推測しません。v8のDocker/レジストリ/ビルド履歴・ノードSA・Terraform状態を保持します。移行後に新しく更新した分からrollbackできます。
 - PodはDeploymentから導出します。レプリカ上限はシミュレーターの表示・保存保護のため1000です。実際のKubernetesの上限を表す値ではありません。
-- 即時に切り替わる簡略モデルです。ローリング更新中の旧/新Podの共存、maxSurge/maxUnavailable、スケジューラ、進行待ち・timeout、liveness/startupProbe、プローブの実通信/タイマー、実ネットワーク通信は再現しません。失敗した更新中に旧Podを稼働させ続ける動作も未対応です。
+- 即時に切り替わる簡略モデルです。ローリング更新中の旧/新Podの共存、maxSurge/maxUnavailable、スケジューラ、進行待ち・timeout、startupProbe、プローブの実通信/タイマー、実ネットワーク通信は再現しません。失敗した更新中に旧Podを稼働させ続ける動作も未対応です。
 - ReplicaSetは読み取り専用の導出状態です。templateの識別子/Pod名は疑似値で、実際のハッシュ・annotationsは再現しません。イメージ変更/restartごとに新しいtemplateを作り、undoでは保存したtemplateを再利用します。
 - `.pkg.dev`以外のイメージは従来の簡略な成功モデルです。実在タグ/コンテナの起動可否の確認はしません。異常系ミッションでは存在確認できる教材レジストリを使います。
 
-namespace、ConfigMap/Secretのvolumeマウント・ラベル、複数コンテナを含むmanifest、readinessの定期実行/liveness/startup、VPA・HPAの定期評価/実測/安定化、StatefulSet/PVC、NetworkPolicy、ノードプール設定やWorkload Identity等は残作業です。Issue #15は閉じません。
+namespace、ConfigMap/Secretのvolumeマウント・ラベル、複数コンテナを含むmanifest、readiness/livenessの定期実行・startup、VPA・HPAの定期評価/実測/安定化、StatefulSet/PVC、NetworkPolicy、ノードプール設定やWorkload Identity等は残作業です。Issue #15は閉じません。
 
 参照: [ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/)、[Secret](https://kubernetes.io/docs/concepts/configuration/secret/)、[kubectl set env](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_set/kubectl_set_env/)、[Deploymentの更新とロールバック](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)、[kubectl set image](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_set/kubectl_set_image/)、[kubectl rollout undo](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_rollout/kubectl_rollout_undo/)、[GKEのロールと権限](https://docs.cloud.google.com/iam/docs/roles-permissions/container)。
 
@@ -327,7 +327,7 @@ kubectl apply -f autoscale-hpa.yaml
 - ファイルからはDeploymentより先にHPAを作成できます。対象がない状態のreconcileは`TargetNotFound`を表示します。対象名変更も可能ですが、同一クラスタ内で別HPAと対象Deploymentが重複する場合は拒否します。
 - HPAファイルの操作は`container.horizontalPodAutoscalers`のcreate/deleteを要求し、applyはgetとcreate/updateを要求します。HPA設定の変更だけならDeploymentのget/updateは要求しません。同じ内容の再applyもupdate権限を要求する既存の教材方針に従います。実際にレプリカを変える教材評価には、前節の両方のupdate権限が必要です。
 - 混在ファイルは全体が成功した場合だけ確定します。途中の不正設定・権限不足・対象重複・削除対象不足では先行リソースも変更しません。本物のkubectlの逐次適用との違いです。deleteはファイルのHPA名で削除し、対象Deploymentを残します。
-- HPAのファイルと設定・評価はSnapshotに保存します（v14で追加、v15でも保持）。HPAのpatch/edit、複数フィールド管理者の三方向マージ、Metrics Server・定期評価等は未対応です。
+- HPAのファイルと設定・評価はSnapshotに保存します（v14で追加、v16でも保持）。HPAのpatch/edit、複数フィールド管理者の三方向マージ、Metrics Server・定期評価等は未対応です。
 
 
 ## HTTP readinessProbeとServiceの接続先
@@ -343,7 +343,7 @@ readinessProbe:
   failureThreshold: 2
 ```
 
-`httpGet.port`は1〜65535の整数で必須、pathは`/`で始まる空白なしの文字列（1024文字まで、省略時`/`）です。成功閾値は省略時1、失敗閾値は3で、教材の上限はそれぞれ1000です。HTTPのみで、scheme/host/headers・名前付きport・exec/TCP/gRPC・initialDelaySeconds/periodSeconds/timeoutSeconds・liveness/startupProbeは未対応として拒否します。
+`httpGet.port`は1〜65535の整数で必須、pathは`/`で始まる空白なしの文字列（1024文字まで、省略時`/`）です。成功閾値は省略時1、失敗閾値は3で、教材の上限はそれぞれ1000です。HTTPのみで、scheme/host/headers・名前付きport・exec/TCP/gRPC・initialDelaySeconds/periodSeconds/timeoutSeconds・startupProbeは未対応として拒否します。
 
 `sim kubernetes probe NAME --status-code=CODE`で、対象Deploymentの全Podへ応答コードを1回ずつ与えます。`--pod=POD_NAME`で1つだけ選べます。コードは整数100〜599、200〜399を成功とします。path/portは設定として保持し、指定した応答をそのプローブの結果として扱います。実HTTP要求、待受ポート/URL/リダイレクト確認、経過時間、定期評価はありません。操作にはクラスタ/APIと`container.deployments.update`を要求します。これは教材データを更新する権限で、本物のkubectlに対応する操作ではありません。
 
@@ -374,5 +374,48 @@ kubectl describe service ready-service
 ```
 
 新ミッション「未準備のPodをServiceの接続先から外す」は、教材どおりのprobe設定で1つを200の連続成功2回、もう1つを503の連続失敗2回にし、Serviceの接続先を実際に1つにすると達成します。全Pod未評価・全Pod成功・全Pod失敗・失敗1回・Service selector不一致では達成しません。
+
+参照: [Kubernetesのliveness/readiness/startup probes](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)。
+
+
+## HTTP livenessProbeと同一Pod内のコンテナ再起動
+
+livenessはコンテナの再起動が必要かを判定します。`sim files load kubernetes-liveness`で、readinessも設定された`live-web.yaml`と`live-service.yaml`を読み込めます。
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+  failureThreshold: 2
+```
+
+- HTTPのpath/数値portはreadinessと同じ検証・既定値です。successThresholdは1のみ（省略時1）、failureThresholdは1〜1000（省略時3）。未対応の時間・通信方式・terminationGracePeriodSeconds・startupProbe等は拒否します。
+- `sim kubernetes probe NAME --kind=liveness --status-code=503 [--pod=POD_NAME]`で1回評価します。200〜399は成功、それ以外の100〜599は失敗。成功は連続失敗回数を0へ戻します。失敗閾値に達すると対象コンテナだけを即時再起動し、連続失敗回数を0に戻します。
+- 同じPod名・IP・template revision・generationのままRESTARTSが増加します。`kubectl get/describe pod`の`status.containerStatuses[].restartCount`と、`simulator.livenessSample`の応答・連続失敗・累計再起動回数で確認できます。`restarted`は最後に指定した応答で再起動したという記録で、再起動待ちの状態ではありません。liveness未設定のPodにはcontainerStatusesを追加せず、既存表示を保ちます。
+- 対象コンテナは現在のConfigMap/Secretから環境変数を読み直し、readinessは未評価へ戻ります。他Podの値・判定は保持します。参照がなくなった場合はCreateContainerConfigErrorとなり、設定修復後に起動可能です。readinessの再成功までService接続先から外れ、既存HPAの全Pod準備判定も待機します。
+- liveness成功だけではreadinessは成功になりません。readiness未設定なら起動成功後すぐReadyとして扱います。閾値未満のliveness失敗でReadyは変えません。readinessの失敗だけでは再起動しません。
+- 設定変更は新しいtemplate revisionになり、history/undoにも対応します。scaleで残るPod・同じmanifestの再applyは回数を保持。新template・rollout restart・Pod削除後の再作成・追加PodはRESTARTS 0から始めます。Pod削除やscale縮小時は古い評価を消去します。
+- 全Pod指定では起動エラーを先に検証し、1つでも評価不能なら状態全体を保持します。評価はcontainer.deployments.updateを必要とし、API・プロジェクト・現在のクラスタ境界も検証します。RESTARTSの上限は安全な整数の最大値です。
+
+```sh
+gcloud services enable container.googleapis.com
+gcloud container clusters create liveness-gke --zone=us-central1-a
+sim files load kubernetes-liveness
+kubectl apply -f live-web.yaml
+kubectl apply -f live-service.yaml
+sim kubernetes probe live-web --status-code=200
+kubectl get pods
+# POD_NAMEを一覧の1つのPod名に置き換える
+sim kubernetes probe live-web --kind=liveness --pod=POD_NAME --status-code=503
+sim kubernetes probe live-web --kind=liveness --pod=POD_NAME --status-code=503
+kubectl get pods
+kubectl describe service live-service
+sim kubernetes probe live-web --kind=liveness --pod=POD_NAME --status-code=200
+sim kubernetes probe live-web --pod=POD_NAME --status-code=200
+kubectl describe service live-service
+```
+
+再起動は学習用の即時モデルです。実HTTP通信・port/pathの待受確認・定期評価・経過時間・終了猶予・backoff/CrashLoopBackOff・再起動中の中間状態・前コンテナのlogs・実プロセス終了や起動は再現しません。環境変数の再読込にも実クラスタのキャッシュ/伝播遅延はありません。HTTPの300台も与えたコードだけで成功判定し、リダイレクトは追跡しません。
 
 参照: [Kubernetesのliveness/readiness/startup probes](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)。

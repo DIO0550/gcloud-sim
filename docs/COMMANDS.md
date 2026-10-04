@@ -373,7 +373,7 @@ HPAは`autoscale`またはautoscaling/v2の仮想YAML/JSONで作成し、`get/de
 | `kubectl describe` | Deployment/Service/ConfigMap/Secret/HPA: 対象のget/list、その他: `container.pods.get` | `container.googleapis.com` | `--namespace` |
 | `kubectl expose` | `container.services.create` | `container.googleapis.com` | `--type` `--port` `--target-port` `--name` `--namespace` |
 | `kubectl autoscale` | `container.horizontalPodAutoscalers.create`、`container.deployments.get` | `container.googleapis.com` | `--min` `--max` `--cpu-percent` `--name` `--namespace` |
-| `sim kubernetes probe` | `container.deployments.update` | `container.googleapis.com` | `--status-code`（必須）、`--pod`（省略時は対象Deploymentの全Pod） |
+| `sim kubernetes probe` | `container.deployments.update` | `container.googleapis.com` | `--status-code`（必須）、`--pod`（省略時は対象Deploymentの全Pod）、`--kind=readiness|liveness`（既定readiness） |
 | `sim kubernetes reconcile` | `container.horizontalPodAutoscalers.update`、`container.deployments.update` | `container.googleapis.com` | `--cpu`（1 Podあたりの教材用使用量） |
 | `kubectl scale` | `container.deployments.update` | `container.googleapis.com` | `--replicas` `--namespace` |
 | `kubectl set resources` | `container.deployments.update` | `container.googleapis.com` | `--requests` `--limits` `--containers` (`-c`) `--namespace` |
@@ -500,7 +500,7 @@ HPAは`autoscale`またはautoscaling/v2の仮想YAML/JSONで作成し、`get/de
 
 ## サンプルファイル
 
-gcloud-simはホストのファイルを読みません。TerraformとConfigMap/Secret/Deployment/Service/HPAは `sim files` で編集できる仮想ファイルを読みます。`sim files load kubernetes-config` 、`sim files load kubernetes-workload` 、`sim files load kubernetes-labels` 、`sim files load kubernetes-resources` 、`sim files load kubernetes-hpa` または `sim files load kubernetes-readiness` でYAML教材を読み込み、`kubectl create/apply/delete -f FILE` で操作できます（詳細は [KUBERNETES.md](KUBERNETES.md)）。Kubernetesのファイルは正規化した相対パスで一致し、同名の仮想ファイルが固定教材より優先します。仮想ファイルがない場合の `deployment.yaml` / `service.yaml` と、他サービスの次の操作は固定サンプルを使います（kubectl以外はディレクトリ部分を無視）。無い名前は本物と同じ `No such file or directory`（E-005）になる。`gcloud storage cp ./x gs://b` のように名前しか使わない経路は任意のパスを受ける。
+gcloud-simはホストのファイルを読みません。TerraformとConfigMap/Secret/Deployment/Service/HPAは `sim files` で編集できる仮想ファイルを読みます。`sim files load kubernetes-config` 、`sim files load kubernetes-workload` 、`sim files load kubernetes-labels` 、`sim files load kubernetes-resources` 、`sim files load kubernetes-hpa` 、`sim files load kubernetes-readiness` または `sim files load kubernetes-liveness` でYAML教材を読み込み、`kubectl create/apply/delete -f FILE` で操作できます（詳細は [KUBERNETES.md](KUBERNETES.md)）。Kubernetesのファイルは正規化した相対パスで一致し、同名の仮想ファイルが固定教材より優先します。仮想ファイルがない場合の `deployment.yaml` / `service.yaml` と、他サービスの次の操作は固定サンプルを使います（kubectl以外はディレクトリ部分を無視）。無い名前は本物と同じ `No such file or directory`（E-005）になる。`gcloud storage cp ./x gs://b` のように名前しか使わない経路は任意のパスを受ける。
 
 | ファイル | 受けるコマンド | 中身 |
 |---|---|---|
@@ -556,4 +556,4 @@ gcloud-simはホストのファイルを読みません。TerraformとConfigMap/
 
 PodのQoSは`kubectl get pods -o json` / `-o yaml` / `kubectl describe pods`の`status.qosClass`で確認できます。CPU・メモリのrequests/limitsから導出する読み取り専用の分類です。`status`はオブジェクト、一覧表示用の状態文字列は`displayStatus`です（詳細は[KUBERNETES.md](KUBERNETES.md)）。
 
-`sim kubernetes probe NAME --status-code=200`はHTTP readiness応答を1回評価します。設定はDeployment manifestのreadinessProbeで管理し、READY・Service接続先・rollout status・HPA評価に反映します。実通信・定期実行・経過時間は再現しません。
+`sim kubernetes probe NAME --status-code=200`はHTTP readiness応答を1回評価します。設定はDeployment manifestのreadinessProbeで管理し、READY・Service接続先・rollout status・HPA評価に反映します。`--kind=liveness`はliveness応答を評価し、連続失敗が閾値に達したPodのコンテナだけを即時再起動します。Pod名/IP/revisionは維持し、RESTARTSが増加、readinessは未評価へ戻ります。実通信・定期実行・経過時間・backoffは再現しません。

@@ -145,6 +145,48 @@ spec:
 `;
 
 export const KubeManifestExamples: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  "kubernetes-liveness": {
+    "live-web.yaml": `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: live-web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: live-web
+  template:
+    metadata:
+      labels:
+        app: live-web
+    spec:
+      containers:
+        - name: live-web
+          image: nginx:1
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            successThreshold: 1
+            failureThreshold: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            failureThreshold: 2
+`,
+    "live-service.yaml": `apiVersion: v1
+kind: Service
+metadata:
+  name: live-service
+spec:
+  selector:
+    app: live-web
+  ports:
+    - port: 80
+      targetPort: 8080
+`,
+  },
   "kubernetes-readiness": {
     "ready-web.yaml": `apiVersion: apps/v1
 kind: Deployment
