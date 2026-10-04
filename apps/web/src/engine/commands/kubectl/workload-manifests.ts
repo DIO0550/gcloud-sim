@@ -63,6 +63,7 @@ export const applyWorkload = (
         manifest.env,
         manifest.podLabels,
         manifest.labels,
+        manifest.resources,
       );
       if (next === current.value) return finish(ctx.world, "unchanged");
       return finish(World.replaceKubeDeployment(ctx.world, next), "configured");
@@ -82,7 +83,12 @@ export const applyWorkload = (
     const deployment = {
       ...created.value,
       env: manifest.env,
-      revisions: created.value.revisions.map((r) => ({ ...r, env: manifest.env })),
+      resources: manifest.resources,
+      revisions: created.value.revisions.map((r) => ({
+        ...r,
+        env: manifest.env,
+        resources: manifest.resources,
+      })),
     };
     const added = World.withKubeDeployment(ctx.world, deployment);
     if (!Result.isOk(added)) return Result.err(CommandFailure.alreadyExists(added.error.resource));

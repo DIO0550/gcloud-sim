@@ -141,6 +141,33 @@ spec:
 `;
 
 export const KubeManifestExamples: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  "kubernetes-resources": {
+    "resource-web.yaml": `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resource-web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: resource-web
+  template:
+    metadata:
+      labels:
+        app: resource-web
+    spec:
+      containers:
+        - name: resource-web
+          image: nginx:1
+          resources:
+            requests:
+              cpu: 500m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+`,
+  },
   "kubernetes-labels": {
     "shop-blue.yaml": shopDeployment("blue", "nginx:1"),
     "shop-green.yaml": shopDeployment("green", "nginx:2"),

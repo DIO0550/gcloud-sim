@@ -70,6 +70,11 @@ import {
 } from "./kube-configuration";
 import { type KubeLabelAssertion, KubeLabelMissions, kubeLabelsSatisfied } from "./kube-labels";
 import {
+  type KubeResourceAssertion,
+  KubeResourceMissions,
+  kubeResourcesSatisfied,
+} from "./kube-resources";
+import {
   type KubeWorkloadAssertion,
   KubeWorkloadMissions,
   kubeWorkloadSatisfied,
@@ -90,6 +95,7 @@ export type MissionAssertion =
   | BuildAssertion
   | KubeWorkloadAssertion
   | KubeLabelAssertion
+  | KubeResourceAssertion
   | KubeConfigurationAssertion
   | KubernetesAssertion
   | ArtifactLifecycleAssertion
@@ -236,6 +242,7 @@ const Missions: readonly Mission[] = [
   ...KubernetesMissions,
   ...KubeWorkloadMissions,
   ...KubeLabelMissions,
+  ...KubeResourceMissions,
   ...KubeConfigurationMissions,
   ...ArtifactLifecycleMissions,
   {
@@ -691,6 +698,8 @@ const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: 
 
 const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
+    case "kubeResourcesConfigured":
+      return kubeResourcesSatisfied(world);
     case "kubeLabelsSwitched":
       return kubeLabelsSatisfied(world);
     case "kubeWorkloadApplied":

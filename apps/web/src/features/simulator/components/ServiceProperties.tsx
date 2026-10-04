@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { ImagePull } from "@/engine/domains/image-pull";
 import { KubeEnv, KubeRuntime } from "@/engine/domains/kube-config";
 import { KubeLabels } from "@/engine/domains/kube-labels";
+import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
 
 import { KubePod, KubeService } from "@/engine/domains/kubernetes";
@@ -119,6 +120,15 @@ export const KubeDeploymentProperties = ({
           { label: "createdAt", value: d.createdAt },
         ]}
       />
+      {!KubeResources.equal(d.resources, KubeResources.empty()) && (
+        <Section
+          title="CPU・メモリ（1 Podあたり）"
+          rows={[
+            { label: "requests", value: KubeResources.text(d.resources.requests) },
+            { label: "limits", value: KubeResources.text(d.resources.limits) },
+          ]}
+        />
+      )}
       <Section
         title="更新履歴（最大11件）"
         rows={d.revisions.map((r) => ({

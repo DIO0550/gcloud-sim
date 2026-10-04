@@ -1,5 +1,6 @@
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeManifest } from "@/engine/domains/kube-manifest";
+import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
@@ -58,6 +59,7 @@ export const kubeWorkloadSatisfied = (world: World): boolean => {
         m.name === d.name &&
         m.image === d.image &&
         m.replicas === d.replicas &&
+        KubeResources.equal(m.resources, d.resources) &&
         m.env.length === 0,
     ) &&
     service.value.some(
