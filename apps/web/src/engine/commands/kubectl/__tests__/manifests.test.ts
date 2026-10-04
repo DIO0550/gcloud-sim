@@ -124,7 +124,10 @@ test("Secret data decodes UTF-8 and stringData takes precedence; YAML block stri
       "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: settings\ndata:\n  CONFIG: |\n    a=1\n    b=2\n  ENABLED: 'true'\n",
     ),
   );
-  expect(parsed[0]?.data).toContainEqual({ key: "CONFIG", value: "a=1\nb=2\n" });
+  expect(parsed[0]?.kind === "configmap" ? parsed[0].data : []).toContainEqual({
+    key: "CONFIG",
+    value: "a=1\nb=2\n",
+  });
 });
 
 test.each([

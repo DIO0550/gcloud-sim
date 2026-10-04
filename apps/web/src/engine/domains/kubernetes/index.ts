@@ -140,6 +140,23 @@ export const KubeDeployment = {
     return { ...newRevision(scaled, image, "image"), generation: deployment.generation + 1 };
   },
 
+  /** Apply the supported template and replicas in one revision, preserving scale-only Pod identities. */
+  withManifest(
+    deployment: KubeDeployment,
+    image: string,
+    replicas: number,
+    env: readonly KubeEnv[],
+  ): KubeDeployment {
+    const scaled = Result.unwrap(KubeDeployment.withReplicas(deployment, replicas));
+    if (image === deployment.image && JSON.stringify(env) === JSON.stringify(deployment.env))
+      return scaled;
+    const reason = image === deployment.image ? "env" : "image";
+    return {
+      ...newRevision(scaled, image, reason, undefined, env),
+      generation: deployment.generation + 1,
+    };
+  },
+
   withEnv(deployment: KubeDeployment, env: readonly KubeEnv[]): KubeDeployment {
     if (JSON.stringify(env) === JSON.stringify(deployment.env)) return deployment;
     return newRevision(deployment, deployment.image, "env", undefined, env);

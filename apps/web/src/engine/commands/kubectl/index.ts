@@ -18,6 +18,7 @@ import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { ImagePull } from "@/engine/domains/image-pull";
 import { KubeConfig, KubeEnv, KubeRuntime } from "@/engine/domains/kube-config";
 import { KubeManifest } from "@/engine/domains/kube-manifest";
+import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
 import {
   KubeDeployment,
   KubePod,
@@ -352,7 +353,12 @@ const collect = (
       }));
     case "service":
       return Result.map(pick(services, "services", ref.name), (rows) => ({
-        rows: rows.map((s) => serviceRow(s, ctx.now)),
+        rows: rows.map((s) => ({
+          ...serviceRow(s, ctx.now),
+          ...(describe
+            ? { endpoints: KubeServiceRouting.endpoints(ctx.world, s).join(", ") || "<none>" }
+            : {}),
+        })),
         columns: ServiceColumns,
       }));
     case "pod":
@@ -497,7 +503,7 @@ const sampleFile = (path: string) =>
     path.replace(/^\.\//, "").includes("/") ? Option.none : SampleFile.find(path),
     () =>
       CommandFailure.notFoundWith(
-        `error: the path "${path}" does not exist\ngcloud-sim: 使えるサンプルは ${SampleFile.names().join(" / ")} です。ConfigMap/Secretは sim files write/load で仮想ファイルを用意してください（docs/KUBERNETES.md）。`,
+        `error: the path "${path}" does not exist\ngcloud-sim: 使えるサンプルは ${SampleFile.names().join(" / ")} です。Kubernetesリソースは sim files write/load で仮想ファイルを用意してください（docs/KUBERNETES.md）。`,
       ),
   );
 
@@ -998,7 +1004,7 @@ const config = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
 
 const FileFlag = Flag.string(
   "filename",
-  "Virtual ConfigMap/Secret YAML/JSON, or deployment.yaml/service.yaml samples.",
+  "Virtual Kubernetes YAML/JSON, or deployment.yaml/service.yaml samples.",
   {
     aliases: ["-f"],
     singleUse: true,
@@ -1058,6 +1064,8 @@ const resourcePermission =
     );
     if (!Result.isOk(ref)) return fallback;
     const verb = action === "delete" ? "delete" : Option.isSome(ref.value.name) ? "get" : "list";
+    if (ref.value.kind === "service") return `container.services.${verb}`;
+    if (ref.value.kind === "deployment") return `container.deployments.${verb}`;
     if (ref.value.kind === "secret") return `container.secrets.${verb}`;
     if (ref.value.kind === "configmap") return `container.configMaps.${verb}`;
     return fallback;
@@ -1156,7 +1164,7 @@ export const KubectlCommands: readonly CommandSpec[] = [
   }),
   kubectl({
     verb: "apply",
-    summary: "Apply virtual ConfigMap/Secret YAML/JSON or fixed Deployment/Service samples.",
+    summary: "Apply virtual ConfigMap/Secret/Deployment/Service YAML/JSON or fixed samples.",
     positionals: [],
     flags: [FileFlag],
     permission: () => undefined,

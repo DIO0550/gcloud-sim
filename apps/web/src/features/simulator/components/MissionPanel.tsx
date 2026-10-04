@@ -32,6 +32,8 @@ const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElem
 
 const assertionLabel = (assertion: Mission["assertions"][number]): string => {
   switch (assertion.kind) {
+    case "kubeWorkloadApplied":
+      return "ファイルとクラスタをnginx:2・2レプリカ・正しいService selectorでそろえる";
     case "kubeConfigInjected":
       return "ConfigMap/Secret参照とLOG_LEVELを設定し、2レプリカへ正しい値を注入";
     case "kubeConfigApplied":

@@ -15,7 +15,7 @@ kubectl rollout history deployment/web --revision=1
 kubectl get rs
 ```
 
-`set image`は単一Deployment・単一コンテナの指定に対応します。`deployment web web=IMAGE`と`deployment/web web=IMAGE`、コンテナ名の`*`を使えます。コンテナ名はDeployment名と同じです。同じイメージへの変更は何も更新しません。複数リソース/複数コンテナ、`--local`、`--dry-run`、任意manifestは未対応として拒否します。
+`set image`は単一Deployment・単一コンテナの指定に対応します。`deployment web web=IMAGE`と`deployment/web web=IMAGE`、コンテナ名の`*`を使えます。コンテナ名はDeployment名と同じです。同じイメージへの変更は何も更新しません。複数リソース/複数コンテナ、`--local`、`--dry-run`は未対応として拒否します。仮想manifestの対応範囲は後述します。
 
 Pod templateの更新はrevisionを増やし、履歴にイメージを保存します。`apply -f deployment.yaml`もイメージが変わったときだけrevisionを増やします。レプリカ数だけの変更はspecのgenerationを増やしますが、revisionや既存Podの識別子は変えません。`rollout restart`は同じイメージで新しいtemplateを作ります。
 
@@ -97,7 +97,7 @@ kubectl rollout restart deployment/web
 kubectl exec deployment/web -- printenv APP_MODE
 ```
 
-`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全42件、GKE拡充分は5件です。
+`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全43件、GKE拡充分は6件です。
 
 `sim files write FILE --content='…'`で独自のYAML/JSONを書き、`read`で読み、`replace --search=… --replacement=…`で1か所を編集できます。ファイルは `.yaml` / `.yml` / `.json` の相対パスで、32ファイル・1ファイル64,000文字まで。Terraformとは別に保存し、Terraformのplanに影響しません。`sim files delete FILE`はファイルだけを消します。クラスタ上の設定を消す操作は `kubectl delete -f FILE` です。教材の上書きは `sim files load kubernetes-config --force` で明示します。
 
@@ -107,7 +107,43 @@ kubectl exec deployment/web -- printenv APP_MODE
 
 権限はConfigMap/Secretごとに判定します。applyはgetと、新規ならcreate・既存ならupdateを要求します（同じ値への再適用にもupdateを要求する簡略モデル）。create/deleteは対象のcreate/deleteだけで、Deployment権限は不要です。複数リソースは全体を検証し、途中の権限不足・不正なmanifest・重複・削除対象の欠落があれば一切変更しません。実kubectlの複数リソース処理は途中まで反映されることがあるため、この原子的な動作は教材上の簡略化です。
 
-namespace追加、labels/annotations、immutable、binaryData、volume、任意Deployment/Service manifest、List、ディレクトリ/URL/stdin入力、server-side apply、patch/edit、YAML alias/明示タグは未対応として拒否します。認識できないフィールドもエラーにし、無視して成功扱いにはしません。`deployment.yaml` / `service.yaml` は仮想ファイルがない場合のみ従来の固定教材として利用できます。同名ファイルがあれば必ず内容を解釈し、壊れていても固定教材へ切り替えません。
+namespace追加、labels/annotations、immutable、binaryData、volume、対応範囲外のDeployment/Service manifest、List、ディレクトリ/URL/stdin入力、server-side apply、patch/edit、YAML alias/明示タグは未対応として拒否します。認識できないフィールドもエラーにし、無視して成功扱いにはしません。`deployment.yaml` / `service.yaml` は仮想ファイルがない場合のみ従来の固定教材として利用できます。同名ファイルがあれば必ず内容を解釈し、壊れていても固定教材へ切り替えません。
+
+## Deployment・Serviceのファイル適用と接続先
+
+```sh
+gcloud services enable container.googleapis.com
+gcloud container clusters create-auto manifest-gke --region=us-central1
+sim files load kubernetes-workload
+kubectl apply -f web-deployment.yaml
+kubectl apply -f web-service.yaml
+kubectl describe service manifest-svc
+sim files replace web-deployment.yaml --search=nginx:1 --replacement=nginx:2
+kubectl apply -f web-deployment.yaml
+sim files replace web-service.yaml --search=wrong-app --replacement=manifest-web
+kubectl apply -f web-service.yaml
+kubectl describe service manifest-svc
+kubectl rollout history deployment/manifest-web
+```
+
+教材のServiceは最初に誤ったselector `app: wrong-app` を持ちます。Service自体は作成できますが接続先はありません。DeploymentのPodラベル `app: manifest-web` に合わせてapplyすると、準備完了の2つのPodが `endpoints` に表示されます。Serviceのプロパティでもselector・targetPort・接続先を確認できます。対応する「マニフェストでアプリを更新しServiceの接続先を直す」ミッションは、初期Worldから実行でき、イメージ更新履歴とファイル・クラスタ状態の一致を確認します。ファイルを編集しただけや、最初からnginx:2で作った場合は達成しません。
+
+対応範囲は次のとおりです。認識しないフィールドは無視せず拒否します。
+
+| 対象 | 対応するフィールド・動作 |
+| --- | --- |
+| Deployment | `apps/v1`、metadata.name、namespaceはdefault、replicasは0〜1000。selector.matchLabelsとtemplate.metadata.labelsはどちらも `app: <Deployment名>` の1キー。metadata.labelsを指定する場合も同じ値のみ |
+| コンテナ | 1個のみ、nameはDeployment名と同じ。imageとenvを指定。envは文字列value（省略なら空文字）またはconfigMapKeyRef/secretKeyRef。optional・envFrom・ports・volume・probe等は未対応 |
+| Service | `v1`、ClusterIP/NodePort/LoadBalancer、selectorはDNSラベル形式の `app` 1キー。TCPの1ポート、port/targetPortは1〜65535の整数。省略時のtypeはClusterIP、targetPortはportと同じ |
+| 更新 | Deploymentのimage・env・replicasを一度に変更してもtemplate revisionは1つだけ進む。replicasだけならrevisionと既存Podを保持。env省略は空、replicas省略は新規なら1・更新なら現在の値を保持 |
+| Service再適用 | selectorとport/targetPortの変更はClusterIP・外部IP・作成日時を保持。typeの変更はこの教材では拒否し、明示的な削除・再作成が必要 |
+| 接続先 | 同じプロジェクト・クラスタでappラベルが一致し、イメージ取得と環境変数解決が成功したPodを導出。0レプリカ・Deployment削除・一致なし・起動待ちなら接続先なし |
+
+`create/apply/delete -f`と複数ドキュメントを利用でき、ConfigMap/Secretとの混在も可能です。createは既存リソースを更新せず、deleteはファイルを残します。applyは対象種別のgetとcreate/update、create/deleteはそれぞれの権限を検証し、複数リソースの途中失敗ではリソースもIP採番も変更しません。Serviceの権限はDeploymentから独立しています。
+
+Deployment/Serviceのapplyは対応するspec値を反映する限定モデルです。ConfigMap/Secretの管理キー処理とは異なり、last-applied annotationや三方向マージ・server-side applyは再現しません。selectorの不変性も `app: <Deployment名>` の固定モデルで検証します。任意ラベル・複数コンテナ・名前付きポート・複数ポート・UDP・headless/ExternalName・Serviceのtype変更は未対応です。
+
+接続先は学習用の表示で、EndpointSliceリソース・probe・プロセスの待受ポート・実通信を確認するものではありません。Serviceだけを先に作ってもよく、Deploymentを削除してもServiceは残ります。既存のSnapshot v11のDeployment/Service構造で保存できるため版番号は変更せず、旧Snapshotの移行も維持します。
 
 ## Secretの表示と権限
 
@@ -125,8 +161,10 @@ ConfigMap/Secretの操作はそれぞれ`container.configMaps.*`/`container.secr
 - ReplicaSetは読み取り専用の導出状態です。templateの識別子/Pod名は疑似値で、実際のハッシュ・annotationsは再現しません。イメージ変更/restartごとに新しいtemplateを作り、undoでは保存したtemplateを再利用します。
 - `.pkg.dev`以外のイメージは従来の簡略な成功モデルです。実在タグ/コンテナの起動可否の確認はしません。異常系ミッションでは存在確認できる教材レジストリを使います。
 
-namespace、ConfigMap/Secretのvolumeマウント・Deployment等の任意manifest、readiness/liveness、HPA/VPA、StatefulSet/PVC、NetworkPolicy、ノードプール設定やWorkload Identity等は残作業です。Issue #15は閉じません。
+namespace、ConfigMap/Secretのvolumeマウント・任意ラベルや複数コンテナを含むmanifest、readiness/liveness、HPA/VPA、StatefulSet/PVC、NetworkPolicy、ノードプール設定やWorkload Identity等は残作業です。Issue #15は閉じません。
 
 参照: [ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/)、[Secret](https://kubernetes.io/docs/concepts/configuration/secret/)、[kubectl set env](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_set/kubectl_set_env/)、[Deploymentの更新とロールバック](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)、[kubectl set image](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_set/kubectl_set_image/)、[kubectl rollout undo](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_rollout/kubectl_rollout_undo/)、[GKEのロールと権限](https://docs.cloud.google.com/iam/docs/roles-permissions/container)。
 
 ファイル操作の参照: [Secretの設定ファイル](https://kubernetes.io/docs/tasks/configmap-secret/managing-secret-using-config-file/)、[宣言的な構成管理](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/declarative-config/)。
+
+ワークロード設定の参照: [Deploymentのselector](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#selector)、[Serviceの定義](https://kubernetes.io/docs/concepts/services-networking/service/#defining-a-service)。

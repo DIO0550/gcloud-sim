@@ -11,6 +11,7 @@ import type { GkeCluster } from "@/engine/domains/managed-services";
 import { World } from "@/engine/domains/world";
 import { Result } from "@/utils/Result";
 import { kubePermission } from "./configuration";
+import { applyWorkload } from "./workload-manifests";
 
 /** Validate the entire file and permissions before committing any simulated resource. */
 export const applyManifest = (
@@ -21,9 +22,17 @@ export const applyManifest = (
 ): CommandResult => {
   const parsed = KubeManifest.parse(source);
   if (!Result.isOk(parsed)) return Result.err(CommandFailure.invalidArgumentWith(parsed.error));
-  let configs = [...ctx.world.kubeConfigs];
+  let world = ctx.world;
   const messages: OutputMessage[] = [];
   for (const manifest of parsed.value) {
+    if (manifest.kind === "deployment" || manifest.kind === "service") {
+      const applied = applyWorkload({ ...ctx, world }, cluster, manifest, action);
+      if (!Result.isOk(applied)) return applied;
+      world = applied.value.world;
+      messages.push(...applied.value.output.messages);
+      continue;
+    }
+    let configs = [...world.kubeConfigs];
     const existing = configs.find(
       (c) =>
         c.projectId === cluster.projectId &&
@@ -47,6 +56,7 @@ export const applyManifest = (
           CommandFailure.notFoundWith(`${manifest.kind} "${manifest.name}" not found`),
         );
       configs = configs.filter((c) => c !== existing);
+      world = World.withKubeConfigs(world, configs);
       messages.push(OutputMessage.plain(`${manifest.kind}/${manifest.name} deleted`));
       continue;
     }
@@ -72,16 +82,12 @@ export const applyManifest = (
     configs = existing
       ? configs.map((c) => (c === existing ? (unchanged ? existing : next) : c))
       : [...configs, next];
+    if (!unchanged) world = World.withKubeConfigs(world, configs);
     messages.push(
       OutputMessage.plain(
         `${manifest.kind}/${manifest.name} ${!existing ? "created" : unchanged ? "unchanged" : "configured"}`,
       ),
     );
   }
-  if (JSON.stringify(configs) === JSON.stringify(ctx.world.kubeConfigs))
-    return Result.ok({ world: ctx.world, output: CommandOutput.messages(...messages) });
-  return Result.ok({
-    world: World.withKubeConfigs(ctx.world, configs),
-    output: CommandOutput.messages(...messages),
-  });
+  return Result.ok({ world, output: CommandOutput.messages(...messages) });
 };
