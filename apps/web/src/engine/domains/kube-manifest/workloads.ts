@@ -3,6 +3,7 @@ import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeLiveness, type LivenessProbe } from "@/engine/domains/kube-liveness";
 import { KubeReadiness, type ReadinessProbe } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
+import { KubeStartup, type StartupProbe } from "@/engine/domains/kube-startup";
 import { KubeDeployment, KubeName, KubeServiceType } from "@/engine/domains/kubernetes";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -18,6 +19,7 @@ export type WorkloadManifest =
       resources: KubeResources;
       readinessProbe: Option<ReadinessProbe>;
       livenessProbe: Option<LivenessProbe>;
+      startupProbe: Option<StartupProbe>;
       labels: KubeLabels;
       selector: KubeLabels;
       podLabels: KubeLabels;
@@ -128,7 +130,7 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
   const container = record(pod.containers[0], "container");
   fields(
     container,
-    ["name", "image", "env", "resources", "readinessProbe", "livenessProbe"],
+    ["name", "image", "env", "resources", "readinessProbe", "livenessProbe", "startupProbe"],
     "container",
   );
   if (container.name !== meta.name)
@@ -145,6 +147,10 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
     ? Result.ok(Option.none)
     : Result.map(KubeLiveness.parse(container.livenessProbe), Option.some);
   if (!Result.isOk(liveness)) return fail(liveness.error);
+  const startup: Result<Option<StartupProbe>, string> = container.startupProbe === undefined
+    ? Result.ok(Option.none)
+    : Result.map(KubeStartup.parse(container.startupProbe), Option.some);
+  if (!Result.isOk(startup)) return fail(startup.error);
   const resources = KubeResources.parse(
     container.resources === undefined ? {} : container.resources,
   );
@@ -167,6 +173,7 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
     resources: resources.value,
     readinessProbe: probe.value,
     livenessProbe: liveness.value,
+    startupProbe: startup.value,
     labels,
     selector: matchLabels,
     podLabels,

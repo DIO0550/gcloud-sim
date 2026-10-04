@@ -25,11 +25,13 @@ import { IamPolicy, type RoleName } from "@/engine/domains/iam-policy";
 import type { InstanceTemplate, ManagedInstanceGroup } from "@/engine/domains/instance-groups";
 import type { KmsKeyRing } from "@/engine/domains/kms";
 import { KubeConfig, KubeRuntime } from "@/engine/domains/kube-config";
+import { KubeContainer } from "@/engine/domains/kube-container";
 import { KubeHpa } from "@/engine/domains/kube-hpa";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeLiveness } from "@/engine/domains/kube-liveness";
 import { KubeManifest } from "@/engine/domains/kube-manifest";
 import { KubeReadiness } from "@/engine/domains/kube-readiness";
+import { KubeStartup } from "@/engine/domains/kube-startup";
 import { KubeDeployment, type KubeService } from "@/engine/domains/kubernetes";
 import {
   type BackendService,
@@ -1080,7 +1082,11 @@ export const World = {
           ...world.kubeDeployments,
           KubeReadiness.reconcile(
             KubeLiveness.reconcile(
-              KubeRuntime.reconcile(world.kubeConfigs, { ...deployment, podNetwork }),
+              KubeStartup.reconcile(
+                KubeContainer.reconcile(
+                  KubeRuntime.reconcile(world.kubeConfigs, { ...deployment, podNetwork }),
+                ),
+              ),
             ),
           ),
         ],
@@ -1095,7 +1101,11 @@ export const World = {
         world.kubeDeployments,
         sameInCluster(deployment),
         KubeReadiness.reconcile(
-          KubeLiveness.reconcile(KubeRuntime.reconcile(world.kubeConfigs, deployment)),
+          KubeLiveness.reconcile(
+            KubeStartup.reconcile(
+              KubeContainer.reconcile(KubeRuntime.reconcile(world.kubeConfigs, deployment)),
+            ),
+          ),
         ),
       ),
     };

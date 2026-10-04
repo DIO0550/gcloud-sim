@@ -145,6 +145,53 @@ spec:
 `;
 
 export const KubeManifestExamples: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  "kubernetes-startup": {
+    "slow-web.yaml": `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: slow-web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: slow-web
+  template:
+    metadata:
+      labels:
+        app: slow-web
+    spec:
+      containers:
+        - name: slow-web
+          image: nginx:1
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            successThreshold: 1
+            failureThreshold: 1
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            failureThreshold: 1
+`,
+    "slow-service.yaml": `apiVersion: v1
+kind: Service
+metadata:
+  name: slow-service
+spec:
+  selector:
+    app: slow-web
+  ports:
+    - port: 80
+      targetPort: 8080
+`,
+  },
   "kubernetes-liveness": {
     "live-web.yaml": `apiVersion: apps/v1
 kind: Deployment

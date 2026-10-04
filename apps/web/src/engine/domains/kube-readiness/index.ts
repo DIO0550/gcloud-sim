@@ -1,3 +1,4 @@
+import { KubeContainer } from "@/engine/domains/kube-container";
 import { type KubeDeployment, KubePod } from "@/engine/domains/kubernetes";
 import type { JsonRecord } from "@/types/Json";
 import { Option } from "@/utils/Option";
@@ -81,10 +82,13 @@ export const KubeReadiness = {
     return `${state} / HTTP ${sample.statusCode} / 連続成功 ${sample.successes}・失敗 ${sample.failures}`;
   },
   ready(d: KubeDeployment, podName: string): boolean {
+    if (!KubeContainer.started(d, podName)) return false;
     if (!Option.isSome(d.readinessProbe)) return true;
     return d.podReadiness.find((p) => p.podName === podName)?.ready ?? false;
   },
   reason(d: KubeDeployment, podName: string): string {
+    if (!KubeContainer.started(d, podName))
+      return "StartupProbePending: startup has not succeeded for this container";
     if (KubeReadiness.ready(d, podName)) return "";
     const sample = d.podReadiness.find((p) => p.podName === podName);
     if (!sample) return "ReadinessProbePending: no simulated HTTP response yet";

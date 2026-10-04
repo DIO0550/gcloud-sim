@@ -24,6 +24,7 @@ import { KubeManifest } from "@/engine/domains/kube-manifest";
 import { KubeReadiness } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
+import { KubeStartup } from "@/engine/domains/kube-startup";
 import {
   KubeDeployment,
   KubePod,
@@ -208,11 +209,17 @@ const deploymentRow = (
 });
 
 const probeSampleFields = (d: KubeDeployment, podName: string): JsonRecord => {
-  if (!Option.isSome(d.readinessProbe) && !Option.isSome(d.livenessProbe)) return {};
+  if (
+    !Option.isSome(d.readinessProbe) &&
+    !Option.isSome(d.livenessProbe) &&
+    !Option.isSome(d.startupProbe)
+  )
+    return {};
   return {
     simulator: {
       ...KubeReadiness.sampleFields(d, podName),
       ...KubeLiveness.sampleFields(d, podName),
+      ...KubeStartup.sampleFields(d, podName),
     },
   };
 };
@@ -233,6 +240,7 @@ const podRow = (
         ...KubeResources.toContainerFields(deployment.resources),
         ...KubeReadiness.fields(deployment.readinessProbe),
         ...KubeLiveness.fields(deployment.livenessProbe),
+        ...KubeStartup.fields(deployment.startupProbe),
       },
     ],
   },
@@ -423,6 +431,7 @@ const collect = (
                       ...KubeResources.toContainerFields(r.resources),
                       ...KubeReadiness.fields(r.readinessProbe),
                       ...KubeLiveness.fields(r.livenessProbe),
+                      ...KubeStartup.fields(r.startupProbe),
                     },
                   ],
                 },
@@ -1065,6 +1074,7 @@ const rollout = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
                     ...KubeResources.toContainerFields(record.resources),
                     ...KubeReadiness.fields(record.readinessProbe),
                     ...KubeLiveness.fields(record.livenessProbe),
+                    ...KubeStartup.fields(record.startupProbe),
                   },
                 ],
               },
@@ -1316,10 +1326,10 @@ export const KubectlCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["sim", "kubernetes", "probe"],
     summary:
-      "Apply one simulated HTTP readiness/liveness response to Deployment Pods (no real request or timers).",
+      "Apply one simulated HTTP readiness/liveness/startup response to Deployment Pods (no real request or timers).",
     positionals: [Positional.required("NAME", "Deployment name.", Candidates.kubeDeployments)],
     flags: [
-      Flag.string("kind", "readiness (default) or liveness.", { singleUse: true }),
+      Flag.string("kind", "readiness (default), liveness or startup.", { singleUse: true }),
       Flag.integer("status-code", "HTTP response code 100..599, required.", { singleUse: true }),
       Flag.string("pod", "Probe only this Pod; omitted selects all Deployment Pods.", {
         singleUse: true,

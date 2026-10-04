@@ -8,8 +8,10 @@ import {
 } from "@/engine/cli/command-spec";
 import { ImagePull } from "@/engine/domains/image-pull";
 import { KubeRuntime } from "@/engine/domains/kube-config";
+import { KubeContainer } from "@/engine/domains/kube-container";
 import { KubeLiveness } from "@/engine/domains/kube-liveness";
 import { KubeReadiness } from "@/engine/domains/kube-readiness";
+import { KubeStartup } from "@/engine/domains/kube-startup";
 import { KubePod } from "@/engine/domains/kubernetes";
 import type { GkeCluster } from "@/engine/domains/managed-services";
 import { World } from "@/engine/domains/world";
@@ -23,14 +25,18 @@ export const probeContainers = (
 ): CommandResult => {
   const invalid = (reason: string) => Result.err(CommandFailure.invalidArgumentWith(reason));
   const kind = Option.unwrapOr(ParsedArgs.string(args, "kind"), "readiness");
-  if (kind !== "readiness" && kind !== "liveness")
-    return invalid("--kind must be readiness or liveness.");
+  if (kind !== "readiness" && kind !== "liveness" && kind !== "startup")
+    return invalid("--kind must be readiness, liveness or startup.");
   const name = ParsedArgs.requiredPositional(args, 0);
   const found = World.findKubeDeployment(ctx.world, cluster, name);
   if (!Option.isSome(found))
     return Result.err(CommandFailure.notFoundWith(`deployment "${name}" not found`));
   const d = found.value;
-  const configured = kind === "liveness" ? d.livenessProbe : d.readinessProbe;
+  const configured = {
+    readiness: d.readinessProbe,
+    liveness: d.livenessProbe,
+    startup: d.startupProbe,
+  }[kind];
   if (!Option.isSome(configured))
     return invalid(`Deployment has no ${kind}Probe; configure it with a manifest first.`);
   const probe = configured.value;
@@ -48,6 +54,44 @@ export const probeContainers = (
       ImagePull.error(ctx.world, cluster, d.image) ||
       KubeRuntime.error(ctx.world.kubeConfigs, d, pod.name);
     if (error) return Result.err(CommandFailure.invalidState(`Cannot probe ${pod.name}: ${error}`));
+    if (kind !== "startup" && !KubeContainer.started(d, pod.name))
+      return Result.err(
+        CommandFailure.invalidState(
+          `StartupProbePending: ${pod.name} must pass startup before readiness/liveness evaluation.`,
+        ),
+      );
+    if (kind === "startup" && KubeContainer.started(d, pod.name))
+      return Result.err(
+        CommandFailure.invalidState(
+          `StartupProbeCompleted: ${pod.name} has already passed startup; it is disabled until container restart.`,
+        ),
+      );
+  }
+  if (kind === "startup") {
+    const samples = pods.map((p) =>
+      KubeStartup.evaluate(
+        probe,
+        p.name,
+        d.podStartup.find((s) => s.podName === p.name),
+        code.value,
+        KubeContainer.restarts(d, p.name),
+      ),
+    );
+    if (samples.some((s) => !Number.isSafeInteger(s.restarts)))
+      return invalid("Container restart count limit reached.");
+    return Result.ok({
+      world: World.replaceKubeDeployment(ctx.world, KubeStartup.withSamples(d, samples)),
+      output: CommandOutput.messages(
+        ...samples.map((s) =>
+          OutputMessage.plain(
+            `${s.podName}: ${s.started ? "Startup succeeded" : "Startup pending"} (HTTP ${s.statusCode}, failure=${s.failures}, RESTARTS=${s.restarts}, restarted=${s.restarted})`,
+          ),
+        ),
+        OutputMessage.hint(
+          "gcloud-sim: startup応答を1回評価しました。成功するまでreadiness/livenessは評価できません。失敗閾値で同じPod内のコンテナを即時再起動し、再びstartupから確認します。実通信・定期実行・待機・backoffはありません。",
+        ),
+      ),
+    });
   }
   if (kind === "liveness") {
     const samples = pods.map((p) =>
@@ -56,6 +100,7 @@ export const probeContainers = (
         p.name,
         d.podLiveness.find((s) => s.podName === p.name),
         code.value,
+        KubeContainer.restarts(d, p.name),
       ),
     );
     if (samples.some((s) => !Number.isSafeInteger(s.restarts)))
@@ -70,7 +115,7 @@ export const probeContainers = (
           ),
         ),
         OutputMessage.hint(
-          "gcloud-sim: liveness応答を1回評価しました。閾値に達すると同じPod内のコンテナを即時再起動し、環境変数を読み直し、readinessを未評価に戻します。実通信・定期実行・待機・backoffは再現しません。",
+          "gcloud-sim: liveness応答を1回評価しました。閾値に達すると同じPod内のコンテナを即時再起動し、環境変数を読み直し、startup/readinessを未評価に戻します。実通信・定期実行・待機・backoffは再現しません。",
         ),
       ),
     });

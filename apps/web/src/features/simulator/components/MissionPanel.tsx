@@ -48,6 +48,8 @@ const assertionLabel = (assertion: Mission["assertions"][number]): string => {
       return "HPAのファイルと設定を一致させ、再評価で3→6レプリカへ増やす";
     case "kubeHpaScaled":
       return "CPU requestとHPAを設定し、教材評価で2→4レプリカへ増やす";
+    case "kubeStartupGated":
+      return "1つのPodだけ起動確認とreadinessに成功し、もう1つはstartup連続失敗2・再起動0に保つ";
     case "kubeLivenessRecovered":
       return "1つのコンテナだけ再起動し、全PodをReadyに戻してService接続先を2つにする";
     case "kubeReadinessRouted":

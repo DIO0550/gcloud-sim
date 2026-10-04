@@ -7,6 +7,7 @@ import { KubeLiveness } from "@/engine/domains/kube-liveness";
 import { KubeReadiness } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
+import { KubeStartup } from "@/engine/domains/kube-startup";
 
 import { KubePod, KubeService } from "@/engine/domains/kubernetes";
 import { CloudRunService, GkeCluster } from "@/engine/domains/managed-services";
@@ -132,6 +133,28 @@ export const KubeDeploymentProperties = ({
             { label: "limits", value: KubeResources.text(d.resources.limits) },
           ]}
         />
+      )}
+      {Option.isSome(d.startupProbe) && (
+        <>
+          <Section
+            title="Startup（HTTP）"
+            rows={[
+              {
+                label: "path / port",
+                value: `${d.startupProbe.value.httpGet.path} : ${d.startupProbe.value.httpGet.port}`,
+              },
+              { label: "失敗閾値", value: String(d.startupProbe.value.failureThreshold) },
+              ...KubePod.fromDeployment(d).map((p) => ({
+                label: p.name,
+                value: KubeStartup.summary(d, p.name),
+              })),
+            ]}
+          />
+          <p className="mb-3 text-sm text-muted">
+            probe
+            --kind=startupで起動を確認します。成功するまでreadiness/livenessは待機し、再起動するとstartupから確認し直します。
+          </p>
+        </>
       )}
       {Option.isSome(d.livenessProbe) && (
         <>

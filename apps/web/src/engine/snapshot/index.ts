@@ -62,6 +62,7 @@ import { type HpaEvaluation, HpaReasons, type KubeHpa } from "@/engine/domains/k
 import { KubeLiveness, type LivenessProbe } from "@/engine/domains/kube-liveness";
 import { KubeReadiness, type ReadinessProbe } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
+import { KubeStartup, type StartupProbe } from "@/engine/domains/kube-startup";
 import {
   type KubeDeployment,
   type KubeService,
@@ -124,11 +125,12 @@ import { Result } from "@/utils/Result";
  * v14 はHPAの設定と前回の教材評価を持つ。
  * v15 はreadinessProbeとPodごとの明示した応答の判定を持つ。
  * v16 はlivenessProbeとPod内コンテナの再起動回数・判定を持つ。
+ * v17 はstartupProbeと起動判定、probe間で共通の再起動回数を持つ。
  */
-export const SchemaVersion = 16;
+export const SchemaVersion = 17;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
-const MigratableVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] as const;
+const MigratableVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
 export type Snapshot = Readonly<{
@@ -563,6 +565,8 @@ const readinessProbe: Decoder<ReadinessProbe> = (value, path) =>
   Result.mapErr(KubeReadiness.parse(value), (reason) => `${path}: ${reason}`);
 const livenessProbe: Decoder<LivenessProbe> = (value, path) =>
   Result.mapErr(KubeLiveness.parse(value), (reason) => `${path}: ${reason}`);
+const startupProbe: Decoder<StartupProbe> = (value, path) =>
+  Result.mapErr(KubeStartup.parse(value), (reason) => `${path}: ${reason}`);
 const kubeDeployment = D.object<KubeDeployment>({
   labels: stringMap,
   selector: stringMap,
@@ -571,6 +575,7 @@ const kubeDeployment = D.object<KubeDeployment>({
   resources: kubeResources,
   readinessProbe: D.option(readinessProbe),
   livenessProbe: D.option(livenessProbe),
+  startupProbe: D.option(startupProbe),
   projectId: string,
   cluster: string,
   name: string,
@@ -590,6 +595,7 @@ const kubeDeployment = D.object<KubeDeployment>({
         "resources",
         "readiness",
         "liveness",
+        "startup",
         "labels",
         "restart",
         "undo",
@@ -599,10 +605,22 @@ const kubeDeployment = D.object<KubeDeployment>({
       resources: kubeResources,
       readinessProbe: D.option(readinessProbe),
       livenessProbe: D.option(livenessProbe),
+      startupProbe: D.option(startupProbe),
       env: D.array(kubeEnv),
     }),
   ),
   env: D.array(kubeEnv),
+  podRestarts: D.array(D.object({ podName: string, restarts: D.number })),
+  podStartup: D.array(
+    D.object({
+      podName: string,
+      statusCode: D.number,
+      failures: D.number,
+      restarts: D.number,
+      restarted: D.boolean,
+      started: D.boolean,
+    }),
+  ),
   podLiveness: D.array(
     D.object({
       podName: string,
@@ -1016,8 +1034,13 @@ const migrateReadinessDeployment = (
   };
 };
 
-const migrateKubeDeployment = (version: number, value: unknown, podNetwork: number): unknown => {
+const migrateLivenessDeployment = (
+  version: number,
+  value: unknown,
+  podNetwork: number,
+): unknown => {
   const d = migrateReadinessDeployment(version, value, podNetwork);
+  if (version >= 16) return d;
   if (!isRecord(d)) return d;
   return {
     ...d,
@@ -1025,6 +1048,24 @@ const migrateKubeDeployment = (version: number, value: unknown, podNetwork: numb
     podLiveness: [],
     revisions: Array.isArray(d.revisions)
       ? d.revisions.map((r) => (isRecord(r) ? { ...r, livenessProbe: Option.none } : r))
+      : d.revisions,
+  };
+};
+
+const migrateKubeDeployment = (version: number, value: unknown, podNetwork: number): unknown => {
+  const d = migrateLivenessDeployment(version, value, podNetwork);
+  if (!isRecord(d)) return d;
+  return {
+    ...d,
+    startupProbe: Option.none,
+    podStartup: [],
+    podRestarts: Array.isArray(d.podLiveness)
+      ? d.podLiveness
+          .filter((p) => isRecord(p) && p.restarts !== 0)
+          .map((p) => ({ podName: p.podName, restarts: p.restarts }))
+      : d.podLiveness,
+    revisions: Array.isArray(d.revisions)
+      ? d.revisions.map((r) => (isRecord(r) ? { ...r, startupProbe: Option.none } : r))
       : d.revisions,
   };
 };
