@@ -80,6 +80,7 @@ export const buildSatisfied = (world: World, assertion: BuildAssertion): boolean
       (d) =>
         d.projectId === cluster.projectId &&
         d.cluster === cluster.name &&
+        d.namespace === "default" &&
         d.name === "hello" &&
         d.image === image &&
         d.replicas === 2,
@@ -88,6 +89,7 @@ export const buildSatisfied = (world: World, assertion: BuildAssertion): boolean
       (s) =>
         s.projectId === cluster.projectId &&
         s.cluster === cluster.name &&
+        s.namespace === "default" &&
         s.name === "hello" &&
         KubeLabels.equal(s.selector, { app: "hello" }) &&
         s.type === "LoadBalancer" &&

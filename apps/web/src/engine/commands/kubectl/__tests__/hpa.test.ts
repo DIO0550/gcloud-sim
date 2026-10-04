@@ -198,7 +198,7 @@ test("duplicates, unavailable targets, unsupported operations, API, namespace an
   rejected(s, "kubectl autoscale deployment hpa-web --max=5 --name=other", "Only one HPA");
   rejected(s, "kubectl autoscale deployment missing --max=5", "not found");
   rejected(s, "sim kubernetes reconcile hpa-web", "--cpu is required");
-  rejected(s, "kubectl get hpa -n other", "Only namespace default");
+  rejected(s, "kubectl get hpa -n other", 'namespaces "other" not found');
   rejected(s, "kubectl get hpa -l app=hpa-web", "--selector supports");
   rejected(s, "kubectl delete hpa missing", "not found");
   rejected(s, "kubectl get hpa missing", "not found");

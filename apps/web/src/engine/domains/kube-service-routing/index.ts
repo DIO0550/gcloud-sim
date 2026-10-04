@@ -14,7 +14,7 @@ export const KubeServiceRouting = {
   ): readonly Readonly<{ deployment: string; pod: string; endpoint: string }>[] {
     const cluster = World.findCluster(world, service.projectId, service.cluster);
     if (!Option.isSome(cluster)) return [];
-    return World.kubeDeploymentsOf(world, cluster.value).flatMap((d) => {
+    return World.kubeDeploymentsOf(world, cluster.value, service.namespace).flatMap((d) => {
       if (
         !KubeLabels.matches(service.selector, d.podLabels) ||
         ImagePull.error(world, cluster.value, d.image)

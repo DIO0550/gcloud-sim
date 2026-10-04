@@ -7,12 +7,13 @@ import { KubeStartup, type StartupProbe } from "@/engine/domains/kube-startup";
 import { KubeDeployment, KubeName, KubeServiceType } from "@/engine/domains/kubernetes";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
-import { fail, fields, record } from "./validation";
+import { fail, fields, namespace, record } from "./validation";
 
 export type WorkloadManifest =
   | Readonly<{
       kind: "deployment";
       name: string;
+      namespace: string | undefined;
       image: string;
       replicas: number | undefined;
       env: readonly KubeEnv[];
@@ -27,6 +28,7 @@ export type WorkloadManifest =
   | Readonly<{
       kind: "service";
       name: string;
+      namespace: string | undefined;
       type: KubeServiceType;
       selector: KubeLabels;
       labels: KubeLabels;
@@ -80,8 +82,7 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
   const meta = record(r.metadata, "metadata");
   fields(meta, ["name", "namespace", "labels"], "metadata");
   const labels = labelMap(meta.labels === undefined ? {} : meta.labels);
-  if (meta.namespace !== undefined && meta.namespace !== "default")
-    return fail("Only namespace default is supported on gcloud-sim.");
+  const ns = namespace(meta.namespace);
   if (typeof meta.name !== "string" || !Result.isOk(KubeName.parse(meta.name)))
     return fail("Invalid metadata.name.");
   const spec = record(r.spec, "spec");
@@ -105,6 +106,7 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
     return {
       kind: "service",
       name: meta.name,
+      namespace: ns,
       type: type.value,
       selector,
       labels,
@@ -158,6 +160,7 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
   const valid = KubeDeployment.create({
     projectId: "",
     cluster: "",
+    namespace: ns ?? "default",
     name: meta.name,
     image: container.image,
     replicas: Option.fromNullable(spec.replicas),
@@ -167,6 +170,7 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
   return {
     kind: "deployment",
     name: meta.name,
+    namespace: ns,
     image: container.image,
     replicas: spec.replicas,
     env,

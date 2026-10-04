@@ -1,3 +1,4 @@
+import { KubeNamespace } from "@/engine/domains/kube-namespace";
 export const fail = (message: string): never => {
   throw new Error(message);
 };
@@ -13,4 +14,11 @@ export const fields = (
 ): void => {
   if (Object.keys(value).some((key) => !allowed.includes(key)))
     fail(`Unsupported field in ${field}. Supported: ${allowed.join(", ")}.`);
+};
+
+export const namespace = (value: unknown): string | undefined => {
+  if (value === undefined) return undefined;
+  if (!KubeNamespace.valid(value))
+    return fail("metadata.namespace must be a lowercase DNS label of at most 63 characters.");
+  return value;
 };

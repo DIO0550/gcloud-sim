@@ -278,7 +278,7 @@ test("Service type transition is rejected atomically instead of fabricating IP a
 const invalidManifests = [
   { ...deployment(), apiVersion: "v1" },
   { ...deployment(), metadata: { name: "Bad" } },
-  { ...deployment(), metadata: { name: "web", namespace: "other" } },
+  { ...deployment(), metadata: { name: "web", namespace: "INVALID" } },
   { ...deployment(), metadata: { name: "web", labels: { tier: true } } },
   { ...deployment(), spec: { ...deployment().spec, replicas: -1 } },
   { ...deployment(), spec: { ...deployment().spec, replicas: 1001 } },

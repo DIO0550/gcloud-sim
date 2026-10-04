@@ -102,7 +102,7 @@ test("YAML and JSON create/apply preserve identical HPA state and existing evalu
     execute(s, "kubectl apply -f autoscale-web.yaml", "kubectl apply -f autoscale-hpa.yaml").world,
   ).toEqual(s.world);
   expect(restore(s).world).toEqual(s.world);
-  expect(Snapshot.create(s.world, Now).schemaVersion).toBe(17);
+  expect(Snapshot.create(s.world, Now).schemaVersion).toBe(18);
   rejected(s, "kubectl create -f autoscale-hpa.yaml", "already exists");
 });
 test("configuration changes clear the sample, preserve creation time and Pods, and require explicit reevaluation", () => {
@@ -203,7 +203,7 @@ test("delete by file uses the HPA name, leaves its Deployment, and can delete af
 
 test.each([
   ["apiVersion", "autoscaling/v1"],
-  ["metadata.namespace", "other"],
+  ["metadata.namespace", "INVALID"],
   ["metadata.name", "BAD"],
   ["metadata.labels", { app: "web" }],
   ["spec", null],
@@ -335,7 +335,7 @@ test("API and cluster boundaries are enforced; same named HPA in another cluster
   const disabled = execute(session(), "sim files load kubernetes-hpa");
   rejected(disabled, "kubectl apply -f autoscale-hpa.yaml", "container.googleapis.com");
   const s = evaluated();
-  rejected(s, "kubectl apply -f autoscale-hpa.yaml -n other", "Only namespace default");
+  rejected(s, "kubectl apply -f autoscale-hpa.yaml -n other", 'namespaces "other" not found');
   const other = execute(
     s,
     "gcloud container clusters create-auto other --region=us-central1",

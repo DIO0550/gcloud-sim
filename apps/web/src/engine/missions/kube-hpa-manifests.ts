@@ -34,6 +34,7 @@ export const kubeHpaManifestSatisfied = (world: World): boolean => {
     (h) =>
       h.projectId === F.devProjectId &&
       h.cluster === "hpa-manifest-gke" &&
+      h.namespace === "default" &&
       h.name === "autoscale-web",
   );
   if (
@@ -45,7 +46,11 @@ export const kubeHpaManifestSatisfied = (world: World): boolean => {
   )
     return false;
   const d = world.kubeDeployments.find(
-    (d) => d.projectId === h.projectId && d.cluster === h.cluster && d.name === h.target,
+    (d) =>
+      d.projectId === h.projectId &&
+      d.cluster === h.cluster &&
+      d.namespace === "default" &&
+      d.name === h.target,
   );
   if (d?.image !== "nginx:1" || d.replicas !== 6 || d.resources.requests.cpu !== "250m")
     return false;

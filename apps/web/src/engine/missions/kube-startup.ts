@@ -34,7 +34,11 @@ export const KubeStartupMissions: readonly Mission[] = [
 ];
 export const kubeStartupSatisfied = (world: World): boolean => {
   const d = world.kubeDeployments.find(
-    (d) => d.projectId === F.devProjectId && d.cluster === "startup-gke" && d.name === "slow-web",
+    (d) =>
+      d.projectId === F.devProjectId &&
+      d.cluster === "startup-gke" &&
+      d.namespace === "default" &&
+      d.name === "slow-web",
   );
   if (d?.image !== "nginx:1" || d.replicas !== 2 || d.env.length !== 0) return false;
   if (
@@ -73,7 +77,11 @@ export const kubeStartupSatisfied = (world: World): boolean => {
   )
     return false;
   const service = world.kubeServices.find(
-    (s) => s.projectId === d.projectId && s.cluster === d.cluster && s.name === "slow-service",
+    (s) =>
+      s.projectId === d.projectId &&
+      s.cluster === d.cluster &&
+      s.namespace === "default" &&
+      s.name === "slow-service",
   );
   if (service?.port !== 80 || service.targetPort !== 8080) return false;
   const backends = KubeServiceRouting.backends(world, service);

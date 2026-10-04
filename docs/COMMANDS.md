@@ -23,6 +23,8 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 
 ## 実装済み（302）
 
+Kubernetesは`kubectl create/get/describe/delete namespace`（`ns`別名）とNamespace manifestに対応します。各kubectl操作と`sim kubernetes probe/reconcile`で`-n/--namespace`を使い、`kubectl get -A/--all-namespaces`でnamespaceを横断した一覧を確認できます。省略時は`default`です。詳細は[KUBERNETES.md](KUBERNETES.md)。
+
 ### Cloud Build
 
 固定教材をビルドしてArtifact Registryへ登録します。呼び出し元のbuilds権限とサービスアカウントのactAs、実行SAのレジストリ書込権限は別に検証します。操作例・制約は[CONTAINERS.md](CONTAINERS.md)。

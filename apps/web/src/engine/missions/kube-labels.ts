@@ -31,8 +31,8 @@ export const KubeLabelMissions: readonly Mission[] = [
 ];
 
 export const kubeLabelsSatisfied = (world: World): boolean => {
-  const matches = (r: { projectId: string; cluster: string }) =>
-    r.projectId === F.devProjectId && r.cluster === "labels-gke";
+  const matches = (r: { projectId: string; cluster: string; namespace: string }) =>
+    r.projectId === F.devProjectId && r.cluster === "labels-gke" && r.namespace === "default";
   for (const [track, image] of [
     ["blue", "nginx:1"],
     ["green", "nginx:2"],

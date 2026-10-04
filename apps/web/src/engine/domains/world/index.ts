@@ -30,6 +30,7 @@ import { KubeHpa } from "@/engine/domains/kube-hpa";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeLiveness } from "@/engine/domains/kube-liveness";
 import { KubeManifest } from "@/engine/domains/kube-manifest";
+import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { KubeReadiness } from "@/engine/domains/kube-readiness";
 import { KubeStartup } from "@/engine/domains/kube-startup";
 import { KubeDeployment, type KubeService } from "@/engine/domains/kubernetes";
@@ -104,6 +105,7 @@ export type World = Readonly<{
   instanceTemplates: readonly InstanceTemplate[];
   instanceGroups: readonly ManagedInstanceGroup[];
   nodePools: readonly NodePool[];
+  kubeNamespaces: readonly KubeNamespace[];
   kubeDeployments: readonly KubeDeployment[];
   kubeServices: readonly KubeService[];
   kubeHpas: readonly KubeHpa[];
@@ -182,6 +184,11 @@ const sameInCluster =
     item.cluster === target.cluster &&
     item.name === target.name;
 
+const sameKubeResource =
+  (target: InCluster & { namespace: string }) =>
+  (item: InCluster & { namespace: string }): boolean =>
+    sameInCluster(target)(item) && item.namespace === target.namespace;
+
 /**
  * `(projectId, name)` で一意に引ける集合のキー。`World` のうち要素がその形を持つ配列だけ。
  * `projects` は `name` が表示名で同一性は `projectId`、`operations` はリソースではなく履歴なので外す。
@@ -242,7 +249,8 @@ const locationOf = <K extends LocatedCollection>(key: K, item: NamedItem<K>): st
 const identityOf = <K extends NamedCollection>(key: K, item: NamedItem<K>): string => {
   if ("cluster" in item) {
     const kind = "kind" in item ? `${item.kind}/` : "";
-    return `${item.projectId}/${item.cluster}/${kind}${item.name}`;
+    const namespace = "namespace" in item ? `${item.namespace}/` : "";
+    return `${item.projectId}/${item.cluster}/${namespace}${kind}${item.name}`;
   }
   if (isLocated(key))
     return `${item.projectId}/${locationOf<LocatedCollection>(key, item as NamedItem<LocatedCollection>)}/${item.name}`;
@@ -269,6 +277,7 @@ const NamedCollectionKeys = [
   "instanceTemplates",
   "instanceGroups",
   "nodePools",
+  "kubeNamespaces",
   "kubeDeployments",
   "kubeServices",
   "kubeHpas",
@@ -1019,6 +1028,7 @@ export const World = {
     return {
       ...World.withoutNamed(world, "clusters", cluster),
       nodePools: world.nodePools.filter((p) => !belongs(p)),
+      kubeNamespaces: world.kubeNamespaces.filter((n) => !belongs(n)),
       kubeDeployments: world.kubeDeployments.filter((d) => !belongs(d)),
       kubeServices: world.kubeServices.filter((s) => !belongs(s)),
       kubeHpas: world.kubeHpas.filter((h) => !belongs(h)),
@@ -1051,15 +1061,24 @@ export const World = {
   },
 
   /** クラスタの Kubernetes リソース（Deployment）。名前順。 */
-  kubeDeploymentsOf(world: World, cluster: GkeCluster): readonly KubeDeployment[] {
+  kubeDeploymentsOf(
+    world: World,
+    cluster: GkeCluster,
+    namespace = "default",
+  ): readonly KubeDeployment[] {
     return world.kubeDeployments
-      .filter(inCluster(cluster))
+      .filter((r) => inCluster(cluster)(r) && r.namespace === namespace)
       .toSorted((a, b) => a.name.localeCompare(b.name));
   },
 
-  findKubeDeployment(world: World, cluster: GkeCluster, name: string): Option<KubeDeployment> {
+  findKubeDeployment(
+    world: World,
+    cluster: GkeCluster,
+    name: string,
+    namespace = "default",
+  ): Option<KubeDeployment> {
     return Option.fromNullable(
-      World.kubeDeploymentsOf(world, cluster).find((d) => d.name === name),
+      World.kubeDeploymentsOf(world, cluster, namespace).find((d) => d.name === name),
     );
   },
 
@@ -1074,7 +1093,7 @@ export const World = {
     if (podNetwork >= 16384)
       return Result.err({ resource: "all simulated Pod networks (16384 per cluster)" });
     return addUnique(
-      world.kubeDeployments.some(sameInCluster(deployment)),
+      world.kubeDeployments.some(sameKubeResource(deployment)),
       `deployments.apps "${deployment.name}"`,
       () => ({
         ...world,
@@ -1099,7 +1118,7 @@ export const World = {
       ...world,
       kubeDeployments: replaceBy(
         world.kubeDeployments,
-        sameInCluster(deployment),
+        sameKubeResource(deployment),
         KubeReadiness.reconcile(
           KubeLiveness.reconcile(
             KubeStartup.reconcile(
@@ -1112,7 +1131,7 @@ export const World = {
   },
 
   withoutKubeDeployment(world: World, deployment: KubeDeployment): World {
-    const same = sameInCluster(deployment);
+    const same = sameKubeResource(deployment);
     return { ...world, kubeDeployments: world.kubeDeployments.filter((d) => !same(d)) };
   },
 
@@ -1124,26 +1143,33 @@ export const World = {
     };
   },
 
-  kubeServicesOf(world: World, cluster: GkeCluster): readonly KubeService[] {
+  kubeServicesOf(world: World, cluster: GkeCluster, namespace = "default"): readonly KubeService[] {
     return world.kubeServices
-      .filter(inCluster(cluster))
+      .filter((r) => inCluster(cluster)(r) && r.namespace === namespace)
       .toSorted((a, b) => a.name.localeCompare(b.name));
   },
 
-  findKubeService(world: World, cluster: GkeCluster, name: string): Option<KubeService> {
-    return Option.fromNullable(World.kubeServicesOf(world, cluster).find((s) => s.name === name));
+  findKubeService(
+    world: World,
+    cluster: GkeCluster,
+    name: string,
+    namespace = "default",
+  ): Option<KubeService> {
+    return Option.fromNullable(
+      World.kubeServicesOf(world, cluster, namespace).find((s) => s.name === name),
+    );
   },
 
   withKubeService(world: World, service: KubeService): Result<World, AlreadyExists> {
     return addUnique(
-      world.kubeServices.some(sameInCluster(service)),
+      world.kubeServices.some(sameKubeResource(service)),
       `services "${service.name}"`,
       () => ({ ...world, kubeServices: [...world.kubeServices, service] }),
     );
   },
 
   withoutKubeService(world: World, service: KubeService): World {
-    const same = sameInCluster(service);
+    const same = sameKubeResource(service);
     return { ...world, kubeServices: world.kubeServices.filter((s) => !same(s)) };
   },
 
@@ -1351,6 +1377,27 @@ export const World = {
   validate(world: World): Result<World, string> {
     if (!KubeManifest.validFiles(world.kubeFiles))
       return Result.err("Invalid Kubernetes virtual files.");
+    for (const n of world.kubeNamespaces) {
+      if (
+        !KubeNamespace.valid(n.name) ||
+        KubeNamespace.builtin(n.name) ||
+        !Number.isFinite(Date.parse(n.createdAt))
+      )
+        return Result.err("Invalid custom Kubernetes namespace.");
+    }
+    for (const r of [
+      ...world.kubeDeployments,
+      ...world.kubeServices,
+      ...world.kubeConfigs,
+      ...world.kubeHpas,
+    ]) {
+      const cluster = World.findCluster(world, r.projectId, r.cluster);
+      if (
+        !KubeNamespace.valid(r.namespace) ||
+        (Option.isSome(cluster) && !KubeNamespace.exists(world, cluster.value, r.namespace))
+      )
+        return Result.err("Kubernetes resource belongs to a missing or invalid namespace.");
+    }
     for (const deployment of world.kubeDeployments) {
       const checked = KubeDeployment.validate(deployment);
       if (!Result.isOk(checked)) return Result.err(checked.error);
@@ -1360,7 +1407,9 @@ export const World = {
     );
     if (new Set(networks).size !== networks.length)
       return Result.err("Duplicate Kubernetes Pod network.");
-    const hpaTargets = world.kubeHpas.map((h) => `${h.projectId}/${h.cluster}/${h.target}`);
+    const hpaTargets = world.kubeHpas.map(
+      (h) => `${h.projectId}/${h.cluster}/${h.namespace}/${h.target}`,
+    );
     if (new Set(hpaTargets).size !== hpaTargets.length)
       return Result.err("Only one HPA per Deployment is supported.");
     for (const h of world.kubeHpas) {
@@ -1375,7 +1424,7 @@ export const World = {
         return Result.err("Invalid Service labels or selector.");
     }
     const configIds = world.kubeConfigs.map(
-      (c) => `${c.projectId}/${c.cluster}/${c.kind}/${c.name}`,
+      (c) => `${c.projectId}/${c.cluster}/${c.namespace}/${c.kind}/${c.name}`,
     );
     if (new Set(configIds).size !== configIds.length)
       return Result.err("Duplicate Kubernetes configuration.");
@@ -1484,6 +1533,7 @@ const validateReferences = (world: World): Result<World, string> => {
   }
   const clusterless = [
     ...world.nodePools,
+    ...world.kubeNamespaces,
     ...world.kubeDeployments,
     ...world.kubeServices,
     ...world.kubeHpas,

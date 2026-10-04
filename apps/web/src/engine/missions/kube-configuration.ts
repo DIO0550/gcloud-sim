@@ -70,13 +70,18 @@ export const kubeConfigurationSatisfied = (
   assertion: KubeConfigurationAssertion,
 ): boolean => {
   const d = world.kubeDeployments.find(
-    (d) => d.projectId === F.devProjectId && d.cluster === "config-gke" && d.name === "config-web",
+    (d) =>
+      d.projectId === F.devProjectId &&
+      d.cluster === "config-gke" &&
+      d.namespace === "default" &&
+      d.name === "config-web",
   );
   if (d?.replicas !== 2 || d.image !== "nginx:1") return false;
   const config = world.kubeConfigs.find(
     (c) =>
       c.projectId === d.projectId &&
       c.cluster === d.cluster &&
+      c.namespace === "default" &&
       c.kind === "configmap" &&
       c.name === "app-config",
   );
@@ -107,6 +112,7 @@ export const kubeConfigurationSatisfied = (
     (c) =>
       c.projectId === d.projectId &&
       c.cluster === d.cluster &&
+      c.namespace === "default" &&
       c.kind === "secret" &&
       c.name === "app-secret",
   );

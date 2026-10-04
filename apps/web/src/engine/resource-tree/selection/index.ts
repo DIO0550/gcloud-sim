@@ -37,16 +37,36 @@ export type TreeSelection =
   | Readonly<{ kind: "bucket"; name: string }>
   | Readonly<{ kind: "cluster"; projectId: string; name: string }>
   | Readonly<{ kind: "node-pool"; projectId: string; cluster: string; name: string }>
-  | Readonly<{ kind: "kube-deployment"; projectId: string; cluster: string; name: string }>
+  | Readonly<{ kind: "kube-namespace"; projectId: string; cluster: string; name: string }>
+  | Readonly<{
+      kind: "kube-deployment";
+      projectId: string;
+      cluster: string;
+      namespace?: string;
+      name: string;
+    }>
   | Readonly<{
       kind: "kube-config";
+      namespace?: string;
       resourceKind: "configmap" | "secret";
       projectId: string;
       cluster: string;
       name: string;
     }>
-  | Readonly<{ kind: "kube-hpa"; projectId: string; cluster: string; name: string }>
-  | Readonly<{ kind: "kube-service"; projectId: string; cluster: string; name: string }>
+  | Readonly<{
+      kind: "kube-hpa";
+      projectId: string;
+      cluster: string;
+      namespace?: string;
+      name: string;
+    }>
+  | Readonly<{
+      kind: "kube-service";
+      projectId: string;
+      cluster: string;
+      namespace?: string;
+      name: string;
+    }>
   | Readonly<{ kind: "run-service"; projectId: string; name: string }>
   | Readonly<{ kind: "function"; projectId: string; region: Region; name: string }>
   | Readonly<{ kind: "app-engine"; projectId: string }>
@@ -148,14 +168,16 @@ export const TreeSelection = {
         return `cluster:${selection.projectId}/${selection.name}`;
       case "node-pool":
         return `pool:${selection.projectId}/${selection.cluster}/${selection.name}`;
+      case "kube-namespace":
+        return `namespace:${selection.projectId}/${selection.cluster}/${selection.name}`;
       case "kube-deployment":
-        return `deploy:${selection.projectId}/${selection.cluster}/${selection.name}`;
+        return `deploy:${selection.projectId}/${selection.cluster}/${selection.namespace && selection.namespace !== "default" ? `${selection.namespace}/` : ""}${selection.name}`;
       case "kube-config":
-        return `kube-config:${selection.projectId}/${selection.cluster}/${selection.resourceKind}/${selection.name}`;
+        return `kube-config:${selection.projectId}/${selection.cluster}/${selection.namespace && selection.namespace !== "default" ? `${selection.namespace}/` : ""}${selection.resourceKind}/${selection.name}`;
       case "kube-hpa":
-        return `hpa:${selection.projectId}/${selection.cluster}/${selection.name}`;
+        return `hpa:${selection.projectId}/${selection.cluster}/${selection.namespace && selection.namespace !== "default" ? `${selection.namespace}/` : ""}${selection.name}`;
       case "kube-service":
-        return `svc:${selection.projectId}/${selection.cluster}/${selection.name}`;
+        return `svc:${selection.projectId}/${selection.cluster}/${selection.namespace && selection.namespace !== "default" ? `${selection.namespace}/` : ""}${selection.name}`;
       case "run-service":
         return `run:${selection.projectId}/${selection.name}`;
       case "function":
@@ -277,14 +299,24 @@ export const TreeSelection = {
         return Option.some(
           `gcloud container node-pools describe ${selection.name} --cluster=${selection.cluster}`,
         );
+      case "kube-namespace":
+        return Option.some(`kubectl describe namespace ${selection.name}`);
       case "kube-deployment":
-        return Option.some(`kubectl describe deployment ${selection.name}`);
+        return Option.some(
+          `kubectl describe deployment ${selection.name}${selection.namespace && selection.namespace !== "default" ? ` --namespace=${selection.namespace}` : ""}`,
+        );
       case "kube-config":
-        return Option.some(`kubectl describe ${selection.resourceKind} ${selection.name}`);
+        return Option.some(
+          `kubectl describe ${selection.resourceKind} ${selection.name}${selection.namespace && selection.namespace !== "default" ? ` --namespace=${selection.namespace}` : ""}`,
+        );
       case "kube-hpa":
-        return Option.some(`kubectl describe hpa ${selection.name}`);
+        return Option.some(
+          `kubectl describe hpa ${selection.name}${selection.namespace && selection.namespace !== "default" ? ` --namespace=${selection.namespace}` : ""}`,
+        );
       case "kube-service":
-        return Option.some(`kubectl describe service ${selection.name}`);
+        return Option.some(
+          `kubectl describe service ${selection.name}${selection.namespace && selection.namespace !== "default" ? ` --namespace=${selection.namespace}` : ""}`,
+        );
       case "run-service":
         return Option.some(`gcloud run services describe ${selection.name}`);
       case "function":

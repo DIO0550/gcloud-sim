@@ -133,7 +133,7 @@ test("viewer can inspect status/history but cannot mutate; context and namespace
     "kubectl rollout undo deployment/web",
   ])
     rejected(s, c, "container.deployments.update");
-  rejected(s, "kubectl rollout history deployment/web -n other", "Only namespace default");
+  rejected(s, "kubectl rollout history deployment/web -n other", 'namespaces "other" not found');
   const other = execute(
     ready(),
     "gcloud container clusters create-auto other --region=us-central1",

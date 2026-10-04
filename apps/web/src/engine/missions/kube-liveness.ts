@@ -32,7 +32,11 @@ export const KubeLivenessMissions: readonly Mission[] = [
 ];
 export const kubeLivenessSatisfied = (world: World): boolean => {
   const d = world.kubeDeployments.find(
-    (d) => d.projectId === F.devProjectId && d.cluster === "liveness-gke" && d.name === "live-web",
+    (d) =>
+      d.projectId === F.devProjectId &&
+      d.cluster === "liveness-gke" &&
+      d.namespace === "default" &&
+      d.name === "live-web",
   );
   if (d?.image !== "nginx:1" || d.replicas !== 2 || d.env.length !== 0) return false;
   if (
@@ -67,7 +71,11 @@ export const kubeLivenessSatisfied = (world: World): boolean => {
   if (!d.podLiveness.some((p) => p.restarts === 1 && p.statusCode === 200 && !p.restarted))
     return false;
   const service = world.kubeServices.find(
-    (s) => s.projectId === d.projectId && s.cluster === d.cluster && s.name === "live-service",
+    (s) =>
+      s.projectId === d.projectId &&
+      s.cluster === d.cluster &&
+      s.namespace === "default" &&
+      s.name === "live-service",
   );
   if (service?.port !== 80 || service.targetPort !== 8080) return false;
   const backends = KubeServiceRouting.backends(world, service);

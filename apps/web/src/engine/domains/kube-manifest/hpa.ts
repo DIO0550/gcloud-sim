@@ -1,11 +1,12 @@
 import { KubeHpa } from "@/engine/domains/kube-hpa";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
-import { fail, fields, record } from "./validation";
+import { fail, fields, namespace, record } from "./validation";
 
 export type HpaManifest = Readonly<{
   kind: "hpa";
   name: string;
+  namespace: string | undefined;
   target: string;
   minReplicas: number;
   maxReplicas: number;
@@ -17,8 +18,7 @@ export const parseHpa = (r: Record<string, unknown>): HpaManifest => {
   fields(r, ["apiVersion", "kind", "metadata", "spec"], "HPA manifest");
   const meta = record(r.metadata, "metadata");
   fields(meta, ["name", "namespace"], "HPA metadata");
-  if (meta.namespace !== undefined && meta.namespace !== "default")
-    return fail("Only namespace default is supported on gcloud-sim.");
+  const ns = namespace(meta.namespace);
   if (typeof meta.name !== "string") return fail("metadata.name must be a string.");
   const spec = record(r.spec, "HPA spec");
   fields(spec, ["scaleTargetRef", "minReplicas", "maxReplicas", "metrics"], "HPA spec");
@@ -47,6 +47,7 @@ export const parseHpa = (r: Record<string, unknown>): HpaManifest => {
   const h = KubeHpa.validate({
     projectId: "",
     cluster: "",
+    namespace: ns ?? "default",
     name: meta.name,
     target: ref.name,
     minReplicas: min,
@@ -59,6 +60,7 @@ export const parseHpa = (r: Record<string, unknown>): HpaManifest => {
   return {
     kind: "hpa",
     name: h.value.name,
+    namespace: ns,
     target: h.value.target,
     minReplicas: h.value.minReplicas,
     maxReplicas: h.value.maxReplicas,

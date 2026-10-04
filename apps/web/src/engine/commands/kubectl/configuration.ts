@@ -14,6 +14,7 @@ import { Principal } from "@/engine/domains/principal";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
+import type { KubectlContext } from "./context";
 
 export const kubePermission = (ctx: ProjectContext, permission: string) =>
   Result.mapErr(
@@ -28,7 +29,7 @@ export const kubePermission = (ctx: ProjectContext, permission: string) =>
   );
 const invalid = (message: string) => Result.err(CommandFailure.invalidArgumentWith(message));
 export const createConfig = (
-  ctx: ProjectContext,
+  ctx: KubectlContext,
   args: ParsedArgs,
   cluster: GkeCluster,
   kind: KubeConfig["kind"],
@@ -39,6 +40,7 @@ export const createConfig = (
       (c) =>
         c.projectId === cluster.projectId &&
         c.cluster === cluster.name &&
+        c.namespace === ctx.namespace &&
         c.kind === kind &&
         c.name === name,
     )
@@ -53,6 +55,7 @@ export const createConfig = (
   const config = KubeConfig.validate({
     projectId: cluster.projectId,
     cluster: cluster.name,
+    namespace: ctx.namespace,
     kind,
     name,
     data,
@@ -67,7 +70,7 @@ export const createConfig = (
 };
 
 export const setEnv = (
-  ctx: ProjectContext,
+  ctx: KubectlContext,
   args: ParsedArgs,
   cluster: GkeCluster,
   d: KubeDeployment,
@@ -111,6 +114,7 @@ export const setEnv = (
       (c) =>
         c.projectId === cluster.projectId &&
         c.cluster === cluster.name &&
+        c.namespace === ctx.namespace &&
         c.kind === match[1] &&
         c.name === match[2],
     );

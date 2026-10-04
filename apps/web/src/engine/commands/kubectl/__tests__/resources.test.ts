@@ -258,7 +258,11 @@ test("permission, API and namespace guards apply; completion and help expose the
     "container.googleapis.com",
   );
   const s = ready();
-  rejected(s, "kubectl set resources deployment/web --requests=cpu=100m --namespace=other");
+  rejected(
+    s,
+    "kubectl set resources deployment/web --requests=cpu=100m --namespace=other",
+    'namespaces "other" not found',
+  );
   const viewer = execute(
     s,
     "gcloud projects add-iam-policy-binding ace-dev-01 --member=user:viewer@example.com --role=roles/container.viewer",

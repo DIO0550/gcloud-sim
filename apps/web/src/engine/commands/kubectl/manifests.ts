@@ -1,22 +1,19 @@
 import { CommandFailure } from "@/engine/cli/command-failure";
-import {
-  CommandOutput,
-  type CommandResult,
-  OutputMessage,
-  type ProjectContext,
-} from "@/engine/cli/command-spec";
+import { CommandOutput, type CommandResult, OutputMessage } from "@/engine/cli/command-spec";
 import { KubeConfig } from "@/engine/domains/kube-config";
 import { KubeManifest } from "@/engine/domains/kube-manifest";
 import type { GkeCluster } from "@/engine/domains/managed-services";
 import { World } from "@/engine/domains/world";
 import { Result } from "@/utils/Result";
 import { kubePermission } from "./configuration";
+import { type KubectlContext, requireNamespace } from "./context";
 import { applyHpa } from "./hpa-manifests";
+import { applyNamespace } from "./namespaces";
 import { applyWorkload } from "./workload-manifests";
 
 /** Validate the entire file and permissions before committing any simulated resource. */
 export const applyManifest = (
-  ctx: ProjectContext,
+  ctx: KubectlContext,
   cluster: GkeCluster,
   source: string,
   action: "apply" | "create" | "delete",
@@ -25,16 +22,41 @@ export const applyManifest = (
   if (!Result.isOk(parsed)) return Result.err(CommandFailure.invalidArgumentWith(parsed.error));
   let world = ctx.world;
   const messages: OutputMessage[] = [];
+  const ids = parsed.value.map(
+    (m) => `${m.kind}/${m.kind === "namespace" ? "" : (m.namespace ?? ctx.namespace)}/${m.name}`,
+  );
+  if (new Set(ids).size !== ids.length)
+    return Result.err(
+      CommandFailure.invalidArgumentWith("Duplicate resource in resolved manifest namespace."),
+    );
   for (const manifest of parsed.value) {
+    if (manifest.kind === "namespace") {
+      const applied = applyNamespace({ ...ctx, world }, cluster, manifest.name, action);
+      if (!Result.isOk(applied)) return applied;
+      world = applied.value.world;
+      messages.push(...applied.value.output.messages);
+      continue;
+    }
+    if (
+      ctx.explicitNamespace &&
+      manifest.namespace !== undefined &&
+      manifest.namespace !== ctx.namespace
+    )
+      return Result.err(
+        CommandFailure.invalidArgumentWith("Manifest namespace does not match --namespace."),
+      );
+    const scoped = { ...ctx, world, namespace: manifest.namespace ?? ctx.namespace };
+    const checked = requireNamespace(scoped, cluster);
+    if (!Result.isOk(checked)) return checked;
     if (manifest.kind === "hpa") {
-      const applied = applyHpa({ ...ctx, world }, cluster, manifest, action);
+      const applied = applyHpa(scoped, cluster, manifest, action);
       if (!Result.isOk(applied)) return applied;
       world = applied.value.world;
       messages.push(...applied.value.output.messages);
       continue;
     }
     if (manifest.kind === "deployment" || manifest.kind === "service") {
-      const applied = applyWorkload({ ...ctx, world }, cluster, manifest, action);
+      const applied = applyWorkload(scoped, cluster, manifest, action);
       if (!Result.isOk(applied)) return applied;
       world = applied.value.world;
       messages.push(...applied.value.output.messages);
@@ -45,6 +67,7 @@ export const applyManifest = (
       (c) =>
         c.projectId === cluster.projectId &&
         c.cluster === cluster.name &&
+        c.namespace === scoped.namespace &&
         c.kind === manifest.kind &&
         c.name === manifest.name,
     );
@@ -77,6 +100,7 @@ export const applyManifest = (
       ...manifest,
       projectId: cluster.projectId,
       cluster: cluster.name,
+      namespace: scoped.namespace,
       data: [...retained, ...manifest.data].toSorted((a, b) => a.key.localeCompare(b.key)),
       lastAppliedKeys: action === "apply" ? [...incoming].sort() : [],
       createdAt: existing?.createdAt ?? ctx.now,

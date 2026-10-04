@@ -235,7 +235,7 @@ test.each([
   "kubectl set env deployment/web MODE=x MODE-",
   "kubectl set env service/web MODE=x",
   "kubectl exec deployment/web -- sh -c printenv",
-  "kubectl create configmap bad -n other",
+  "kubectl create configmap bad -n INVALID",
 ])("invalid/unsupported operation cannot mutate: %s", (c) => rejected(configured(), c, "error:"));
 test("project, cluster and API scopes isolate configs; deleting cluster removes configurations", () => {
   const s = configured();

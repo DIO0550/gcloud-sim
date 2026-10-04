@@ -2,6 +2,7 @@ import { KubeEnv, type PodEnvironment } from "@/engine/domains/kube-config";
 import { KubeContainer, type PodRestart } from "@/engine/domains/kube-container";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeLiveness, type LivenessProbe, type PodLiveness } from "@/engine/domains/kube-liveness";
+import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import {
   KubeReadiness,
   type PodReadiness,
@@ -16,7 +17,7 @@ import { Result } from "@/utils/Result";
 
 /**
  * `kubectl` が扱う Kubernetes リソース（TBD-007）。クラスタごとに持ち、コンテキストは
- * `container/cluster` が指すクラスタ。名前空間は `default` だけを再現する。
+ * `container/cluster` が指すクラスタ。名前空間ごとにリソースを分離する。
  */
 
 /** DNS-1123 ラベル（Kubernetes の名前）。 */
@@ -57,6 +58,7 @@ export type KubeRevision = Readonly<{
 export type KubeDeployment = Readonly<{
   projectId: string;
   cluster: string;
+  namespace: string;
   name: string;
   image: string;
   env: readonly KubeEnv[];
@@ -162,6 +164,7 @@ export const KubeDeployment = {
     seed: Readonly<{
       projectId: string;
       cluster: string;
+      namespace?: string;
       name: string;
       image: string;
       replicas: Option<number>;
@@ -171,6 +174,8 @@ export const KubeDeployment = {
       createdAt: string;
     }>,
   ): Result<KubeDeployment, string> {
+    if (!KubeNamespace.valid(seed.namespace ?? "default"))
+      return Result.err("Invalid Deployment namespace.");
     const labels = seed.labels ?? { app: seed.name };
     const selector = seed.selector ?? { app: seed.name };
     const podLabels = seed.podLabels ?? { app: seed.name };
@@ -191,6 +196,7 @@ export const KubeDeployment = {
     return Result.map(KubeName.parse(seed.name), (name) => ({
       projectId: seed.projectId,
       cluster: seed.cluster,
+      namespace: seed.namespace ?? "default",
       name,
       image: seed.image,
       env: [],
@@ -467,7 +473,7 @@ export const KubeDeployment = {
       kind: "Deployment",
       metadata: {
         name: deployment.name,
-        namespace: "default",
+        namespace: deployment.namespace,
         generation: deployment.generation,
         annotations: { "deployment.kubernetes.io/revision": String(deployment.revision) },
         creationTimestamp: deployment.createdAt,
@@ -506,6 +512,7 @@ export const KubeDeployment = {
 
 /** Deployment から導出する Pod。保存せず、読むたびに作る。 */
 export type KubePod = Readonly<{
+  namespace: string;
   name: string;
   deployment: string;
   labels: KubeLabels;
@@ -542,6 +549,7 @@ export const KubePod = {
         .slice(-5);
       return {
         name: `${deployment.name}-${hash}-${suffix}`,
+        namespace: deployment.namespace,
         deployment: deployment.name,
         labels: deployment.podLabels,
         resources: deployment.resources,
@@ -579,7 +587,7 @@ export const KubePod = {
     return {
       apiVersion: "v1",
       kind: "Pod",
-      metadata: { name: pod.name, namespace: "default", labels: pod.labels },
+      metadata: { name: pod.name, namespace: pod.namespace, labels: pod.labels },
       spec: {
         containers: [
           {
@@ -625,6 +633,7 @@ export const KubeServiceType = {
 export type KubeService = Readonly<{
   projectId: string;
   cluster: string;
+  namespace: string;
   name: string;
   type: KubeServiceType;
   selector: KubeLabels;
@@ -640,6 +649,7 @@ export type KubeService = Readonly<{
 export type KubeServiceSeed = Readonly<{
   projectId: string;
   cluster: string;
+  namespace?: string;
   name: string;
   type: KubeServiceType;
   selector: KubeLabels;
@@ -660,6 +670,8 @@ export const KubeService = {
    * @returns 作った Service。名前の形式が悪ければ理由
    */
   create(seed: KubeServiceSeed): Result<KubeService, string> {
+    if (!KubeNamespace.valid(seed.namespace ?? "default"))
+      return Result.err("Invalid Service namespace.");
     if (
       !Result.isOk(KubeLabels.parse(seed.selector, true)) ||
       !Result.isOk(KubeLabels.parse(seed.labels ?? {}))
@@ -668,6 +680,7 @@ export const KubeService = {
     return Result.map(KubeName.parse(seed.name), (name) => ({
       projectId: seed.projectId,
       cluster: seed.cluster,
+      namespace: seed.namespace ?? "default",
       name,
       type: seed.type,
       selector: seed.selector,
@@ -694,7 +707,7 @@ export const KubeService = {
       kind: "Service",
       metadata: {
         name: service.name,
-        namespace: "default",
+        namespace: service.namespace,
         creationTimestamp: service.createdAt,
         labels: service.labels,
       },

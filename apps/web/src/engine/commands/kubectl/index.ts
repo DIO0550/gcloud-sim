@@ -21,6 +21,7 @@ import { KubeHpa } from "@/engine/domains/kube-hpa";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeLiveness } from "@/engine/domains/kube-liveness";
 import { KubeManifest } from "@/engine/domains/kube-manifest";
+import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { KubeReadiness } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
@@ -38,8 +39,10 @@ import { type AlreadyExists, World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 import { createConfig, kubePermission, setEnv } from "./configuration";
+import { type KubectlContext, namespaceContext, requireNamespace } from "./context";
 import { createHpa, hpasOf, reconcileHpa } from "./hpa";
 import { applyManifest } from "./manifests";
+import { applyNamespace } from "./namespaces";
 import { probeContainers } from "./probes";
 
 /**
@@ -83,6 +86,7 @@ const usage = (message: string): CommandFailure => CommandFailure.invalidArgumen
 /** `deployment`, `deploy`, `deployments`, `deployment/web` の綴りを種別と名前に分ける。 */
 type ResourceRef = Readonly<{
   kind:
+    | "namespace"
     | "deployment"
     | "service"
     | "pod"
@@ -96,6 +100,9 @@ type ResourceRef = Readonly<{
 }>;
 
 const ResourceAliases: Readonly<Record<string, ResourceRef["kind"]>> = {
+  namespace: "namespace",
+  namespaces: "namespace",
+  ns: "namespace",
   hpa: "hpa",
   horizontalpodautoscaler: "hpa",
   horizontalpodautoscalers: "hpa",
@@ -134,7 +141,7 @@ const parseResource = (type: string, name: Option<string>): Result<ResourceRef, 
     return Result.err(
       CommandFailure.invalidValue(
         "",
-        `error: the server doesn't have a resource type "${kindText}"\ngcloud-sim: 対応しているのは deployments / services / pods / nodes / replicasets / configmaps / secrets / hpa です。`,
+        `error: the server doesn't have a resource type "${kindText}"\ngcloud-sim: 対応しているのは namespaces / deployments / services / pods / nodes / replicasets / configmaps / secrets / hpa です。`,
       ),
     );
   }
@@ -279,7 +286,7 @@ const deploymentErrors = (
     (p) => podError(world, cluster, d, p.name) || KubeReadiness.reason(d, p.name),
   );
 const deploymentListing = (
-  ctx: ProjectContext,
+  ctx: KubectlContext,
   cluster: GkeCluster,
   d: KubeDeployment,
 ): JsonRecord => {
@@ -335,23 +342,44 @@ const pick = <T extends { name: string }>(
 
 /** `get` / `describe` の対象を集める。 */
 const collect = (
-  ctx: ProjectContext,
+  ctx: KubectlContext,
   cluster: GkeCluster,
   ref: ResourceRef,
   describe = false,
 ): Result<Listing, CommandFailure> => {
-  const deployments = World.kubeDeploymentsOf(ctx.world, cluster);
+  const deployments = World.kubeDeploymentsOf(ctx.world, cluster, ctx.namespace);
   const pods = deployments.flatMap((d) =>
     KubePod.fromDeployment(d).map((pod) => ({
       name: pod.name,
       row: podRow(pod, d, ctx.now, podError(ctx.world, cluster, d, pod.name)),
     })),
   );
-  const services = World.kubeServicesOf(ctx.world, cluster);
+  const services = World.kubeServicesOf(ctx.world, cluster, ctx.namespace);
   switch (ref.kind) {
+    case "namespace":
+      return Result.map(
+        pick(KubeNamespace.of(ctx.world, cluster), "namespaces", ref.name),
+        (entries) => ({
+          rows: entries.map((n) => ({
+            ...KubeNamespace.toRecord(n),
+            name: n.name,
+            phase: "Active",
+            age: n.createdAt ? age(n.createdAt, ctx.now) : "<unknown>",
+          })),
+          columns: [
+            Column.create("NAME", "name"),
+            Column.create("STATUS", "phase"),
+            Column.create("AGE", "age"),
+          ],
+        }),
+      );
     case "hpa":
       return Result.map(
-        pick(hpasOf(ctx.world, cluster), "horizontalpodautoscalers.autoscaling", ref.name),
+        pick(
+          hpasOf(ctx.world, cluster, ctx.namespace),
+          "horizontalpodautoscalers.autoscaling",
+          ref.name,
+        ),
         (entries) => ({
           rows: entries.map((h) => ({
             ...KubeHpa.toRecord(h),
@@ -378,7 +406,10 @@ const collect = (
     case "secret": {
       const configs = ctx.world.kubeConfigs.filter(
         (c) =>
-          c.projectId === cluster.projectId && c.cluster === cluster.name && c.kind === ref.kind,
+          c.projectId === cluster.projectId &&
+          c.cluster === cluster.name &&
+          c.namespace === ctx.namespace &&
+          c.kind === ref.kind,
       );
       return Result.map(pick(configs, ref.kind, ref.name), (entries) => ({
         rows: entries.map((c) => ({
@@ -412,7 +443,7 @@ const collect = (
             ready,
             metadata: {
               name,
-              namespace: "default",
+              namespace: d.namespace,
               annotations: { "deployment.kubernetes.io/revision": String(r.revision) },
               ownerReferences: [{ kind: "Deployment", name: d.name }],
               labels: r.podLabels,
@@ -486,7 +517,7 @@ const collect = (
       if (!Result.isOk(allowed)) return allowed;
       return Result.ok({
         rows: [
-          ...hpasOf(ctx.world, cluster).map((h) => ({
+          ...hpasOf(ctx.world, cluster, ctx.namespace).map((h) => ({
             ...KubeHpa.toRecord(h),
             name: `horizontalpodautoscaler.autoscaling/${h.name}`,
             targets: KubeHpa.targets(h),
@@ -510,13 +541,32 @@ const collect = (
   }
 };
 
-const get = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+const get = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
   const cluster = currentCluster(ctx);
   if (!Result.isOk(cluster)) return cluster;
   const ref = parseResource(ParsedArgs.requiredPositional(args, 0), ParsedArgs.positional(args, 1));
   if (!Result.isOk(ref)) return ref;
-  const collected = collect(ctx, cluster.value, ref.value);
+  const allNamespaces = ParsedArgs.boolean(args, "all-namespaces");
+  if (allNamespaces && (ctx.explicitNamespace || Option.isSome(ref.value.name)))
+    return Result.err(
+      usage(
+        "--all-namespaces cannot be combined with --namespace or a resource name on gcloud-sim.",
+      ),
+    );
+  let collected = collect(ctx, cluster.value, ref.value);
   if (!Result.isOk(collected)) return collected;
+  if (allNamespaces && ref.value.kind !== "node" && ref.value.kind !== "namespace") {
+    const rows: JsonRecord[] = [];
+    for (const namespace of KubeNamespace.of(ctx.world, cluster.value)) {
+      const listing = collect({ ...ctx, namespace: namespace.name }, cluster.value, ref.value);
+      if (!Result.isOk(listing)) return listing;
+      rows.push(...listing.value.rows.map((row) => ({ ...row, namespace: namespace.name })));
+    }
+    collected = Result.ok({
+      rows,
+      columns: [Column.create("NAMESPACE", "namespace"), ...collected.value.columns],
+    });
+  }
   let { rows } = collected.value;
   const { columns } = collected.value;
   const selector = ParsedArgs.string(args, "selector");
@@ -555,7 +605,9 @@ const get = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
     return Result.ok({
       world: ctx.world,
       output: CommandOutput.messages(
-        OutputMessage.plain("No resources found in default namespace."),
+        OutputMessage.plain(
+          `No resources found${allNamespaces ? "." : ` in ${ctx.namespace} namespace.`}`,
+        ),
       ),
     });
   }
@@ -563,7 +615,7 @@ const get = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
 };
 
 const createDeployment = (
-  ctx: ProjectContext,
+  ctx: KubectlContext,
   cluster: GkeCluster,
   seed: Readonly<{ name: string; image: string; replicas: Option<number> }>,
 ): CommandResult => {
@@ -571,6 +623,7 @@ const createDeployment = (
     KubeDeployment.create({
       projectId: ctx.project.projectId,
       cluster: cluster.name,
+      namespace: ctx.namespace,
       name: seed.name,
       image: seed.image,
       replicas: seed.replicas,
@@ -591,7 +644,7 @@ const createDeployment = (
 };
 
 const createService = (
-  ctx: ProjectContext,
+  ctx: KubectlContext,
   cluster: GkeCluster,
   seed: Readonly<{
     name: string;
@@ -601,7 +654,12 @@ const createService = (
     targetPort: Option<number>;
   }>,
 ): CommandResult => {
-  const deployment = World.findKubeDeployment(ctx.world, cluster, seed.targetDeployment);
+  const deployment = World.findKubeDeployment(
+    ctx.world,
+    cluster,
+    seed.targetDeployment,
+    ctx.namespace,
+  );
   if (!Option.isSome(deployment)) {
     return Result.err(notFound("deployments.apps", seed.targetDeployment));
   }
@@ -616,6 +674,7 @@ const createService = (
     KubeService.create({
       projectId: ctx.project.projectId,
       cluster: cluster.name,
+      namespace: ctx.namespace,
       name: seed.name,
       type: type.value,
       selector: deployment.value.selector,
@@ -651,7 +710,7 @@ const sampleFile = (path: string) =>
 const fileRequired = (): CommandFailure => usage("must specify one of -f and -k");
 
 const apply = (
-  ctx: ProjectContext,
+  ctx: KubectlContext,
   args: ParsedArgs,
   action: "apply" | "create" = "apply",
 ): CommandResult => {
@@ -663,6 +722,8 @@ const apply = (
   if (!normalized) return Result.err(usage("Use a relative YAML/JSON virtual file path."));
   const source = ctx.world.kubeFiles[normalized];
   if (source !== undefined) return applyManifest(ctx, cluster.value, source, action);
+  const scoped = requireNamespace(ctx, cluster.value);
+  if (!Result.isOk(scoped)) return scoped;
   const allowed = kubePermission(
     ctx,
     action === "create" ? "container.deployments.create" : "container.deployments.update",
@@ -676,7 +737,12 @@ const apply = (
   const sample = file.value;
   switch (sample.kind) {
     case "kube-deployment": {
-      const existing = World.findKubeDeployment(ctx.world, cluster.value, sample.deployment);
+      const existing = World.findKubeDeployment(
+        ctx.world,
+        cluster.value,
+        sample.deployment,
+        ctx.namespace,
+      );
       if (Option.isSome(existing)) {
         if (action === "create")
           return Result.err(
@@ -701,7 +767,11 @@ const apply = (
       });
     }
     case "kube-service": {
-      if (Option.isSome(World.findKubeService(ctx.world, cluster.value, sample.service))) {
+      if (
+        Option.isSome(
+          World.findKubeService(ctx.world, cluster.value, sample.service, ctx.namespace),
+        )
+      ) {
         if (action === "create")
           return Result.err(kubeAlreadyExists({ resource: `services "${sample.service}"` }));
         return Result.ok({
@@ -738,7 +808,7 @@ const apply = (
   }
 };
 
-const create = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+const create = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
   const cluster = currentCluster(ctx);
   if (!Result.isOk(cluster)) return cluster;
   if (ParsedArgs.has(args, "filename")) {
@@ -749,6 +819,15 @@ const create = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
     )
       return Result.err(usage("Do not combine -f with resource arguments or flags."));
     return apply(ctx, args, "create");
+  }
+  if (ResourceAliases[(args.positionals[0] ?? "").toLowerCase()] === "namespace") {
+    if (
+      args.positionals.length !== 2 ||
+      ParsedArgs.has(args, "image") ||
+      ParsedArgs.has(args, "replicas")
+    )
+      return Result.err(usage("Use kubectl create namespace NAME."));
+    return applyNamespace(ctx, cluster.value, args.positionals[1] ?? "", "create");
   }
   const allowed = kubePermission(ctx, "container.deployments.create");
   if (!Result.isOk(allowed)) return allowed;
@@ -772,7 +851,7 @@ const create = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   });
 };
 
-const remove = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+const remove = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
   const cluster = currentCluster(ctx);
   if (!Result.isOk(cluster)) return cluster;
   const file = ParsedArgs.string(args, "filename");
@@ -784,6 +863,8 @@ const remove = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
     if (!path) return Result.err(usage("Use a relative YAML/JSON virtual file path."));
     const source = ctx.world.kubeFiles[path];
     if (source !== undefined) return applyManifest(ctx, cluster.value, source, "delete");
+    const scoped = requireNamespace(ctx, cluster.value);
+    if (!Result.isOk(scoped)) return scoped;
     const allowed = kubePermission(ctx, "container.deployments.delete");
     if (!Result.isOk(allowed)) return allowed;
   }
@@ -804,8 +885,10 @@ const remove = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   if (!Option.isSome(name))
     return Result.err(usage("resource(s) were provided, but no name was specified"));
   switch (ref.value.kind) {
+    case "namespace":
+      return applyNamespace(ctx, cluster.value, name.value, "delete");
     case "hpa": {
-      const h = hpasOf(ctx.world, cluster.value).find((h) => h.name === name.value);
+      const h = hpasOf(ctx.world, cluster.value, ctx.namespace).find((h) => h.name === name.value);
       if (!h) return Result.err(notFound("horizontalpodautoscalers.autoscaling", name.value));
       return Result.ok({
         world: { ...ctx.world, kubeHpas: ctx.world.kubeHpas.filter((item) => item !== h) },
@@ -820,6 +903,7 @@ const remove = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
         (c) =>
           c.projectId === cluster.value.projectId &&
           c.cluster === cluster.value.name &&
+          c.namespace === ctx.namespace &&
           c.kind === ref.value.kind &&
           c.name === name.value,
       );
@@ -835,7 +919,12 @@ const remove = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
       });
     }
     case "deployment": {
-      const deployment = World.findKubeDeployment(ctx.world, cluster.value, name.value);
+      const deployment = World.findKubeDeployment(
+        ctx.world,
+        cluster.value,
+        name.value,
+        ctx.namespace,
+      );
       if (!Option.isSome(deployment)) return Result.err(notFound("deployments.apps", name.value));
       return Result.ok({
         world: World.withoutKubeDeployment(ctx.world, deployment.value),
@@ -845,7 +934,7 @@ const remove = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
       });
     }
     case "service": {
-      const service = World.findKubeService(ctx.world, cluster.value, name.value);
+      const service = World.findKubeService(ctx.world, cluster.value, name.value, ctx.namespace);
       if (!Option.isSome(service)) return Result.err(notFound("services", name.value));
       return Result.ok({
         world: World.withoutKubeService(ctx.world, service.value),
@@ -853,7 +942,7 @@ const remove = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
       });
     }
     case "pod": {
-      const owner = World.kubeDeploymentsOf(ctx.world, cluster.value).find((d) =>
+      const owner = World.kubeDeploymentsOf(ctx.world, cluster.value, ctx.namespace).find((d) =>
         KubePod.fromDeployment(d).some((p) => p.name === name.value),
       );
       if (owner === undefined) return Result.err(notFound("pods", name.value));
@@ -880,7 +969,7 @@ const remove = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   }
 };
 
-const describe = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+const describe = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
   const cluster = currentCluster(ctx);
   if (!Result.isOk(cluster)) return cluster;
   const ref = parseResource(ParsedArgs.requiredPositional(args, 0), ParsedArgs.positional(args, 1));
@@ -890,7 +979,7 @@ const describe = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   return Result.ok({ world: ctx.world, output: CommandOutput.yamlList(collected.value.rows) });
 };
 
-const expose = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+const expose = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
   const cluster = currentCluster(ctx);
   if (!Result.isOk(cluster)) return cluster;
   const ref = parseResource(ParsedArgs.requiredPositional(args, 0), ParsedArgs.positional(args, 1));
@@ -911,7 +1000,7 @@ const expose = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
 };
 
 const requireDeployment = (
-  ctx: ProjectContext,
+  ctx: KubectlContext,
   cluster: GkeCluster,
   args: ParsedArgs,
 ): Result<KubeDeployment, CommandFailure> => {
@@ -921,12 +1010,12 @@ const requireDeployment = (
     return Result.err(usage("expected a deployment, e.g. deployment/NAME or deployment NAME"));
   }
   const name = ref.value.name.value;
-  return Option.toResult(World.findKubeDeployment(ctx.world, cluster, name), () =>
+  return Option.toResult(World.findKubeDeployment(ctx.world, cluster, name, ctx.namespace), () =>
     notFound("deployments.apps", name),
   );
 };
 
-const scale = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+const scale = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
   const cluster = currentCluster(ctx);
   if (!Result.isOk(cluster)) return cluster;
   const deployment = requireDeployment(ctx, cluster.value, args);
@@ -943,7 +1032,7 @@ const scale = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   }));
 };
 
-const setImage = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+const setImage = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
   const cluster = currentCluster(ctx);
   if (!Result.isOk(cluster)) return cluster;
   const inline = ParsedArgs.requiredPositional(args, 0).includes("/");
@@ -972,7 +1061,7 @@ const setImage = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   });
 };
 
-const setResources = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+const setResources = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
   const cluster = currentCluster(ctx);
   if (!Result.isOk(cluster)) return cluster;
   const deployment = requireDeployment(ctx, cluster.value, args);
@@ -1010,7 +1099,7 @@ const setResources = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   });
 };
 
-const rollout = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+const rollout = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
   const cluster = currentCluster(ctx);
   if (!Result.isOk(cluster)) return cluster;
   const verb = ParsedArgs.requiredPositional(args, 0);
@@ -1102,11 +1191,11 @@ const rollout = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   }
 };
 
-const logs = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+const logs = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
   const cluster = currentCluster(ctx);
   if (!Result.isOk(cluster)) return cluster;
   const name = ParsedArgs.requiredPositional(args, 0);
-  const owner = World.kubeDeploymentsOf(ctx.world, cluster.value).find((d) =>
+  const owner = World.kubeDeploymentsOf(ctx.world, cluster.value, ctx.namespace).find((d) =>
     KubePod.fromDeployment(d).some((p) => p.name === name),
   );
   if (owner === undefined) return Result.err(notFound("pods", name));
@@ -1123,7 +1212,7 @@ const logs = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   });
 };
 
-const config = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+const config = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
   const verb = ParsedArgs.requiredPositional(args, 0);
   const clusters = World.clustersOf(ctx.world, ctx.project.projectId);
   const current = currentClusterOf(ctx);
@@ -1209,8 +1298,10 @@ const FileFlag = Flag.string(
   },
 );
 const OutputFlag = Flag.string("output", "Output format: wide, yaml or json.", { aliases: ["-o"] });
-const NamespaceFlag = Flag.string("namespace", "The namespace (only default is simulated).", {
+const NamespaceFlag = Flag.string("namespace", "Namespace for this operation (default: default).", {
   aliases: ["-n"],
+  singleUse: true,
+  candidates: Candidates.kubeNamespaces,
 });
 const TypePositional = Positional.required(
   "TYPE[/NAME]",
@@ -1225,7 +1316,7 @@ type KubectlSeed = Readonly<{
   positionals: readonly PositionalSpec[];
   flags: readonly FlagSpec[];
   permission: string | ((args: ParsedArgs) => string | undefined);
-  run: (ctx: ProjectContext, args: ParsedArgs) => CommandResult;
+  run: (ctx: KubectlContext, args: ParsedArgs) => CommandResult;
 }>;
 
 const kubectl = (seed: KubectlSeed): CommandSpec =>
@@ -1237,9 +1328,24 @@ const kubectl = (seed: KubectlSeed): CommandSpec =>
     permissions: typeof seed.permission === "string" ? [seed.permission] : [],
     requiredApis: [ContainerApi],
     run: (ctx, args) => {
-      const namespace = Option.unwrapOr(ParsedArgs.string(args, "namespace"), "default");
-      if (namespace !== "default")
-        return Result.err(usage("Only namespace default is supported on gcloud-sim."));
+      const scoped = namespaceContext(ctx, args);
+      if (!Result.isOk(scoped)) return scoped;
+      if (seed.verb === "config") return seed.run(scoped.value, args);
+      const cluster = currentCluster(ctx);
+      if (!Result.isOk(cluster)) return cluster;
+      const resourceVerb = ["get", "describe", "delete", "create"].includes(seed.verb);
+      const type = resourceVerb
+        ? ResourceAliases[(args.positionals[0] ?? "").split("/")[0]?.toLowerCase() ?? ""]
+        : undefined;
+      if (
+        !ParsedArgs.has(args, "filename") &&
+        type !== "namespace" &&
+        type !== "node" &&
+        !ParsedArgs.boolean(args, "all-namespaces")
+      ) {
+        const checked = requireNamespace(scoped.value, cluster.value);
+        if (!Result.isOk(checked)) return checked;
+      }
       if (typeof seed.permission === "function") {
         const permission = seed.permission(args);
         if (permission) {
@@ -1247,7 +1353,7 @@ const kubectl = (seed: KubectlSeed): CommandSpec =>
           if (!Result.isOk(allowed)) return allowed;
         }
       }
-      return seed.run(ctx, args);
+      return seed.run(scoped.value, args);
     },
   });
 
@@ -1261,6 +1367,7 @@ const resourcePermission =
     );
     if (!Result.isOk(ref)) return fallback;
     const verb = action === "delete" ? "delete" : Option.isSome(ref.value.name) ? "get" : "list";
+    if (ref.value.kind === "namespace") return `container.namespaces.${verb}`;
     if (ref.value.kind === "hpa") return `container.horizontalPodAutoscalers.${verb}`;
     if (ref.value.kind === "service") return `container.services.${verb}`;
     if (ref.value.kind === "deployment") return `container.deployments.${verb}`;
@@ -1268,7 +1375,7 @@ const resourcePermission =
     if (ref.value.kind === "configmap") return `container.configMaps.${verb}`;
     return fallback;
   };
-const execEnvironment = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+const execEnvironment = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
   const cluster = currentCluster(ctx);
   if (!Result.isOk(cluster)) return cluster;
   const [resource, command, key, ...extra] = args.positionals;
@@ -1276,7 +1383,7 @@ const execEnvironment = (ctx: ProjectContext, args: ParsedArgs): CommandResult =
     return Result.err(
       usage("Only exec POD -- printenv [KEY] or env is simulated; no shell is executed."),
     );
-  const d = World.kubeDeploymentsOf(ctx.world, cluster.value).find(
+  const d = World.kubeDeploymentsOf(ctx.world, cluster.value, ctx.namespace).find(
     (d) =>
       resource === `deployment/${d.name}` ||
       KubePod.fromDeployment(d).some((p) => p.name === resource || `pod/${p.name}` === resource),
@@ -1329,6 +1436,7 @@ export const KubectlCommands: readonly CommandSpec[] = [
       "Apply one simulated HTTP readiness/liveness/startup response to Deployment Pods (no real request or timers).",
     positionals: [Positional.required("NAME", "Deployment name.", Candidates.kubeDeployments)],
     flags: [
+      NamespaceFlag,
       Flag.string("kind", "readiness (default), liveness or startup.", { singleUse: true }),
       Flag.integer("status-code", "HTTP response code 100..599, required.", { singleUse: true }),
       Flag.string("pod", "Probe only this Pod; omitted selects all Deployment Pods.", {
@@ -1340,7 +1448,11 @@ export const KubectlCommands: readonly CommandSpec[] = [
     run: (ctx, args) => {
       const cluster = currentCluster(ctx);
       if (!Result.isOk(cluster)) return cluster;
-      return probeContainers(ctx, cluster.value, args);
+      const scoped = namespaceContext(ctx, args);
+      if (!Result.isOk(scoped)) return scoped;
+      const checked = requireNamespace(scoped.value, cluster.value);
+      if (!Result.isOk(checked)) return checked;
+      return probeContainers(checked.value, cluster.value, args);
     },
   }),
   projectCommand({
@@ -1348,6 +1460,7 @@ export const KubectlCommands: readonly CommandSpec[] = [
     summary: "Evaluate one HPA cycle with explicit CPU usage per Pod; no real metrics or timers.",
     positionals: [Positional.required("NAME", "HPA name.", Candidates.kubeHpas)],
     flags: [
+      NamespaceFlag,
       Flag.string("cpu", "Simulated CPU usage per Pod (e.g. 250m), required.", { singleUse: true }),
     ],
     permissions: ["container.horizontalPodAutoscalers.update", "container.deployments.update"],
@@ -1355,13 +1468,17 @@ export const KubectlCommands: readonly CommandSpec[] = [
     run: (ctx, args) => {
       const cluster = currentCluster(ctx);
       if (!Result.isOk(cluster)) return cluster;
-      return reconcileHpa(ctx, cluster.value, args);
+      const scoped = namespaceContext(ctx, args);
+      if (!Result.isOk(scoped)) return scoped;
+      const checked = requireNamespace(scoped.value, cluster.value);
+      if (!Result.isOk(checked)) return checked;
+      return reconcileHpa(checked.value, cluster.value, args);
     },
   }),
   ...(["configmap", "secret"] as const).map((kind) =>
     kubectl({
       verb: kind === "secret" ? "create secret generic" : "create configmap",
-      summary: `Create a ${kind} from repeated --from-literal=KEY=VALUE (default namespace).`,
+      summary: `Create a ${kind} from repeated --from-literal=KEY=VALUE (selected namespace).`,
       positionals: [Positional.required("NAME", "Configuration name.")],
       flags: [Flag.literals("from-literal", "One KEY=VALUE per flag; repeat to add keys.")],
       permission: `container.${kind === "secret" ? "secrets" : "configMaps"}.create`,
@@ -1414,6 +1531,9 @@ export const KubectlCommands: readonly CommandSpec[] = [
     positionals: [TypePositional, NamePositional],
     flags: [
       OutputFlag,
+      Flag.boolean("all-namespaces", "List namespaced resources across all namespaces.", {
+        aliases: ["-A"],
+      }),
       Flag.string("selector", "Filter labels with comma-separated key=value pairs.", {
         aliases: ["-l"],
         singleUse: true,

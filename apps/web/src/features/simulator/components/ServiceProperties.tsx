@@ -4,6 +4,7 @@ import { KubeEnv, KubeRuntime } from "@/engine/domains/kube-config";
 import { KubeHpa } from "@/engine/domains/kube-hpa";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeLiveness } from "@/engine/domains/kube-liveness";
+import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { KubeReadiness } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
@@ -104,7 +105,7 @@ export const KubeDeploymentProperties = ({
 }: SelectionProps<"kube-deployment">): ReactElement => {
   const cluster = World.findCluster(world, selection.projectId, selection.cluster);
   const deployment = Option.flatMap(cluster, (c) =>
-    World.findKubeDeployment(world, c, selection.name),
+    World.findKubeDeployment(world, c, selection.name, selection.namespace ?? "default"),
   );
   if (!Option.isSome(deployment)) return <NotFound what="Deployment" />;
   const d = deployment.value;
@@ -114,6 +115,7 @@ export const KubeDeploymentProperties = ({
         title="基本"
         rows={[
           { label: "cluster", value: d.cluster },
+          { label: "namespace", value: d.namespace },
           { label: "image", value: d.image },
           { label: "labels", value: KubeLabels.text(d.labels) },
           { label: "selector", value: KubeLabels.text(d.selector) },
@@ -235,7 +237,9 @@ export const KubeServiceProperties = ({
   selection,
 }: SelectionProps<"kube-service">): ReactElement => {
   const cluster = World.findCluster(world, selection.projectId, selection.cluster);
-  const service = Option.flatMap(cluster, (c) => World.findKubeService(world, c, selection.name));
+  const service = Option.flatMap(cluster, (c) =>
+    World.findKubeService(world, c, selection.name, selection.namespace ?? "default"),
+  );
   if (!Option.isSome(service)) return <NotFound what="Service" />;
   const s = service.value;
   return (
@@ -243,6 +247,7 @@ export const KubeServiceProperties = ({
       title="基本"
       rows={[
         { label: "cluster", value: s.cluster },
+        { label: "namespace", value: s.namespace },
         { label: "type", value: s.type },
         { label: "labels", value: KubeLabels.text(s.labels) },
         { label: "selector", value: KubeLabels.text(s.selector) },
@@ -543,6 +548,7 @@ export const KubeConfigProperties = ({
     (c) =>
       c.projectId === selection.projectId &&
       c.cluster === selection.cluster &&
+      c.namespace === (selection.namespace ?? "default") &&
       c.kind === selection.resourceKind &&
       c.name === selection.name,
   );
@@ -553,7 +559,7 @@ export const KubeConfigProperties = ({
         title="基本"
         rows={[
           { label: "cluster", value: c.cluster },
-          { label: "namespace", value: "default" },
+          { label: "namespace", value: c.namespace },
           { label: "kind", value: c.kind },
         ]}
       />
@@ -577,17 +583,23 @@ export const KubeHpaProperties = ({
     (h) =>
       h.projectId === selection.projectId &&
       h.cluster === selection.cluster &&
+      h.namespace === (selection.namespace ?? "default") &&
       h.name === selection.name,
   );
   if (!h) return <NotFound what="HPA" />;
   const d = world.kubeDeployments.find(
-    (d) => d.projectId === h.projectId && d.cluster === h.cluster && d.name === h.target,
+    (d) =>
+      d.projectId === h.projectId &&
+      d.cluster === h.cluster &&
+      d.namespace === h.namespace &&
+      d.name === h.target,
   );
   return (
     <>
       <Section
         title="CPUによるレプリカ調整"
         rows={[
+          { label: "namespace", value: h.namespace },
           { label: "対象", value: `Deployment/${h.target}` },
           { label: "最小 / 最大", value: `${h.minReplicas} / ${h.maxReplicas}` },
           { label: "CPU使用率の目標", value: `${h.targetCpu}%（request比）` },
@@ -617,5 +629,39 @@ export const KubeHpaProperties = ({
         明示したCPU使用量を1回ずつ評価します。前回の値は実測値ではありません。定期実行・安定化待機は再現しません。
       </p>
     </>
+  );
+};
+
+export const KubeNamespaceProperties = ({
+  world,
+  selection,
+}: SelectionProps<"kube-namespace">): ReactElement => {
+  const cluster = World.findCluster(world, selection.projectId, selection.cluster);
+  if (!Option.isSome(cluster)) return <NotFound what="Namespace" />;
+  const n = KubeNamespace.of(world, cluster.value).find((n) => n.name === selection.name);
+  if (!n) return <NotFound what="Namespace" />;
+  return (
+    <Section
+      title="基本"
+      rows={[
+        { label: "cluster", value: n.cluster },
+        { label: "namespace", value: n.name },
+        { label: "status", value: "Active" },
+        {
+          label: "Deployments",
+          value: String(World.kubeDeploymentsOf(world, cluster.value, n.name).length),
+        },
+        {
+          label: "Services",
+          value: String(World.kubeServicesOf(world, cluster.value, n.name).length),
+        },
+        {
+          label: "削除",
+          value: KubeNamespace.builtin(n.name)
+            ? "組み込みnamespaceは削除対象外"
+            : "namespace内の全リソースを即時削除",
+        },
+      ]}
+    />
   );
 };
