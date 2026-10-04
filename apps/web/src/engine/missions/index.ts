@@ -96,6 +96,11 @@ import {
   kubeResourcesSatisfied,
 } from "./kube-resources";
 import {
+  type KubeStartupAssertion,
+  KubeStartupMissions,
+  kubeStartupSatisfied,
+} from "./kube-startup";
+import {
   type KubeWorkloadAssertion,
   KubeWorkloadMissions,
   kubeWorkloadSatisfied,
@@ -120,6 +125,7 @@ export type MissionAssertion =
   | KubeHpaAssertion
   | KubeReadinessAssertion
   | KubeLivenessAssertion
+  | KubeStartupAssertion
   | KubeQosAssertion
   | KubeResourceAssertion
   | KubeConfigurationAssertion
@@ -272,6 +278,7 @@ const Missions: readonly Mission[] = [
   ...KubeQosMissions,
   ...KubeReadinessMissions,
   ...KubeLivenessMissions,
+  ...KubeStartupMissions,
   ...KubeHpaMissions,
   ...KubeHpaManifestMissions,
   ...KubeConfigurationMissions,
@@ -733,6 +740,8 @@ const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
       return kubeHpaManifestSatisfied(world);
     case "kubeHpaScaled":
       return kubeHpaSatisfied(world);
+    case "kubeStartupGated":
+      return kubeStartupSatisfied(world);
     case "kubeLivenessRecovered":
       return kubeLivenessSatisfied(world);
     case "kubeReadinessRouted":

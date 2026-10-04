@@ -1,3 +1,4 @@
+import { KubeContainer } from "@/engine/domains/kube-container";
 import { KubeReadiness, type ReadinessProbe } from "@/engine/domains/kube-readiness";
 import { type KubeDeployment, KubePod } from "@/engine/domains/kubernetes";
 import type { JsonRecord } from "@/types/Json";
@@ -34,11 +35,11 @@ export const KubeLiveness = {
     return { livenessSample: d.podLiveness.find((p) => p.podName === podName) ?? null };
   },
   restarts(d: KubeDeployment, podName: string): number {
-    return d.podLiveness.find((p) => p.podName === podName)?.restarts ?? 0;
+    return KubeContainer.restarts(d, podName);
   },
   summary(d: KubeDeployment, podName: string): string {
     const sample = d.podLiveness.find((p) => p.podName === podName);
-    if (!sample) return "未評価 / RESTARTS 0";
+    if (!sample) return `未評価 / RESTARTS ${KubeContainer.restarts(d, podName)}`;
     const event = sample.restarted ? " / この応答で再起動" : "";
     return `HTTP ${sample.statusCode} / 連続失敗 ${sample.failures} / RESTARTS ${sample.restarts}${event}`;
   },
@@ -55,6 +56,7 @@ export const KubeLiveness = {
     podName: string,
     previous: PodLiveness | undefined,
     statusCode: number,
+    restarts: number,
   ): PodLiveness {
     const failures = statusCode >= 200 && statusCode < 400 ? 0 : (previous?.failures ?? 0) + 1;
     const restarted = failures >= probe.failureThreshold;
@@ -62,19 +64,17 @@ export const KubeLiveness = {
       podName,
       statusCode,
       failures: restarted ? 0 : failures,
-      restarts: (previous?.restarts ?? 0) + Number(restarted),
+      restarts: restarts + Number(restarted),
       restarted,
     };
   },
   /** Same Pod/template. Restarted containers resolve their environment and readiness anew. */
   withSamples(d: KubeDeployment, samples: readonly PodLiveness[]): KubeDeployment {
+    const next = KubeContainer.withRestarts(d, samples);
     const names = new Set(samples.map((s) => s.podName));
-    const restarted = new Set(samples.filter((s) => s.restarted).map((s) => s.podName));
     return {
-      ...d,
-      podLiveness: [...d.podLiveness.filter((s) => !names.has(s.podName)), ...samples],
-      podReadiness: d.podReadiness.filter((s) => !restarted.has(s.podName)),
-      podEnvironments: d.podEnvironments.filter((s) => !restarted.has(s.podName)),
+      ...next,
+      podLiveness: [...next.podLiveness.filter((s) => !names.has(s.podName)), ...samples],
     };
   },
   validate(d: KubeDeployment): boolean {
@@ -99,6 +99,7 @@ export const KubeLiveness = {
         !integer(p.statusCode, 100, 599) ||
         !integer(p.failures, 0, threshold - 1) ||
         !integer(p.restarts, 0, Number.MAX_SAFE_INTEGER) ||
+        p.restarts !== KubeContainer.restarts(d, p.podName) ||
         typeof p.restarted !== "boolean"
       )
         return false;
