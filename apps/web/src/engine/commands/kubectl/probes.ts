@@ -4,7 +4,6 @@ import {
   type CommandResult,
   OutputMessage,
   ParsedArgs,
-  type ProjectContext,
 } from "@/engine/cli/command-spec";
 import { ImagePull } from "@/engine/domains/image-pull";
 import { KubeRuntime } from "@/engine/domains/kube-config";
@@ -17,9 +16,10 @@ import type { GkeCluster } from "@/engine/domains/managed-services";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
+import type { KubectlContext } from "./context";
 
 export const probeContainers = (
-  ctx: ProjectContext,
+  ctx: KubectlContext,
   cluster: GkeCluster,
   args: ParsedArgs,
 ): CommandResult => {
@@ -28,7 +28,7 @@ export const probeContainers = (
   if (kind !== "readiness" && kind !== "liveness" && kind !== "startup")
     return invalid("--kind must be readiness, liveness or startup.");
   const name = ParsedArgs.requiredPositional(args, 0);
-  const found = World.findKubeDeployment(ctx.world, cluster, name);
+  const found = World.findKubeDeployment(ctx.world, cluster, name, ctx.namespace);
   if (!Option.isSome(found))
     return Result.err(CommandFailure.notFoundWith(`deployment "${name}" not found`));
   const d = found.value;

@@ -27,7 +27,11 @@ export const KubeHpaMissions: readonly Mission[] = [
 ];
 export const kubeHpaSatisfied = (world: World): boolean => {
   const h = world.kubeHpas.find(
-    (h) => h.projectId === F.devProjectId && h.cluster === "hpa-gke" && h.name === "hpa-web",
+    (h) =>
+      h.projectId === F.devProjectId &&
+      h.cluster === "hpa-gke" &&
+      h.namespace === "default" &&
+      h.name === "hpa-web",
   );
   if (
     h?.target !== "hpa-web" ||
@@ -38,7 +42,11 @@ export const kubeHpaSatisfied = (world: World): boolean => {
   )
     return false;
   const d = world.kubeDeployments.find(
-    (d) => d.projectId === h.projectId && d.cluster === h.cluster && d.name === h.target,
+    (d) =>
+      d.projectId === h.projectId &&
+      d.cluster === h.cluster &&
+      d.namespace === "default" &&
+      d.name === h.target,
   );
   if (d?.image !== "nginx:1" || d.replicas !== 4 || d.resources.requests.cpu !== "250m")
     return false;

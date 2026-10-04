@@ -56,6 +56,11 @@ import {
   kubeHpaManifestSatisfied,
 } from "@/engine/missions/kube-hpa-manifests";
 import {
+  type KubeNamespaceAssertion,
+  KubeNamespaceMissions,
+  kubeNamespaceSatisfied,
+} from "@/engine/missions/kube-namespace";
+import {
   type KubernetesAssertion,
   KubernetesMissions,
   kubernetesSatisfied,
@@ -125,6 +130,7 @@ export type MissionAssertion =
   | KubeHpaAssertion
   | KubeReadinessAssertion
   | KubeLivenessAssertion
+  | KubeNamespaceAssertion
   | KubeStartupAssertion
   | KubeQosAssertion
   | KubeResourceAssertion
@@ -279,6 +285,7 @@ const Missions: readonly Mission[] = [
   ...KubeReadinessMissions,
   ...KubeLivenessMissions,
   ...KubeStartupMissions,
+  ...KubeNamespaceMissions,
   ...KubeHpaMissions,
   ...KubeHpaManifestMissions,
   ...KubeConfigurationMissions,
@@ -740,6 +747,8 @@ const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
       return kubeHpaManifestSatisfied(world);
     case "kubeHpaScaled":
       return kubeHpaSatisfied(world);
+    case "kubeNamespaceIsolated":
+      return kubeNamespaceSatisfied(world);
     case "kubeStartupGated":
       return kubeStartupSatisfied(world);
     case "kubeLivenessRecovered":

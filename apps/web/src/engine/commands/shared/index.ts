@@ -30,6 +30,7 @@ import {
 import { Instance } from "@/engine/domains/compute";
 import { ConfigProperty, GcloudConfig } from "@/engine/domains/gcloud-config";
 import { IamMember, IamPolicy, RoleName } from "@/engine/domains/iam-policy";
+import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { Operation, type OperationType } from "@/engine/domains/operation";
 import type { Principal } from "@/engine/domains/principal";
 import { PolicyTarget } from "@/engine/domains/resource-hierarchy";
@@ -131,12 +132,24 @@ export const Candidates = {
   dmDeployments: named("dmDeployments"),
   diskSnapshots: named("diskSnapshots"),
   /** kubectl が扱うのは `container/cluster` のクラスタだけなので、候補もそのクラスタのもの */
+  kubeNamespaces: inProject((world, projectId) => {
+    const cluster = Option.flatMap(GcloudConfig.get(world.config, "container/cluster"), (name) =>
+      World.findCluster(world, projectId, name),
+    );
+    return Option.isSome(cluster) ? KubeNamespace.of(world, cluster.value).map((n) => n.name) : [];
+  }),
   kubeDeployments: inProject((world, projectId) => {
     const cluster = Option.flatMap(GcloudConfig.get(world.config, "container/cluster"), (name) =>
       World.findCluster(world, projectId, name),
     );
     return Option.isSome(cluster)
-      ? World.kubeDeploymentsOf(world, cluster.value).map((d) => d.name)
+      ? Array.from(
+          new Set(
+            world.kubeDeployments
+              .filter((d) => d.projectId === projectId && d.cluster === cluster.value.name)
+              .map((d) => d.name),
+          ),
+        )
       : [];
   }),
   kubeHpas: inProject((world, projectId) => {

@@ -60,6 +60,7 @@ import type { KmsKeyRing } from "@/engine/domains/kms";
 import type { KubeConfig, KubeEnv } from "@/engine/domains/kube-config";
 import { type HpaEvaluation, HpaReasons, type KubeHpa } from "@/engine/domains/kube-hpa";
 import { KubeLiveness, type LivenessProbe } from "@/engine/domains/kube-liveness";
+import type { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { KubeReadiness, type ReadinessProbe } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeStartup, type StartupProbe } from "@/engine/domains/kube-startup";
@@ -126,11 +127,12 @@ import { Result } from "@/utils/Result";
  * v15 はreadinessProbeとPodごとの明示した応答の判定を持つ。
  * v16 はlivenessProbeとPod内コンテナの再起動回数・判定を持つ。
  * v17 はstartupProbeと起動判定、probe間で共通の再起動回数を持つ。
+ * v18 はカスタムnamespaceと各Kubernetesリソースのnamespaceを持つ。
  */
-export const SchemaVersion = 17;
+export const SchemaVersion = 18;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
-const MigratableVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] as const;
+const MigratableVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
 export type Snapshot = Readonly<{
@@ -554,6 +556,7 @@ const kubeConfig = D.object<KubeConfig>({
   lastAppliedKeys: D.array(string),
   projectId: string,
   cluster: string,
+  namespace: string,
   kind: D.literal(["configmap", "secret"]),
   name: string,
   data: D.array(D.object({ key: string, value: string })),
@@ -578,6 +581,7 @@ const kubeDeployment = D.object<KubeDeployment>({
   startupProbe: D.option(startupProbe),
   projectId: string,
   cluster: string,
+  namespace: string,
   name: string,
   image: string,
   replicas: D.number,
@@ -658,6 +662,7 @@ const hpaEvaluation = D.object<HpaEvaluation>({
 const kubeHpa = D.object<KubeHpa>({
   projectId: string,
   cluster: string,
+  namespace: string,
   name: string,
   target: string,
   minReplicas: D.number,
@@ -669,6 +674,7 @@ const kubeHpa = D.object<KubeHpa>({
 const kubeService = D.object<KubeService>({
   projectId: string,
   cluster: string,
+  namespace: string,
   name: string,
   type: D.parsed(KubeServiceType.parse, "service type"),
   selector: stringMap,
@@ -872,6 +878,14 @@ const world = D.object<World>({
   instanceTemplates: D.array(instanceTemplate),
   instanceGroups: D.array(instanceGroup),
   nodePools: D.array(nodePool),
+  kubeNamespaces: D.array(
+    D.object<KubeNamespace>({
+      projectId: string,
+      cluster: string,
+      name: string,
+      createdAt: string,
+    }),
+  ),
   kubeDeployments: D.array(kubeDeployment),
   kubeServices: D.array(kubeService),
   kubeHpas: D.array(kubeHpa),
@@ -1054,7 +1068,7 @@ const migrateLivenessDeployment = (
 
 const migrateKubeDeployment = (version: number, value: unknown, podNetwork: number): unknown => {
   const d = migrateLivenessDeployment(version, value, podNetwork);
-  if (!isRecord(d)) return d;
+  if (!isRecord(d) || version >= 17) return d;
   return {
     ...d,
     startupProbe: Option.none,
@@ -1070,6 +1084,11 @@ const migrateKubeDeployment = (version: number, value: unknown, podNetwork: numb
   };
 };
 
+const withDefaultNamespace = (value: unknown): unknown =>
+  Array.isArray(value)
+    ? value.map((r) => (isRecord(r) ? { ...r, namespace: "default" } : r))
+    : value;
+
 const migrate = (version: number, value: unknown): unknown => {
   if (version === SchemaVersion) return value;
   const old = version === 1 ? migrateV1(value) : value;
@@ -1077,27 +1096,37 @@ const migrate = (version: number, value: unknown): unknown => {
   const previous = isRecord(old)
     ? {
         ...old,
+        kubeNamespaces: [],
         kubeFiles: version >= 11 ? old.kubeFiles : {},
-        kubeHpas: version >= 14 ? old.kubeHpas : [],
+        kubeHpas: version >= 14 ? withDefaultNamespace(old.kubeHpas) : [],
         kubeConfigs:
           version >= 11
-            ? old.kubeConfigs
+            ? withDefaultNamespace(old.kubeConfigs)
             : version >= 10 && Array.isArray(old.kubeConfigs)
-              ? old.kubeConfigs.map((c) => (isRecord(c) ? { ...c, lastAppliedKeys: [] } : c))
+              ? old.kubeConfigs.map((c) =>
+                  isRecord(c) ? { ...c, namespace: "default", lastAppliedKeys: [] } : c,
+                )
               : [],
         kubeDeployments: Array.isArray(old.kubeDeployments)
           ? old.kubeDeployments.map((d) => {
               const key = isRecord(d) ? `${d.projectId}/${d.cluster}` : "";
               const slot = networks.get(key) ?? 0;
               networks.set(key, slot + 1);
-              return migrateKubeDeployment(version, d, slot);
+              const migrated = migrateKubeDeployment(version, d, slot);
+              return isRecord(migrated) ? { ...migrated, namespace: "default" } : migrated;
             })
           : old.kubeDeployments,
         kubeServices: Array.isArray(old.kubeServices)
           ? old.kubeServices.map((s) => {
-              if (!isRecord(s) || version >= 12) return s;
+              if (!isRecord(s)) return s;
+              if (version >= 12) return { ...s, namespace: "default" };
               const { targetDeployment, ...rest } = s;
-              return { ...rest, labels: {}, selector: { app: targetDeployment } };
+              return {
+                ...rest,
+                namespace: "default",
+                labels: {},
+                selector: { app: targetDeployment },
+              };
             })
           : old.kubeServices,
         containerLab:

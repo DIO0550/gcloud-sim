@@ -1,10 +1,5 @@
 import { CommandFailure } from "@/engine/cli/command-failure";
-import {
-  CommandOutput,
-  type CommandResult,
-  OutputMessage,
-  type ProjectContext,
-} from "@/engine/cli/command-spec";
+import { CommandOutput, type CommandResult, OutputMessage } from "@/engine/cli/command-spec";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import type { WorkloadManifest } from "@/engine/domains/kube-manifest/workloads";
 import { KubeDeployment, KubeService } from "@/engine/domains/kubernetes";
@@ -13,17 +8,18 @@ import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 import { kubePermission } from "./configuration";
+import type { KubectlContext } from "./context";
 
 export const applyWorkload = (
-  ctx: ProjectContext,
+  ctx: KubectlContext,
   cluster: GkeCluster,
   manifest: WorkloadManifest,
   action: "apply" | "create" | "delete",
 ): CommandResult => {
   const exists =
     manifest.kind === "deployment"
-      ? Option.isSome(World.findKubeDeployment(ctx.world, cluster, manifest.name))
-      : Option.isSome(World.findKubeService(ctx.world, cluster, manifest.name));
+      ? Option.isSome(World.findKubeDeployment(ctx.world, cluster, manifest.name, ctx.namespace))
+      : Option.isSome(World.findKubeService(ctx.world, cluster, manifest.name, ctx.namespace));
   const permission = `container.${manifest.kind === "deployment" ? "deployments" : "services"}`;
   const verbs = action === "apply" ? ["get", exists ? "update" : "create"] : [action];
   for (const verb of verbs) {
@@ -46,7 +42,7 @@ export const applyWorkload = (
       ),
     });
   if (manifest.kind === "deployment") {
-    const current = World.findKubeDeployment(ctx.world, cluster, manifest.name);
+    const current = World.findKubeDeployment(ctx.world, cluster, manifest.name, ctx.namespace);
     if (Option.isSome(current)) {
       if (action === "delete")
         return finish(World.withoutKubeDeployment(ctx.world, current.value), "deleted");
@@ -74,6 +70,7 @@ export const applyWorkload = (
     const created = KubeDeployment.create({
       projectId: cluster.projectId,
       cluster: cluster.name,
+      namespace: ctx.namespace,
       name: manifest.name,
       image: manifest.image,
       labels: manifest.labels,
@@ -103,7 +100,7 @@ export const applyWorkload = (
     if (!Result.isOk(added)) return Result.err(CommandFailure.alreadyExists(added.error.resource));
     return finish(added.value, "created");
   }
-  const current = World.findKubeService(ctx.world, cluster, manifest.name);
+  const current = World.findKubeService(ctx.world, cluster, manifest.name, ctx.namespace);
   if (Option.isSome(current)) {
     const service = current.value;
     if (action === "delete") return finish(World.withoutKubeService(ctx.world, service), "deleted");
@@ -137,6 +134,7 @@ export const applyWorkload = (
     ...manifest,
     projectId: cluster.projectId,
     cluster: cluster.name,
+    namespace: ctx.namespace,
     targetPort: Option.some(manifest.targetPort),
     clusterIp: `10.20.${(numbered.number >> 8) % 256}.${numbered.number % 256}`,
     externalIp: `34.85.${(numbered.number >> 8) % 256}.${numbered.number % 256}`,

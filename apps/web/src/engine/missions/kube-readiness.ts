@@ -31,7 +31,10 @@ export const KubeReadinessMissions: readonly Mission[] = [
 export const kubeReadinessSatisfied = (world: World): boolean => {
   const d = world.kubeDeployments.find(
     (d) =>
-      d.projectId === F.devProjectId && d.cluster === "readiness-gke" && d.name === "ready-web",
+      d.projectId === F.devProjectId &&
+      d.cluster === "readiness-gke" &&
+      d.namespace === "default" &&
+      d.name === "ready-web",
   );
   if (d?.image !== "nginx:1" || d.replicas !== 2 || d.env.length !== 0) return false;
   if (
@@ -52,7 +55,11 @@ export const kubeReadinessSatisfied = (world: World): boolean => {
   )
     return false;
   const service = world.kubeServices.find(
-    (s) => s.projectId === d.projectId && s.cluster === d.cluster && s.name === "ready-service",
+    (s) =>
+      s.projectId === d.projectId &&
+      s.cluster === d.cluster &&
+      s.namespace === "default" &&
+      s.name === "ready-service",
   );
   if (service?.port !== 80 || service.targetPort !== 8080) return false;
   const backends = KubeServiceRouting.backends(world, service);

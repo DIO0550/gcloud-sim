@@ -43,6 +43,7 @@ import {
   KubeConfigProperties,
   KubeDeploymentProperties,
   KubeHpaProperties,
+  KubeNamespaceProperties,
   KubeServiceProperties,
   LogSinkProperties,
   NodePoolProperties,
@@ -110,6 +111,8 @@ const Body = ({
       return <ClusterProperties world={world} selection={selection} />;
     case "node-pool":
       return <NodePoolProperties world={world} selection={selection} />;
+    case "kube-namespace":
+      return <KubeNamespaceProperties world={world} selection={selection} />;
     case "kube-deployment":
       return <KubeDeploymentProperties world={world} selection={selection} />;
     case "kube-hpa":
@@ -184,6 +187,7 @@ const titleOf = (selection: TreeSelection): string => {
     case "forwarding-rule":
     case "cluster":
     case "node-pool":
+    case "kube-namespace":
     case "kube-deployment":
     case "kube-service":
     case "kube-config":
@@ -255,6 +259,8 @@ const kindLabel = (selection: TreeSelection): string => {
       return "container#cluster";
     case "node-pool":
       return `container#nodePool · clusters/${selection.cluster}`;
+    case "kube-namespace":
+      return `v1 Namespace · clusters/${selection.cluster}`;
     case "kube-deployment":
       return `apps/v1 Deployment · clusters/${selection.cluster}`;
     case "kube-hpa":

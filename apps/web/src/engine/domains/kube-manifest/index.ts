@@ -1,17 +1,19 @@
 import { isAlias, parseAllDocuments, visit } from "yaml";
 import { KubeConfig as Configuration, type KubeConfig } from "@/engine/domains/kube-config";
+import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { Result } from "@/utils/Result";
-
 import { type HpaManifest, parseHpa } from "./hpa";
-import { fail, fields, record } from "./validation";
+import { fail, fields, namespace, record } from "./validation";
 import { parseWorkload, type WorkloadManifest } from "./workloads";
 
 export type ConfigManifest = Readonly<{
   kind: KubeConfig["kind"];
   name: string;
+  namespace: string | undefined;
   data: KubeConfig["data"];
 }>;
-export type KubeManifest = ConfigManifest | WorkloadManifest | HpaManifest;
+export type NamespaceManifest = Readonly<{ kind: "namespace"; name: string; namespace: undefined }>;
+export type KubeManifest = NamespaceManifest | ConfigManifest | WorkloadManifest | HpaManifest;
 const strings = (value: unknown, field: string): [string, string][] =>
   Object.entries(value === undefined ? {} : record(value, field)).map(([key, value]) => {
     if (typeof value !== "string")
@@ -30,6 +32,14 @@ const decode = (value: string): string => {
 };
 const parseResource = (value: unknown): KubeManifest => {
   const r = record(value, "manifest");
+  if (r.kind === "Namespace") {
+    fields(r, ["apiVersion", "kind", "metadata"], "Namespace manifest");
+    const meta = record(r.metadata, "metadata");
+    fields(meta, ["name"], "Namespace metadata");
+    if (r.apiVersion !== "v1" || !KubeNamespace.valid(meta.name))
+      return fail("Invalid v1 Namespace name.");
+    return { kind: "namespace", name: meta.name, namespace: undefined };
+  }
   if (r.kind === "HorizontalPodAutoscaler") return parseHpa(r);
   if (r.kind === "Deployment" || r.kind === "Service") return parseWorkload(r);
   if (r.apiVersion !== "v1" || (r.kind !== "ConfigMap" && r.kind !== "Secret"))
@@ -46,8 +56,7 @@ const parseResource = (value: unknown): KubeManifest => {
   );
   const meta = record(r.metadata, "metadata");
   fields(meta, ["name", "namespace"], "metadata");
-  if (meta.namespace !== undefined && meta.namespace !== "default")
-    return fail("Only namespace default is supported on gcloud-sim.");
+  const ns = namespace(meta.namespace);
   if (typeof meta.name !== "string") return fail("metadata.name must be a string.");
   if (secret && r.type !== undefined && r.type !== "Opaque")
     return fail("Only Opaque Secrets are supported on gcloud-sim.");
@@ -56,6 +65,7 @@ const parseResource = (value: unknown): KubeManifest => {
   const config = Configuration.validate({
     projectId: "",
     cluster: "",
+    namespace: ns ?? "default",
     kind: secret ? "secret" : "configmap",
     name: meta.name,
     data: Array.from(data, ([key, value]) => ({ key, value })).toSorted((a, b) =>
@@ -65,7 +75,12 @@ const parseResource = (value: unknown): KubeManifest => {
     createdAt: "",
   });
   if (!Result.isOk(config)) return fail(config.error);
-  return { kind: config.value.kind, name: config.value.name, data: config.value.data };
+  return {
+    kind: config.value.kind,
+    name: config.value.name,
+    namespace: ns,
+    data: config.value.data,
+  };
 };
 export const KubeManifest = {
   path(path: string): string | undefined {
@@ -112,7 +127,10 @@ export const KubeManifest = {
         });
         return parseResource(doc.toJS({ maxAliasCount: 0 }));
       });
-      if (new Set(resources.map((r) => `${r.kind}/${r.name}`)).size !== resources.length)
+      if (
+        new Set(resources.map((r) => `${r.namespace ?? "<current>"}/${r.kind}/${r.name}`)).size !==
+        resources.length
+      )
         return fail("Duplicate resource in manifest file.");
       return Result.ok(resources);
     } catch (e) {
@@ -387,6 +405,108 @@ spec:
   type: LoadBalancer
   selector:
     app: wrong-app
+  ports:
+    - port: 80
+      targetPort: 80
+`,
+  },
+  "kubernetes-namespace": {
+    "namespaces.yaml": `apiVersion: v1
+kind: Namespace
+metadata:
+  name: staging
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+`,
+    "staging.yaml": `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: settings
+  namespace: staging
+data:
+  MODE: staging
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: staging
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: nginx:1
+          env:
+            - name: MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: settings
+                  key: MODE
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-service
+  namespace: staging
+spec:
+  selector:
+    app: web
+  ports:
+    - port: 80
+      targetPort: 80
+`,
+    "production.yaml": `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: settings
+  namespace: production
+data:
+  MODE: production
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: production
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: nginx:1
+          env:
+            - name: MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: settings
+                  key: MODE
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-service
+  namespace: production
+spec:
+  selector:
+    app: web
   ports:
     - port: 80
       targetPort: 80

@@ -31,8 +31,8 @@ export const KubeWorkloadMissions: readonly Mission[] = [
 ];
 
 export const kubeWorkloadSatisfied = (world: World): boolean => {
-  const matches = (r: { projectId: string; cluster: string }) =>
-    r.projectId === F.devProjectId && r.cluster === "manifest-gke";
+  const matches = (r: { projectId: string; cluster: string; namespace: string }) =>
+    r.projectId === F.devProjectId && r.cluster === "manifest-gke" && r.namespace === "default";
   const d = world.kubeDeployments.find((d) => matches(d) && d.name === "manifest-web");
   const s = world.kubeServices.find((s) => matches(s) && s.name === "manifest-svc");
   if (

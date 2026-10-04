@@ -40,7 +40,11 @@ export const kubeQosSatisfied = (world: World): boolean => {
   ];
   return expected.every(([name, resources]) => {
     const d = world.kubeDeployments.find(
-      (d) => d.projectId === F.devProjectId && d.cluster === "qos-gke" && d.name === name,
+      (d) =>
+        d.projectId === F.devProjectId &&
+        d.cluster === "qos-gke" &&
+        d.namespace === "default" &&
+        d.name === name,
     );
     return (
       d?.image === "nginx:1" &&

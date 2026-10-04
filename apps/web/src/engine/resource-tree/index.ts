@@ -190,41 +190,86 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
       `pool: ${p.name}`,
     ),
   );
-  const deployments = World.kubeDeploymentsOf(world, cluster).map((d) =>
-    leaf(
-      { kind: "kube-deployment", projectId: id, cluster: cluster.name, name: d.name },
-      `deploy: ${d.name}`,
-    ),
-  );
-  const services = World.kubeServicesOf(world, cluster).map((s) =>
-    leaf(
-      { kind: "kube-service", projectId: id, cluster: cluster.name, name: s.name },
-      `svc: ${s.name}`,
-    ),
-  );
-  const configs = world.kubeConfigs
-    .filter((c) => c.projectId === id && c.cluster === cluster.name)
-    .map((c) =>
+  const resources = (namespace: string): readonly TreeNode[] => {
+    const deployments = World.kubeDeploymentsOf(world, cluster, namespace).map((d) =>
       leaf(
         {
-          kind: "kube-config",
-          resourceKind: c.kind,
+          kind: "kube-deployment",
           projectId: id,
-          cluster: c.cluster,
-          name: c.name,
+          cluster: cluster.name,
+          ...(namespace !== "default" ? { namespace } : {}),
+          name: d.name,
         },
-        `${c.kind}: ${c.name}`,
+        `deploy: ${d.name}`,
       ),
     );
-  const hpas = world.kubeHpas
-    .filter((h) => h.projectId === id && h.cluster === cluster.name)
-    .map((h) =>
+    const services = World.kubeServicesOf(world, cluster, namespace).map((s) =>
       leaf(
-        { kind: "kube-hpa", projectId: id, cluster: cluster.name, name: h.name },
-        `hpa: ${h.name}`,
+        {
+          kind: "kube-service",
+          projectId: id,
+          cluster: cluster.name,
+          ...(namespace !== "default" ? { namespace } : {}),
+          name: s.name,
+        },
+        `svc: ${s.name}`,
       ),
     );
-  return [...pools, ...deployments, ...services, ...configs, ...hpas];
+    const configs = world.kubeConfigs
+      .filter((c) => c.projectId === id && c.cluster === cluster.name && c.namespace === namespace)
+      .map((c) =>
+        leaf(
+          {
+            kind: "kube-config",
+            resourceKind: c.kind,
+            projectId: id,
+            cluster: c.cluster,
+            ...(namespace !== "default" ? { namespace } : {}),
+            name: c.name,
+          },
+          `${c.kind}: ${c.name}`,
+        ),
+      );
+    const hpas = world.kubeHpas
+      .filter((h) => h.projectId === id && h.cluster === cluster.name && h.namespace === namespace)
+      .map((h) =>
+        leaf(
+          {
+            kind: "kube-hpa",
+            projectId: id,
+            cluster: cluster.name,
+            ...(namespace !== "default" ? { namespace } : {}),
+            name: h.name,
+          },
+          `hpa: ${h.name}`,
+        ),
+      );
+    return [...deployments, ...services, ...configs, ...hpas];
+  };
+  const namespaces = world.kubeNamespaces
+    .filter((n) => n.projectId === id && n.cluster === cluster.name)
+    .map((n) =>
+      leaf(
+        { kind: "kube-namespace", projectId: id, cluster: cluster.name, name: n.name },
+        `namespace: ${n.name}`,
+        { children: resources(n.name) },
+      ),
+    );
+  const systemNamespaces = ["kube-system", "kube-public", "kube-node-lease"].flatMap(
+    (namespace) => {
+      const children = resources(namespace);
+      return children.length
+        ? [
+            leaf(
+              { kind: "kube-namespace", projectId: id, cluster: cluster.name, name: namespace },
+              `namespace: ${namespace}`,
+              { children },
+            ),
+          ]
+        : [];
+    },
+  );
+  return [...pools, ...resources("default"), ...namespaces, ...systemNamespaces];
 };
 
 const gkeNodes = (world: World, id: string): readonly TreeNode[] =>

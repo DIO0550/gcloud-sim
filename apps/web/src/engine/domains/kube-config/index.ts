@@ -1,3 +1,4 @@
+import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { type KubeDeployment, KubeName, KubePod } from "@/engine/domains/kubernetes";
 import type { JsonRecord } from "@/types/Json";
 import { Result } from "@/utils/Result";
@@ -5,6 +6,7 @@ import { Result } from "@/utils/Result";
 export type KubeConfig = Readonly<{
   projectId: string;
   cluster: string;
+  namespace: string;
   kind: "configmap" | "secret";
   name: string;
   data: readonly Readonly<{ key: string; value: string }>[];
@@ -27,6 +29,7 @@ const validKey = (key: string) => /^[a-zA-Z0-9._-]+$/.test(key) && key.length <=
 const validEnvName = (name: string) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name);
 export const KubeConfig = {
   validate(c: KubeConfig): Result<KubeConfig, string> {
+    if (!KubeNamespace.valid(c.namespace)) return Result.err("Invalid Kubernetes namespace.");
     if (!Result.isOk(KubeName.parse(c.name))) return Result.err("Invalid configuration name.");
     if (
       c.lastAppliedKeys.length > 100 ||
@@ -59,7 +62,7 @@ export const KubeConfig = {
     return {
       apiVersion: "v1",
       kind: c.kind === "secret" ? "Secret" : "ConfigMap",
-      metadata: { name: c.name, namespace: "default", creationTimestamp: c.createdAt },
+      metadata: { name: c.name, namespace: c.namespace, creationTimestamp: c.createdAt },
       ...(c.kind === "secret" ? { type: "Opaque" } : {}),
       data,
     };
@@ -106,6 +109,7 @@ export const KubeRuntime = {
         (c) =>
           c.projectId === d.projectId &&
           c.cluster === d.cluster &&
+          c.namespace === d.namespace &&
           c.kind === e.source &&
           c.name === e.resource,
       );

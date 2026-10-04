@@ -32,7 +32,10 @@ export const KubeResourceMissions: readonly Mission[] = [
 export const kubeResourcesSatisfied = (world: World): boolean => {
   const d = world.kubeDeployments.find(
     (d) =>
-      d.projectId === F.devProjectId && d.cluster === "resources-gke" && d.name === "resource-web",
+      d.projectId === F.devProjectId &&
+      d.cluster === "resources-gke" &&
+      d.namespace === "default" &&
+      d.name === "resource-web",
   );
   const expected: KubeResources = {
     requests: { cpu: "250m", memory: "128Mi" },

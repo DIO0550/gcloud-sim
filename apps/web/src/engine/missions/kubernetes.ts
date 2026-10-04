@@ -57,7 +57,11 @@ export const kubernetesSatisfied = (world: World, assertion: KubernetesAssertion
   );
   if (!cluster) return false;
   const d = world.kubeDeployments.find(
-    (d) => d.projectId === F.devProjectId && d.cluster === cluster.name && d.name === "hello",
+    (d) =>
+      d.projectId === F.devProjectId &&
+      d.cluster === cluster.name &&
+      d.namespace === "default" &&
+      d.name === "hello",
   );
   if (!d || ImagePull.error(world, cluster, d.image)) return false;
   if (KubePod.fromDeployment(d).some((p) => KubeRuntime.error(world.kubeConfigs, d, p.name)))

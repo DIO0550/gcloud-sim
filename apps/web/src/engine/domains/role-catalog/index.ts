@@ -222,7 +222,16 @@ const KubeConfigPermissions = [
   "container.pods.exec",
 ] as const;
 
+const NamespacePermissions = [
+  "container.namespaces.create",
+  "container.namespaces.update",
+  "container.namespaces.delete",
+  "container.namespaces.get",
+  "container.namespaces.list",
+] as const;
+
 const ContainerPermissions = [
+  ...NamespacePermissions,
   ...KubeConfigPermissions,
   ...HpaPermissions,
   "container.clusters.create",
@@ -246,6 +255,7 @@ const ContainerPermissions = [
 ] as const;
 
 const ContainerDeveloperPermissions = [
+  ...NamespacePermissions,
   ...KubeConfigPermissions,
   ...HpaPermissions,
   "container.clusters.get",
@@ -656,6 +666,8 @@ const Roles: readonly Role[] = [
   role("roles/container.admin", "Kubernetes Engine Admin", ContainerPermissions),
   role("roles/container.developer", "Kubernetes Engine Developer", ContainerDeveloperPermissions),
   role("roles/container.viewer", "Kubernetes Engine Viewer", [
+    "container.namespaces.get",
+    "container.namespaces.list",
     "container.configMaps.get",
     "container.configMaps.list",
     "container.clusters.get",

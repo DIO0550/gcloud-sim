@@ -4,7 +4,6 @@ import {
   type CommandResult,
   OutputMessage,
   ParsedArgs,
-  type ProjectContext,
 } from "@/engine/cli/command-spec";
 import { ImagePull } from "@/engine/domains/image-pull";
 import { KubeRuntime } from "@/engine/domains/kube-config";
@@ -16,12 +15,16 @@ import type { GkeCluster } from "@/engine/domains/managed-services";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
+import type { KubectlContext } from "./context";
 
 const invalid = (message: string) => Result.err(CommandFailure.invalidArgumentWith(message));
-export const hpasOf = (world: World, cluster: GkeCluster) =>
-  world.kubeHpas.filter((h) => h.projectId === cluster.projectId && h.cluster === cluster.name);
+export const hpasOf = (world: World, cluster: GkeCluster, namespace = "default") =>
+  world.kubeHpas.filter(
+    (h) =>
+      h.projectId === cluster.projectId && h.cluster === cluster.name && h.namespace === namespace,
+  );
 export const createHpa = (
-  ctx: ProjectContext,
+  ctx: KubectlContext,
   cluster: GkeCluster,
   d: KubeDeployment,
   args: ParsedArgs,
@@ -31,6 +34,7 @@ export const createHpa = (
   const h = KubeHpa.validate({
     projectId: cluster.projectId,
     cluster: cluster.name,
+    namespace: ctx.namespace,
     name: Option.unwrapOr(ParsedArgs.string(args, "name"), d.name),
     target: d.name,
     minReplicas: Option.unwrapOr(ParsedArgs.integer(args, "min"), 1),
@@ -40,13 +44,13 @@ export const createHpa = (
     lastEvaluation: Option.none,
   });
   if (!Result.isOk(h)) return invalid(h.error);
-  if (hpasOf(ctx.world, cluster).some((existing) => existing.name === h.value.name))
+  if (hpasOf(ctx.world, cluster, ctx.namespace).some((existing) => existing.name === h.value.name))
     return Result.err(
       CommandFailure.alreadyExistsWith(
         `horizontalpodautoscalers.autoscaling "${h.value.name}" already exists`,
       ),
     );
-  if (hpasOf(ctx.world, cluster).some((existing) => existing.target === d.name))
+  if (hpasOf(ctx.world, cluster, ctx.namespace).some((existing) => existing.target === d.name))
     return invalid("Only one HPA per Deployment is supported on gcloud-sim.");
   return Result.ok({
     world: { ...ctx.world, kubeHpas: [...ctx.world.kubeHpas, h.value] },
@@ -59,12 +63,12 @@ export const createHpa = (
   });
 };
 export const reconcileHpa = (
-  ctx: ProjectContext,
+  ctx: KubectlContext,
   cluster: GkeCluster,
   args: ParsedArgs,
 ): CommandResult => {
   const name = ParsedArgs.requiredPositional(args, 0);
-  const h = hpasOf(ctx.world, cluster).find((h) => h.name === name);
+  const h = hpasOf(ctx.world, cluster, ctx.namespace).find((h) => h.name === name);
   if (!h)
     return Result.err(
       CommandFailure.notFoundWith(`horizontalpodautoscalers.autoscaling "${name}" not found`),
@@ -76,7 +80,9 @@ export const reconcileHpa = (
   const cpuMilli = KubeResources.cpuMilli(resources.value.requests.cpu);
   if (cpuMilli > 1_000_000_000)
     return invalid("Simulated CPU usage must not exceed 1000000000m per Pod.");
-  const d = World.kubeDeploymentsOf(ctx.world, cluster).find((d) => d.name === h.target);
+  const d = World.kubeDeploymentsOf(ctx.world, cluster, ctx.namespace).find(
+    (d) => d.name === h.target,
+  );
   const ready =
     d !== undefined &&
     !ImagePull.error(ctx.world, cluster, d.image) &&

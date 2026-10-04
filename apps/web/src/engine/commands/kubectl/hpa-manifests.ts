@@ -1,10 +1,5 @@
 import { CommandFailure } from "@/engine/cli/command-failure";
-import {
-  CommandOutput,
-  type CommandResult,
-  OutputMessage,
-  type ProjectContext,
-} from "@/engine/cli/command-spec";
+import { CommandOutput, type CommandResult, OutputMessage } from "@/engine/cli/command-spec";
 import { KubeHpa } from "@/engine/domains/kube-hpa";
 import type { HpaManifest } from "@/engine/domains/kube-manifest/hpa";
 import type { GkeCluster } from "@/engine/domains/managed-services";
@@ -12,15 +7,16 @@ import type { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 import { kubePermission } from "./configuration";
+import type { KubectlContext } from "./context";
 import { hpasOf } from "./hpa";
 
 export const applyHpa = (
-  ctx: ProjectContext,
+  ctx: KubectlContext,
   cluster: GkeCluster,
   manifest: HpaManifest,
   action: "apply" | "create" | "delete",
 ): CommandResult => {
-  const existing = hpasOf(ctx.world, cluster).find((h) => h.name === manifest.name);
+  const existing = hpasOf(ctx.world, cluster, ctx.namespace).find((h) => h.name === manifest.name);
   const verbs = action === "apply" ? ["get", existing ? "update" : "create"] : [action];
   for (const verb of verbs) {
     const allowed = kubePermission(ctx, `container.horizontalPodAutoscalers.${verb}`);
@@ -51,7 +47,11 @@ export const applyHpa = (
       "deleted",
     );
   }
-  if (hpasOf(ctx.world, cluster).some((h) => h !== existing && h.target === manifest.target))
+  if (
+    hpasOf(ctx.world, cluster, ctx.namespace).some(
+      (h) => h !== existing && h.target === manifest.target,
+    )
+  )
     return Result.err(
       CommandFailure.invalidArgumentWith("Only one HPA per Deployment is supported on gcloud-sim."),
     );
@@ -60,6 +60,7 @@ export const applyHpa = (
   const next: KubeHpa = {
     projectId: cluster.projectId,
     cluster: cluster.name,
+    namespace: ctx.namespace,
     name: manifest.name,
     target: manifest.target,
     minReplicas: manifest.minReplicas,

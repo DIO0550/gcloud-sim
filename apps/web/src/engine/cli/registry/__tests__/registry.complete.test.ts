@@ -172,7 +172,12 @@ const withDeployment = () =>
 test("別名のフラグの直後は値として扱い、位置引数の候補を出さない", () => {
   const s = withDeployment();
   expect(Engine.completionCandidates(s.world, "kubectl get deployment ")).toEqual(["web"]);
-  expect(Engine.completionCandidates(s.world, "kubectl get deployment -n ")).toEqual([]);
+  expect(Engine.completionCandidates(s.world, "kubectl get deployment -n ")).toEqual([
+    "default",
+    "kube-node-lease",
+    "kube-public",
+    "kube-system",
+  ]);
 });
 
 test("別名のフラグの値は位置引数に数えない", () => {

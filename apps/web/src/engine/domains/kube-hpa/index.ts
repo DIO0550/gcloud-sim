@@ -1,3 +1,4 @@
+import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import type { KubeDeployment } from "@/engine/domains/kubernetes";
 import type { JsonRecord, JsonValue } from "@/types/Json";
@@ -25,6 +26,7 @@ export type HpaEvaluation = Readonly<{
 export type KubeHpa = Readonly<{
   projectId: string;
   cluster: string;
+  namespace: string;
   name: string;
   target: string;
   minReplicas: number;
@@ -53,6 +55,7 @@ export const KubeHpa = {
     );
   },
   validate(h: KubeHpa): Result<KubeHpa, string> {
+    if (!KubeNamespace.valid(h.namespace)) return Result.err("Invalid Kubernetes namespace.");
     if (!validName(h.name) || !validName(h.target))
       return Result.err("HPA and target names must be DNS labels of at most 63 characters.");
     if (!integer(h.minReplicas, 1, 1000) || !integer(h.maxReplicas, h.minReplicas, 1000))
@@ -158,7 +161,7 @@ export const KubeHpa = {
     return {
       apiVersion: "autoscaling/v2",
       kind: "HorizontalPodAutoscaler",
-      metadata: { name: h.name, namespace: "default", creationTimestamp: h.createdAt },
+      metadata: { name: h.name, namespace: h.namespace, creationTimestamp: h.createdAt },
       spec: {
         scaleTargetRef: { apiVersion: "apps/v1", kind: "Deployment", name: h.target },
         minReplicas: h.minReplicas,
