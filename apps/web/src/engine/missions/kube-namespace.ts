@@ -24,7 +24,7 @@ export const KubeNamespaceMissions: readonly Mission[] = [
       "kubectl get deploymentsはdefaultを対象にするので空です。kubectl get deployments -AでNAMESPACE列を確認し、kubectl get deployment web -n stagingで検証環境だけを選びます。",
       "kubectl set image deployment/web web=nginx:2 -n staging → kubectl scale deployment/web --replicas=3 -n staging。本番の同名Deploymentは変わりません。",
       "kubectl exec deployment/web -n staging -- printenv MODE → kubectl exec deployment/web -n production -- printenv MODE。値はそれぞれstaging/productionで、同名ConfigMapを取り違えません。",
-      "kubectl describe service web-service -n staging → kubectl describe service web-service -n production。接続先はそれぞれ3つ/1つです。kubectl get deployments -Aで画像・レプリカ・namespaceを比べれば達成。namespace削除は中のリソースも即時削除するため、片付けはクリア後に行います。",
+      "kubectl describe service web-service -n staging → kubectl describe service web-service -n production。接続先はそれぞれ3つ/1つです。kubectl get deployments -A -o jsonでイメージ・レプリカ・namespaceを比べれば達成。namespace削除は中のリソースも即時削除するため、片付けはクリア後に行います。",
     ],
     assertions: [{ kind: "kubeNamespaceIsolated" }],
   },
