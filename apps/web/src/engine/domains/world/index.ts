@@ -28,6 +28,7 @@ import { KubeConfig, KubeRuntime } from "@/engine/domains/kube-config";
 import { KubeHpa } from "@/engine/domains/kube-hpa";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeManifest } from "@/engine/domains/kube-manifest";
+import { KubeReadiness } from "@/engine/domains/kube-readiness";
 import { KubeDeployment, type KubeService } from "@/engine/domains/kubernetes";
 import {
   type BackendService,
@@ -1076,7 +1077,9 @@ export const World = {
         ...world,
         kubeDeployments: [
           ...world.kubeDeployments,
-          KubeRuntime.reconcile(world.kubeConfigs, { ...deployment, podNetwork }),
+          KubeReadiness.reconcile(
+            KubeRuntime.reconcile(world.kubeConfigs, { ...deployment, podNetwork }),
+          ),
         ],
       }),
     );
@@ -1088,7 +1091,7 @@ export const World = {
       kubeDeployments: replaceBy(
         world.kubeDeployments,
         sameInCluster(deployment),
-        KubeRuntime.reconcile(world.kubeConfigs, deployment),
+        KubeReadiness.reconcile(KubeRuntime.reconcile(world.kubeConfigs, deployment)),
       ),
     };
   },

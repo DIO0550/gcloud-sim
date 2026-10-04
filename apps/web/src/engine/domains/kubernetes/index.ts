@@ -1,5 +1,10 @@
 import { KubeEnv, type PodEnvironment } from "@/engine/domains/kube-config";
 import { KubeLabels } from "@/engine/domains/kube-labels";
+import {
+  KubeReadiness,
+  type PodReadiness,
+  type ReadinessProbe,
+} from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import type { JsonRecord } from "@/types/Json";
 import type { ValueOf } from "@/types/ValueOf";
@@ -27,9 +32,19 @@ export type KubeRevision = Readonly<{
   revision: number;
   templateId: number;
   image: string;
-  reason: "create" | "image" | "env" | "resources" | "labels" | "restart" | "undo" | "migrated";
+  reason:
+    | "create"
+    | "image"
+    | "env"
+    | "resources"
+    | "readiness"
+    | "labels"
+    | "restart"
+    | "undo"
+    | "migrated";
   env: readonly KubeEnv[];
   resources: KubeResources;
+  readinessProbe: Option<ReadinessProbe>;
   podLabels: KubeLabels;
 }>;
 export type KubeDeployment = Readonly<{
@@ -39,6 +54,8 @@ export type KubeDeployment = Readonly<{
   image: string;
   env: readonly KubeEnv[];
   resources: KubeResources;
+  readinessProbe: Option<ReadinessProbe>;
+  podReadiness: readonly PodReadiness[];
   podEnvironments: readonly PodEnvironment[];
   labels: KubeLabels;
   selector: KubeLabels;
@@ -64,6 +81,7 @@ const newRevision = (
   env = d.env,
   podLabels = d.podLabels,
   resources = d.resources,
+  readinessProbe = d.readinessProbe,
 ): KubeDeployment => {
   const revision = d.revision + 1;
   return {
@@ -71,12 +89,14 @@ const newRevision = (
     image,
     env,
     resources,
+    readinessProbe,
+    podReadiness: [],
     podLabels,
     generation: d.generation + 1,
     revision,
     revisions: [
       ...d.revisions.filter((r) => r.templateId !== templateId),
-      { revision, image, templateId, reason, env, podLabels, resources },
+      { revision, image, templateId, reason, env, podLabels, resources, readinessProbe },
     ].slice(-11),
     podSequence: d.podSequence + 1,
     podIncarnations: Array.from({ length: d.replicas }, () => d.podSequence + 1),
@@ -88,10 +108,12 @@ const templateChangeReason = (
   image: string,
   env: readonly KubeEnv[],
   resources: KubeResources,
+  readinessProbe: Option<ReadinessProbe>,
 ): KubeRevision["reason"] => {
   if (image !== d.image) return "image";
   if (JSON.stringify(env) !== JSON.stringify(d.env)) return "env";
   if (!KubeResources.equal(resources, d.resources)) return "resources";
+  if (!KubeReadiness.equal(readinessProbe, d.readinessProbe)) return "readiness";
   return "labels";
 };
 
@@ -139,6 +161,8 @@ export const KubeDeployment = {
       image: seed.image,
       env: [],
       resources: KubeResources.empty(),
+      readinessProbe: Option.none,
+      podReadiness: [],
       podEnvironments: [],
       labels,
       selector,
@@ -156,6 +180,7 @@ export const KubeDeployment = {
           env: [],
           podLabels,
           resources: KubeResources.empty(),
+          readinessProbe: Option.none,
         },
       ],
       podIncarnations: Array.from({ length: replicas }, () => 0),
@@ -205,6 +230,7 @@ export const KubeDeployment = {
     podLabels = deployment.podLabels,
     labels = deployment.labels,
     resources = deployment.resources,
+    readinessProbe = deployment.readinessProbe,
   ): KubeDeployment {
     const metadata = KubeLabels.equal(labels, deployment.labels)
       ? deployment
@@ -214,12 +240,13 @@ export const KubeDeployment = {
       image === deployment.image &&
       JSON.stringify(env) === JSON.stringify(deployment.env) &&
       KubeLabels.equal(podLabels, deployment.podLabels) &&
-      KubeResources.equal(resources, deployment.resources)
+      KubeResources.equal(resources, deployment.resources) &&
+      KubeReadiness.equal(readinessProbe, deployment.readinessProbe)
     )
       return scaled;
-    const reason = templateChangeReason(deployment, image, env, resources);
+    const reason = templateChangeReason(deployment, image, env, resources, readinessProbe);
     return {
-      ...newRevision(scaled, image, reason, undefined, env, podLabels, resources),
+      ...newRevision(scaled, image, reason, undefined, env, podLabels, resources, readinessProbe),
       generation: deployment.generation + 1,
     };
   },
@@ -251,6 +278,7 @@ export const KubeDeployment = {
         previous.env,
         previous.podLabels,
         previous.resources,
+        previous.readinessProbe,
       ),
     );
   },
@@ -266,6 +294,8 @@ export const KubeDeployment = {
   },
 
   validate(d: KubeDeployment): Result<KubeDeployment, string> {
+    if (!KubeReadiness.validate(d))
+      return Result.err("Invalid Deployment readiness probe or Pod samples.");
     for (const r of [d, ...d.revisions]) {
       const parsed = KubeResources.parse(r.resources);
       if (!Result.isOk(parsed) || !KubeResources.equal(parsed.value, r.resources))
@@ -385,6 +415,7 @@ export const KubeDeployment = {
                 image: deployment.image,
                 env: deployment.env.map(KubeEnv.toRecord),
                 ...KubeResources.toContainerFields(deployment.resources),
+                ...KubeReadiness.fields(deployment.readinessProbe),
               },
             ],
           },
@@ -392,8 +423,8 @@ export const KubeDeployment = {
       },
       status: {
         replicas: deployment.replicas,
-        readyReplicas: deployment.replicas,
-        availableReplicas: deployment.replicas,
+        readyReplicas: KubePod.fromDeployment(deployment).filter((p) => p.ready).length,
+        availableReplicas: KubePod.fromDeployment(deployment).filter((p) => p.ready).length,
         updatedReplicas: deployment.replicas,
         observedGeneration: deployment.generation,
       },
@@ -408,6 +439,8 @@ export type KubePod = Readonly<{
   labels: KubeLabels;
   resources: KubeResources;
   image: string;
+  readinessProbe: Option<ReadinessProbe>;
+  ready: boolean;
   status: "Running";
   restarts: 0;
   ip: string;
@@ -437,6 +470,8 @@ export const KubePod = {
         deployment: deployment.name,
         labels: deployment.podLabels,
         resources: deployment.resources,
+        readinessProbe: deployment.readinessProbe,
+        ready: KubeReadiness.ready(deployment, `${deployment.name}-${hash}-${suffix}`),
         image: deployment.image,
         status: "Running",
         restarts: 0,
@@ -456,10 +491,16 @@ export const KubePod = {
             name: pod.deployment,
             image: pod.image,
             ...KubeResources.toContainerFields(pod.resources),
+            ...KubeReadiness.fields(pod.readinessProbe),
           },
         ],
       },
-      status: { phase: pod.status, podIP: pod.ip, qosClass: KubeResources.qosClass(pod.resources) },
+      status: {
+        phase: pod.status,
+        podIP: pod.ip,
+        qosClass: KubeResources.qosClass(pod.resources),
+        conditions: [{ type: "Ready", status: pod.ready ? "True" : "False" }],
+      },
     };
   },
 } as const;

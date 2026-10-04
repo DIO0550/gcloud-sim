@@ -4,6 +4,7 @@ import { Engine } from "@/engine";
 import { Now, run, type Session, session } from "@/engine/__tests__/setup";
 import { KubeDeployment, KubePod } from "@/engine/domains/kubernetes";
 import { Snapshot } from "@/engine/snapshot";
+import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
 const execute = (s: Session, ...commands: string[]) =>
@@ -233,6 +234,7 @@ test("v8 migration preserves local/registry state and node identity, without inv
       templateId: 3,
       image: `${image}:v2`,
       reason: "migrated",
+      readinessProbe: Option.none,
       resources: { requests: {}, limits: {} },
       env: [],
       podLabels: { app: "hello" },

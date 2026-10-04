@@ -9,6 +9,7 @@ import {
 import { ImagePull } from "@/engine/domains/image-pull";
 import { KubeRuntime } from "@/engine/domains/kube-config";
 import { KubeHpa } from "@/engine/domains/kube-hpa";
+import { KubeReadiness } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeDeployment, KubePod } from "@/engine/domains/kubernetes";
 import type { GkeCluster } from "@/engine/domains/managed-services";
@@ -79,7 +80,9 @@ export const reconcileHpa = (
   const ready =
     d !== undefined &&
     !ImagePull.error(ctx.world, cluster, d.image) &&
-    KubePod.fromDeployment(d).every((p) => !KubeRuntime.error(ctx.world.kubeConfigs, d, p.name));
+    KubePod.fromDeployment(d).every(
+      (p) => !KubeRuntime.error(ctx.world.kubeConfigs, d, p.name) && KubeReadiness.ready(d, p.name),
+    );
   const evaluation = KubeHpa.evaluate(h, d, ready, cpuMilli, ctx.now);
   let world = ctx.world;
   if (d && d.replicas !== evaluation.desiredReplicas) {

@@ -20,6 +20,7 @@ import { KubeConfig, KubeEnv, KubeRuntime } from "@/engine/domains/kube-config";
 import { KubeHpa } from "@/engine/domains/kube-hpa";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeManifest } from "@/engine/domains/kube-manifest";
+import { KubeReadiness } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
 import {
@@ -37,6 +38,7 @@ import { Result } from "@/utils/Result";
 import { createConfig, kubePermission, setEnv } from "./configuration";
 import { createHpa, hpasOf, reconcileHpa } from "./hpa";
 import { applyManifest } from "./manifests";
+import { probeReadiness } from "./readiness";
 
 /**
  * `kubectl`（TBD-007）。コンテキストは `get-credentials` が書いた `container/cluster` で、
@@ -218,19 +220,29 @@ const podRow = (
         image: pod.image,
         env: deployment.env.map(KubeEnv.toRecord),
         ...KubeResources.toContainerFields(deployment.resources),
+        ...KubeReadiness.fields(deployment.readinessProbe),
       },
     ],
   },
   name: pod.name,
-  ready: error ? "0/1" : "1/1",
+  ready: !error && pod.ready ? "1/1" : "0/1",
   status: {
     phase: error ? "Pending" : pod.status,
     podIP: pod.ip,
     qosClass: KubeResources.qosClass(pod.resources),
+    conditions: [
+      {
+        type: "Ready",
+        status: !error && pod.ready ? "True" : "False",
+        message: error || KubeReadiness.reason(deployment, pod.name) || "Ready",
+      },
+    ],
   },
   displayStatus: error ? (error.split(":")[0] ?? "Pending") : pod.status,
   imagePullError: error.startsWith("ImagePull") ? error : "",
   containerError: error,
+  readiness: KubeReadiness.reason(deployment, pod.name),
+  ...KubeReadiness.sampleFields(deployment, pod.name),
   restarts: pod.restarts,
   age: age(deployment.createdAt, now),
 });
@@ -241,14 +253,21 @@ const deploymentErrors = (
   world: World,
   cluster: GkeCluster,
   d: KubeDeployment,
-): readonly string[] => KubePod.fromDeployment(d).map((p) => podError(world, cluster, d, p.name));
+): readonly string[] =>
+  KubePod.fromDeployment(d).map(
+    (p) => podError(world, cluster, d, p.name) || KubeReadiness.reason(d, p.name),
+  );
 const deploymentListing = (
   ctx: ProjectContext,
   cluster: GkeCluster,
   d: KubeDeployment,
 ): JsonRecord => {
   const errors = deploymentErrors(ctx.world, cluster, d);
-  return deploymentRow(d, ctx.now, errors.find(Boolean) ?? "", errors.filter((e) => !e).length);
+  const startupError =
+    KubePod.fromDeployment(d)
+      .map((p) => podError(ctx.world, cluster, d, p.name))
+      .find(Boolean) ?? "";
+  return deploymentRow(d, ctx.now, startupError, errors.filter((e) => !e).length);
 };
 
 const serviceRow = (s: KubeService, now: string): JsonRecord => ({
@@ -389,6 +408,7 @@ const collect = (
                       image: r.image,
                       env: r.env.map(KubeEnv.toRecord),
                       ...KubeResources.toContainerFields(r.resources),
+                      ...KubeReadiness.fields(r.readinessProbe),
                     },
                   ],
                 },
@@ -1029,6 +1049,7 @@ const rollout = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
                     image: record.image,
                     env: record.env.map(KubeEnv.toRecord),
                     ...KubeResources.toContainerFields(record.resources),
+                    ...KubeReadiness.fields(record.readinessProbe),
                   },
                 ],
               },
@@ -1275,6 +1296,25 @@ export const KubectlCommands: readonly CommandSpec[] = [
       const d = requireDeployment(ctx, cluster.value, args);
       if (!Result.isOk(d)) return d;
       return createHpa(ctx, cluster.value, d.value, args);
+    },
+  }),
+  projectCommand({
+    path: ["sim", "kubernetes", "probe"],
+    summary:
+      "Apply one simulated HTTP readiness response to Deployment Pods (no real request or timers).",
+    positionals: [Positional.required("NAME", "Deployment name.", Candidates.kubeDeployments)],
+    flags: [
+      Flag.integer("status-code", "HTTP response code 100..599, required.", { singleUse: true }),
+      Flag.string("pod", "Probe only this Pod; omitted selects all Deployment Pods.", {
+        singleUse: true,
+      }),
+    ],
+    permissions: ["container.deployments.update"],
+    requiredApis: [ContainerApi],
+    run: (ctx, args) => {
+      const cluster = currentCluster(ctx);
+      if (!Result.isOk(cluster)) return cluster;
+      return probeReadiness(ctx, cluster.value, args);
     },
   }),
   projectCommand({
