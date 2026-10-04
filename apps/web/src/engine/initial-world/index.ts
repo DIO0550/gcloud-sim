@@ -107,6 +107,7 @@ export const EmptyCollections = {
   instanceGroups: [],
   nodePools: [],
   kubeNamespaces: [],
+  kubeContextNamespaces: {},
   kubeDeployments: [],
   kubeServices: [],
   kubeHpas: [],

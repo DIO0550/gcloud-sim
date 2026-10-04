@@ -48,6 +48,8 @@ const assertionLabel = (assertion: Mission["assertions"][number]): string => {
       return "HPAのファイルと設定を一致させ、再評価で3→6レプリカへ増やす";
     case "kubeHpaScaled":
       return "CPU requestとHPAを設定し、教材評価で2→4レプリカへ増やす";
+    case "kubeContextSwitched":
+      return "stagingだけnginx:2・2レプリカへ更新し、本番を保って既定namespaceをproductionにする";
     case "kubeNamespaceIsolated":
       return "stagingだけnginx:2・3レプリカに更新し、本番の画像・1レプリカ・設定・Service接続先を保つ";
     case "kubeStartupGated":

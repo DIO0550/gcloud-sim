@@ -23,7 +23,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 
 ## 実装済み（302）
 
-Kubernetesは`kubectl create/get/describe/delete namespace`（`ns`別名）とNamespace manifestに対応します。各kubectl操作と`sim kubernetes probe/reconcile`で`-n/--namespace`を使い、`kubectl get -A/--all-namespaces`でnamespaceを横断した一覧を確認できます。省略時は`default`です。詳細は[KUBERNETES.md](KUBERNETES.md)。
+Kubernetesは`kubectl create/get/describe/delete namespace`（`ns`別名）とNamespace manifestに対応します。各kubectl操作と`sim kubernetes probe/reconcile`で`-n/--namespace`を使い、`kubectl get -A/--all-namespaces`でnamespaceを横断した一覧を確認できます。省略時はコンテキストの既定namespace（未設定なら`default`）です。`kubectl config set-context --current --namespace=staging`または既存CONTEXT名で設定し、空文字で解除できます。詳細は[KUBERNETES.md](KUBERNETES.md)。
 
 ### Cloud Build
 
@@ -385,7 +385,7 @@ HPAは`autoscale`またはautoscaling/v2の仮想YAML/JSONで作成し、`get/de
 | `kubectl rollout restart` | `container.deployments.update` | `container.googleapis.com` | `--namespace` |
 | `kubectl rollout undo` | `container.deployments.update` | `container.googleapis.com` | `--to-revision` `--namespace` |
 | `kubectl logs` | `container.pods.get` | `container.googleapis.com` | `--follow` `--namespace` |
-| `kubectl config` | `container.clusters.get` | `container.googleapis.com` | `--namespace` |
+| `kubectl config` | `container.clusters.get` | `container.googleapis.com` | `--current` `--namespace`（set-contextのみ） |
 
 ### `gcloud run`
 

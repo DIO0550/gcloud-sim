@@ -46,6 +46,11 @@ import {
   containerSatisfied,
 } from "@/engine/missions/containers";
 import {
+  type KubeContextAssertion,
+  KubeContextMissions,
+  kubeContextSatisfied,
+} from "@/engine/missions/kube-context";
+import {
   type KubeHpaAssertion,
   KubeHpaMissions,
   kubeHpaSatisfied,
@@ -131,6 +136,7 @@ export type MissionAssertion =
   | KubeReadinessAssertion
   | KubeLivenessAssertion
   | KubeNamespaceAssertion
+  | KubeContextAssertion
   | KubeStartupAssertion
   | KubeQosAssertion
   | KubeResourceAssertion
@@ -286,6 +292,7 @@ const Missions: readonly Mission[] = [
   ...KubeLivenessMissions,
   ...KubeStartupMissions,
   ...KubeNamespaceMissions,
+  ...KubeContextMissions,
   ...KubeHpaMissions,
   ...KubeHpaManifestMissions,
   ...KubeConfigurationMissions,
@@ -747,6 +754,8 @@ const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
       return kubeHpaManifestSatisfied(world);
     case "kubeHpaScaled":
       return kubeHpaSatisfied(world);
+    case "kubeContextSwitched":
+      return kubeContextSatisfied(world);
     case "kubeNamespaceIsolated":
       return kubeNamespaceSatisfied(world);
     case "kubeStartupGated":

@@ -17,6 +17,7 @@ import { Candidates, projectCommand } from "@/engine/commands/shared";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { ImagePull } from "@/engine/domains/image-pull";
 import { KubeConfig, KubeEnv, KubeRuntime } from "@/engine/domains/kube-config";
+import { KubeContext } from "@/engine/domains/kube-context";
 import { KubeHpa } from "@/engine/domains/kube-hpa";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeLiveness } from "@/engine/domains/kube-liveness";
@@ -60,16 +61,13 @@ const refused = (): CommandFailure =>
 
 /** 現在のコンテキストのクラスタ（`container/cluster` が指すもの）。 */
 const currentClusterOf = (ctx: ProjectContext): Option<GkeCluster> =>
-  Option.flatMap(GcloudConfig.get(ctx.world.config, "container/cluster"), (n) =>
-    World.findCluster(ctx.world, ctx.project.projectId, n),
-  );
+  KubeContext.current(ctx.world, ctx.project.projectId);
 
 /** 現在のコンテキストのクラスタ。`container/cluster` が無い・指す先が無ければ refused。 */
 const currentCluster = (ctx: ProjectContext): Result<GkeCluster, CommandFailure> =>
   Option.toResult(currentClusterOf(ctx), refused);
 
-const contextName = (cluster: GkeCluster): string =>
-  `gke_${cluster.projectId}_${cluster.location}_${cluster.name}`;
+const contextName = KubeContext.name;
 
 /** E-008 を kubectl の綴り（`Error from server (AlreadyExists): deployments.apps "web" already exists`）で。 */
 const kubeAlreadyExists = (failure: AlreadyExists): CommandFailure =>
@@ -1216,7 +1214,46 @@ const config = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
   const verb = ParsedArgs.requiredPositional(args, 0);
   const clusters = World.clustersOf(ctx.world, ctx.project.projectId);
   const current = currentClusterOf(ctx);
+  if (
+    verb !== "set-context" &&
+    (ParsedArgs.has(args, "namespace") || ParsedArgs.has(args, "current"))
+  )
+    return Result.err(
+      usage("--namespace and --current are only supported with config set-context."),
+    );
   switch (verb) {
+    case "set-context": {
+      const target = ParsedArgs.positional(args, 1);
+      const useCurrent = ParsedArgs.boolean(args, "current");
+      if (useCurrent === Option.isSome(target) || !ParsedArgs.has(args, "namespace"))
+        return Result.err(
+          usage("Use config set-context (--current | CONTEXT) --namespace=NAMESPACE."),
+        );
+      const namespace = Option.unwrapOr(ParsedArgs.string(args, "namespace"), "");
+      if (namespace !== "" && !KubeNamespace.valid(namespace))
+        return Result.err(
+          usage("Namespace must be a lowercase DNS label of at most 63 characters."),
+        );
+      const cluster = useCurrent
+        ? current
+        : Option.flatMap(target, (name) =>
+            Option.fromNullable(clusters.find((c) => contextName(c) === name || c.name === name)),
+          );
+      if (!Option.isSome(cluster))
+        return Result.err(
+          usage(
+            useCurrent
+              ? "current-context is not set"
+              : `no context exists with the name: "${Option.unwrapOr(target, "")}"`,
+          ),
+        );
+      return Result.ok({
+        world: KubeContext.setNamespace(ctx.world, cluster.value, namespace),
+        output: CommandOutput.messages(
+          OutputMessage.plain(`Context "${contextName(cluster.value)}" modified.`),
+        ),
+      });
+    }
     case "current-context":
       return Option.isSome(current)
         ? Result.ok({
@@ -1233,12 +1270,14 @@ const config = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
             name: contextName(c),
             cluster: contextName(c),
             authinfo: contextName(c),
+            namespace: KubeContext.configuredNamespace(ctx.world, c) ?? "",
           })),
           [
             Column.create("CURRENT", "current"),
             Column.create("NAME", "name"),
             Column.create("CLUSTER", "cluster"),
             Column.create("AUTHINFO", "authinfo"),
+            Column.create("NAMESPACE", "namespace"),
           ],
         ),
       });
@@ -1271,7 +1310,13 @@ const config = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
           "current-context": Option.unwrapOr(Option.map(current, contextName), ""),
           contexts: clusters.map((c) => ({
             name: contextName(c),
-            context: { cluster: contextName(c), user: contextName(c) },
+            context: {
+              cluster: contextName(c),
+              user: contextName(c),
+              ...(KubeContext.configuredNamespace(ctx.world, c) === undefined
+                ? {}
+                : { namespace: KubeContext.configuredNamespace(ctx.world, c) }),
+            },
           })),
           clusters: clusters.map((c) => ({
             name: contextName(c),
@@ -1282,7 +1327,7 @@ const config = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
     default:
       return Result.err(
         usage(
-          `unknown command "${verb}" for "kubectl config" (current-context / get-contexts / use-context / view)`,
+          `unknown command "${verb}" for "kubectl config" (current-context / get-contexts / use-context / set-context / view)`,
         ),
       );
   }
@@ -1328,9 +1373,10 @@ const kubectl = (seed: KubectlSeed): CommandSpec =>
     permissions: typeof seed.permission === "string" ? [seed.permission] : [],
     requiredApis: [ContainerApi],
     run: (ctx, args) => {
+      if (seed.verb === "config")
+        return seed.run({ ...ctx, namespace: "default", explicitNamespace: false }, args);
       const scoped = namespaceContext(ctx, args);
       if (!Result.isOk(scoped)) return scoped;
-      if (seed.verb === "config") return seed.run(scoped.value, args);
       const cluster = currentCluster(ctx);
       if (!Result.isOk(cluster)) return cluster;
       const resourceVerb = ["get", "describe", "delete", "create"].includes(seed.verb);
@@ -1672,12 +1718,26 @@ export const KubectlCommands: readonly CommandSpec[] = [
   }),
   kubectl({
     verb: "config",
-    summary: "Modify kubeconfig files (current-context / get-contexts / use-context / view).",
+    summary:
+      "Modify kubeconfig files (current-context / get-contexts / use-context / set-context / view).",
     positionals: [
-      Positional.required("SUBCOMMAND", "current-context, get-contexts, use-context or view."),
-      Positional.optional("CONTEXT", "Context name for use-context."),
+      Positional.required(
+        "SUBCOMMAND",
+        "current-context, get-contexts, use-context, set-context or view.",
+        () => ["current-context", "get-contexts", "use-context", "set-context", "view"],
+      ),
+      Positional.optional(
+        "CONTEXT",
+        "Existing context name for use-context/set-context.",
+        (world, projectId) =>
+          Option.isSome(projectId) ? World.clustersOf(world, projectId.value).map(contextName) : [],
+      ),
     ],
-    flags: [],
+    flags: [
+      Flag.boolean("current", "Modify the current context (set-context only).", {
+        singleUse: true,
+      }),
+    ],
     permission: "container.clusters.get",
     run: config,
   }),

@@ -1,5 +1,6 @@
 import { CommandFailure } from "@/engine/cli/command-failure";
 import { ParsedArgs, type ProjectContext } from "@/engine/cli/command-spec";
+import { KubeContext } from "@/engine/domains/kube-context";
 import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import type { GkeCluster } from "@/engine/domains/managed-services";
 import { Option } from "@/utils/Option";
@@ -11,7 +12,12 @@ export const namespaceContext = (
   ctx: ProjectContext,
   args: ParsedArgs,
 ): Result<KubectlContext, CommandFailure> => {
-  const namespace = Option.unwrapOr(ParsedArgs.string(args, "namespace"), "default");
+  const current = KubeContext.current(ctx.world, ctx.project.projectId);
+  const fallback = Option.unwrapOr(
+    Option.map(current, (cluster) => KubeContext.namespace(ctx.world, cluster)),
+    "default",
+  );
+  const namespace = Option.unwrapOr(ParsedArgs.string(args, "namespace"), fallback);
   if (!KubeNamespace.valid(namespace))
     return Result.err(
       CommandFailure.invalidArgumentWith(

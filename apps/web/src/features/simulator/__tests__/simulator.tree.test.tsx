@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
@@ -46,6 +46,36 @@ test("クラスタの下の Deployment を選ぶと Pod の一覧が出る", asy
   const details = screen.getByRole("complementary", { name: "詳細" });
   expect(within(details).getByText("Pod")).toBeInTheDocument();
   expect(within(details).getAllByText(/^web-/).length).toBe(2);
+});
+
+test("既定namespaceを見出しに表示し、defaultのツリーdescribeは別環境を選ばない", async () => {
+  const user = userEvent.setup();
+  const s = run(
+    session(),
+    "gcloud services enable container.googleapis.com",
+    `gcloud container clusters create app ${zone}`,
+    "kubectl create namespace staging",
+    "kubectl create deployment web --image=nginx:1",
+    "kubectl create deployment web --image=nginx:2 -n staging",
+    "kubectl config set-context --current --namespace=staging",
+  );
+  const { terminal } = renderSimulator({}, s.world);
+  expect(screen.getByText("configuration: default · namespace: staging")).toBeInTheDocument();
+  await user.click(within(resourceTree()).getByRole("button", { name: "app を展開する" }));
+  await user.click(within(resourceTree()).getByText("deploy: web"));
+  const details = screen.getByRole("complementary", { name: "詳細" });
+  expect(within(details).getAllByText("nginx:1").length).toBeGreaterThan(0);
+  expect(within(details).queryByText("nginx:2")).not.toBeInTheDocument();
+  await user.click(within(details).getByRole("button", { name: "describe を挿入" }));
+  await waitFor(() =>
+    expect(terminal.written.at(-1)).toContain(
+      "kubectl describe deployment web --namespace=default",
+    ),
+  );
+  act(() => terminal.type("\u0003"));
+  act(() => terminal.type("kubectl config set-context --current --namespace=''\r"));
+  await waitFor(() => expect(screen.getByText("configuration: default")).toBeInTheDocument());
+  expect(screen.queryByText("configuration: default · namespace: staging")).not.toBeInTheDocument();
 });
 
 test("予算を選ぶとしきい値が百分率で出る", async () => {

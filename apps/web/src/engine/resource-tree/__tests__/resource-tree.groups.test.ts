@@ -170,7 +170,7 @@ test("describe コマンドは置き場のフラグを種別ごとに付ける",
       cluster: "c",
       name: "web",
     }),
-  ).toEqual(Option.some("kubectl describe deployment web"));
+  ).toEqual(Option.some("kubectl describe deployment web --namespace=default"));
   expect(
     TreeSelection.describeCommand({ kind: "budget", billingAccountId: "A", id: "x-budget" }),
   ).toEqual(Option.some("gcloud billing budgets describe x-budget --billing-account=A"));

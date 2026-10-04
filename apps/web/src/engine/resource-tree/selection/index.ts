@@ -303,19 +303,19 @@ export const TreeSelection = {
         return Option.some(`kubectl describe namespace ${selection.name}`);
       case "kube-deployment":
         return Option.some(
-          `kubectl describe deployment ${selection.name}${selection.namespace && selection.namespace !== "default" ? ` --namespace=${selection.namespace}` : ""}`,
+          `kubectl describe deployment ${selection.name} --namespace=${selection.namespace ?? "default"}`,
         );
       case "kube-config":
         return Option.some(
-          `kubectl describe ${selection.resourceKind} ${selection.name}${selection.namespace && selection.namespace !== "default" ? ` --namespace=${selection.namespace}` : ""}`,
+          `kubectl describe ${selection.resourceKind} ${selection.name} --namespace=${selection.namespace ?? "default"}`,
         );
       case "kube-hpa":
         return Option.some(
-          `kubectl describe hpa ${selection.name}${selection.namespace && selection.namespace !== "default" ? ` --namespace=${selection.namespace}` : ""}`,
+          `kubectl describe hpa ${selection.name} --namespace=${selection.namespace ?? "default"}`,
         );
       case "kube-service":
         return Option.some(
-          `kubectl describe service ${selection.name}${selection.namespace && selection.namespace !== "default" ? ` --namespace=${selection.namespace}` : ""}`,
+          `kubectl describe service ${selection.name} --namespace=${selection.namespace ?? "default"}`,
         );
       case "run-service":
         return Option.some(`gcloud run services describe ${selection.name}`);

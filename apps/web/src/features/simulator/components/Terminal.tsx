@@ -224,9 +224,9 @@ export const Terminal = (props: TerminalProps): ReactElement => {
 
   return (
     <section aria-label="ターミナル" className="flex min-h-0 flex-1 flex-col bg-[#fafcfe]">
-      <div className="flex items-center justify-between border-line border-b bg-surface px-4 py-2.5 text-muted text-sm">
-        <span className="font-mono">bash — gcloud-sim</span>
-        <span>{caption}</span>
+      <div className="flex items-center justify-between gap-4 border-line border-b bg-surface px-4 py-2.5 text-muted text-sm">
+        <span className="shrink-0 font-mono">bash — gcloud-sim</span>
+        <span className="min-w-0 break-all text-right">{caption}</span>
       </div>
       {/* overflow-hidden: xterm は入力用の textarea をカーソル行の位置に絶対配置で置く。置き場が縮んだ直後は
           前の行数の位置に残るので、はみ出しを切らないと文書の高さが伸びて画面全体がスクロールする。 */}
