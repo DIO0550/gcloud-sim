@@ -152,7 +152,7 @@ const DeploymentColumns = [
 const PodColumns = [
   Column.create("NAME", "name"),
   Column.create("READY", "ready"),
-  Column.create("STATUS", "status"),
+  Column.create("STATUS", "displayStatus"),
   Column.create("RESTARTS", "restarts"),
   Column.create("AGE", "age"),
 ];
@@ -223,7 +223,12 @@ const podRow = (
   },
   name: pod.name,
   ready: error ? "0/1" : "1/1",
-  status: error ? (error.split(":")[0] ?? "Pending") : pod.status,
+  status: {
+    phase: error ? "Pending" : pod.status,
+    podIP: pod.ip,
+    qosClass: KubeResources.qosClass(pod.resources),
+  },
+  displayStatus: error ? (error.split(":")[0] ?? "Pending") : pod.status,
   imagePullError: error.startsWith("ImagePull") ? error : "",
   containerError: error,
   restarts: pod.restarts,
@@ -454,7 +459,7 @@ const collect = (
         columns: [
           Column.create("NAME", "name"),
           Column.create("READY", "ready"),
-          Column.create("STATUS", "status"),
+          Column.create("STATUS", "displayStatus"),
           Column.create("AGE", "age"),
         ],
       });

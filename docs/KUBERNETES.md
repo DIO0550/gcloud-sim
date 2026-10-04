@@ -97,7 +97,7 @@ kubectl rollout restart deployment/web
 kubectl exec deployment/web -- printenv APP_MODE
 ```
 
-`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全47件、GKE拡充分は10件です。
+`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全48件、GKE拡充分は11件です。
 
 `sim files write FILE --content='…'`で独自のYAML/JSONを書き、`read`で読み、`replace --search=… --replacement=…`で1か所を編集できます。ファイルは `.yaml` / `.yml` / `.json` の相対パスで、32ファイル・1ファイル64,000文字まで。Terraformとは別に保存し、Terraformのplanに影響しません。`sim files delete FILE`はファイルだけを消します。クラスタ上の設定を消す操作は `kubectl delete -f FILE` です。教材の上書きは `sim files load kubernetes-config --force` で明示します。
 
@@ -204,7 +204,43 @@ kubectl rollout undo deployment/resource-web
 
 新ミッション「CPU・メモリの必要量と上限を設定する」は、教材の不正設定を直し、2レプリカ・requests 250m/128Mi・limits 500m/256Miでファイルとクラスタをそろえると達成します。
 
-今回扱うのは設定・検証・履歴です。スケジューラ、ノード容量、Pending/Unschedulable、CPU throttling、OOMKill、QoS、使用量、VPA・HPAの定期評価/実測/安定化、LimitRange/ResourceQuotaは再現しません。Standard/Autopilot共通の限定モデルで、Autopilot独自の既定値・最小量・CPU/メモリ比率・自動調整も適用しません。未指定の量からクラスタ固有の値を推測することはありません。
+今回扱うのは設定・検証・履歴です。スケジューラ、ノード容量、Pending/Unschedulable、CPU throttling、OOMKill、使用量、VPA・HPAの定期評価/実測/安定化、LimitRange/ResourceQuotaは再現しません。Standard/Autopilot共通の限定モデルで、Autopilot独自の既定値・最小量・CPU/メモリ比率・自動調整も適用しません。未指定の量からクラスタ固有の値を推測することはありません。
+
+## PodのQoSを比較する
+
+単一コンテナのCPU・メモリ設定からPodのQoSを導出します。正規化・request補完後の値を使い、ゼロは分類上の未指定として扱います。
+
+| QoS | この教材の判定条件 |
+| --- | --- |
+| BestEffort | CPU・メモリのrequests/limitsに正の量がない |
+| Guaranteed | CPU・メモリの両方に正のrequestとlimitがあり、それぞれ等しい |
+| Burstable | 正の量が1つ以上あり、Guaranteedの条件を満たさない |
+
+CPUだけのrequest/limitが等しくてもBurstableです。両リソースのlimitだけを指定するとrequestが補完され、Guaranteedになります。QoSは直接指定する設定ではありません。Deploymentのプロパティには「Pod QoS」を表示し、`kubectl get pods -o json` / `-o yaml` / `describe pods`には`status.qosClass`を出力します。Deployment自身にQoSがあるわけではなく、プロパティはそのtemplateから作るPodの分類です。0レプリカでもtemplateの分類を表示します。
+
+```sh
+gcloud services enable container.googleapis.com
+gcloud container clusters create qos-gke --zone=us-central1-a
+kubectl create deployment qos-best --image=nginx:1
+kubectl create deployment qos-burst --image=nginx:1
+kubectl create deployment qos-guaranteed --image=nginx:1
+kubectl set resources deployment/qos-burst --requests=cpu=250m,memory=128Mi --limits=cpu=500m,memory=256Mi
+kubectl set resources deployment/qos-guaranteed --limits=cpu=500m
+# CPUだけではBurstable。メモリも追加するとGuaranteed
+kubectl set resources deployment/qos-guaranteed --limits=memory=256Mi
+kubectl get pods -o yaml
+kubectl describe pods
+```
+
+ミッション「requestsとlimitsからPodのQoSを比較する」は、上の3つを各1レプリカ・nginx:1・指定のresourcesにそろえると達成します。QoSが同じでも指定量が異なる場合や0レプリカでは未達成です。Standardクラスタで比較し、実際のAutopilotの補正とは分けて学びます。
+
+set resourcesやapplyによるtemplate更新でPodを作り直し、undoは復元した設定から分類します。scale・restart・Pod再作成でも設定に対応した分類になり、起動エラーのPodもQoSを持ちます。QoSは既存resourcesから導出するためSnapshot v14を維持し、v13からは保存したresources、v12以前からは移行後の未指定resourcesを用います。
+
+PodのJSON/YAML/describeでは、以前表示文字列で上書きしていた`status`をオブジェクトに修正しました。`status.phase`・`status.podIP`・`status.qosClass`を保持し、一覧用の`Running`/起動エラー名は教材用`displayStatus`に分離します。Pod一覧と`get all`のSTATUS列は従来どおりです。起動エラー時のphaseはPendingです。参照・更新には既存のPod/Deployment権限とクラスタ/API境界を適用します。
+
+QoSは稼働・性能・退避されないことを保証しません。ノード圧迫時のeviction、OOM、CPU throttling、複数コンテナ/init container、Pod単位resources、in-place resizeは再現しません。Autopilot固有のrequest補正も引き続き対象外です。
+
+参照: [KubernetesのQoS設定](https://kubernetes.io/docs/tasks/configure-pod-container/quality-service-pod/)、[ゼロ量を除外するQoS計算](https://github.com/kubernetes/kubernetes/blob/v1.35.0/pkg/apis/core/helper/qos/qos.go)。
 
 ## Secretの表示と権限
 

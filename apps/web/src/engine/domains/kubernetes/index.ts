@@ -459,7 +459,7 @@ export const KubePod = {
           },
         ],
       },
-      status: { phase: pod.status, podIP: pod.ip },
+      status: { phase: pod.status, podIP: pod.ip, qosClass: KubeResources.qosClass(pod.resources) },
     };
   },
 } as const;

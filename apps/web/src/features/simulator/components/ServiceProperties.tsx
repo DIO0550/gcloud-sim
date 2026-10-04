@@ -115,6 +115,7 @@ export const KubeDeploymentProperties = ({
           { label: "labels", value: KubeLabels.text(d.labels) },
           { label: "selector", value: KubeLabels.text(d.selector) },
           { label: "Pod labels", value: KubeLabels.text(d.podLabels) },
+          { label: "Pod QoS", value: KubeResources.qosClass(d.resources) },
           { label: "replicas", value: String(d.replicas) },
           { label: "generation", value: String(d.generation) },
           { label: "revision", value: String(d.revision) },
