@@ -5,6 +5,7 @@ import {
   BudgetCommands,
   ServiceCommands,
 } from "@/engine/commands/billing-services";
+import { BuildCommands } from "@/engine/commands/builds";
 import { ComputeCommands } from "@/engine/commands/compute";
 import { AuthCommands, ConfigCommands, SdkCommands } from "@/engine/commands/config";
 import { ContainerCommands, RunCommands } from "@/engine/commands/container-run";
@@ -37,6 +38,7 @@ const implemented: readonly CommandSpec[] = [
   ...TerraformCommands,
   ...ArtifactCommands,
   ...DockerCommands,
+  ...BuildCommands,
   ...ConfigCommands,
   ...AuthCommands,
   ...SdkCommands,

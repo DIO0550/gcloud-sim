@@ -120,6 +120,7 @@ test("ミッションを開始して条件を満たすとクリアの通知が�
   const user = userEvent.setup();
   const { terminal } = renderSimulator();
   await user.click(screen.getByRole("tab", { name: /ミッション/ }));
+  await user.click(screen.getByRole("button", { name: /環境セットアップ/ }));
   await user.click(
     screen.getByRole("button", { name: /ace-prod-01 で Compute Engine を使えるようにする/ }),
   );
@@ -138,13 +139,14 @@ test("ミッションを開始して条件を満たすとクリアの通知が�
     { timeout: 4000 },
   );
   expect(screenText(terminal)).toContain("gcloud-sim: ✓ ミッションクリア");
-  expect(screen.getByRole("tab", { name: "ミッション 1/33" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "ミッション 1/35" })).toBeInTheDocument();
 });
 
 test("ヒントは押すたびに 1 つ開く", async () => {
   const user = userEvent.setup();
   renderSimulator();
   await user.click(screen.getByRole("tab", { name: /ミッション/ }));
+  await user.click(screen.getByRole("button", { name: /環境セットアップ/ }));
   await user.click(screen.getByRole("button", { name: /本番用の configuration を用意する/ }));
   await user.click(screen.getByRole("button", { name: "開始" }));
   await user.click(screen.getByRole("button", { name: /ヒント（0\/2）/ }));

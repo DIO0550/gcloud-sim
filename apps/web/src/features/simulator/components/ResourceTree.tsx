@@ -50,6 +50,8 @@ const groupText = (group: ResourceGroup): string => {
   switch (group) {
     case "artifacts":
       return "Artifact Registry";
+    case "builds":
+      return "Cloud Build";
     case "local-docker":
       return "Docker（ローカル）";
     case "compute":
@@ -234,7 +236,7 @@ export const ResourceTree = ({
   return (
     <nav
       aria-label="リソース階層"
-      className="flex min-h-0 flex-col border-line border-r bg-surface"
+      className="order-3 flex h-64 min-w-0 flex-col border-line border-r bg-surface lg:order-none lg:h-auto lg:min-h-0"
     >
       <h2 className="px-4 pt-5 pb-3 font-bold text-[15px] text-muted">リソース階層</h2>
       <ul className="min-h-0 flex-1 overflow-auto px-2 pb-2">

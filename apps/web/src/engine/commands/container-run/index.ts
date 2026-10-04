@@ -13,6 +13,7 @@ import {
 } from "@/engine/cli/command-spec";
 import { alreadyExists, Candidates, CommonFlags, projectCommand } from "@/engine/commands/shared";
 import { DefaultMachineType, MachineType, type Region, type Zone } from "@/engine/domains/catalog";
+import { EffectivePermissions } from "@/engine/domains/effective-permissions";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import {
   CloudRunService,
@@ -20,6 +21,7 @@ import {
   type GkeClusterSeed,
   NodePool,
 } from "@/engine/domains/managed-services";
+import { Principal } from "@/engine/domains/principal";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -66,12 +68,32 @@ const createCluster = (
     ),
   );
   if (!Result.isOk(machineType)) return machineType;
+  const nodeServiceAccount = Option.unwrapOr(ParsedArgs.string(args, "service-account"), "");
+  if (nodeServiceAccount) {
+    const sa = World.findServiceAccount(ctx.world, nodeServiceAccount);
+    if (!Option.isSome(sa) || sa.value.projectId !== ctx.project.projectId)
+      return Result.err(
+        CommandFailure.invalidState("Node service account must exist in the cluster project."),
+      );
+    if (
+      !EffectivePermissions.resolve(ctx.world, Principal.toMember(ctx.principal), {
+        type: "service-account",
+        id: nodeServiceAccount,
+      }).permissions.has("iam.serviceAccounts.actAs")
+    )
+      return Result.err(
+        CommandFailure.invalidState(
+          "Permission denied: iam.serviceAccounts.actAs on node service account.",
+        ),
+      );
+  }
   const cluster = Result.mapErr(
     GkeCluster.create({
       projectId: ctx.project.projectId,
       name: ParsedArgs.requiredPositional(args, 0),
       location: location.value,
       machineType: machineType.value.name,
+      nodeServiceAccount,
       nodes,
     }),
     (m) => CommandFailure.invalidValue("NAME", m),
@@ -131,6 +153,10 @@ export const ContainerCommands: readonly CommandSpec[] = [
       ),
       Flag.string("machine-type", "The type of machine to use for nodes (default e2-medium)."),
       ReleaseChannelFlag,
+      Flag.string(
+        "service-account",
+        "Existing node service account email for Artifact Registry pulls.",
+      ),
     ],
     permission: "container.clusters.create",
     requiredApis: [ContainerApi],
@@ -144,7 +170,14 @@ export const ContainerCommands: readonly CommandSpec[] = [
     path: ["gcloud", "container", "clusters", "create-auto"],
     summary: "Create a GKE Autopilot cluster.",
     positionals: [Positional.required("NAME", "The name of the cluster to create.")],
-    flags: [...LocationFlags, ReleaseChannelFlag],
+    flags: [
+      ...LocationFlags,
+      ReleaseChannelFlag,
+      Flag.string(
+        "service-account",
+        "Existing node service account email for Artifact Registry pulls.",
+      ),
+    ],
     permission: "container.clusters.create",
     requiredApis: [ContainerApi],
     run: (ctx, args) => createCluster(ctx, args, { kind: "autopilot" }),

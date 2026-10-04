@@ -7,7 +7,7 @@ import { Option } from "@/utils/Option";
 export type TreeSelection =
   | Readonly<{
       kind: "container-lab";
-      collection: "repositories" | "images" | "containers";
+      collection: "repositories" | "images" | "containers" | "builds";
       id: string;
     }>
   | Readonly<{
@@ -185,6 +185,7 @@ export const TreeSelection = {
   describeCommand(selection: TreeSelection): Option<string> {
     switch (selection.kind) {
       case "container-lab":
+        if (selection.collection === "builds") return Option.none;
         if (selection.collection === "repositories")
           return Option.some(`gcloud artifacts repositories describe ${selection.id}`);
         if (selection.collection === "containers")

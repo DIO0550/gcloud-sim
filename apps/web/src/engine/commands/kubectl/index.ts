@@ -15,6 +15,7 @@ import {
 } from "@/engine/cli/command-spec";
 import { Candidates, projectCommand } from "@/engine/commands/shared";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
+import { ImagePull } from "@/engine/domains/image-pull";
 import {
   KubeDeployment,
   KubePod,
@@ -149,20 +150,27 @@ const age = (createdAt: string, now: string): string => {
   return `${Math.floor(seconds / 86400)}d`;
 };
 
-const deploymentRow = (d: KubeDeployment, now: string): JsonRecord => ({
+const deploymentRow = (d: KubeDeployment, now: string, error: string): JsonRecord => ({
   ...KubeDeployment.toRecord(d),
   name: d.name,
-  ready: `${d.replicas}/${d.replicas}`,
+  ready: `${error ? 0 : d.replicas}/${d.replicas}`,
+  imagePullError: error,
   upToDate: d.replicas,
-  available: d.replicas,
+  available: error ? 0 : d.replicas,
   age: age(d.createdAt, now),
 });
 
-const podRow = (pod: KubePod, deployment: KubeDeployment, now: string): JsonRecord => ({
+const podRow = (
+  pod: KubePod,
+  deployment: KubeDeployment,
+  now: string,
+  error: string,
+): JsonRecord => ({
   ...KubePod.toRecord(pod),
   name: pod.name,
-  ready: "1/1",
-  status: pod.status,
+  ready: error ? "0/1" : "1/1",
+  status: error ? "ImagePullBackOff" : pod.status,
+  imagePullError: error,
   restarts: pod.restarts,
   age: age(deployment.createdAt, now),
 });
@@ -217,13 +225,18 @@ const collect = (
 ): Result<Listing, CommandFailure> => {
   const deployments = World.kubeDeploymentsOf(ctx.world, cluster);
   const pods = deployments.flatMap((d) =>
-    KubePod.fromDeployment(d).map((pod) => ({ name: pod.name, row: podRow(pod, d, ctx.now) })),
+    KubePod.fromDeployment(d).map((pod) => ({
+      name: pod.name,
+      row: podRow(pod, d, ctx.now, ImagePull.error(ctx.world, cluster, d.image)),
+    })),
   );
   const services = World.kubeServicesOf(ctx.world, cluster);
   switch (ref.kind) {
     case "deployment":
       return Result.map(pick(deployments, "deployments.apps", ref.name), (rows) => ({
-        rows: rows.map((d) => deploymentRow(d, ctx.now)),
+        rows: rows.map((d) =>
+          deploymentRow(d, ctx.now, ImagePull.error(ctx.world, cluster, d.image)),
+        ),
         columns: DeploymentColumns,
       }));
     case "service":
@@ -246,7 +259,7 @@ const collect = (
           ...pods.map((p) => ({ ...p.row, name: `pod/${p.name}` })),
           ...services.map((s) => ({ ...serviceRow(s, ctx.now), name: `service/${s.name}` })),
           ...deployments.map((d) => ({
-            ...deploymentRow(d, ctx.now),
+            ...deploymentRow(d, ctx.now, ImagePull.error(ctx.world, cluster, d.image)),
             name: `deployment.apps/${d.name}`,
           })),
         ],
@@ -593,13 +606,19 @@ const rollout = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   if (!Result.isOk(deployment)) return deployment;
   const d = deployment.value;
   switch (verb) {
-    case "status":
+    case "status": {
+      const error = d.replicas > 0 ? ImagePull.error(ctx.world, cluster.value, d.image) : "";
+      if (error)
+        return Result.err(
+          CommandFailure.invalidState(`Deployment ${d.name} is not ready: ${error}`),
+        );
       return Result.ok({
         world: ctx.world,
         output: CommandOutput.messages(
           OutputMessage.plain(`deployment "${d.name}" successfully rolled out`),
         ),
       });
+    }
     case "restart":
       return Result.ok({
         world: World.replaceKubeDeployment(ctx.world, KubeDeployment.restarted(d)),
@@ -631,6 +650,8 @@ const logs = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
     KubePod.fromDeployment(d).some((p) => p.name === name),
   );
   if (owner === undefined) return Result.err(notFound("pods", name));
+  const error = ImagePull.error(ctx.world, cluster.value, owner.image);
+  if (error) return Result.err(CommandFailure.invalidState(`Container is waiting: ${error}`));
   return Result.ok({
     world: ctx.world,
     output: CommandOutput.messages(

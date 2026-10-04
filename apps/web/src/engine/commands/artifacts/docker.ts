@@ -145,37 +145,8 @@ export const DockerCommands: readonly CommandSpec[] = [
       const ref = ContainerLab.registryReference(ParsedArgs.requiredPositional(args, 0));
       if (ref.digest) fail("Push requires a tag.");
       const source = ContainerLab.local(ctx.world.containerLab, ref.canonical);
-      const repo = dockerRepository(ctx.world, ref, true);
-      const all = ctx.world.containerLab.registryImages;
-      const occupied = all.find(
-        (i) => i.repositoryId === repo.id && i.name === ref.image && i.tags.includes(ref.tag),
-      );
-      if (repo.immutableTags && occupied && occupied.digest !== source.id)
-        fail("Tag is immutable and already points to a different digest.");
-      const old = all.find(
-        (i) => i.repositoryId === repo.id && i.name === ref.image && i.digest === source.id,
-      );
-      const registryImages = all
-        .filter((i) => i !== old)
-        .map((i) =>
-          i.repositoryId === repo.id && i.name === ref.image
-            ? { ...i, tags: i.tags.filter((t) => t !== ref.tag) }
-            : i,
-        );
-      const next = {
-        ...ctx.world.containerLab,
-        registryImages: [
-          ...registryImages,
-          {
-            repositoryId: repo.id,
-            name: ref.image,
-            digest: source.id,
-            recipe: source.recipe,
-            tags: [...new Set([...(old?.tags ?? []), ref.tag])],
-            uploaded: old?.uploaded ?? ctx.now,
-          },
-        ],
-      };
+      dockerRepository(ctx.world, ref, true);
+      const next = ContainerLab.publish(ctx.world.containerLab, ref, source.recipe, ctx.now);
       return success(
         commit(ctx.world, next),
         `Pushed ${ref.canonical}\ndigest: ${source.id} (simulated)`,

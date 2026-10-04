@@ -190,6 +190,7 @@ export const BucketLocation = {
 } as const;
 
 const ApiServices = [
+  { name: "cloudbuild.googleapis.com", title: "Cloud Build API", billingRequired: true },
   {
     name: "artifactregistry.googleapis.com",
     title: "Artifact Registry API",

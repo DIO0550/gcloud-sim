@@ -37,6 +37,34 @@ export const FROZEN_TIME = Date.UTC(2026, 0, 1, 12, 0, 0);
  */
 export const SCENARIOS = [
   {
+    name: "mission-categories",
+    label: "ミッション: カテゴリ選択",
+    steps: [{ wait: 800 }, { click: "ミッション 0/35" }, { wait: 300 }],
+  },
+  {
+    name: "mission-list",
+    label: "ミッション: カテゴリ内の一覧",
+    steps: [
+      { wait: 800 },
+      { click: "ミッション 0/35" },
+      { click: "環境セットアップ0/3 クリア" },
+      { wait: 300 },
+    ],
+  },
+  {
+    name: "mission-steps",
+    label: "ミッション: 選んだ1件の手順",
+    steps: [
+      { wait: 800 },
+      { click: "ミッション 0/35" },
+      { click: "環境セットアップ0/3 クリア" },
+      { click: "本番用の configuration を用意する未着手" },
+      { click: "開始" },
+      { click: "ヒント（0/2）" },
+      { wait: 300 },
+    ],
+  },
+  {
     name: "home",
     label: "CLI 画面（初期 World）",
     steps: [{ wait: 800 }],

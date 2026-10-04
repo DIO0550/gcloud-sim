@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import { type ReactElement, useState } from "react";
 import { NavItemButton } from "@/components/NavItemButton";
 import { Pill } from "@/components/Pill";
 import { PrimaryButton } from "@/components/PrimaryButton";
@@ -32,6 +32,10 @@ const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElem
 
 const assertionLabel = (assertion: Mission["assertions"][number]): string => {
   switch (assertion.kind) {
+    case "cloudBuildPublished":
+      return "Cloud Buildが成功し、ace-imagesにhello:v1が登録されている";
+    case "registryDeploymentReady":
+      return "ノードの取得権限があり、helloの2レプリカとLoadBalancer（80→8080）がそろっている";
     case "localContainerReady":
       return `${assertion.name}: hello:v1で起動し ${assertion.hostPort} → 8080を公開`;
     case "artifactPublished":
@@ -127,6 +131,7 @@ const MissionBrief = ({
         <StatusBadge status={status} />
       </div>
       <p className="mb-3 text-sm">{mission.description}</p>
+      <h5 className="mb-2 font-semibold">達成条件</h5>
       <ul className="mb-3 space-y-1 text-sm">
         {mission.assertions.map((assertion, index) => (
           <li key={assertionLabel(assertion)} className="flex items-start gap-2">
@@ -137,10 +142,12 @@ const MissionBrief = ({
           </li>
         ))}
       </ul>
+      <h5 className="mb-2 font-semibold">手順・ヒント</h5>
+      <p className="mb-3 text-sm text-muted">開始後、ヒントを押すと手順を1つずつ確認できます。</p>
       {revealed > 0 && (
         <ol className="mb-3 list-decimal space-y-1 rounded bg-canvas px-4 py-2 text-sm">
           {mission.hints.slice(0, revealed).map((hint) => (
-            <li key={hint} className="ml-4 font-mono text-xs">
+            <li key={hint} className="ml-4 break-all font-mono text-xs">
               {hint}
             </li>
           ))}
@@ -168,7 +175,7 @@ const MissionBrief = ({
   );
 };
 
-/** 右ペイン「ミッション」: ドメインごとの一覧と、選んだミッションの進捗（UC-006）。 */
+/** カテゴリ → ミッション → 手順。詳細を一覧の下へ押し流さない。 */
 export const MissionPanel = ({
   world,
   missions,
@@ -178,50 +185,97 @@ export const MissionPanel = ({
   onAbandon,
   onHint,
 }: MissionPanelProps): ReactElement => {
-  const selected = Option.flatMap(selectedId, (id) =>
-    Option.fromNullable(missions.find((m) => m.id === id)),
-  );
-  return (
-    <div>
-      <ul className="p-2">
-        {Object.values(MissionDomains).map((domain) => (
-          <li key={domain}>
-            <SectionHeading className="px-2 pt-3 pb-1">{domain}</SectionHeading>
-            <ul>
-              {missions
-                .filter((m) => m.domain === domain)
-                .map((mission) => {
-                  const status = Option.unwrapOr(
-                    Option.map(World.findMissionProgress(world, mission.id), (p) => p.status),
-                    MissionStatuses.Available,
-                  );
-                  const isSelected = Option.isSome(selected) && selected.value.id === mission.id;
-                  return (
-                    <li key={mission.id}>
-                      <NavItemButton
-                        current={isSelected}
-                        className="flex items-center gap-2 rounded px-2 py-1.5 text-sm"
-                        onClick={() => onSelect(mission.id)}
-                      >
-                        <span className="flex-1">{mission.title}</span>
-                        <StatusBadge status={status} />
-                      </NavItemButton>
-                    </li>
-                  );
-                })}
-            </ul>
-          </li>
-        ))}
-      </ul>
-      {Option.isSome(selected) && (
+  const [view, setView] = useState<
+    { kind: "categories" } | { kind: "list"; domain: string } | { kind: "detail" }
+  >(() => (Option.isSome(selectedId) ? { kind: "detail" } : { kind: "categories" }));
+  const selected = Option.isSome(selectedId)
+    ? missions.find((m) => m.id === selectedId.value)
+    : undefined;
+  const statusOf = (id: string): MissionStatus =>
+    Option.unwrapOr(
+      Option.map(World.findMissionProgress(world, id), (p) => p.status),
+      MissionStatuses.Available,
+    );
+  if (view.kind === "detail" && selected)
+    return (
+      <div>
+        <nav aria-label="ミッションの移動" className="flex flex-wrap gap-2 p-3">
+          <SecondaryButton onClick={() => setView({ kind: "categories" })}>
+            カテゴリへ
+          </SecondaryButton>
+          <SecondaryButton onClick={() => setView({ kind: "list", domain: selected.domain })}>
+            一覧へ戻る
+          </SecondaryButton>
+        </nav>
+        <p className="px-4 text-sm text-muted">{selected.domain}</p>
         <MissionBrief
           world={world}
-          mission={selected.value}
+          mission={selected}
           onStart={onStart}
           onAbandon={onAbandon}
           onHint={onHint}
         />
-      )}
-    </div>
+      </div>
+    );
+  if (view.kind === "list")
+    return (
+      <section aria-label={view.domain} className="p-3">
+        <SecondaryButton onClick={() => setView({ kind: "categories" })}>
+          カテゴリへ
+        </SecondaryButton>
+        <SectionHeading className="pt-4 pb-2">{view.domain}</SectionHeading>
+        <p className="mb-3 text-sm text-muted">
+          ミッションを1つ選ぶと、達成条件と手順を確認できます。
+        </p>
+        <ul className="space-y-2">
+          {missions
+            .filter((m) => m.domain === view.domain)
+            .map((mission) => (
+              <li key={mission.id}>
+                <NavItemButton
+                  current={selected?.id === mission.id}
+                  className="flex items-center gap-2 rounded border border-line p-3 text-sm"
+                  onClick={() => {
+                    onSelect(mission.id);
+                    setView({ kind: "detail" });
+                  }}
+                >
+                  <span className="min-w-0 flex-1 text-left">{mission.title}</span>
+                  <StatusBadge status={statusOf(mission.id)} />
+                </NavItemButton>
+              </li>
+            ))}
+        </ul>
+      </section>
+    );
+  return (
+    <section aria-label="ミッションカテゴリ" className="p-3">
+      <SectionHeading className="pb-2">カテゴリを選択</SectionHeading>
+      <p className="mb-3 text-sm text-muted">学習したい分野から、ミッションを選んで進めます。</p>
+      <ul className="space-y-2">
+        {Object.values(MissionDomains).map((domain) => {
+          const items = missions.filter((m) => m.domain === domain);
+          if (!items.length) return null;
+          const completed = items.filter(
+            (m) => statusOf(m.id) === MissionStatuses.Completed,
+          ).length;
+          const active = items.filter((m) => statusOf(m.id) === MissionStatuses.InProgress).length;
+          return (
+            <li key={domain}>
+              <NavItemButton
+                current={false}
+                className="rounded border border-line p-3 text-left"
+                onClick={() => setView({ kind: "list", domain })}
+              >
+                <span className="block font-semibold">{domain}</span>
+                <span className="mt-1 block text-sm text-muted">
+                  {completed}/{items.length} クリア{active > 0 ? ` ・ ${active}件 挑戦中` : ""}
+                </span>
+              </NavItemButton>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 };

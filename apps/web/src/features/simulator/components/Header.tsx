@@ -46,12 +46,12 @@ export const Header = ({
   const isOwner = Option.isSome(principal) && WorldOps.isOrganizationOwner(world, principal.value);
   const principalValue = Option.unwrapOr(principal, "");
   return (
-    <header className="flex items-center gap-4 border-line border-b bg-surface px-5 py-2.5">
-      <h1 className="font-bold font-mono text-lg tracking-tight">gcloud-sim</h1>
-      <span className="rounded border border-line px-2 py-0.5 text-muted text-xs">
+    <header className="flex shrink-0 flex-wrap items-center gap-3 border-line border-b bg-surface px-4 py-2.5 lg:gap-4 lg:px-5">
+      <h1 className="shrink-0 font-bold font-mono text-lg tracking-tight">gcloud-sim</h1>
+      <span className="whitespace-nowrap rounded border border-line px-2 py-0.5 text-muted text-xs">
         非公式・学習用
       </span>
-      <fieldset className="ml-4 flex rounded-lg border border-line bg-canvas p-0.5 text-sm">
+      <fieldset className="flex rounded-lg lg:ml-4 border border-line bg-canvas p-0.5 text-sm">
         <legend className="sr-only">表示</legend>
         {Object.values(Views).map((v) => (
           <ToggleButton
@@ -64,14 +64,14 @@ export const Header = ({
           </ToggleButton>
         ))}
       </fieldset>
-      <div className="ml-auto flex items-center gap-3 text-sm">
+      <div className="flex w-full flex-wrap items-center gap-2 text-sm lg:ml-auto lg:w-auto lg:gap-3">
         {view === "console" && (
           <ToggleButton variant="ghost" pressed={isTerminalOpen} onClick={onTerminalToggle}>
             <span className="font-mono">&gt;_</span> ターミナル
           </ToggleButton>
         )}
         <div className="flex items-center gap-2 rounded-lg border border-line px-3 py-1.5">
-          <span className="text-muted">プロジェクト</span>
+          <span className="hidden whitespace-nowrap text-muted sm:inline">プロジェクト</span>
           <Select
             variant="bare"
             ariaLabel="プロジェクト"
@@ -91,7 +91,7 @@ export const Header = ({
         <div
           className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 ${isOwner ? "border-line" : "border-warn bg-warn-soft"}`}
         >
-          <span className="text-muted">プリンシパル</span>
+          <span className="hidden whitespace-nowrap text-muted sm:inline">プリンシパル</span>
           <Select
             variant="bare"
             align="end"

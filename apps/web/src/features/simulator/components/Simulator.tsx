@@ -131,7 +131,7 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
         }
       />
       <div
-        className={`grid min-h-0 flex-1 ${isConsole ? "grid-cols-[minmax(0,1fr)]" : "grid-cols-[17.5rem_minmax(0,1fr)_26rem]"}`}
+        className={`grid min-h-0 flex-1 ${isConsole ? "grid-cols-[minmax(0,1fr)]" : "grid-cols-1 content-start overflow-y-auto lg:grid-cols-[17.5rem_minmax(0,1fr)_26rem] lg:content-normal lg:overflow-hidden"}`}
       >
         {!isConsole && (
           <ResourceTree
@@ -142,7 +142,9 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
             onInsertDescribe={(command) => dispatch({ type: "insertRequested", text: command })}
           />
         )}
-        <div className="flex min-h-0 flex-col">
+        <div
+          className={`flex min-w-0 flex-col ${isConsole ? "min-h-0" : "order-2 h-96 lg:order-none lg:h-auto lg:min-h-0"}`}
+        >
           {isConsole && (
             <ConsoleView
               world={world}
@@ -181,7 +183,7 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
         </div>
         {!isConsole && (
           <aside
-            className="flex min-h-0 flex-col border-line border-l bg-surface"
+            className="order-1 flex h-[60dvh] min-h-96 min-w-0 flex-col border-line border-l bg-surface lg:order-none lg:h-auto lg:min-h-0"
             aria-label="詳細"
           >
             <div className="flex border-line border-b" role="tablist">

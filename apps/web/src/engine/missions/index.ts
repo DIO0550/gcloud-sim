@@ -24,6 +24,7 @@ import {
 import { EffectivePermissions } from "@/engine/domains/effective-permissions";
 import { type ConfigProperty, GcloudConfig } from "@/engine/domains/gcloud-config";
 import { type IamMember, IamPolicy, type RoleName } from "@/engine/domains/iam-policy";
+import { ImagePull } from "@/engine/domains/image-pull";
 import { type KubeServiceType, KubeServiceTypes } from "@/engine/domains/kubernetes";
 import { MissionProgress, MissionStatuses } from "@/engine/domains/mission-progress";
 import type { Principal } from "@/engine/domains/principal";
@@ -32,6 +33,7 @@ import type { FunctionTrigger } from "@/engine/domains/serverless";
 import { ServiceAccount } from "@/engine/domains/service-account";
 import { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
+import { type BuildAssertion, BuildMissions, buildSatisfied } from "@/engine/missions/builds";
 import {
   type ContainerAssertion,
   ContainerMissions,
@@ -63,6 +65,7 @@ export type MissionDomain = ValueOf<typeof MissionDomains>;
 
 /** World に対する述語（DJ-010: コマンド文字列ではなく状態で判定する）。値の語彙はドメインの型で閉じる。 */
 export type MissionAssertion =
+  | BuildAssertion
   | ContainerAssertion
   | TerraformAssertion
   | ObservabilityAssertion
@@ -201,6 +204,7 @@ const Missions: readonly Mission[] = [
   ...ObservabilityMissions,
   ...TerraformMissions,
   ...ContainerMissions,
+  ...BuildMissions,
   {
     id: "m-setup-001",
     domain: MissionDomains.Setup,
@@ -654,6 +658,9 @@ const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: 
 
 const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
+    case "cloudBuildPublished":
+    case "registryDeploymentReady":
+      return buildSatisfied(world, assertion);
     case "localContainerReady":
     case "artifactPublished":
       return containerSatisfied(world, assertion);
@@ -765,7 +772,12 @@ const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
         World.findCluster(world, assertion.projectId, assertion.cluster),
         (cluster) => World.findKubeDeployment(world, cluster, assertion.name),
       );
-      return Option.isSome(deployment) && deployment.value.replicas === assertion.replicas;
+      if (!Option.isSome(deployment) || deployment.value.replicas !== assertion.replicas)
+        return false;
+      const cluster = World.findCluster(world, assertion.projectId, assertion.cluster);
+      return (
+        Option.isSome(cluster) && !ImagePull.error(world, cluster.value, deployment.value.image)
+      );
     }
     case "kubeServiceExists": {
       const service = Option.flatMap(

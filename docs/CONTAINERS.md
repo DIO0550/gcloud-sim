@@ -74,13 +74,60 @@ deleteはリポジトリと保存したイメージを確認後に削除しま�
 ## 表示・保存・ミッション
 
 - リソースツリーは各projectのArtifact Registryと、project外の「Docker（ローカル）」を分けて表示します。選択するとイメージ・コンテナ・リポジトリ設定とIAMを確認できます。
-- Snapshot v7に各状態を保存します。v1〜v6は空のコンテナ教材状態を補完します。v6のTerraform GCS backend/state/ロックはそのまま保持します。
+- Snapshot v8に各状態を保存します。v1〜v6は空のコンテナ教材状態を補完します。v6のTerraform GCS backend/state/ロックはそのまま保持します。
 - 「Dockerイメージを作りローカルで動かす」「Artifact Registryへイメージを公開する」「イメージを読み取り専用で共有する」の3ミッションを追加しました。buildだけ、tagだけ、誤ったポート、余分な書込権限がある状態では対応するミッションを完了できません。
 - 保存量の上限はイメージ/コンテナ/リポジトリ各100、ローカル参照200、リモートバージョン200、各リモートバージョンのタグ100、認証ホスト8です。
 
+## Cloud BuildからGKEへ
+
+ミッション画面は「カテゴリ → ミッション → 達成条件・手順」の順に選択します。カテゴリ別の達成数と挑戦中件数を表示し、一覧へ戻っても進捗と開いたヒントを保持します。
+
+「Cloud Buildでイメージをビルドする」「ビルドしたイメージをGKEへデプロイする」の2ミッションを追加しました。それぞれ初期Worldから開始でき、後者には検証後の片付け手順も含みます。
+
+```sh
+gcloud services enable cloudbuild.googleapis.com artifactregistry.googleapis.com container.googleapis.com
+gcloud artifacts repositories create ace-images --repository-format=docker --location=us-central1
+gcloud iam service-accounts create ace-builder
+gcloud iam service-accounts add-iam-policy-binding ace-builder@ace-dev-01.iam.gserviceaccount.com --member=user:owner@example.com --role=roles/iam.serviceAccountUser
+gcloud artifacts repositories add-iam-policy-binding ace-images --location=us-central1 --member=serviceAccount:ace-builder@ace-dev-01.iam.gserviceaccount.com --role=roles/artifactregistry.writer
+gcloud builds submit ./hello-web --tag=us-central1-docker.pkg.dev/ace-dev-01/ace-images/hello:v1 --service-account=projects/ace-dev-01/serviceAccounts/ace-builder@ace-dev-01.iam.gserviceaccount.com --region=us-central1
+gcloud builds list --region=us-central1
+```
+
+- 呼出元の`cloudbuild.builds.create`と対象SAの`iam.serviceAccounts.actAs`を確認します。レジストリへ書くのは指定SAです。ユーザーのOwner権限やローカルDocker認証を流用しません。
+- 学習範囲を明確にするため、同じビルドプロジェクトに作成済みの`--service-account`を必須にします。既定SAの自動選択は再現しません。
+- 同期submitは即時に成功/失敗まで進めます。`--async`はQUEUEDで保存し、`sim builds advance BUILD_ID --region=us-central1`を1回実行するとWORKING、もう1回でSUCCESS/FAILUREになります。読むだけでは進みません。cancelはQUEUED/WORKINGのみ可能です。
+- describe/log/cancelはlistに表示されたBUILD_IDを使います。リージョン既定値はglobalで、別リージョン・別プロジェクトのIDは見つかりません。失敗後の履歴・固定ログを残し、再submitは別IDになります。
+- 任意のソース・cloudbuild.yaml・実際のDocker処理・ログ転送先/ソース用GCSバケット・Logging権限/サービスエージェント・自動進行は再現しません。実Cloud Buildで独自SAを使う場合にはログの保存先とその権限も設定が必要です。
+
+```sh
+gcloud iam service-accounts create ace-nodes
+gcloud iam service-accounts add-iam-policy-binding ace-nodes@ace-dev-01.iam.gserviceaccount.com --member=user:owner@example.com --role=roles/iam.serviceAccountUser
+gcloud container clusters create-auto ace-gke --region=us-central1 --service-account=ace-nodes@ace-dev-01.iam.gserviceaccount.com
+kubectl create deployment hello --image=us-central1-docker.pkg.dev/ace-dev-01/ace-images/hello:v1 --replicas=2
+kubectl get pods
+# ImagePullBackOff: ノードSAへ読み取り権限を付与する
+gcloud artifacts repositories add-iam-policy-binding ace-images --location=us-central1 --member=serviceAccount:ace-nodes@ace-dev-01.iam.gserviceaccount.com --role=roles/artifactregistry.reader
+kubectl rollout status deployment/hello
+kubectl expose deployment hello --type=LoadBalancer --port=80 --target-port=8080
+kubectl get all
+# 片付け（削除時は確認あり）
+kubectl delete service hello
+kubectl delete deployment hello
+gcloud container clusters delete ace-gke --region=us-central1
+gcloud artifacts repositories delete ace-images --location=us-central1
+```
+
+- Artifact RegistryのAPI・リポジトリ・タグ/digest・ノードSAのReader権限を現在の状態から判定します。ユーザーやビルドSAの権限は使いません。Deployment作成自体は成功してもPodは起動待ちとなり、rollout status/logsは成功扱いになりません。
+- GKEのノードキャッシュ/リトライ時間/実スケジューラを持たない簡略モデルです。権限付与後は即時に回復し、登録イメージ削除や権限削除後は既存Podも起動待ちになります。node pool個別SA・OAuth scope・既定Compute SA・imagePullSecretsは未対応で、明示指定したクラスタSAを全ノードへ適用します。
+- `.pkg.dev`以外の既存公開/教材イメージは従来の簡略動作です。Cloud Runには今回のpull検証を適用しません。
+- Snapshot v8はビルド履歴（最大100件）とノードSAを保存します。v7のDocker/レジストリ/Terraformは保持し、空の履歴と既定のノードSA設定を補います。完了履歴はリポジトリ・クラスタの片付け後も残します。
+
+参照: [builds submit](https://docs.cloud.google.com/sdk/gcloud/reference/builds/submit)、[独自サービスアカウント](https://docs.cloud.google.com/build/docs/securing-builds/configure-user-specified-service-accounts)、[GKEのイメージ取得](https://docs.cloud.google.com/kubernetes-engine/docs/troubleshooting/image-pulls)。
+
 ## 残作業
 
-Cloud Buildのjob・実行サービスアカウント、GKEのイメージ存在・pull権限・失敗状態との連携は次の段階です。既存GKE/Cloud Runへのイメージ文字列指定に、この新しいレジストリ検証はまだ適用しません。Issue #14は閉じません。
+Cloud Buildの任意設定・トリガー・ログ転送/ソース保存先、GKEのキャッシュ/リトライ・ノードプールごとのSA、片付け専用ミッションは残っています。Issue #14は閉じません。
 
 任意Dockerfile、公開registryからのpull、認証トークン/docker login、対話実行・任意コマンド、マウント、環境変数、複数ポート、IPv6、build args/cache/layers、短縮ID、docker image/container系の別名、registryのイメージ削除/タグ管理・remote/virtual repository・CMEKなどは未対応です。Dockerのフラグは登録したものとhelpのみを受け付け、gcloud共通フラグを流用しません。実Dockerと異なる出力・固定のログ・一括成功/失敗の簡略モデルであることを表示します。
 
