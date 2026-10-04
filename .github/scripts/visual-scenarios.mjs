@@ -37,16 +37,29 @@ export const FROZEN_TIME = Date.UTC(2026, 0, 1, 12, 0, 0);
  */
 export const SCENARIOS = [
   {
+    name: "mission-cleanup",
+    label: "ミッション: コンテナ教材の片付け",
+    steps: [
+      { wait: 800 },
+      { click: "ミッション 0/37" },
+      { click: "運用の維持0/13 クリア" },
+      { click: "残すイメージを守りながらコンテナ教材を片付ける未着手" },
+      { click: "開始" },
+      { click: "ヒント（0/4）" },
+      { wait: 300 },
+    ],
+  },
+  {
     name: "mission-categories",
     label: "ミッション: カテゴリ選択",
-    steps: [{ wait: 800 }, { click: "ミッション 0/35" }, { wait: 300 }],
+    steps: [{ wait: 800 }, { click: "ミッション 0/37" }, { wait: 300 }],
   },
   {
     name: "mission-list",
     label: "ミッション: カテゴリ内の一覧",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/35" },
+      { click: "ミッション 0/37" },
       { click: "環境セットアップ0/3 クリア" },
       { wait: 300 },
     ],
@@ -56,7 +69,7 @@ export const SCENARIOS = [
     label: "ミッション: 選んだ1件の手順",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/35" },
+      { click: "ミッション 0/37" },
       { click: "環境セットアップ0/3 クリア" },
       { click: "本番用の configuration を用意する未着手" },
       { click: "開始" },

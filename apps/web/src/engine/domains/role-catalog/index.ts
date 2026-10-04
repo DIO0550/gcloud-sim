@@ -337,6 +337,7 @@ const BuildWritePermissions = [
 ];
 
 const ArtifactReadPermissions = [
+  "artifactregistry.tags.list",
   "artifactregistry.repositories.get",
   "artifactregistry.repositories.list",
   "artifactregistry.repositories.downloadArtifacts",
@@ -346,10 +347,18 @@ const ArtifactReadPermissions = [
 ] as const;
 const ArtifactWritePermissions = [
   ...ArtifactReadPermissions,
+  "artifactregistry.tags.create",
+  "artifactregistry.tags.update",
   "artifactregistry.repositories.uploadArtifacts",
 ] as const;
-const ArtifactAdminPermissions = [
+const ArtifactRepoAdminPermissions = [
   ...ArtifactWritePermissions,
+  "artifactregistry.tags.delete",
+  "artifactregistry.versions.delete",
+  "artifactregistry.packages.delete",
+] as const;
+const ArtifactAdminPermissions = [
+  ...ArtifactRepoAdminPermissions,
   "artifactregistry.repositories.create",
   "artifactregistry.repositories.delete",
   "artifactregistry.repositories.setIamPolicy",
@@ -430,7 +439,7 @@ const ViewerPermissions = [
 
 const EditorPermissions = [
   ...BuildWritePermissions,
-  ...ArtifactWritePermissions,
+  ...ArtifactRepoAdminPermissions,
   "artifactregistry.repositories.create",
   "artifactregistry.repositories.delete",
   ...ViewerPermissions,
@@ -481,6 +490,11 @@ const Roles: readonly Role[] = [
   role("roles/cloudbuild.builds.editor", "Cloud Build Editor", BuildWritePermissions),
   role("roles/artifactregistry.reader", "Artifact Registry Reader", ArtifactReadPermissions),
   role("roles/artifactregistry.writer", "Artifact Registry Writer", ArtifactWritePermissions),
+  role(
+    "roles/artifactregistry.repoAdmin",
+    "Artifact Registry Repository Administrator",
+    ArtifactRepoAdminPermissions,
+  ),
   role("roles/artifactregistry.admin", "Artifact Registry Administrator", ArtifactAdminPermissions),
   role("roles/owner", "Owner", OwnerPermissions),
   role("roles/editor", "Editor", EditorPermissions),

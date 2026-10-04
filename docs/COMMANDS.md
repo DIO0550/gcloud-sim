@@ -21,7 +21,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（286）
+## 実装済み（290）
 
 ### Cloud Build
 
@@ -68,6 +68,12 @@ GKE clusters create/create-autoは`--service-account=EMAIL`で既存ノードSA�
 | `gcloud artifacts repositories remove-iam-policy-binding` | artifactregistry.repositories.setIamPolicy | artifactregistry.googleapis.com | --location、--member、--role |
 | `gcloud artifacts docker images list` | artifactregistry.dockerimages.list | artifactregistry.googleapis.com | --include-tags |
 | `gcloud artifacts docker images describe` | artifactregistry.dockerimages.get | artifactregistry.googleapis.com | — |
+| `gcloud artifacts docker tags list` | artifactregistry.tags.list | artifactregistry.googleapis.com | — |
+| `gcloud artifacts docker tags add` | artifactregistry.tags.create/update | artifactregistry.googleapis.com | — |
+| `gcloud artifacts docker tags delete` | artifactregistry.tags.delete | artifactregistry.googleapis.com | — |
+| `gcloud artifacts docker images delete` | artifactregistry.versions.delete（版）/packages.delete（全体） | artifactregistry.googleapis.com | --delete-tags |
+
+tags addは同一imageパス内のタグ作成/移動、tags deleteはタグだけを削除してdigestを保持します。images deleteは指定版またはimageパス全体を削除し、付随タグには--delete-tagsが必要です。immutable制約、repoAdmin権限、削除確認を検証します。非同期削除は未対応です。
 
 repository操作の位置引数はID＋--location、または完全名projects/PROJECT/locations/LOCATION/repositories/ID。Dockerのpush/pullには対象ホストのconfigure-docker設定が必要で、ADCではなく現在のgcloudアカウントを使用します。v1〜v6のSnapshotは空のDocker/Artifact Registry状態を補完します。
 

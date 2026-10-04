@@ -1,4 +1,4 @@
-# Docker・Artifact Registry 学習シミュレーター（第1段階）
+# Docker・Artifact Registry・Cloud Build 学習シミュレーター
 
 Issue [#14](https://github.com/DIO0550/gcloud-sim/issues/14) の部分実装です。ローカルイメージ・コンテナとクラウドのリポジトリ・イメージを別状態で扱い、ビルド、起動、タグ付け、push/pull、IAM、片付けを練習します。実Docker、ホスト上のファイル、クラウド、HTTPには接続しません。
 
@@ -125,10 +125,32 @@ gcloud artifacts repositories delete ace-images --location=us-central1
 
 参照: [builds submit](https://docs.cloud.google.com/sdk/gcloud/reference/builds/submit)、[独自サービスアカウント](https://docs.cloud.google.com/build/docs/securing-builds/configure-user-specified-service-accounts)、[GKEのイメージ取得](https://docs.cloud.google.com/kubernetes-engine/docs/troubleshooting/image-pulls)。
 
+## リモートのタグ管理・イメージ削除
+
+```sh
+docker build -t us-central1-docker.pkg.dev/ace-dev-01/ace-images/hello:v2 ./hello-web-v2
+docker push us-central1-docker.pkg.dev/ace-dev-01/ace-images/hello:v2
+gcloud artifacts docker tags add us-central1-docker.pkg.dev/ace-dev-01/ace-images/hello:v2 us-central1-docker.pkg.dev/ace-dev-01/ace-images/hello:stable
+gcloud artifacts docker tags list us-central1-docker.pkg.dev/ace-dev-01/ace-images/hello
+gcloud artifacts docker tags delete us-central1-docker.pkg.dev/ace-dev-01/ace-images/hello:stable
+gcloud artifacts docker images delete us-central1-docker.pkg.dev/ace-dev-01/ace-images/hello:v2
+```
+
+- `tags add` は同じリポジトリ・イメージパス内でタグを作成/移動します。元は明示したタグかdigest、先は明示したタグです。ローカルの`docker tag`や認証helperを使わず、現在のgcloudアカウント（`--account`で変更可）でリモートだけを操作します。
+- `tags list` / `images list` はリポジトリ全体またはイメージパスを受け付けます。タグ/digest付きの一覧指定は拒否します。未タグの版は`images list`に残り、`tags list`には出ません。
+- `tags delete` はタグだけを消します。`images delete IMAGE:TAG` はそのタグの版、`IMAGE@DIGEST`は指定版、修飾なしの`IMAGE`はそのパスの全バージョンを消します。タグ指定で他にもタグがある場合、digest/パス指定でタグ付きの場合は`--delete-tags`が必要です。削除は確認に`y`、中止に`n`、省略に`--quiet`を使います。非同期削除は未対応です。
+- immutable tagsを設定したリポジトリではタグ移動・タグ削除・タグ付きバージョン削除を拒否します。`--delete-tags`でも回避できません。未タグの版は削除できます。
+- Readerは一覧、Writerはタグの作成/移動、`roles/artifactregistry.repoAdmin`はタグ/バージョン/パッケージの削除も許可します。repoAdminはリポジトリ自体の削除やIAM変更は許しません。継承権限も評価します。
+- 削除してもローカルキャッシュ・実行中のローカルコンテナ・Cloud Buildの履歴は残ります。GKEは前述の現在状態によるモデルなので、参照先を消すとImagePullBackOffになります。Snapshot v8の既存スキーマでタグの移動・未タグ・削除後の状態を保存します。
+
+新ミッションは「リリースタグを新しいイメージへ切り替える」（デプロイと実装）と「残すイメージを守りながらコンテナ教材を片付ける」（運用の維持）です。前者はv1を保持してv2/stableを同じ教材digestにします。後者は開始時に専用リポジトリcleanup-images（old:v1/keep:v2）と公開ポートなしのcleanup-localコンテナ/タグを用意します。停止だけ・タグ削除だけ・リポジトリ全削除は未達成です。他のローカルタグやコンテナは削除する必要がありません。既存のcleanup-imagesは上書きせず、リポジトリ未作成時にcleanup-local名が使われていれば開始を拒否します。
+
+参照: [イメージの管理](https://docs.cloud.google.com/artifact-registry/docs/docker/manage-images)、[tags add](https://docs.cloud.google.com/sdk/gcloud/reference/artifacts/docker/tags/add)、[images delete](https://docs.cloud.google.com/sdk/gcloud/reference/artifacts/docker/images/delete)、[immutable tags](https://docs.cloud.google.com/artifact-registry/docs/docker/names)、[ロールと権限](https://docs.cloud.google.com/iam/docs/roles-permissions/artifactregistry)。
+
 ## 残作業
 
-Cloud Buildの任意設定・トリガー・ログ転送/ソース保存先、GKEのキャッシュ/リトライ・ノードプールごとのSA、片付け専用ミッションは残っています。Issue #14は閉じません。
+Cloud Buildの任意設定・トリガー・ログ転送/ソース保存先、GKEのキャッシュ/リトライ・ノードプールごとのSA、GKEを含む一連のクリーンアップ採点は残っています。Issue #14は閉じません。
 
-任意Dockerfile、公開registryからのpull、認証トークン/docker login、対話実行・任意コマンド、マウント、環境変数、複数ポート、IPv6、build args/cache/layers、短縮ID、docker image/container系の別名、registryのイメージ削除/タグ管理・remote/virtual repository・CMEKなどは未対応です。Dockerのフラグは登録したものとhelpのみを受け付け、gcloud共通フラグを流用しません。実Dockerと異なる出力・固定のログ・一括成功/失敗の簡略モデルであることを表示します。
+任意Dockerfile、公開registryからのpull、認証トークン/docker login、対話実行・任意コマンド、マウント、環境変数、複数ポート、IPv6、build args/cache/layers、短縮ID、docker image/container系の別名、registryのremote/virtual repository・CMEKなどは未対応です。Dockerのフラグは登録したものとhelpのみを受け付け、gcloud共通フラグを流用しません。実Dockerと異なる出力・固定のログ・一括成功/失敗の簡略モデルであることを表示します。
 
 参照: [Docker run](https://docs.docker.com/reference/cli/docker/container/run/)、[Artifact Registry push/pull](https://docs.cloud.google.com/artifact-registry/docs/docker/pushing-and-pulling)、[Docker認証](https://docs.cloud.google.com/artifact-registry/docs/docker/authentication)、[repository作成](https://docs.cloud.google.com/sdk/gcloud/reference/artifacts/repositories/create)、[アクセス制御](https://docs.cloud.google.com/artifact-registry/docs/access-control)。

@@ -32,6 +32,10 @@ const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElem
 
 const assertionLabel = (assertion: Mission["assertions"][number]): string => {
   switch (assertion.kind) {
+    case "artifactReleasePromoted":
+      return "helloのv1を残し、v2とstableがhello-web-v2の同じdigestを指している";
+    case "containerCleanupComplete":
+      return "cleanup-localコンテナとタグ、oldイメージを削除し、cleanup-imagesとkeep:v2を保持";
     case "cloudBuildPublished":
       return "Cloud Buildが成功し、ace-imagesにhello:v1が登録されている";
     case "registryDeploymentReady":

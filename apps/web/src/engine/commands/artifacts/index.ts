@@ -6,6 +6,7 @@ import {
   ParsedArgs,
   Positional,
 } from "@/engine/cli/command-spec";
+import { ArtifactImageCommands } from "@/engine/commands/artifacts/images";
 import {
   account,
   authorize,
@@ -38,6 +39,7 @@ const repoArg = Positional.required(
 );
 const prefix = ["gcloud", "artifacts", "repositories"];
 export const ArtifactCommands: readonly CommandSpec[] = [
+  ...ArtifactImageCommands,
   plainCommand({
     path: [...prefix, "create"],
     summary: "Create a standard Docker Artifact Registry repository.",
@@ -189,8 +191,9 @@ export const ArtifactCommands: readonly CommandSpec[] = [
     flags: [Flag.boolean("include-tags", "Include image tags.")],
     run: guarded((ctx, args) => {
       const raw = ParsedArgs.requiredPositional(args, 0);
-      if (raw.split("/").length !== 3) fail("Specify LOCATION-docker.pkg.dev/PROJECT/REPOSITORY.");
-      const ref = ContainerLab.registryReference(`${raw}/placeholder`);
+      if (/[:@]/.test(raw)) fail("Use a repository or image path without a tag or digest.");
+      const wholeRepo = raw.split("/").length === 3;
+      const ref = ContainerLab.registryReference(wholeRepo ? `${raw}/placeholder` : raw);
       const repo = requireRepository(ctx.world, ref.repositoryId);
       authorize(
         ctx.world,
@@ -203,9 +206,9 @@ export const ArtifactCommands: readonly CommandSpec[] = [
         world: ctx.world,
         output: CommandOutput.table(
           ctx.world.containerLab.registryImages
-            .filter((i) => i.repositoryId === repo.id)
+            .filter((i) => i.repositoryId === repo.id && (wholeRepo || i.name === ref.image))
             .map((i) => ({
-              image: `${raw}/${i.name}`,
+              image: `${ref.host}/${ref.projectId}/${ref.repository}/${i.name}`,
               digest: i.digest,
               uploadTime: i.uploaded,
               ...(ParsedArgs.boolean(args, "include-tags") ? { tags: [...i.tags] } : {}),

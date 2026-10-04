@@ -33,6 +33,12 @@ import type { FunctionTrigger } from "@/engine/domains/serverless";
 import { ServiceAccount } from "@/engine/domains/service-account";
 import { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
+import {
+  type ArtifactLifecycleAssertion,
+  ArtifactLifecycleMissions,
+  artifactLifecycleSatisfied,
+  ensureContainerCleanupLab,
+} from "@/engine/missions/artifact-lifecycle";
 import { type BuildAssertion, BuildMissions, buildSatisfied } from "@/engine/missions/builds";
 import {
   type ContainerAssertion,
@@ -66,6 +72,7 @@ export type MissionDomain = ValueOf<typeof MissionDomains>;
 /** World に対する述語（DJ-010: コマンド文字列ではなく状態で判定する）。値の語彙はドメインの型で閉じる。 */
 export type MissionAssertion =
   | BuildAssertion
+  | ArtifactLifecycleAssertion
   | ContainerAssertion
   | TerraformAssertion
   | ObservabilityAssertion
@@ -178,6 +185,7 @@ export type MissionAssertion =
 
 /** ミッション開始時に World へ当てる変更（設計書 6.2 Mission.setup）。 */
 export type WorldPatch =
+  | Readonly<{ kind: "ensureContainerCleanupLab" }>
   | Readonly<{ kind: "setPrincipal"; principal: Principal }>
   | Readonly<{ kind: "setProject"; projectId: string }>
   | Readonly<{ kind: "removeBinding"; target: PolicyTarget; role: RoleName; member: IamMember }>
@@ -205,6 +213,7 @@ const Missions: readonly Mission[] = [
   ...TerraformMissions,
   ...ContainerMissions,
   ...BuildMissions,
+  ...ArtifactLifecycleMissions,
   {
     id: "m-setup-001",
     domain: MissionDomains.Setup,
@@ -658,6 +667,9 @@ const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: 
 
 const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
+    case "artifactReleasePromoted":
+    case "containerCleanupComplete":
+      return artifactLifecycleSatisfied(world, assertion);
     case "cloudBuildPublished":
     case "registryDeploymentReady":
       return buildSatisfied(world, assertion);
@@ -875,6 +887,8 @@ const ensureInstance = (
 
 const applyPatch = (world: World, patch: WorldPatch): Result<World, string> => {
   switch (patch.kind) {
+    case "ensureContainerCleanupLab":
+      return ensureContainerCleanupLab(world);
     case "setPrincipal":
       return Result.ok(World.withPrincipal(world, patch.principal));
     case "setProject":
