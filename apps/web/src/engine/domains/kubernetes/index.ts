@@ -20,16 +20,48 @@ export const KubeName = {
   },
 } as const;
 
+export type KubeRevision = Readonly<{
+  revision: number;
+  templateId: number;
+  image: string;
+  reason: "create" | "image" | "restart" | "undo" | "migrated";
+}>;
 export type KubeDeployment = Readonly<{
   projectId: string;
   cluster: string;
   name: string;
   image: string;
   replicas: number;
-  /** ロールアウトの世代。`apply` / `scale` / `rollout restart` で上がる */
+  /** Specの世代。Pod templateのrevisionとは別に管理する。 */
   generation: number;
+  revision: number;
+  revisions: readonly KubeRevision[];
+  podIncarnations: readonly number[];
+  podSequence: number;
   createdAt: string;
 }>;
+
+const validReplicas = (n: number): boolean => Number.isSafeInteger(n) && n >= 0 && n <= 1000;
+const newRevision = (
+  d: KubeDeployment,
+  image: string,
+  reason: KubeRevision["reason"],
+  templateId = d.revision + 1,
+): KubeDeployment => {
+  const revision = d.revision + 1;
+  return {
+    ...d,
+    image,
+    generation: d.generation + 1,
+    revision,
+    revisions: [
+      ...d.revisions.filter((r) => r.templateId !== templateId),
+      { revision, image, templateId, reason },
+    ].slice(-11),
+    podSequence: d.podSequence + 1,
+    podIncarnations: Array.from({ length: d.replicas }, () => d.podSequence + 1),
+  };
+};
 
 export const KubeDeployment = {
   /**
@@ -48,19 +80,28 @@ export const KubeDeployment = {
       createdAt: string;
     }>,
   ): Result<KubeDeployment, string> {
+    const replicas = Option.unwrapOr(seed.replicas, 1);
+    if (!validReplicas(replicas))
+      return Result.err("Replicas must be an integer from 0 to 1000 on gcloud-sim.");
+    if (!seed.image.trim() || /\s/.test(seed.image))
+      return Result.err("Image must be a non-empty reference without whitespace.");
     return Result.map(KubeName.parse(seed.name), (name) => ({
       projectId: seed.projectId,
       cluster: seed.cluster,
       name,
       image: seed.image,
-      replicas: Option.unwrapOr(seed.replicas, 1),
+      replicas,
       generation: 1,
+      revision: 1,
+      revisions: [{ revision: 1, templateId: 1, image: seed.image, reason: "create" }],
+      podIncarnations: Array.from({ length: replicas }, () => 0),
+      podSequence: 0,
       createdAt: seed.createdAt,
     }));
   },
 
   /**
-   * レプリカ数を替える（`scale`）。ReplicaSet は同じままなので世代は上げない
+   * レプリカ数を替える（`scale`）。Spec世代は上げ、revisionとReplicaSetは保持する
    * （既存の Pod の名前が変わらず、減らすと末尾から消える）。
    *
    * @param deployment 元
@@ -68,29 +109,106 @@ export const KubeDeployment = {
    * @returns 替えた Deployment。負なら理由
    */
   withReplicas(deployment: KubeDeployment, replicas: number): Result<KubeDeployment, string> {
-    return replicas >= 0
-      ? Result.ok({ ...deployment, replicas })
-      : Result.err(`Invalid value for --replicas: ${replicas}. Must be non-negative.`);
+    if (!validReplicas(replicas))
+      return Result.err("Replicas must be an integer from 0 to 1000 on gcloud-sim.");
+    if (replicas === deployment.replicas) return Result.ok(deployment);
+    return Result.ok({
+      ...deployment,
+      replicas,
+      generation: deployment.generation + 1,
+      podSequence:
+        replicas > deployment.replicas ? deployment.podSequence + 1 : deployment.podSequence,
+      podIncarnations: Array.from(
+        { length: replicas },
+        (_, i) => deployment.podIncarnations[i] ?? deployment.podSequence + 1,
+      ),
+    });
   },
 
   /** イメージとレプリカを置き換える（`apply` の再適用）。世代が上がる。 */
   withSpec(deployment: KubeDeployment, image: string, replicas: number): KubeDeployment {
-    return { ...deployment, image, replicas, generation: deployment.generation + 1 };
+    const scaled = Result.unwrap(KubeDeployment.withReplicas(deployment, replicas));
+    if (image === deployment.image) return scaled;
+    return { ...newRevision(scaled, image, "image"), generation: deployment.generation + 1 };
   },
 
-  /** `rollout restart`。中身は変えず世代だけ上げる。 */
+  /** `rollout restart`。同じイメージで新しいtemplateとrevisionを作る。 */
   restarted(deployment: KubeDeployment): KubeDeployment {
-    return { ...deployment, generation: deployment.generation + 1 };
+    return newRevision(deployment, deployment.image, "restart");
+  },
+
+  undo(deployment: KubeDeployment, target: number): Result<KubeDeployment, string> {
+    const previous =
+      target === 0
+        ? deployment.revisions.at(-2)
+        : deployment.revisions.find((r) => r.revision === target);
+    if (!previous)
+      return Result.err("Requested revision is not retained; inspect rollout history first.");
+    if (previous.revision === deployment.revision) return Result.ok(deployment);
+    return Result.ok(newRevision(deployment, previous.image, "undo", previous.templateId));
+  },
+
+  replacePod(deployment: KubeDeployment, index: number): KubeDeployment {
+    return {
+      ...deployment,
+      podSequence: deployment.podSequence + 1,
+      podIncarnations: deployment.podIncarnations.map((n, i) =>
+        i === index ? deployment.podSequence + 1 : n,
+      ),
+    };
+  },
+
+  validate(d: KubeDeployment): Result<KubeDeployment, string> {
+    const positive = (n: number) => Number.isSafeInteger(n) && n > 0;
+    const latest = d.revisions.at(-1);
+    if (
+      !Result.isOk(KubeName.parse(d.name)) ||
+      !validReplicas(d.replicas) ||
+      !positive(d.generation) ||
+      !positive(d.revision) ||
+      d.generation < d.revision
+    )
+      return Result.err("Invalid Deployment identity, replicas or generation.");
+    if (
+      !latest ||
+      d.revisions.length > 11 ||
+      latest.revision !== d.revision ||
+      latest.image !== d.image ||
+      new Set(d.revisions.map((r) => r.templateId)).size !== d.revisions.length
+    )
+      return Result.err("Invalid Deployment revision history.");
+    for (const [i, r] of d.revisions.entries()) {
+      if (
+        !positive(r.revision) ||
+        !positive(r.templateId) ||
+        r.templateId > r.revision ||
+        !r.image.trim() ||
+        /\s/.test(r.image) ||
+        (i > 0 && (d.revisions[i - 1]?.revision ?? 0) >= r.revision)
+      )
+        return Result.err("Invalid Deployment revision entry.");
+    }
+    if (
+      d.podIncarnations.length !== d.replicas ||
+      !Number.isSafeInteger(d.podSequence) ||
+      d.podSequence < 0 ||
+      d.podIncarnations.some((n) => !Number.isSafeInteger(n) || n < 0 || n > d.podSequence)
+    )
+      return Result.err("Invalid Deployment Pod identities.");
+    return Result.ok(d);
   },
 
   /**
-   * ReplicaSet のハッシュ。Pod 名の中間に出る。世代から決めるので同じ世代なら同じ綴り。
+   * ReplicaSet の疑似ハッシュ。templateの識別子から決め、rollbackでも再利用する。
    *
    * @param deployment 対象
    * @returns 10 文字の綴り
    */
-  replicaSetHash(deployment: KubeDeployment): string {
-    const seed = `${deployment.name}:${deployment.generation}`;
+  replicaSetHash(
+    deployment: KubeDeployment,
+    templateId = deployment.revisions.at(-1)?.templateId ?? deployment.revision,
+  ): string {
+    const seed = `${deployment.name}:${templateId}`;
     const digest = [...seed].reduce((acc, ch) => (acc * 31 + ch.charCodeAt(0)) >>> 0, 7);
     return digest.toString(36).padStart(10, "0").slice(0, 10);
   },
@@ -103,6 +221,7 @@ export const KubeDeployment = {
         name: deployment.name,
         namespace: "default",
         generation: deployment.generation,
+        annotations: { "deployment.kubernetes.io/revision": String(deployment.revision) },
         creationTimestamp: deployment.createdAt,
         labels: { app: deployment.name },
       },
@@ -145,7 +264,12 @@ export const KubePod = {
   fromDeployment(deployment: KubeDeployment): readonly KubePod[] {
     const hash = KubeDeployment.replicaSetHash(deployment);
     return Array.from({ length: deployment.replicas }, (_, i) => {
-      const suffix = ((i + 1) * 2654435761 + deployment.generation * 97)
+      const templateId = deployment.revisions.at(-1)?.templateId ?? deployment.revision;
+      const suffix = (
+        (i + 1) * 2654435761 +
+        templateId * 97 +
+        (deployment.podIncarnations[i] ?? 0) * 101
+      )
         .toString(36)
         .padStart(5, "x")
         .slice(-5);
@@ -155,7 +279,7 @@ export const KubePod = {
         image: deployment.image,
         status: "Running",
         restarts: 0,
-        ip: `10.8.${deployment.generation % 256}.${(i + 2) % 256}`,
+        ip: `10.8.${templateId % 256}.${(i + 2) % 256}`,
       };
     });
   },

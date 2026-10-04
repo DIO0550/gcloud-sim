@@ -626,6 +626,12 @@ const Roles: readonly Role[] = [
   role("roles/container.viewer", "Kubernetes Engine Viewer", [
     "container.clusters.get",
     "container.clusters.list",
+    "container.deployments.get",
+    "container.deployments.list",
+    "container.pods.get",
+    "container.pods.list",
+    "container.services.get",
+    "container.services.list",
   ]),
   role("roles/run.admin", "Cloud Run Admin", RunPermissions),
   role("roles/run.developer", "Cloud Run Developer", [

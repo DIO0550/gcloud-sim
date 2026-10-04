@@ -21,7 +21,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（290）
+## 実装済み（294）
 
 ### Cloud Build
 
@@ -366,7 +366,11 @@ GCS backend使用時、stateを読むshow/output/state list/showにもstorage.ob
 | `kubectl describe` | `container.pods.get` | `container.googleapis.com` | `--namespace` |
 | `kubectl expose` | `container.services.create` | `container.googleapis.com` | `--type` `--port` `--target-port` `--name` `--namespace` |
 | `kubectl scale` | `container.deployments.update` | `container.googleapis.com` | `--replicas` `--namespace` |
-| `kubectl rollout` | `container.deployments.update` | `container.googleapis.com` | `--namespace` |
+| `kubectl set image` | `container.deployments.update` | `container.googleapis.com` | `--namespace` |
+| `kubectl rollout status` | `container.deployments.get` | `container.googleapis.com` | `--namespace` |
+| `kubectl rollout history` | `container.deployments.get` | `container.googleapis.com` | `--revision` `--namespace` |
+| `kubectl rollout restart` | `container.deployments.update` | `container.googleapis.com` | `--namespace` |
+| `kubectl rollout undo` | `container.deployments.update` | `container.googleapis.com` | `--to-revision` `--namespace` |
 | `kubectl logs` | `container.pods.get` | `container.googleapis.com` | `--follow` `--namespace` |
 | `kubectl config` | `container.clusters.get` | `container.googleapis.com` | `--namespace` |
 

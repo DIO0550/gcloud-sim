@@ -69,11 +69,15 @@ const usage = (message: string): CommandFailure => CommandFailure.invalidArgumen
 
 /** `deployment`, `deploy`, `deployments`, `deployment/web` の綴りを種別と名前に分ける。 */
 type ResourceRef = Readonly<{
-  kind: "deployment" | "service" | "pod" | "node" | "all";
+  kind: "deployment" | "service" | "pod" | "node" | "replicaset" | "all";
   name: Option<string>;
 }>;
 
 const ResourceAliases: Readonly<Record<string, ResourceRef["kind"]>> = {
+  rs: "replicaset",
+  replicaset: "replicaset",
+  replicasets: "replicaset",
+  "replicasets.apps": "replicaset",
   deployment: "deployment",
   deployments: "deployment",
   deploy: "deployment",
@@ -152,6 +156,13 @@ const age = (createdAt: string, now: string): string => {
 
 const deploymentRow = (d: KubeDeployment, now: string, error: string): JsonRecord => ({
   ...KubeDeployment.toRecord(d),
+  status: {
+    replicas: d.replicas,
+    readyReplicas: error ? 0 : d.replicas,
+    availableReplicas: error ? 0 : d.replicas,
+    updatedReplicas: d.replicas,
+    observedGeneration: d.generation,
+  },
   name: d.name,
   ready: `${error ? 0 : d.replicas}/${d.replicas}`,
   imagePullError: error,
@@ -232,6 +243,43 @@ const collect = (
   );
   const services = World.kubeServicesOf(ctx.world, cluster);
   switch (ref.kind) {
+    case "replicaset": {
+      const rows = deployments.flatMap((d) =>
+        d.revisions.map((r) => {
+          const replicas = r.revision === d.revision ? d.replicas : 0;
+          const ready = ImagePull.error(ctx.world, cluster, r.image) ? 0 : replicas;
+          const name = `${d.name}-${KubeDeployment.replicaSetHash(d, r.templateId)}`;
+          return {
+            apiVersion: "apps/v1",
+            kind: "ReplicaSet",
+            name,
+            desired: replicas,
+            current: replicas,
+            ready,
+            metadata: {
+              name,
+              namespace: "default",
+              annotations: { "deployment.kubernetes.io/revision": String(r.revision) },
+              ownerReferences: [{ kind: "Deployment", name: d.name }],
+            },
+            spec: {
+              replicas,
+              template: { spec: { containers: [{ name: d.name, image: r.image }] } },
+            },
+            status: { replicas, readyReplicas: ready },
+          };
+        }),
+      );
+      return Result.map(pick(rows, "replicasets.apps", ref.name), (rows) => ({
+        rows,
+        columns: [
+          Column.create("NAME", "name"),
+          Column.create("DESIRED", "desired"),
+          Column.create("CURRENT", "current"),
+          Column.create("READY", "ready"),
+        ],
+      }));
+    }
     case "deployment":
       return Result.map(pick(deployments, "deployments.apps", ref.name), (rows) => ({
         rows: rows.map((d) =>
@@ -282,7 +330,17 @@ const get = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   if (!Result.isOk(collected)) return collected;
   const { rows, columns } = collected.value;
   const output = ParsedArgs.string(args, "output");
-  if (Option.isSome(output) && (output.value === "yaml" || output.value === "json")) {
+  if (Option.isSome(output) && output.value === "json") {
+    const data =
+      Option.isSome(ref.value.name) && rows.length === 1
+        ? rows[0]
+        : { apiVersion: "v1", kind: "List", items: rows };
+    return Result.ok({
+      world: ctx.world,
+      output: { ...CommandOutput.yaml(data ?? {}), defaultFormat: "json" },
+    });
+  }
+  if (Option.isSome(output) && output.value === "yaml") {
     return Result.ok({ world: ctx.world, output: CommandOutput.yamlList(rows) });
   }
   if (rows.length === 0) {
@@ -518,7 +576,13 @@ const remove = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
       );
       if (owner === undefined) return Result.err(notFound("pods", name.value));
       return Result.ok({
-        world: World.replaceKubeDeployment(ctx.world, KubeDeployment.restarted(owner)),
+        world: World.replaceKubeDeployment(
+          ctx.world,
+          KubeDeployment.replacePod(
+            owner,
+            KubePod.fromDeployment(owner).findIndex((p) => p.name === name.value),
+          ),
+        ),
         output: CommandOutput.messages(
           OutputMessage.plain(`pod "${name.value}" deleted`),
           OutputMessage.hint(
@@ -528,6 +592,7 @@ const remove = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
       });
     }
     case "node":
+    case "replicaset":
     case "all":
       return Result.err(usage(`cannot delete ${ref.value.kind} on gcloud-sim`));
   }
@@ -596,6 +661,35 @@ const scale = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   }));
 };
 
+const setImage = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+  const cluster = currentCluster(ctx);
+  if (!Result.isOk(cluster)) return cluster;
+  const inline = ParsedArgs.requiredPositional(args, 0).includes("/");
+  const assignments = args.positionals.slice(inline ? 1 : 2);
+  if (assignments.length !== 1)
+    return Result.err(usage("Specify one deployment and one CONTAINER=IMAGE assignment."));
+  const deployment = requireDeployment(ctx, cluster.value, args);
+  if (!Result.isOk(deployment)) return deployment;
+  const assignment = /^([^=]+)=([^=\s]+)$/.exec(assignments[0] ?? "");
+  if (!assignment || (assignment[1] !== deployment.value.name && assignment[1] !== "*"))
+    return Result.err(
+      usage(`Container must be ${deployment.value.name} or * and image must be non-empty.`),
+    );
+  const next = KubeDeployment.withSpec(
+    deployment.value,
+    assignment[2] ?? "",
+    deployment.value.replicas,
+  );
+  return Result.ok({
+    world: World.replaceKubeDeployment(ctx.world, next),
+    output: CommandOutput.messages(
+      OutputMessage.plain(
+        `deployment.apps/${next.name} ${next === deployment.value ? "unchanged" : "image updated"}`,
+      ),
+    ),
+  });
+};
+
 const rollout = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   const cluster = currentCluster(ctx);
   if (!Result.isOk(cluster)) return cluster;
@@ -624,20 +718,53 @@ const rollout = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
         world: World.replaceKubeDeployment(ctx.world, KubeDeployment.restarted(d)),
         output: CommandOutput.messages(OutputMessage.plain(`deployment.apps/${d.name} restarted`)),
       });
-    case "history":
+    case "undo": {
+      const target = Option.unwrapOr(ParsedArgs.integer(args, "to-revision"), 0);
+      if (!Number.isSafeInteger(target) || target < 0)
+        return Result.err(usage("--to-revision must be a non-negative integer."));
+      return Result.map(Result.mapErr(KubeDeployment.undo(d, target), usage), (next) => ({
+        world: World.replaceKubeDeployment(ctx.world, next),
+        output: CommandOutput.messages(
+          OutputMessage.plain(
+            `deployment.apps/${d.name} ${next === d ? "skipped rollback (current revision)" : "rolled back"}`,
+          ),
+        ),
+      }));
+    }
+    case "history": {
+      const revision = ParsedArgs.integer(args, "revision");
+      if (Option.isSome(revision)) {
+        if (!Number.isSafeInteger(revision.value) || revision.value < 0)
+          return Result.err(usage("--revision must be a non-negative integer."));
+        if (revision.value > 0) {
+          const record = d.revisions.find((r) => r.revision === revision.value);
+          if (!record) return Result.err(usage("Requested revision is not retained."));
+          return Result.ok({
+            world: ctx.world,
+            output: CommandOutput.yaml({
+              revision: record.revision,
+              kind: "PodTemplate",
+              spec: { containers: [{ name: d.name, image: record.image }] },
+            }),
+          });
+        }
+      }
       return Result.ok({
         world: ctx.world,
         output: CommandOutput.messages(
           OutputMessage.plain(`deployment.apps/${d.name}`),
-          OutputMessage.plain("REVISION  CHANGE-CAUSE"),
-          ...Array.from({ length: d.generation }, (_, i) =>
-            OutputMessage.plain(`${i + 1}         <none>`),
+          OutputMessage.plain("REVISION  CHANGE-CAUSE  IMAGE"),
+          ...d.revisions.map((r) =>
+            OutputMessage.plain(`${r.revision}         <none>        ${r.image}`),
           ),
         ),
       });
+    }
     default:
       return Result.err(
-        usage(`unknown command "${verb}" for "kubectl rollout" (status / restart / history)`),
+        usage(
+          `unknown command "${verb}" for "kubectl rollout" (status / restart / history / undo)`,
+        ),
       );
   }
 };
@@ -766,13 +893,18 @@ type KubectlSeed = Readonly<{
 
 const kubectl = (seed: KubectlSeed): CommandSpec =>
   projectCommand({
-    path: ["kubectl", seed.verb],
+    path: ["kubectl", ...seed.verb.split(" ")],
     summary: seed.summary,
     positionals: seed.positionals,
     flags: [...seed.flags, NamespaceFlag],
     permission: seed.permission,
     requiredApis: [ContainerApi],
-    run: seed.run,
+    run: (ctx, args) => {
+      const namespace = Option.unwrapOr(ParsedArgs.string(args, "namespace"), "default");
+      if (namespace !== "default")
+        return Result.err(usage("Only namespace default is supported on gcloud-sim."));
+      return seed.run(ctx, args);
+    },
   });
 
 export const KubectlCommands: readonly CommandSpec[] = [
@@ -842,17 +974,40 @@ export const KubectlCommands: readonly CommandSpec[] = [
     run: scale,
   }),
   kubectl({
-    verb: "rollout",
-    summary: "Manage the rollout of a resource (status / restart / history).",
+    verb: "set image",
+    summary: "Update the single container image of a Deployment.",
     positionals: [
-      Positional.required("SUBCOMMAND", "status, restart or history."),
-      Positional.optional("TYPE[/NAME]", "deployment/NAME."),
-      NamePositional,
+      TypePositional,
+      Positional.required("NAME_OR_ASSIGNMENT", "Name or CONTAINER=IMAGE."),
+      Positional.optional("ASSIGNMENT", "CONTAINER=IMAGE when using deployment NAME."),
     ],
     flags: [],
     permission: "container.deployments.update",
-    run: rollout,
+    run: setImage,
   }),
+  ...(["status", "restart", "history", "undo"] as const).map((verb) =>
+    kubectl({
+      verb: `rollout ${verb}`,
+      summary: `Deployment rollout ${verb} (retains current and 10 previous templates).`,
+      positionals: [TypePositional, NamePositional],
+      flags:
+        verb === "history"
+          ? [Flag.integer("revision", "Inspect a retained revision; 0 lists history.")]
+          : verb === "undo"
+            ? [
+                Flag.integer(
+                  "to-revision",
+                  "Restore a retained revision; 0 uses the previous revision.",
+                ),
+              ]
+            : [],
+      permission:
+        verb === "status" || verb === "history"
+          ? "container.deployments.get"
+          : "container.deployments.update",
+      run: (ctx, args) => rollout(ctx, { ...args, positionals: [verb, ...args.positionals] }),
+    }),
+  ),
   kubectl({
     verb: "logs",
     summary: "Print the logs for a container in a pod.",

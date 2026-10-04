@@ -361,7 +361,7 @@ export const Formatter = {
   render(
     records: readonly JsonRecord[],
     columns: readonly Column[],
-    defaultFormat: "table" | "yaml" | "none",
+    defaultFormat: "table" | "yaml" | "json" | "none",
     options: ListOptions,
   ): readonly string[] {
     const filterExpr = options.filter;
@@ -370,20 +370,22 @@ export const Formatter = {
       : records;
     const sorted = sortRecords(filtered, options.sortBy);
     const limited = Option.isSome(options.limit) ? sorted.slice(0, options.limit.value) : sorted;
+    const defaults = {
+      none: { kind: "none" },
+      json: { kind: "json" },
+      table: { kind: "table", paths: [] },
+      yaml: { kind: "yaml" },
+    } as const;
     const format: Exclude<OutputFormat, { kind: "default" }> =
-      options.format.kind === "default"
-        ? defaultFormat === "none"
-          ? { kind: "none" }
-          : defaultFormat === "table"
-            ? { kind: "table", paths: [] }
-            : { kind: "yaml" }
-        : options.format;
+      options.format.kind === "default" ? defaults[defaultFormat] : options.format;
     switch (format.kind) {
       case "none":
         return [];
       case "json":
         return JSON.stringify(
-          defaultFormat === "yaml" && limited.length === 1 ? limited[0] : limited,
+          (defaultFormat === "yaml" || defaultFormat === "json") && limited.length === 1
+            ? limited[0]
+            : limited,
           null,
           2,
         ).split("\n");

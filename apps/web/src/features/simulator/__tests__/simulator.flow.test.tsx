@@ -139,7 +139,7 @@ test("ミッションを開始して条件を満たすとクリアの通知が�
     { timeout: 4000 },
   );
   expect(screenText(terminal)).toContain("gcloud-sim: ✓ ミッションクリア");
-  expect(screen.getByRole("tab", { name: "ミッション 1/37" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "ミッション 1/39" })).toBeInTheDocument();
 });
 
 test("ヒントは押すたびに 1 つ開く", async () => {
@@ -178,7 +178,7 @@ test("確認で拒否するとリセットされない", async () => {
 test("インポートに失敗すると E-011 が出て状態は変わらない", async () => {
   const user = userEvent.setup();
   const { terminal } = renderSimulator({
-    readResult: async () => Result.err({ kind: "unsupportedVersion", version: "9" }),
+    readResult: async () => Result.err({ kind: "unsupportedVersion", version: "10" }),
   });
   await typeLine(terminal, "gcloud compute instances create web-1 --zone=asia-northeast1-a");
   await waitFor(() => expect(within(resourceTree()).getByText("web-1")).toBeInTheDocument());
@@ -189,7 +189,7 @@ test("インポートに失敗すると E-011 が出て状態は変わらない"
   );
   await waitFor(() =>
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "schemaVersion 9 は未対応です。現在の状態は変更していません。",
+      "schemaVersion 10 は未対応です。現在の状態は変更していません。",
     ),
   );
   expect(within(resourceTree()).getByText("web-1")).toBeInTheDocument();

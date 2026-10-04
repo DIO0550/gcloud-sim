@@ -32,6 +32,10 @@ const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElem
 
 const assertionLabel = (assertion: Mission["assertions"][number]): string => {
   switch (assertion.kind) {
+    case "kubeImageUpdated":
+      return "helloをv1からv2へ更新し、履歴と取得権限を保って2レプリカで起動";
+    case "kubeRollbackRecovered":
+      return "missingへの更新履歴を残し、v1へのロールバック後も3レプリカで起動";
     case "artifactReleasePromoted":
       return "helloのv1を残し、v2とstableがhello-web-v2の同じdigestを指している";
     case "containerCleanupComplete":

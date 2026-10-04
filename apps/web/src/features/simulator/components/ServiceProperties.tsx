@@ -109,8 +109,16 @@ export const KubeDeploymentProperties = ({
           { label: "image", value: d.image },
           { label: "replicas", value: String(d.replicas) },
           { label: "generation", value: String(d.generation) },
+          { label: "revision", value: String(d.revision) },
           { label: "createdAt", value: d.createdAt },
         ]}
+      />
+      <Section
+        title="更新履歴（最大11件）"
+        rows={d.revisions.map((r) => ({
+          label: `revision ${r.revision} (${r.reason})`,
+          value: r.image,
+        }))}
       />
       <Section
         title="Pod"

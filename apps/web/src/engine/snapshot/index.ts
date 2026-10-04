@@ -108,14 +108,15 @@ import { Result } from "@/utils/Result";
  * v3 はログ指標・ダッシュボード・アラートポリシー・稼働時間チェックを持つ。
  * v4 はTerraformの仮想ファイル・state・保存planを持つ。
  * v5 はmoduleアドレス・サブディレクトリ・保存planのmoved情報を持つ。
- * v8 はCloud Build履歴とGKEノードSAを持つ。
- * v7 はDockerのローカル状態とArtifact Registryを持つ。
  * v6 はGCS backend・state世代/ロック・移行履歴とplanのbackend revisionを持つ。
+ * v7 はDockerのローカル状態とArtifact Registryを持つ。
+ * v8 はCloud Build履歴とGKEノードSAを持つ。
+ * v9 はDeploymentのrevision/template履歴と個別Podの採番状態を持つ。
  */
-export const SchemaVersion = 8;
+export const SchemaVersion = 9;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
-const MigratableVersions = [1, 2, 3, 4, 5, 6, 7] as const;
+const MigratableVersions = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
 export type Snapshot = Readonly<{
@@ -535,6 +536,17 @@ const kubeDeployment = D.object<KubeDeployment>({
   image: string,
   replicas: D.number,
   generation: D.number,
+  revision: D.number,
+  revisions: D.array(
+    D.object({
+      revision: D.number,
+      templateId: D.number,
+      image: string,
+      reason: D.literal(["create", "image", "restart", "undo", "migrated"]),
+    }),
+  ),
+  podIncarnations: D.array(D.number),
+  podSequence: D.number,
   createdAt: string,
 });
 
@@ -825,14 +837,49 @@ const migrate = (version: number, value: unknown): unknown => {
   const previous = isRecord(old)
     ? {
         ...old,
+        kubeDeployments: Array.isArray(old.kubeDeployments)
+          ? old.kubeDeployments.map((d) =>
+              isRecord(d)
+                ? {
+                    ...d,
+                    revision: d.generation,
+                    podSequence: 0,
+                    revisions: [
+                      {
+                        revision: d.generation,
+                        templateId: d.generation,
+                        image: d.image,
+                        reason: "migrated",
+                      },
+                    ],
+                    podIncarnations: Array.from(
+                      {
+                        length:
+                          typeof d.replicas === "number" &&
+                          Number.isSafeInteger(d.replicas) &&
+                          d.replicas >= 0 &&
+                          d.replicas <= 1000
+                            ? d.replicas
+                            : 0,
+                      },
+                      () => 0,
+                    ),
+                  }
+                : d,
+            )
+          : old.kubeDeployments,
         containerLab:
-          version === 7
-            ? isRecord(old.containerLab)
-              ? { ...old.containerLab, builds: [] }
-              : old.containerLab
-            : ContainerLab.empty(),
+          version >= 8
+            ? old.containerLab
+            : version === 7
+              ? isRecord(old.containerLab)
+                ? { ...old.containerLab, builds: [] }
+                : old.containerLab
+              : ContainerLab.empty(),
         clusters: Array.isArray(old.clusters)
-          ? old.clusters.map((c) => (isRecord(c) ? { ...c, nodeServiceAccount: "" } : c))
+          ? old.clusters.map((c) =>
+              isRecord(c) && version < 8 ? { ...c, nodeServiceAccount: "" } : c,
+            )
           : old.clusters,
       }
     : old;
