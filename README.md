@@ -288,7 +288,7 @@ PR を出すと、そのブランチのサイトが
 static export をビルドして主要画面を撮り、main の画像（baseline）と画素で突き合わせる。
 
 撮る画面は [`visual-scenarios.mjs`](.github/scripts/visual-scenarios.mjs) に並べてある。
-今はトップ・設定・Console の 5 画面を **PC 幅（1440px）とスマホ幅（430px）**の 2 通りで撮る。
+今はトップ・設定・Console・ミッション・GKE の 16 画面を **PC 幅（1440px）とスマホ幅（430px）**の 2 通りで撮る。
 画面を足したいときはこのファイルに 1 つ足すだけでよく、workflow は触らない。
 手順はボタンの文字で押す（`click`）、待つ（`wait`）、端末に 1 行打つ（`type`）、入力欄に入れる（`fill`）の 4 つ。画面に固有の操作が要るときは
 [`visual-regression.mjs`](.github/scripts/visual-regression.mjs) の `applyStep` に足す。

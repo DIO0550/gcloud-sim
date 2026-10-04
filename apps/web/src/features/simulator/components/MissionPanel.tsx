@@ -22,11 +22,23 @@ type MissionPanelProps = Readonly<{
 const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElement => {
   switch (status) {
     case MissionStatuses.Completed:
-      return <Pill tone="ok">クリア</Pill>;
+      return (
+        <Pill className="shrink-0 whitespace-nowrap" tone="ok">
+          クリア
+        </Pill>
+      );
     case MissionStatuses.InProgress:
-      return <Pill tone="accent">挑戦中</Pill>;
+      return (
+        <Pill className="shrink-0 whitespace-nowrap" tone="accent">
+          挑戦中
+        </Pill>
+      );
     case MissionStatuses.Available:
-      return <Pill tone="muted">未着手</Pill>;
+      return (
+        <Pill className="shrink-0 whitespace-nowrap" tone="muted">
+          未着手
+        </Pill>
+      );
   }
 };
 
