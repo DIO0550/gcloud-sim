@@ -50,6 +50,19 @@ const configSteps = [
 ];
 export const SCENARIOS = [
   {
+    name: "mission-gke-manifest",
+    label: "ミッション: 設定ファイルをapplyして反映",
+    steps: [
+      { wait: 800 },
+      { click: "ミッション 0/42" },
+      { click: "運用の維持0/16 クリア" },
+      { click: "設定ファイルをapplyしてPodへ反映する未着手" },
+      { click: "開始" },
+      { click: "ヒント（0/5）" },
+      { wait: 300 },
+    ],
+  },
+  {
     name: "gke-env-properties",
     label: "GKE: 環境変数と更新履歴",
     steps: [...configSteps, { click: "deploy: config-web" }, { wait: 300 }],
@@ -64,8 +77,8 @@ export const SCENARIOS = [
     label: "ミッション: ConfigMap変更を再起動で反映",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/41" },
-      { click: "運用の維持0/15 クリア" },
+      { click: "ミッション 0/42" },
+      { click: "運用の維持0/16 クリア" },
       { click: "ConfigMapの変更をPodの再起動で反映する未着手" },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -77,8 +90,8 @@ export const SCENARIOS = [
     label: "ミッション: GKE更新失敗からの復旧",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/41" },
-      { click: "運用の維持0/15 クリア" },
+      { click: "ミッション 0/42" },
+      { click: "運用の維持0/16 クリア" },
       { click: "失敗したGKEの更新をロールバックする未着手" },
       { click: "開始" },
       { click: "ヒント（0/7）" },
@@ -90,8 +103,8 @@ export const SCENARIOS = [
     label: "ミッション: コンテナ教材の片付け",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/41" },
-      { click: "運用の維持0/15 クリア" },
+      { click: "ミッション 0/42" },
+      { click: "運用の維持0/16 クリア" },
       { click: "残すイメージを守りながらコンテナ教材を片付ける未着手" },
       { click: "開始" },
       { click: "ヒント（0/4）" },
@@ -101,14 +114,14 @@ export const SCENARIOS = [
   {
     name: "mission-categories",
     label: "ミッション: カテゴリ選択",
-    steps: [{ wait: 800 }, { click: "ミッション 0/41" }, { wait: 300 }],
+    steps: [{ wait: 800 }, { click: "ミッション 0/42" }, { wait: 300 }],
   },
   {
     name: "mission-list",
     label: "ミッション: カテゴリ内の一覧",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/41" },
+      { click: "ミッション 0/42" },
       { click: "環境セットアップ0/3 クリア" },
       { wait: 300 },
     ],
@@ -118,7 +131,7 @@ export const SCENARIOS = [
     label: "ミッション: 選んだ1件の手順",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/41" },
+      { click: "ミッション 0/42" },
       { click: "環境セットアップ0/3 クリア" },
       { click: "本番用の configuration を用意する未着手" },
       { click: "開始" },

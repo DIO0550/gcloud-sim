@@ -25,6 +25,7 @@ import { IamPolicy, type RoleName } from "@/engine/domains/iam-policy";
 import type { InstanceTemplate, ManagedInstanceGroup } from "@/engine/domains/instance-groups";
 import type { KmsKeyRing } from "@/engine/domains/kms";
 import { KubeConfig, KubeRuntime } from "@/engine/domains/kube-config";
+import { KubeManifest } from "@/engine/domains/kube-manifest";
 import { KubeDeployment, type KubeService } from "@/engine/domains/kubernetes";
 import {
   type BackendService,
@@ -100,6 +101,7 @@ export type World = Readonly<{
   kubeDeployments: readonly KubeDeployment[];
   kubeServices: readonly KubeService[];
   kubeConfigs: readonly KubeConfig[];
+  kubeFiles: Readonly<Record<string, string>>;
   functions: readonly CloudFunction[];
   appEngineApps: readonly AppEngineApp[];
   appVersions: readonly AppVersion[];
@@ -1310,6 +1312,8 @@ export const World = {
    * @returns 満たしていれば同じ World。満たさなければ最初に見つけた違反
    */
   validate(world: World): Result<World, string> {
+    if (!KubeManifest.validFiles(world.kubeFiles))
+      return Result.err("Invalid Kubernetes virtual files.");
     for (const deployment of world.kubeDeployments) {
       const checked = KubeDeployment.validate(deployment);
       if (!Result.isOk(checked)) return Result.err(checked.error);

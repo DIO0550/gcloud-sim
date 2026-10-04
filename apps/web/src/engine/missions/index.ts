@@ -683,6 +683,7 @@ const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
     case "kubeConfigInjected":
     case "kubeConfigRefreshed":
+    case "kubeConfigApplied":
       return kubeConfigurationSatisfied(world, assertion);
     case "kubeImageUpdated":
     case "kubeRollbackRecovered":

@@ -202,10 +202,12 @@ const BillingPermissions = [
 
 const KubeConfigPermissions = [
   "container.configMaps.create",
+  "container.configMaps.update",
   "container.configMaps.get",
   "container.configMaps.list",
   "container.configMaps.delete",
   "container.secrets.create",
+  "container.secrets.update",
   "container.secrets.get",
   "container.secrets.list",
   "container.secrets.delete",

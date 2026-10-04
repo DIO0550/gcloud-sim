@@ -34,6 +34,8 @@ const assertionLabel = (assertion: Mission["assertions"][number]): string => {
   switch (assertion.kind) {
     case "kubeConfigInjected":
       return "ConfigMap/Secret参照とLOG_LEVELを設定し、2レプリカへ正しい値を注入";
+    case "kubeConfigApplied":
+      return "ConfigMapとSecretをファイルからapplyし、再起動で全Podへproductionとdemo-tokenを反映";
     case "kubeConfigRefreshed":
       return "app-configのAPP_MODE=productionを再起動で2レプリカへ反映";
     case "kubeImageUpdated":

@@ -11,6 +11,7 @@ import {
 } from "@/engine/cli/command-spec";
 import { plainCommand } from "@/engine/commands/shared";
 import { TerraformExamples } from "@/engine/commands/terraform/examples";
+import { KubeManifest, KubeManifestExamples } from "@/engine/domains/kube-manifest";
 import { TerraformState, type TfPlan } from "@/engine/domains/terraform";
 import { TfBackend } from "@/engine/domains/terraform/backend";
 import { TfBackendRuntime } from "@/engine/domains/terraform/backend-runtime";
@@ -50,15 +51,31 @@ const fileName = (name: string): string =>
     ? name
     : fail("Use a simple file name in the simulator root directory (no paths).");
 const configName = (name: string): string =>
-  TfStructure.filePath(name)
-    ? name
+  TfStructure.filePath(name) || KubeManifest.path(name)
+    ? (KubeManifest.path(name) ?? name)
     : fail(
-        "Use a relative .tf or .tfvars file path; no paths with .., absolute paths, or unsafe segments.",
+        "Use a relative .tf, .tfvars, .yaml, .yml or .json file path; no paths with .., absolute paths, or unsafe segments.",
       );
 const requireInit = (world: World): void => {
   if (!world.terraform.initialized) fail("Run terraform init first.");
 };
-const fileCandidates = (world: World): readonly string[] => Object.keys(world.terraform.files);
+const virtualFiles = (world: World): Readonly<Record<string, string>> => ({
+  ...world.terraform.files,
+  ...world.kubeFiles,
+});
+const fileCandidates = (world: World): readonly string[] => Object.keys(virtualFiles(world));
+const withVirtualFiles = (world: World, files: Readonly<Record<string, string>>): World => {
+  const kubeFiles = Object.fromEntries(
+    Object.entries(files).filter(([name]) => KubeManifest.path(name)),
+  );
+  const terraformFiles = Object.fromEntries(
+    Object.entries(files).filter(([name]) => TfStructure.filePath(name)),
+  );
+  if (Object.keys(kubeFiles).length > 32 || Object.keys(terraformFiles).length > 32)
+    fail("Limit: 32 files per workspace.");
+  return { ...world, kubeFiles, terraform: { ...world.terraform, files: terraformFiles } };
+};
+const FileExamples = { ...TerraformExamples, ...KubeManifestExamples };
 const stateCandidates = (world: World): readonly string[] =>
   world.terraform.resources.map((r) => r.address);
 const modeFlags = [
@@ -119,7 +136,7 @@ const applyCommand = (destroy: boolean): CommandSpec => ({
 export const TerraformCommands: readonly CommandSpec[] = [
   plainCommand({
     path: ["sim", "files", "list"],
-    summary: "List in-memory Terraform configuration files (simulator command).",
+    summary: "List in-memory Terraform and Kubernetes configuration files (simulator command).",
     run: (ctx) => ok(ctx.world, fileCandidates(ctx.world).join("\n") || "No configuration files."),
   }),
   plainCommand({
@@ -129,17 +146,19 @@ export const TerraformCommands: readonly CommandSpec[] = [
     run: guarded((ctx, args) =>
       ok(
         ctx.world,
-        ctx.world.terraform.files[configName(ParsedArgs.requiredPositional(args, 0))] ??
+        virtualFiles(ctx.world)[configName(ParsedArgs.requiredPositional(args, 0))] ??
           fail("File not found."),
       ),
     ),
   }),
   plainCommand({
     path: ["sim", "files", "write"],
-    summary: "Write HCL to an in-memory file; quote the content.",
+    summary: "Write a configuration to an in-memory file; quote the content.",
     positionals: [Positional.required("FILE", "File name.", fileCandidates)],
     flags: [
-      Flag.string("content", "HCL source (single-quote the full value).", { required: true }),
+      Flag.string("content", "HCL/YAML/JSON source (single-quote the full value).", {
+        required: true,
+      }),
     ],
     run: guarded((ctx, args) => {
       const name = configName(ParsedArgs.requiredPositional(args, 0));
@@ -148,17 +167,13 @@ export const TerraformCommands: readonly CommandSpec[] = [
         fail("File name collides with a saved plan.");
       if (
         content.length > 64000 ||
-        (!Object.hasOwn(ctx.world.terraform.files, name) && fileCandidates(ctx.world).length >= 32)
+        (!Object.hasOwn(virtualFiles(ctx.world), name) &&
+          Object.keys(KubeManifest.path(name) ? ctx.world.kubeFiles : ctx.world.terraform.files)
+            .length >= 32)
       )
         fail("Limit: 32 files, 64,000 characters each.");
       return ok(
-        {
-          ...ctx.world,
-          terraform: {
-            ...ctx.world.terraform,
-            files: { ...ctx.world.terraform.files, [name]: content },
-          },
-        },
+        withVirtualFiles(ctx.world, { ...virtualFiles(ctx.world), [name]: content }),
         `Wrote ${name}.`,
       );
     }),
@@ -173,20 +188,14 @@ export const TerraformCommands: readonly CommandSpec[] = [
     ],
     run: guarded((ctx, args) => {
       const name = configName(ParsedArgs.requiredPositional(args, 0));
-      const content = ctx.world.terraform.files[name] ?? fail("File not found.");
+      const content = virtualFiles(ctx.world)[name] ?? fail("File not found.");
       const search = ParsedArgs.requiredString(args, "search");
       if (!search || content.split(search).length !== 2)
         fail("Search text must occur exactly once.");
       const next = content.replace(search, () => ParsedArgs.requiredString(args, "replacement"));
       if (next.length > 64000) fail("File exceeds 64,000 characters.");
       return ok(
-        {
-          ...ctx.world,
-          terraform: {
-            ...ctx.world.terraform,
-            files: { ...ctx.world.terraform.files, [name]: next },
-          },
-        },
+        withVirtualFiles(ctx.world, { ...virtualFiles(ctx.world), [name]: next }),
         `Updated ${name}.`,
       );
     }),
@@ -197,41 +206,32 @@ export const TerraformCommands: readonly CommandSpec[] = [
     positionals: [Positional.required("FILE", "File name.", fileCandidates)],
     run: guarded((ctx, args) => {
       const name = configName(ParsedArgs.requiredPositional(args, 0));
-      if (!Object.hasOwn(ctx.world.terraform.files, name)) fail("File not found.");
+      if (!Object.hasOwn(virtualFiles(ctx.world), name)) fail("File not found.");
       const files = Object.fromEntries(
-        Object.entries(ctx.world.terraform.files).filter(([key]) => key !== name),
+        Object.entries(virtualFiles(ctx.world)).filter(([key]) => key !== name),
       );
-      return ok({ ...ctx.world, terraform: { ...ctx.world.terraform, files } }, `Removed ${name}.`);
+      return ok(withVirtualFiles(ctx.world, files), `Removed ${name}.`);
     }),
   }),
   plainCommand({
     path: ["sim", "files", "load"],
-    summary: "Load a Terraform lesson into virtual files.",
-    positionals: [
-      Positional.required("EXAMPLE", "Lesson name.", () => Object.keys(TerraformExamples)),
-    ],
+    summary: "Load a Terraform or Kubernetes lesson into virtual files.",
+    positionals: [Positional.required("EXAMPLE", "Lesson name.", () => Object.keys(FileExamples))],
     flags: [Flag.boolean("force", "Replace existing files belonging to the selected example.")],
     run: guarded((ctx, args) => {
       const name = ParsedArgs.requiredPositional(args, 0);
-      if (!Object.hasOwn(TerraformExamples, name))
-        fail(`Available examples: ${Object.keys(TerraformExamples).join(", ")}`);
-      const example = TerraformExamples[name] ?? {};
+      if (!Object.hasOwn(FileExamples, name))
+        fail(`Available examples: ${Object.keys(FileExamples).join(", ")}`);
+      const example = FileExamples[name] ?? {};
       for (const path of Object.keys(example)) {
         if (Object.hasOwn(ctx.world.terraform.plans, path))
           fail(`${path} collides with a saved plan.`);
-        if (Object.hasOwn(ctx.world.terraform.files, path) && !ParsedArgs.boolean(args, "force"))
+        if (Object.hasOwn(virtualFiles(ctx.world), path) && !ParsedArgs.boolean(args, "force"))
           fail(`${path} already exists. Read it first or use --force.`);
       }
-      const files = { ...ctx.world.terraform.files, ...example };
-      if (Object.keys(files).length > 32) fail("Limit: 32 configuration files.");
+      const files = { ...virtualFiles(ctx.world), ...example };
       return ok(
-        {
-          ...ctx.world,
-          terraform: {
-            ...ctx.world.terraform,
-            files,
-          },
-        },
+        withVirtualFiles(ctx.world, files),
         `Loaded ${Object.keys(example).join(", ")}. Use sim files read FILE. This is a simulator-only file system.`,
       );
     }),
@@ -352,7 +352,7 @@ export const TerraformCommands: readonly CommandSpec[] = [
         ]),
       );
       const changed = Object.keys(files).filter(
-        (name) => files[name] !== ctx.world.terraform.files[name],
+        (name) => files[name] !== virtualFiles(ctx.world)[name],
       );
       if (ParsedArgs.boolean(args, "check") && changed.length)
         fail(`Files need formatting: ${changed.join(", ")}`);
@@ -376,7 +376,7 @@ export const TerraformCommands: readonly CommandSpec[] = [
       const out = ParsedArgs.string(args, "out");
       if (!Option.isSome(out)) return ok(ctx.world, TfRuntime.summary(plan));
       const name = fileName(out.value);
-      if (Object.hasOwn(ctx.world.terraform.files, name))
+      if (Object.hasOwn(virtualFiles(ctx.world), name))
         fail("Plan name collides with a configuration file.");
       if (
         Object.keys(ctx.world.terraform.plans).length >= 16 &&
