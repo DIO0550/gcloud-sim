@@ -1,5 +1,6 @@
 import { KubeEnv, type PodEnvironment } from "@/engine/domains/kube-config";
 import { KubeLabels } from "@/engine/domains/kube-labels";
+import { KubeResources } from "@/engine/domains/kube-resources";
 import type { JsonRecord } from "@/types/Json";
 import type { ValueOf } from "@/types/ValueOf";
 import { Option } from "@/utils/Option";
@@ -26,8 +27,9 @@ export type KubeRevision = Readonly<{
   revision: number;
   templateId: number;
   image: string;
-  reason: "create" | "image" | "env" | "labels" | "restart" | "undo" | "migrated";
+  reason: "create" | "image" | "env" | "resources" | "labels" | "restart" | "undo" | "migrated";
   env: readonly KubeEnv[];
+  resources: KubeResources;
   podLabels: KubeLabels;
 }>;
 export type KubeDeployment = Readonly<{
@@ -36,6 +38,7 @@ export type KubeDeployment = Readonly<{
   name: string;
   image: string;
   env: readonly KubeEnv[];
+  resources: KubeResources;
   podEnvironments: readonly PodEnvironment[];
   labels: KubeLabels;
   selector: KubeLabels;
@@ -60,22 +63,36 @@ const newRevision = (
   templateId = d.revision + 1,
   env = d.env,
   podLabels = d.podLabels,
+  resources = d.resources,
 ): KubeDeployment => {
   const revision = d.revision + 1;
   return {
     ...d,
     image,
     env,
+    resources,
     podLabels,
     generation: d.generation + 1,
     revision,
     revisions: [
       ...d.revisions.filter((r) => r.templateId !== templateId),
-      { revision, image, templateId, reason, env, podLabels },
+      { revision, image, templateId, reason, env, podLabels, resources },
     ].slice(-11),
     podSequence: d.podSequence + 1,
     podIncarnations: Array.from({ length: d.replicas }, () => d.podSequence + 1),
   };
+};
+
+const templateChangeReason = (
+  d: KubeDeployment,
+  image: string,
+  env: readonly KubeEnv[],
+  resources: KubeResources,
+): KubeRevision["reason"] => {
+  if (image !== d.image) return "image";
+  if (JSON.stringify(env) !== JSON.stringify(d.env)) return "env";
+  if (!KubeResources.equal(resources, d.resources)) return "resources";
+  return "labels";
 };
 
 export const KubeDeployment = {
@@ -121,6 +138,7 @@ export const KubeDeployment = {
       name,
       image: seed.image,
       env: [],
+      resources: KubeResources.empty(),
       podEnvironments: [],
       labels,
       selector,
@@ -130,7 +148,15 @@ export const KubeDeployment = {
       generation: 1,
       revision: 1,
       revisions: [
-        { revision: 1, templateId: 1, image: seed.image, reason: "create", env: [], podLabels },
+        {
+          revision: 1,
+          templateId: 1,
+          image: seed.image,
+          reason: "create",
+          env: [],
+          podLabels,
+          resources: KubeResources.empty(),
+        },
       ],
       podIncarnations: Array.from({ length: replicas }, () => 0),
       podSequence: 0,
@@ -178,6 +204,7 @@ export const KubeDeployment = {
     env: readonly KubeEnv[],
     podLabels = deployment.podLabels,
     labels = deployment.labels,
+    resources = deployment.resources,
   ): KubeDeployment {
     const metadata = KubeLabels.equal(labels, deployment.labels)
       ? deployment
@@ -186,17 +213,13 @@ export const KubeDeployment = {
     if (
       image === deployment.image &&
       JSON.stringify(env) === JSON.stringify(deployment.env) &&
-      KubeLabels.equal(podLabels, deployment.podLabels)
+      KubeLabels.equal(podLabels, deployment.podLabels) &&
+      KubeResources.equal(resources, deployment.resources)
     )
       return scaled;
-    const reason =
-      image !== deployment.image
-        ? "image"
-        : JSON.stringify(env) !== JSON.stringify(deployment.env)
-          ? "env"
-          : "labels";
+    const reason = templateChangeReason(deployment, image, env, resources);
     return {
-      ...newRevision(scaled, image, reason, undefined, env, podLabels),
+      ...newRevision(scaled, image, reason, undefined, env, podLabels, resources),
       generation: deployment.generation + 1,
     };
   },
@@ -227,6 +250,7 @@ export const KubeDeployment = {
         previous.templateId,
         previous.env,
         previous.podLabels,
+        previous.resources,
       ),
     );
   },
@@ -242,6 +266,13 @@ export const KubeDeployment = {
   },
 
   validate(d: KubeDeployment): Result<KubeDeployment, string> {
+    for (const r of [d, ...d.revisions]) {
+      const parsed = KubeResources.parse(r.resources);
+      if (!Result.isOk(parsed) || !KubeResources.equal(parsed.value, r.resources))
+        return Result.err("Invalid Deployment resources.");
+    }
+    if (!KubeResources.equal(d.resources, d.revisions.at(-1)?.resources ?? KubeResources.empty()))
+      return Result.err("Resources differ from current revision.");
     if (!Number.isInteger(d.podNetwork) || d.podNetwork < 0 || d.podNetwork >= 16384)
       return Result.err("Invalid Deployment Pod network.");
     if (
@@ -353,6 +384,7 @@ export const KubeDeployment = {
                 name: deployment.name,
                 image: deployment.image,
                 env: deployment.env.map(KubeEnv.toRecord),
+                ...KubeResources.toContainerFields(deployment.resources),
               },
             ],
           },
@@ -374,6 +406,7 @@ export type KubePod = Readonly<{
   name: string;
   deployment: string;
   labels: KubeLabels;
+  resources: KubeResources;
   image: string;
   status: "Running";
   restarts: 0;
@@ -403,6 +436,7 @@ export const KubePod = {
         name: `${deployment.name}-${hash}-${suffix}`,
         deployment: deployment.name,
         labels: deployment.podLabels,
+        resources: deployment.resources,
         image: deployment.image,
         status: "Running",
         restarts: 0,
@@ -416,7 +450,15 @@ export const KubePod = {
       apiVersion: "v1",
       kind: "Pod",
       metadata: { name: pod.name, namespace: "default", labels: pod.labels },
-      spec: { containers: [{ name: pod.deployment, image: pod.image }] },
+      spec: {
+        containers: [
+          {
+            name: pod.deployment,
+            image: pod.image,
+            ...KubeResources.toContainerFields(pod.resources),
+          },
+        ],
+      },
       status: { phase: pod.status, podIP: pod.ip },
     };
   },

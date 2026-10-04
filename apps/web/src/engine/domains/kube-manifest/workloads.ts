@@ -1,5 +1,6 @@
 import { KubeEnv } from "@/engine/domains/kube-config";
 import { KubeLabels } from "@/engine/domains/kube-labels";
+import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeDeployment, KubeName, KubeServiceType } from "@/engine/domains/kubernetes";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -12,6 +13,7 @@ export type WorkloadManifest =
       image: string;
       replicas: number | undefined;
       env: readonly KubeEnv[];
+      resources: KubeResources;
       labels: KubeLabels;
       selector: KubeLabels;
       podLabels: KubeLabels;
@@ -120,13 +122,17 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
   if (!Array.isArray(pod.containers) || pod.containers.length !== 1)
     return fail("Use exactly one container.");
   const container = record(pod.containers[0], "container");
-  fields(container, ["name", "image", "env"], "container");
+  fields(container, ["name", "image", "env", "resources"], "container");
   if (container.name !== meta.name)
     return fail("Container name must equal Deployment name on gcloud-sim.");
   if (typeof container.image !== "string") return fail("Container image must be a string.");
   if (spec.replicas !== undefined && typeof spec.replicas !== "number")
     return fail("replicas must be an integer.");
   const env = environment(container.env);
+  const resources = KubeResources.parse(
+    container.resources === undefined ? {} : container.resources,
+  );
+  if (!Result.isOk(resources)) return fail(resources.error);
   const valid = KubeDeployment.create({
     projectId: "",
     cluster: "",
@@ -142,6 +148,7 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
     image: container.image,
     replicas: spec.replicas,
     env,
+    resources: resources.value,
     labels,
     selector: matchLabels,
     podLabels,

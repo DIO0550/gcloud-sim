@@ -58,6 +58,7 @@ import type {
 } from "@/engine/domains/instance-groups";
 import type { KmsKeyRing } from "@/engine/domains/kms";
 import type { KubeConfig, KubeEnv } from "@/engine/domains/kube-config";
+import { KubeResources } from "@/engine/domains/kube-resources";
 import {
   type KubeDeployment,
   type KubeService,
@@ -116,11 +117,12 @@ import { Result } from "@/utils/Result";
  * v10 はConfigMap/Secret、template環境変数と起動済みPodの環境を持つ。
  * v11 はKubernetes仮想ファイルとapply管理キーを持つ。
  * v12 はラベル・selectorとDeploymentごとの仮想Podネットワークを持つ。
+ * v13 はコンテナのCPU/メモリrequests・limitsをtemplateと履歴に持つ。
  */
-export const SchemaVersion = 12;
+export const SchemaVersion = 13;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
-const MigratableVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const;
+const MigratableVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
 export type Snapshot = Readonly<{
@@ -549,11 +551,14 @@ const kubeConfig = D.object<KubeConfig>({
   data: D.array(D.object({ key: string, value: string })),
   createdAt: string,
 });
+const kubeResources: Decoder<KubeResources> = (value, path) =>
+  Result.mapErr(KubeResources.parse(value), (reason) => `${path}: ${reason}`);
 const kubeDeployment = D.object<KubeDeployment>({
   labels: stringMap,
   selector: stringMap,
   podLabels: stringMap,
   podNetwork: D.number,
+  resources: kubeResources,
   projectId: string,
   cluster: string,
   name: string,
@@ -566,8 +571,18 @@ const kubeDeployment = D.object<KubeDeployment>({
       revision: D.number,
       templateId: D.number,
       image: string,
-      reason: D.literal(["create", "image", "env", "labels", "restart", "undo", "migrated"]),
+      reason: D.literal([
+        "create",
+        "image",
+        "env",
+        "resources",
+        "labels",
+        "restart",
+        "undo",
+        "migrated",
+      ]),
       podLabels: stringMap,
+      resources: kubeResources,
       env: D.array(kubeEnv),
     }),
   ),
@@ -908,12 +923,18 @@ const migrateKubeDeployment = (version: number, value: unknown, podNetwork: numb
   const labels = { app: d.name };
   return {
     ...d,
-    labels,
-    selector: labels,
-    podLabels: labels,
-    podNetwork,
+    ...(version < 12 ? { labels, selector: labels, podLabels: labels, podNetwork } : {}),
+    resources: KubeResources.empty(),
     revisions: Array.isArray(d.revisions)
-      ? d.revisions.map((r) => (isRecord(r) ? { ...r, podLabels: labels } : r))
+      ? d.revisions.map((r) =>
+          isRecord(r)
+            ? {
+                ...r,
+                ...(version < 12 ? { podLabels: labels } : {}),
+                resources: KubeResources.empty(),
+              }
+            : r,
+        )
       : d.revisions,
   };
 };
@@ -942,7 +963,7 @@ const migrate = (version: number, value: unknown): unknown => {
           : old.kubeDeployments,
         kubeServices: Array.isArray(old.kubeServices)
           ? old.kubeServices.map((s) => {
-              if (!isRecord(s)) return s;
+              if (!isRecord(s) || version >= 12) return s;
               const { targetDeployment, ...rest } = s;
               return { ...rest, labels: {}, selector: { app: targetDeployment } };
             })

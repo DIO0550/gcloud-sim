@@ -233,6 +233,7 @@ test("v8 migration preserves local/registry state and node identity, without inv
       templateId: 3,
       image: `${image}:v2`,
       reason: "migrated",
+      resources: { requests: {}, limits: {} },
       env: [],
       podLabels: { app: "hello" },
     },

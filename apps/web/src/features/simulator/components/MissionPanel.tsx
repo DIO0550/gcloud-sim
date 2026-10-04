@@ -44,6 +44,8 @@ const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElem
 
 const assertionLabel = (assertion: Mission["assertions"][number]): string => {
   switch (assertion.kind) {
+    case "kubeResourcesConfigured":
+      return "2レプリカでrequestsを250m・128Mi、limitsを500m・256Miにし、ファイルと一致させる";
     case "kubeLabelsSwitched":
       return "blueとgreenを2レプリカずつ残し、ファイルとServiceの公開先をgreenにそろえる";
     case "kubeWorkloadApplied":

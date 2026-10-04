@@ -97,7 +97,7 @@ kubectl rollout restart deployment/web
 kubectl exec deployment/web -- printenv APP_MODE
 ```
 
-`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全44件、GKE拡充分は7件です。
+`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全45件、GKE拡充分は8件です。
 
 `sim files write FILE --content='…'`で独自のYAML/JSONを書き、`read`で読み、`replace --search=… --replacement=…`で1か所を編集できます。ファイルは `.yaml` / `.yml` / `.json` の相対パスで、32ファイル・1ファイル64,000文字まで。Terraformとは別に保存し、Terraformのplanに影響しません。`sim files delete FILE`はファイルだけを消します。クラスタ上の設定を消す操作は `kubectl delete -f FILE` です。教材の上書きは `sim files load kubernetes-config --force` で明示します。
 
@@ -133,9 +133,9 @@ kubectl rollout history deployment/manifest-web
 | 対象 | 対応するフィールド・動作 |
 | --- | --- |
 | Deployment | `apps/v1`、metadata.name、namespaceはdefault、replicasは0〜1000。metadata.labelsとtemplate.metadata.labelsは独立した文字列map。非空のselector.matchLabelsはPodラベルの部分集合で、作成後は変更不可 |
-| コンテナ | 1個のみ、nameはDeployment名と同じ。imageとenvを指定。envは文字列value（省略なら空文字）またはconfigMapKeyRef/secretKeyRef。optional・envFrom・ports・volume・probe等は未対応 |
+| コンテナ | 1個のみ、nameはDeployment名と同じ。image・env・resources（CPU/メモリのrequests/limits）を指定。envは文字列value（省略なら空文字）またはconfigMapKeyRef/secretKeyRef。optional・envFrom・ports・volume・probe等は未対応 |
 | Service | `v1`、ClusterIP/NodePort/LoadBalancer、selectorは非空の文字列map。metadata.labelsは省略可能。TCPの1ポート、port/targetPortは1〜65535の整数。省略時のtypeはClusterIP、targetPortはportと同じ |
-| 更新 | Deploymentのimage・env・Podラベル・replicasを一度に変更してもtemplate revisionは1つだけ進む。replicasだけならrevisionと既存Podを保持。env省略は空、replicas省略は新規なら1・更新なら現在の値を保持 |
+| 更新 | Deploymentのimage・env・Podラベル・resources・replicasを一度に変更してもtemplate revisionは1つだけ進む。replicasだけならrevisionと既存Podを保持。env省略は空、replicas省略は新規なら1・更新なら現在の値を保持 |
 | Service再適用 | selectorとport/targetPortの変更はClusterIP・外部IP・作成日時を保持。typeの変更はこの教材では拒否し、明示的な削除・再作成が必要 |
 | 接続先 | 同じプロジェクト・クラスタでselectorの全ラベルが一致し、イメージ取得と環境変数解決が成功したPodを導出。0レプリカ・Deployment削除・一致なし・起動待ちなら接続先なし |
 
@@ -143,7 +143,7 @@ kubectl rollout history deployment/manifest-web
 
 Deployment/Serviceのapplyは対応するspec値を反映する限定モデルです。ConfigMap/Secretの管理キー処理とは異なり、last-applied annotationや三方向マージ・server-side applyは再現しません。ラベルmapは指定値で置換し、metadata.labels省略は空になります。複数コンテナ・名前付きポート・複数ポート・UDP・headless/ExternalName・Serviceのtype変更は未対応です。
 
-接続先は学習用の表示で、EndpointSliceリソース・probe・プロセスの待受ポート・実通信を確認するものではありません。Serviceだけを先に作ってもよく、Deploymentを削除してもServiceは残ります。Snapshot v12でラベルとselectorを保存します。
+接続先は学習用の表示で、EndpointSliceリソース・probe・プロセスの待受ポート・実通信を確認するものではありません。Serviceだけを先に作ってもよく、Deploymentを削除してもServiceは残ります。Snapshot v13でラベル・selector・resourcesを保存します。
 
 ## 複数ラベルとServiceの公開先切り替え
 
@@ -173,6 +173,39 @@ Deployment自身の`metadata.labels`と`spec.template.metadata.labels`は別で�
 
 Pod IPはクラスタ内でDeploymentごとに重複しない仮想/22を割り当てます（最大16,384 Deployment、各1,000 Pod）。Podの位置に対して安定し、再起動や再作成時も再利用する簡略モデルです。実GKEのCIDR/IPAMやネットワーク疎通を再現するものではありません。
 
+## CPU・メモリのrequests / limits
+
+```sh
+gcloud services enable container.googleapis.com
+gcloud container clusters create-auto resources-gke --region=us-central1
+sim files load kubernetes-resources
+sim files read resource-web.yaml
+kubectl apply -f resource-web.yaml
+# 教材はrequest > limitで失敗。以下でCPUの必要量と上限を直す
+sim files replace resource-web.yaml --search=500m --replacement=100m
+sim files replace resource-web.yaml --search=250m --replacement=500m
+sim files replace resource-web.yaml --search=100m --replacement=250m
+kubectl apply -f resource-web.yaml
+kubectl describe deployment resource-web
+kubectl set resources deployment/resource-web --requests=cpu=300m
+kubectl rollout history deployment/resource-web
+kubectl rollout undo deployment/resource-web
+```
+
+`resources.requests`は配置判断に使う必要量、`resources.limits`は利用上限です。設定は1コンテナ（この教材では1 Pod）あたりで、現在の使用量ではありません。CPUの`250m`は`0.25` CPU、メモリの`128Mi`は134,217,728 bytesです。メモリの`M`は10進、`Mi`は2進の単位なので、`1Gi`のrequestと`1000M`のlimitは大小関係が不正になります。
+
+コンテナの`resources.requests/limits`にCPU・メモリのmapを指定できます。数量は文字列または数値。CPUは0以上の整数mまたは小数3桁までのcore、メモリは0以上の整数bytesまたは整数Ki/Mi/Gi/Ti/K/M/G/Tに対応します。CPUは1m未満の精度、メモリは小数付き単位・m・指数表記、GPU・ephemeral-storage等は未対応として拒否します。内部のmillicore/bytesが安全な整数範囲を超える量も拒否します。
+
+同じリソースのrequestがlimitを超えれば、Worldを変更せずエラーにします。limitだけを指定しrequestがなければ、同じ量をrequestに補います。requestだけの指定は可能です。同じ量の表記違い（`0.5`と`500m`、`1024Mi`と`1Gi`等）は正規化され、再適用でrevisionは増えません。
+
+`kubectl set resources deployment/NAME --requests=cpu=250m,memory=128Mi --limits=cpu=500m,memory=256Mi`は指定したキーだけを更新します。`-c/--containers`はDeployment名または`*`に対応。0を指定したキーは削除し、残ったlimitにrequestがなければ再度補完します。両方のmapで0にするとそのリソース設定を解除できます。manifestの`resources`は全体を置換し、省略または`{}`なら未指定に戻します。manifestに書いた0は明示的な値として保存します。
+
+設定変更はPod templateのrevisionを進め、Podを作り直します。image/env/ラベル/replicasとの一括applyでもrevisionは1つ。undoはresourcesも復元し、現在のレプリカ数を保ちます。get/describeのDeployment・Pod・ReplicaSet、rollout historyの詳細、Deploymentのプロパティで設定を確認できます。
+
+新ミッション「CPU・メモリの必要量と上限を設定する」は、教材の不正設定を直し、2レプリカ・requests 250m/128Mi・limits 500m/256Miでファイルとクラスタをそろえると達成します。
+
+今回扱うのは設定・検証・履歴です。スケジューラ、ノード容量、Pending/Unschedulable、CPU throttling、OOMKill、QoS、使用量、HPA/VPA、LimitRange/ResourceQuotaは再現しません。Standard/Autopilot共通の限定モデルで、Autopilot独自の既定値・最小量・CPU/メモリ比率・自動調整も適用しません。未指定の量からクラスタ固有の値を推測することはありません。
+
 ## Secretの表示と権限
 
 Secretのget一覧・describe・プロパティは値を表示しません。getのJSON/YAMLはKubernetes同様にbase64表現のdataを返します。`set env --list`や履歴にはSecretの参照先だけを表示し、exec/printenvは起動時に取得した値を返します。base64は暗号化ではなく、保存データやコマンド履歴にも値が残ります。学習には架空の値を使用してください。
@@ -183,7 +216,7 @@ ConfigMap/Secretの操作はそれぞれ`container.configMaps.*`/`container.secr
 
 - history/statusは`container.deployments.get`、set image/restart/undoは`container.deployments.update`を要求します。学習用のcontainer.viewerにDeployment/Pod/Serviceの読み取り権限を補い、更新権限と分離しました。クラスタ/API/プロジェクト/アカウントも検証します。
 - namespaceはdefaultのみで、別namespaceを指定した操作は拒否します。`get -o json`はJSONの単一リソースまたはList、`-o yaml`は従来のYAML表示です。出力には教材用の列も含みます。
-- Snapshot v12はラベル・selector・Podネットワークを追加して保存します。v11からはファイル・apply管理キー・環境変数・履歴・Pod識別子を保持し、Deploymentと過去templateのラベルを`app: 名前`、Service selectorを旧接続先の`app`ラベルへ移行します。導出するPod IPは再割当てになります。v10からは既存の設定・環境変数・履歴・Pod識別子とTerraform/Docker状態を保持し、空の仮想ファイル・管理キーを補完します。v9からの移行は既存の履歴とPod識別子を保持し、空の設定/環境変数を補完します。v1〜v8は現在のイメージ・世代を1件の履歴として移行し、過去のイメージは推測しません。v8のDocker/レジストリ/ビルド履歴・ノードSA・Terraform状態を保持します。移行後に新しく更新した分からrollbackできます。
+- Snapshot v13はコンテナのresourcesを現在のtemplateと履歴に追加します。v12からはラベル・selector・Podネットワークを含む全状態を保持し、resourcesは未指定として補完します。v11からはファイル・apply管理キー・環境変数・履歴・Pod識別子を保持し、Deploymentと過去templateのラベルを`app: 名前`、Service selectorを旧接続先の`app`ラベルへ移行します。導出するPod IPは再割当てになります。v10からは既存の設定・環境変数・履歴・Pod識別子とTerraform/Docker状態を保持し、空の仮想ファイル・管理キーを補完します。v9からの移行は既存の履歴とPod識別子を保持し、空の設定/環境変数を補完します。v1〜v8は現在のイメージ・世代を1件の履歴として移行し、過去のイメージは推測しません。v8のDocker/レジストリ/ビルド履歴・ノードSA・Terraform状態を保持します。移行後に新しく更新した分からrollbackできます。
 - PodはDeploymentから導出します。レプリカ上限はシミュレーターの表示・保存保護のため1000です。実際のKubernetesの上限を表す値ではありません。
 - 即時に切り替わる簡略モデルです。ローリング更新中の旧/新Podの共存、maxSurge/maxUnavailable、スケジューラ、進行待ち・timeout、probe、実ネットワーク通信は再現しません。失敗した更新中に旧Podを稼働させ続ける動作も未対応です。
 - ReplicaSetは読み取り専用の導出状態です。templateの識別子/Pod名は疑似値で、実際のハッシュ・annotationsは再現しません。イメージ変更/restartごとに新しいtemplateを作り、undoでは保存したtemplateを再利用します。
@@ -196,3 +229,5 @@ namespace、ConfigMap/Secretのvolumeマウント・ラベル、複数コンテ�
 ファイル操作の参照: [Secretの設定ファイル](https://kubernetes.io/docs/tasks/configmap-secret/managing-secret-using-config-file/)、[宣言的な構成管理](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/declarative-config/)。
 
 ワークロード設定の参照: [ラベルとselector](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/)、[Deploymentのselector](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#selector)、[Serviceの定義](https://kubernetes.io/docs/concepts/services-networking/service/#defining-a-service)。
+
+リソース設定の参照: [コンテナのrequests/limits](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/)、[kubectl set resources](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_set/kubectl_set_resources/)。

@@ -19,6 +19,7 @@ import { ImagePull } from "@/engine/domains/image-pull";
 import { KubeConfig, KubeEnv, KubeRuntime } from "@/engine/domains/kube-config";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeManifest } from "@/engine/domains/kube-manifest";
+import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
 import {
   KubeDeployment,
@@ -197,7 +198,12 @@ const podRow = (
   ...KubePod.toRecord(pod),
   spec: {
     containers: [
-      { name: deployment.name, image: pod.image, env: deployment.env.map(KubeEnv.toRecord) },
+      {
+        name: deployment.name,
+        image: pod.image,
+        env: deployment.env.map(KubeEnv.toRecord),
+        ...KubeResources.toContainerFields(deployment.resources),
+      },
     ],
   },
   name: pod.name,
@@ -332,7 +338,14 @@ const collect = (
               template: {
                 metadata: { labels: r.podLabels },
                 spec: {
-                  containers: [{ name: d.name, image: r.image, env: r.env.map(KubeEnv.toRecord) }],
+                  containers: [
+                    {
+                      name: d.name,
+                      image: r.image,
+                      env: r.env.map(KubeEnv.toRecord),
+                      ...KubeResources.toContainerFields(r.resources),
+                    },
+                  ],
                 },
               },
             },
@@ -852,6 +865,44 @@ const setImage = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   });
 };
 
+const setResources = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+  const cluster = currentCluster(ctx);
+  if (!Result.isOk(cluster)) return cluster;
+  const deployment = requireDeployment(ctx, cluster.value, args);
+  if (!Result.isOk(deployment)) return deployment;
+  const d = deployment.value;
+  const containers = Option.unwrapOr(ParsedArgs.string(args, "containers"), "*");
+  if (containers !== "*" && containers !== d.name)
+    return Result.err(usage(`Container must be ${d.name} or *.`));
+  const requests = ParsedArgs.string(args, "requests");
+  const limits = ParsedArgs.string(args, "limits");
+  if (!Option.isSome(requests) && !Option.isSome(limits))
+    return Result.err(usage("Specify --requests or --limits."));
+  const resources = KubeResources.patch(
+    d.resources,
+    Option.isSome(requests) ? requests.value : undefined,
+    Option.isSome(limits) ? limits.value : undefined,
+  );
+  if (!Result.isOk(resources)) return Result.err(usage(resources.error));
+  const next = KubeDeployment.withManifest(
+    d,
+    d.image,
+    d.replicas,
+    d.env,
+    d.podLabels,
+    d.labels,
+    resources.value,
+  );
+  return Result.ok({
+    world: World.replaceKubeDeployment(ctx.world, next),
+    output: CommandOutput.messages(
+      OutputMessage.plain(
+        `deployment.apps/${d.name} ${next === d ? "unchanged" : "resource requirements updated"}`,
+      ),
+    ),
+  });
+};
+
 const rollout = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   const cluster = currentCluster(ctx);
   if (!Result.isOk(cluster)) return cluster;
@@ -909,7 +960,12 @@ const rollout = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
               metadata: { labels: record.podLabels },
               spec: {
                 containers: [
-                  { name: d.name, image: record.image, env: record.env.map(KubeEnv.toRecord) },
+                  {
+                    name: d.name,
+                    image: record.image,
+                    env: record.env.map(KubeEnv.toRecord),
+                    ...KubeResources.toContainerFields(record.resources),
+                  },
                 ],
               },
             }),
@@ -1272,6 +1328,25 @@ export const KubectlCommands: readonly CommandSpec[] = [
     flags: [],
     permission: "container.deployments.update",
     run: setImage,
+  }),
+  kubectl({
+    verb: "set resources",
+    summary: "Update CPU/memory requests and limits of a single Deployment container.",
+    positionals: [TypePositional, NamePositional],
+    flags: [
+      Flag.string("requests", "cpu=QUANTITY,memory=QUANTITY; zero removes the key.", {
+        singleUse: true,
+      }),
+      Flag.string("limits", "cpu=QUANTITY,memory=QUANTITY; zero removes the key.", {
+        singleUse: true,
+      }),
+      Flag.string("containers", "Container name or * (default).", {
+        aliases: ["-c"],
+        singleUse: true,
+      }),
+    ],
+    permission: "container.deployments.update",
+    run: setResources,
   }),
   ...(["status", "restart", "history", "undo"] as const).map((verb) =>
     kubectl({
