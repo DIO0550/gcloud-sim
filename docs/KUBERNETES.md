@@ -908,7 +908,7 @@ sim gke check-control-plane private-gke --region=us-central1 --endpoint=private 
 
 `get-credentials --internal-ip`はコンテキストごとの接続先を保存し、namespace設定を保持します。フラグなしは公開endpoint有効ならpublic、無効ならprivateを選びます。利用できないendpointを明示選択すると失敗します。この教材でpublic-onlyクラスタの内部endpointは未収録です。設定変更で保存済みpublic接続先が無効になる場合、`kubectl config view`は`https://unavailable`を表示し、get-credentialsで更新してください。CLI上のkubectl操作自体には端末のネットワーク送信元を導入せず、疎通遮断は再現しません。認証情報の取得と接続判定を分け、`sim gke check-control-plane`で送信元を明示して1回評価します。
 
-評価はクラスタへ保存し、describe/プロパティで送信元・endpoint・ALLOW/DENY/理由を表示します。接続設定updateや同じプロジェクトのsubnet追加は前回評価を消すため、再評価が必要です。制御プレーン/ノードプールの版やPod状態は接続設定変更で変わりません。IPは固定の教材値（public `34.85.0.1`、privateはmaster CIDR内の+2）で、実アドレス割当/予約・制御プレーン構築や移行を行いません。privateノード/VPC/CIDRの既存クラスタ変更と未収録フラグは拒否します。
+評価はクラスタへ保存し、describe/プロパティで送信元・endpoint・ALLOW/DENY/理由を表示します。接続設定updateや同じプロジェクトのsubnet追加/VPC削除は前回評価を消すため、再評価が必要です。制御プレーン/ノードプールの版やPod状態は接続設定変更で変わりません。IPは固定の教材値（public `34.85.0.1`、privateはmaster CIDR内の+2）で、実アドレス割当/予約・制御プレーン構築や移行を行いません。privateノード/VPC/CIDRの既存クラスタ変更と未収録フラグは拒否します。
 
 Snapshot v28に接続設定・前回評価・コンテキスト別endpointを保存します。v1〜v27は従来のpublic設定・未評価/接続先の未指定で補完します。v27の既定プール削除・管理/自動スケール評価は変更せず、Ingress/NetworkPolicy・PVC/PVデータと従来の状態を保持します。クラスタ削除は接続先/namespace設定も片付けます。privateの構築と公開CIDRの復旧を学ぶ2ミッションを追加し、限定CIDR・指定送信元のALLOWを必要とします。単なる設定変更や広いCIDRへの開放は完了条件を満たしません。
 

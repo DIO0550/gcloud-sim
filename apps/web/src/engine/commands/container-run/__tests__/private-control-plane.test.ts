@@ -500,3 +500,25 @@ test("custom VPC/subnet references work and the same master range in another VPC
     ).text,
   ).toContain("no-same-region-vpc-route");
 });
+
+test("deleting a source-only VPC clears the stored check and does not leave invalid snapshot references", () => {
+  let s = execute(
+    ready(),
+    "gcloud services enable compute.googleapis.com",
+    "gcloud compute networks create source --subnet-mode=custom",
+    check("public", "203.0.113.20", "source"),
+  );
+  expect(cluster(s).controlPlane.lastCheck).toEqual(
+    Option.some({
+      endpoint: "public",
+      sourceIp: "203.0.113.20",
+      sourceNetwork: "source",
+      allowed: true,
+      reason: "public-endpoint",
+    }),
+  );
+  s = execute(s, "gcloud compute networks delete source --quiet");
+  expect(cluster(s).controlPlane.lastCheck).toEqual(Option.none);
+  expect(restored(s).world).toEqual(s.world);
+  rejected(s, check("public", "203.0.113.20", "source"), "not found");
+});

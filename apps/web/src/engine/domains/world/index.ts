@@ -878,6 +878,11 @@ export const World = {
     return Result.ok({
       ...world,
       networks: world.networks.filter((n) => !sameInProject(network.projectId, network.name)(n)),
+      clusters: world.clusters.map((c) =>
+        c.projectId === network.projectId
+          ? { ...c, controlPlane: { ...c.controlPlane, lastCheck: Option.none } }
+          : c,
+      ),
     });
   },
 
