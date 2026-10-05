@@ -2,6 +2,7 @@ import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { KubeVolumes } from "@/engine/domains/kube-volume";
 import { type KubeDeployment, KubeName, KubePod } from "@/engine/domains/kubernetes";
+import type { World } from "@/engine/domains/world";
 import type { JsonRecord } from "@/types/Json";
 import { Result } from "@/utils/Result";
 import { KubeBinary } from "./binary";
@@ -165,13 +166,17 @@ export const KubeEnv = {
 } as const;
 
 /** Successful starts keep their environment; only new/waiting Pods resolve references again. */
+type RuntimeSource = readonly KubeConfig[] | Pick<World, "kubeConfigs" | "kubePvcs" | "kubePvs">;
+const configsOf = (source: RuntimeSource) =>
+  "kubeConfigs" in source ? source.kubeConfigs : source;
+const storageOf = (source: RuntimeSource) => ("kubeConfigs" in source ? source : undefined);
 export const KubeRuntime = {
   environment(
-    configs: readonly KubeConfig[],
+    source: RuntimeSource,
     d: KubeDeployment,
     podName: string,
   ): Result<PodEnvironment, string> {
-    const mounted = KubeVolumes.resolve(configs, d, podName);
+    const mounted = KubeVolumes.resolve(configsOf(source), d, podName, storageOf(source));
     if (!Result.isOk(mounted)) return Result.err(mounted.error);
     const cached = d.podEnvironments.find((p) => p.podName === podName);
     if (cached) return Result.ok(cached);
@@ -181,7 +186,7 @@ export const KubeRuntime = {
         values.push({ name: e.name, value: e.value });
         continue;
       }
-      const config = configs.find(
+      const config = configsOf(source).find(
         (c) =>
           c.projectId === d.projectId &&
           c.cluster === d.cluster &&
@@ -198,13 +203,13 @@ export const KubeRuntime = {
     }
     return Result.ok({ podName, values });
   },
-  reconcile(configs: readonly KubeConfig[], d: KubeDeployment): KubeDeployment {
+  reconcile(source: RuntimeSource, d: KubeDeployment): KubeDeployment {
     const podEnvironments = KubePod.fromDeployment(d).flatMap((p) => {
-      const env = KubeRuntime.environment(configs, d, p.name);
+      const env = KubeRuntime.environment(source, d, p.name);
       return Result.isOk(env) ? [env.value] : [];
     });
     const podFiles = KubePod.fromDeployment(d).flatMap((p) => {
-      const files = KubeVolumes.resolve(configs, d, p.name);
+      const files = KubeVolumes.resolve(configsOf(source), d, p.name, storageOf(source));
       return d.volumes.length > 0 &&
         Result.isOk(files) &&
         (podEnvironments.some((e) => e.podName === p.name) ||
@@ -214,8 +219,8 @@ export const KubeRuntime = {
     });
     return { ...d, podEnvironments, podFiles };
   },
-  error(configs: readonly KubeConfig[], d: KubeDeployment, podName: string): string {
-    const env = KubeRuntime.environment(configs, d, podName);
+  error(source: RuntimeSource, d: KubeDeployment, podName: string): string {
+    const env = KubeRuntime.environment(source, d, podName);
     return Result.isOk(env) ? "" : env.error;
   },
 } as const;

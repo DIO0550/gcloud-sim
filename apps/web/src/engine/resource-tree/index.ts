@@ -1,6 +1,7 @@
 import { Budget } from "@/engine/domains/billing-budget";
 import { Instance } from "@/engine/domains/compute";
 import { type IamMember, IamPolicy, type RoleName } from "@/engine/domains/iam-policy";
+import { KubeStorage } from "@/engine/domains/kube-storage";
 import type { GkeCluster } from "@/engine/domains/managed-services";
 import { type ParentRef, PolicyTarget, type Project } from "@/engine/domains/resource-hierarchy";
 import { World } from "@/engine/domains/world";
@@ -244,7 +245,22 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
           `hpa: ${h.name}`,
         ),
       );
-    return [...deployments, ...services, ...configs, ...hpas];
+    const claims = world.kubePvcs
+      .filter((c) => c.projectId === id && c.cluster === cluster.name && c.namespace === namespace)
+      .map((c) =>
+        leaf(
+          {
+            kind: "kube-storage",
+            resourceKind: "pvc",
+            projectId: id,
+            cluster: cluster.name,
+            namespace,
+            name: c.name,
+          },
+          `pvc: ${c.name}`,
+        ),
+      );
+    return [...deployments, ...services, ...configs, ...hpas, ...claims];
   };
   const namespaces = world.kubeNamespaces
     .filter((n) => n.projectId === id && n.cluster === cluster.name)
@@ -269,7 +285,40 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
         : [];
     },
   );
-  return [...pools, ...resources("default"), ...namespaces, ...systemNamespaces];
+  const classes = KubeStorage.classes(world, cluster).map((c) =>
+    leaf(
+      {
+        kind: "kube-storage",
+        resourceKind: "storageclass",
+        projectId: id,
+        cluster: cluster.name,
+        name: c.name,
+      },
+      `sc: ${c.name}`,
+    ),
+  );
+  const volumes = world.kubePvs
+    .filter((p) => p.projectId === id && p.cluster === cluster.name)
+    .map((p) =>
+      leaf(
+        {
+          kind: "kube-storage",
+          resourceKind: "pv",
+          projectId: id,
+          cluster: cluster.name,
+          name: p.name,
+        },
+        `pv: ${p.name}`,
+      ),
+    );
+  return [
+    ...pools,
+    ...classes,
+    ...volumes,
+    ...resources("default"),
+    ...namespaces,
+    ...systemNamespaces,
+  ];
 };
 
 const gkeNodes = (world: World, id: string): readonly TreeNode[] =>

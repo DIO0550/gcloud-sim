@@ -21,13 +21,15 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（303）
+## 実装済み（304）
 
 ConfigMap/SecretのYAML/JSONは`immutable: true`に対応します。保護後はデータ更新とfalseへの変更を拒否し、ラベル更新・削除/再作成は可能です。get/describe・プロパティにもフラグを表示します。詳細と教材は[KUBERNETES.md](KUBERNETES.md)に記載しています。
 
 ConfigMapの`binaryData`もYAML/JSONで保存できます。getはbase64、describe・プロパティは復号後のサイズを表示します。`data`とのキー重複を拒否し、環境変数のキー参照・`set env --from`はテキストの`data`だけを扱います。`immutable: true`は両方のフィールドを保護します。
 
 Kubernetesは`kubectl create/get/describe/delete namespace`（`ns`別名）とNamespace manifestに対応します。各kubectl操作と`sim kubernetes probe/reconcile`で`-n/--namespace`を使い、`kubectl get -A/--all-namespaces`でnamespaceを横断した一覧を確認できます。省略時はコンテキストの既定namespace（未設定なら`default`）です。`kubectl config set-context --current --namespace=staging`または既存CONTEXT名で設定し、空文字で解除できます。詳細は[KUBERNETES.md](KUBERNETES.md)。
+
+PVC/StorageClassの仮想create/apply/deleteと、PVC/PV/StorageClassのget/describe/delete（pvc/pv/sc別名）に対応します。動的割り当て、WaitForFirstConsumer、容量拡張、削除保護、Delete/Retainを教材として再現します。アプリの書き込みは`sim kubernetes write-file DEPLOYMENT --path=PATH --content=TEXT`、確認は`kubectl exec -- cat/base64 PATH`です。操作ごとにcontainer.persistentVolumeClaims.* / container.persistentVolumes.* / container.storageClasses.*を要求します。制限と2ミッションは[KUBERNETES.md](KUBERNETES.md)に記載しています。
 
 ### Cloud Build
 
@@ -381,6 +383,7 @@ HPAは`autoscale`またはautoscaling/v2の仮想YAML/JSONで作成し、`get/de
 | `kubectl expose` | `container.services.create` | `container.googleapis.com` | `--type` `--port` `--target-port` `--name` `--namespace` |
 | `kubectl autoscale` | `container.horizontalPodAutoscalers.create`、`container.deployments.get` | `container.googleapis.com` | `--min` `--max` `--cpu-percent` `--name` `--namespace` |
 | `sim kubernetes probe` | `container.deployments.update` | `container.googleapis.com` | `--status-code`（必須）、`--pod`（省略時は対象Deploymentの全Pod）、`--kind=readiness|liveness|startup`（既定readiness） |
+| `sim kubernetes write-file` | `container.deployments.get` + `container.pods.exec` | `container.googleapis.com` | `--namespace/-n`, `--path`, `--content` |
 | `sim kubernetes reconcile` | `container.horizontalPodAutoscalers.update`、`container.deployments.update` | `container.googleapis.com` | `--cpu`（1 Podあたりの教材用使用量） |
 | `kubectl scale` | `container.deployments.update` | `container.googleapis.com` | `--replicas` `--namespace` |
 | `kubectl set resources` | `container.deployments.update` | `container.googleapis.com` | `--requests` `--limits` `--containers` (`-c`) `--namespace` |

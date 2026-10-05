@@ -104,7 +104,7 @@ export const kubeImmutableSatisfied = (world: World): boolean => {
     return false;
 
   return KubePod.fromDeployment(d).every((p) => {
-    const env = KubeRuntime.environment(world.kubeConfigs, d, p.name);
+    const env = KubeRuntime.environment(world, d, p.name);
     return (
       p.ready &&
       Result.isOk(env) &&

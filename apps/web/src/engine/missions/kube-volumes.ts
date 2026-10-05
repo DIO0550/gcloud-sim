@@ -148,7 +148,7 @@ export const kubeVolumesSatisfied = (world: World, refresh: boolean): boolean =>
       return false;
   }
   return KubePod.fromDeployment(d).every((pod) => {
-    if (!pod.ready || KubeRuntime.error(world.kubeConfigs, d, pod.name)) return false;
+    if (!pod.ready || KubeRuntime.error(world, d, pod.name)) return false;
     const files = d.podFiles.find((p) => p.podName === pod.name)?.files ?? [];
     const text = (path: string, value: string) => {
       const f = files.find((f) => f.path === path);

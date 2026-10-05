@@ -68,7 +68,7 @@ test("v1 の Snapshot を import すると、足した集合が空で復元さ�
   expect(imported.buckets[0]?.objects[0]?.name).toBe("a.log");
 });
 
-test("現行の Snapshot は v23 で、export → import が同一になる", () => {
+test("現行の Snapshot は v24 で、export → import が同一になる", () => {
   const s = run(
     session(),
     "gcloud compute disks create d --zone=asia-northeast1-a",
@@ -78,14 +78,14 @@ test("現行の Snapshot は v23 で、export → import が同一になる", ()
   );
   const snapshot = Snapshot.create(s.world, Now);
   expect(snapshot.schemaVersion).toBe(SchemaVersion);
-  expect(SchemaVersion).toBe(23);
+  expect(SchemaVersion).toBe(24);
   const imported = Result.unwrap(Snapshot.fromUnknown(JSON.parse(JSON.stringify(snapshot))));
   expect(imported).toEqual(s.world);
 });
 
-test("v24 以降や v0 は unsupportedVersion", () => {
-  const result = Snapshot.fromUnknown({ schemaVersion: 24, world: {} });
-  expect(result).toEqual(Result.err({ kind: "unsupportedVersion", version: "24" }));
+test("v25 以降や v0 は unsupportedVersion", () => {
+  const result = Snapshot.fromUnknown({ schemaVersion: 25, world: {} });
+  expect(result).toEqual(Result.err({ kind: "unsupportedVersion", version: "25" }));
 });
 
 test("v1 でも形が壊れていれば malformed になる（マイグレーションは埋めるだけで検証はしない）", () => {

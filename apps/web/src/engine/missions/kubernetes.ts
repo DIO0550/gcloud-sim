@@ -64,8 +64,7 @@ export const kubernetesSatisfied = (world: World, assertion: KubernetesAssertion
       d.name === "hello",
   );
   if (!d || ImagePull.error(world, cluster, d.image)) return false;
-  if (KubePod.fromDeployment(d).some((p) => KubeRuntime.error(world.kubeConfigs, d, p.name)))
-    return false;
+  if (KubePod.fromDeployment(d).some((p) => KubeRuntime.error(world, d, p.name))) return false;
   const recipe = assertion.kind === "kubeImageUpdated" ? "hello-web-v2" : "hello-web";
   const tag = assertion.kind === "kubeImageUpdated" ? "v2" : "v1";
   const ref = ContainerLab.registryReference(`${image}:${tag}`);

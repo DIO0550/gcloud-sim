@@ -45,6 +45,7 @@ import {
   KubeHpaProperties,
   KubeNamespaceProperties,
   KubeServiceProperties,
+  KubeStorageProperties,
   LogSinkProperties,
   NodePoolProperties,
   ObservabilityProperties,
@@ -111,6 +112,8 @@ const Body = ({
       return <ClusterProperties world={world} selection={selection} />;
     case "node-pool":
       return <NodePoolProperties world={world} selection={selection} />;
+    case "kube-storage":
+      return <KubeStorageProperties world={world} selection={selection} />;
     case "kube-namespace":
       return <KubeNamespaceProperties world={world} selection={selection} />;
     case "kube-deployment":
@@ -187,6 +190,7 @@ const titleOf = (selection: TreeSelection): string => {
     case "forwarding-rule":
     case "cluster":
     case "node-pool":
+    case "kube-storage":
     case "kube-namespace":
     case "kube-deployment":
     case "kube-service":
@@ -259,6 +263,8 @@ const kindLabel = (selection: TreeSelection): string => {
       return "container#cluster";
     case "node-pool":
       return `container#nodePool · clusters/${selection.cluster}`;
+    case "kube-storage":
+      return `${selection.resourceKind === "storageclass" ? "storage.k8s.io/v1 StorageClass" : selection.resourceKind === "pvc" ? "v1 PersistentVolumeClaim" : "v1 PersistentVolume"} · clusters/${selection.cluster}`;
     case "kube-namespace":
       return `v1 Namespace · clusters/${selection.cluster}`;
     case "kube-deployment":

@@ -21,9 +21,23 @@ export const parseVolumes = (
 ): { volumes: readonly KubeVolume[]; volumeMounts: readonly KubeVolumeMount[] } => {
   const volumes = array(value, "volumes").map((entry): KubeVolume => {
     const v = record(entry, "volume");
-    fields(v, ["name", "configMap", "secret"], "volume");
-    if ((v.configMap === undefined) === (v.secret === undefined))
-      return fail("Volume requires exactly one configMap or secret source.");
+    fields(v, ["name", "configMap", "secret", "persistentVolumeClaim"], "volume");
+    if (
+      [v.configMap, v.secret, v.persistentVolumeClaim].filter((s) => s !== undefined).length !== 1
+    )
+      return fail("Volume requires exactly one configMap, secret or persistentVolumeClaim source.");
+    if (v.persistentVolumeClaim !== undefined) {
+      const source = record(v.persistentVolumeClaim, "persistentVolumeClaim");
+      fields(source, ["claimName", "readOnly"], "persistentVolumeClaim");
+      return {
+        name: text(v.name, "volume.name"),
+        source: "persistentvolumeclaim",
+        resource: text(source.claimName, "claimName"),
+        sourceReadOnly: flag(source.readOnly, "readOnly"),
+        optional: false,
+        items: [],
+      };
+    }
     const secret = v.secret !== undefined;
     const source = record(secret ? v.secret : v.configMap, "volume source");
     fields(source, [secret ? "secretName" : "name", "optional", "items"], "volume source");

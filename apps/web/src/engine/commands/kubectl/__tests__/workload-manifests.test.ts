@@ -373,7 +373,7 @@ test.each([
   },
   {
     containers: [{ name: "web", image: "nginx:1" }],
-    volumes: [{ name: "disk", persistentVolumeClaim: { claimName: "data" } }],
+    volumes: [{ name: "disk", emptyDir: {} }],
   },
 ])("unsupported Pod template fields never silently disappear: %#", (spec) => {
   const d = deployment();

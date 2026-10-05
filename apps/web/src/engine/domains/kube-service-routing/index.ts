@@ -21,9 +21,7 @@ export const KubeServiceRouting = {
       )
         return [];
       return KubePod.fromDeployment(d)
-        .filter(
-          (p) => !KubeRuntime.error(world.kubeConfigs, d, p.name) && KubeReadiness.ready(d, p.name),
-        )
+        .filter((p) => !KubeRuntime.error(world, d, p.name) && KubeReadiness.ready(d, p.name))
         .map((p) => ({
           deployment: d.name,
           pod: p.name,

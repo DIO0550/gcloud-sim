@@ -81,11 +81,14 @@ const flagValueIn = (tokens: readonly string[], name: string): Option<string> =>
 };
 
 /**
- * 確定した引数のうち位置引数の数。`--flag value` の value は数えない
+ * 確定した位置引数。`--flag value` の value は含めない
  * （boolean 以外のフラグの直後で `=` の無いものは値）。
  */
-const positionalCount = (rest: readonly string[], flags: readonly FlagSpec[]): number => {
-  let count = 0;
+const positionalValues = (
+  rest: readonly string[],
+  flags: readonly FlagSpec[],
+): readonly string[] => {
+  const values: string[] = [];
   let expectsValue = false;
   for (const token of rest) {
     if (expectsValue) {
@@ -97,9 +100,9 @@ const positionalCount = (rest: readonly string[], flags: readonly FlagSpec[]): n
       expectsValue = Option.isSome(flag) && flag.value.kind !== "boolean" && !token.includes("=");
       continue;
     }
-    count += 1;
+    values.push(token);
   }
-  return count;
+  return values;
 };
 
 /** n 番目の位置引数の定義。末尾が可変長ならそれ以降はすべて末尾。 */
@@ -267,7 +270,7 @@ export const CommandRegistry = {
     const evaluate = (candidates: Option<CandidateSource>, prefix: string): readonly string[] =>
       Option.isSome(candidates)
         ? candidates
-            .value(world, projectId)
+            .value(world, projectId, positionalValues(resolved.value.rest, flags))
             .filter((c) => c.startsWith(prefix))
             .toSorted()
         : [];
@@ -292,7 +295,7 @@ export const CommandRegistry = {
     if (Option.isSome(awaitingValueOf) && awaitingValueOf.value.kind !== "boolean") {
       return evaluate(Flag.candidatesOf(awaitingValueOf.value), partial);
     }
-    const index = positionalCount(resolved.value.rest, flags);
+    const index = positionalValues(resolved.value.rest, flags).length;
     const positional = positionalAt(spec.positionals, index);
     return [
       ...new Set([

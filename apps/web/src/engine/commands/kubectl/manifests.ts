@@ -10,6 +10,7 @@ import { kubePermission } from "./configuration";
 import { type KubectlContext, requireNamespace } from "./context";
 import { applyHpa } from "./hpa-manifests";
 import { applyNamespace } from "./namespaces";
+import { applyStorage } from "./storage";
 import { applyWorkload } from "./workload-manifests";
 
 /** Validate the entire file and permissions before committing any simulated resource. */
@@ -24,13 +25,21 @@ export const applyManifest = (
   let world = ctx.world;
   const messages: OutputMessage[] = [];
   const ids = parsed.value.map(
-    (m) => `${m.kind}/${m.kind === "namespace" ? "" : (m.namespace ?? ctx.namespace)}/${m.name}`,
+    (m) =>
+      `${m.kind}/${["namespace", "storageclass"].includes(m.kind) ? "" : (m.namespace ?? ctx.namespace)}/${m.name}`,
   );
   if (new Set(ids).size !== ids.length)
     return Result.err(
       CommandFailure.invalidArgumentWith("Duplicate resource in resolved manifest namespace."),
     );
   for (const manifest of parsed.value) {
+    if (manifest.kind === "storageclass") {
+      const applied = applyStorage({ ...ctx, world }, cluster, manifest, action);
+      if (!Result.isOk(applied)) return applied;
+      world = applied.value.world;
+      messages.push(...applied.value.output.messages);
+      continue;
+    }
     if (manifest.kind === "namespace") {
       const applied = applyNamespace({ ...ctx, world }, cluster, manifest.name, action);
       if (!Result.isOk(applied)) return applied;
@@ -49,6 +58,13 @@ export const applyManifest = (
     const scoped = { ...ctx, world, namespace: manifest.namespace ?? ctx.namespace };
     const checked = requireNamespace(scoped, cluster);
     if (!Result.isOk(checked)) return checked;
+    if (manifest.kind === "pvc") {
+      const applied = applyStorage(scoped, cluster, manifest, action);
+      if (!Result.isOk(applied)) return applied;
+      world = applied.value.world;
+      messages.push(...applied.value.output.messages);
+      continue;
+    }
     if (manifest.kind === "hpa") {
       const applied = applyHpa(scoped, cluster, manifest, action);
       if (!Result.isOk(applied)) return applied;

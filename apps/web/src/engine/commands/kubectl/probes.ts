@@ -51,8 +51,7 @@ export const probeContainers = (
     return invalid("No matching Pod; check the Deployment replicas and --pod name.");
   for (const pod of pods) {
     const error =
-      ImagePull.error(ctx.world, cluster, d.image) ||
-      KubeRuntime.error(ctx.world.kubeConfigs, d, pod.name);
+      ImagePull.error(ctx.world, cluster, d.image) || KubeRuntime.error(ctx.world, d, pod.name);
     if (error) return Result.err(CommandFailure.invalidState(`Cannot probe ${pod.name}: ${error}`));
     if (kind !== "startup" && !KubeContainer.started(d, pod.name))
       return Result.err(

@@ -1,12 +1,15 @@
 import type { KubeConfig } from "@/engine/domains/kube-config";
 import { KubeBinary } from "@/engine/domains/kube-config/binary";
+import { KubeStorage } from "@/engine/domains/kube-storage";
 import type { KubeDeployment } from "@/engine/domains/kubernetes";
+import type { World } from "@/engine/domains/world";
 import type { JsonRecord } from "@/types/Json";
 import { Result } from "@/utils/Result";
 
 export type KubeVolume = Readonly<{
   name: string;
-  source: "configmap" | "secret";
+  source: "configmap" | "secret" | "persistentvolumeclaim";
+  sourceReadOnly?: boolean;
   resource: string;
   optional: boolean;
   items: readonly Readonly<{ key: string; path: string }>[];
@@ -61,7 +64,10 @@ export const KubeVolumes = {
         (v) =>
           !nameValid(v.name) ||
           !nameValid(v.resource) ||
-          (v.source !== "configmap" && v.source !== "secret") ||
+          !["configmap", "secret", "persistentvolumeclaim"].includes(v.source) ||
+          (v.source === "persistentvolumeclaim" &&
+            (v.optional || v.items.length > 0 || typeof v.sourceReadOnly !== "boolean")) ||
+          (v.source !== "persistentvolumeclaim" && v.sourceReadOnly !== undefined) ||
           typeof v.optional !== "boolean" ||
           v.items.length > 100 ||
           new Set(v.items.map((i) => i.key)).size !== v.items.length ||
@@ -77,6 +83,10 @@ export const KubeVolumes = {
     return mounts.every(
       (m, index) =>
         volumes.some((v) => v.name === m.name) &&
+        !(
+          m.subPath &&
+          volumes.some((v) => v.name === m.name && v.source === "persistentvolumeclaim")
+        ) &&
         absolutePath(m.mountPath) &&
         typeof m.readOnly === "boolean" &&
         (m.subPath === "" || relativePath(m.subPath)) &&
@@ -97,11 +107,17 @@ export const KubeVolumes = {
     return {
       volumes: volumes.map((v) => ({
         name: v.name,
-        [v.source === "configmap" ? "configMap" : "secret"]: {
-          [v.source === "configmap" ? "name" : "secretName"]: v.resource,
-          optional: v.optional,
-          ...(v.items.length ? { items: v.items } : {}),
-        },
+        ...(v.source === "persistentvolumeclaim"
+          ? {
+              persistentVolumeClaim: { claimName: v.resource, readOnly: v.sourceReadOnly ?? false },
+            }
+          : {
+              [v.source === "configmap" ? "configMap" : "secret"]: {
+                [v.source === "configmap" ? "name" : "secretName"]: v.resource,
+                optional: v.optional,
+                ...(v.items.length ? { items: v.items } : {}),
+              },
+            }),
       })),
     };
   },
@@ -121,12 +137,22 @@ export const KubeVolumes = {
     configs: readonly KubeConfig[],
     d: KubeDeployment,
     podName: string,
+    storage?: Pick<World, "kubePvcs" | "kubePvs">,
   ): Result<PodFiles, string> {
     const cached = d.podFiles.find((p) => p.podName === podName);
     const fail = (message: string): Result<PodFiles, string> =>
       cached ? Result.ok(cached) : Result.err(`ContainerCreating: FailedMount: ${message}`);
     const projected = new Map<string, readonly { path: string; value: string }[]>();
     for (const v of d.volumes) {
+      if (v.source === "persistentvolumeclaim") {
+        const pv = storage && KubeStorage.volume(storage, d, v.resource);
+        if (!pv)
+          return Result.err(
+            `ContainerCreating: FailedMount: persistentvolumeclaim/${v.resource} is missing or Pending`,
+          );
+        projected.set(v.name, pv.files);
+        continue;
+      }
       const config = configs.find(
         (c) =>
           c.projectId === d.projectId &&

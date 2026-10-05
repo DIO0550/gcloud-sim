@@ -47,7 +47,7 @@ export const kubeContextSatisfied = (world: World): boolean => {
     production.value.revision === 1 &&
     [staging.value, production.value].every((d) =>
       KubePod.fromDeployment(d).every(
-        (p) => p.ready && Result.isOk(KubeRuntime.environment(world.kubeConfigs, d, p.name)),
+        (p) => p.ready && Result.isOk(KubeRuntime.environment(world, d, p.name)),
       ),
     )
   );

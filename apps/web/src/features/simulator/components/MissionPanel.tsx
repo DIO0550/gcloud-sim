@@ -50,6 +50,10 @@ const assertionLabel = (assertion: Mission["assertions"][number]): string => {
       return "CPU requestとHPAを設定し、教材評価で2→4レプリカへ増やす";
     case "kubeImmutableRefreshed":
       return "ConfigMap・Secretのimmutableを保ち、ファイルとクラスタを更新してrestartで全Podへ新しい値を反映";
+    case "kubePersistentDataReady":
+      return "PVCの割り当て・拡張・Pod再起動後のデータ保持";
+    case "kubeRetainedDataReady":
+      return "PVC削除完了とRetain PVのReleased・データ保持";
     case "kubeVolumesReady":
       return "ファイルとDeploymentのマウント参照を修復し、設定・バイナリ・Secretを2つのReadyなPodへマウントする";
     case "kubeVolumeRefreshReady":

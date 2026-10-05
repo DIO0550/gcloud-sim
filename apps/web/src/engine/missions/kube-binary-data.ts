@@ -91,7 +91,7 @@ export const kubeBinaryDataSatisfied = (world: World): boolean => {
     return false;
 
   return KubePod.fromDeployment(deployment).every((pod) => {
-    const env = KubeRuntime.environment(world.kubeConfigs, deployment, pod.name);
+    const env = KubeRuntime.environment(world, deployment, pod.name);
     return (
       pod.ready &&
       Result.isOk(env) &&

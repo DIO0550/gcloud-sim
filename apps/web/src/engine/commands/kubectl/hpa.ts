@@ -87,7 +87,7 @@ export const reconcileHpa = (
     d !== undefined &&
     !ImagePull.error(ctx.world, cluster, d.image) &&
     KubePod.fromDeployment(d).every(
-      (p) => !KubeRuntime.error(ctx.world.kubeConfigs, d, p.name) && KubeReadiness.ready(d, p.name),
+      (p) => !KubeRuntime.error(ctx.world, d, p.name) && KubeReadiness.ready(d, p.name),
     );
   const evaluation = KubeHpa.evaluate(h, d, ready, cpuMilli, ctx.now);
   let world = ctx.world;
