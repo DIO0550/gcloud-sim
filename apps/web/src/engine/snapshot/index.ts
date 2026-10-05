@@ -130,12 +130,13 @@ import { Result } from "@/utils/Result";
  * v18 はカスタムnamespaceと各Kubernetesリソースのnamespaceを持つ。
  * v19 はコンテキストごとの既定namespaceを持つ。
  * v20 はConfigMap/Secretのラベルとapply管理キーを持つ。
+ * v21 はConfigMap/Secretのimmutableを持つ。
  */
-export const SchemaVersion = 20;
+export const SchemaVersion = 21;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
 const MigratableVersions = [
-  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
 ] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
@@ -557,6 +558,7 @@ const kubeEnv = D.object<KubeEnv>({
   key: string,
 });
 const kubeConfig = D.object<KubeConfig>({
+  immutable: D.boolean,
   labels: stringMap,
   lastAppliedLabelKeys: D.array(string),
   lastAppliedKeys: D.array(string),
@@ -1098,11 +1100,20 @@ const withDefaultNamespace = (value: unknown): unknown =>
 
 const withConfigLabels = (value: unknown): unknown =>
   Array.isArray(value)
-    ? value.map((c) => (isRecord(c) ? { ...c, labels: {}, lastAppliedLabelKeys: [] } : c))
+    ? value.map((c) =>
+        isRecord(c) ? { ...c, labels: {}, lastAppliedLabelKeys: [], immutable: false } : c,
+      )
     : value;
 
 const migrate = (version: number, value: unknown): unknown => {
   if (version === SchemaVersion) return value;
+  if (version === 20 && isRecord(value))
+    return {
+      ...value,
+      kubeConfigs: Array.isArray(value.kubeConfigs)
+        ? value.kubeConfigs.map((c) => (isRecord(c) ? { ...c, immutable: false } : c))
+        : value.kubeConfigs,
+    };
   if (version >= 18 && isRecord(value))
     return {
       ...value,
@@ -1130,6 +1141,7 @@ const migrate = (version: number, value: unknown): unknown => {
                         lastAppliedKeys: [],
                         labels: {},
                         lastAppliedLabelKeys: [],
+                        immutable: false,
                       }
                     : c,
                 )

@@ -59,6 +59,7 @@ export const createConfig = (
     namespace: ctx.namespace,
     kind,
     name,
+    immutable: false,
     labels: {},
     lastAppliedLabelKeys: [],
     data,

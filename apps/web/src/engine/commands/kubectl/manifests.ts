@@ -108,6 +108,7 @@ export const applyManifest = (
       projectId: cluster.projectId,
       cluster: cluster.name,
       namespace: scoped.namespace,
+      immutable: manifest.immutable ?? existing?.immutable ?? false,
       data: [...retained, ...manifest.data].toSorted((a, b) => a.key.localeCompare(b.key)),
       lastAppliedKeys: action === "apply" ? [...incoming].sort() : [],
       labels: Object.fromEntries(Object.entries(labels).sort(([a], [b]) => a.localeCompare(b))),
@@ -116,8 +117,14 @@ export const applyManifest = (
     };
     const valid = KubeConfig.validate(next);
     if (!Result.isOk(valid)) return Result.err(CommandFailure.invalidArgumentWith(valid.error));
+    if (existing) {
+      const updated = KubeConfig.update(existing, next);
+      if (!Result.isOk(updated)) return Result.err(CommandFailure.invalidState(updated.error));
+    }
+
     const unchanged =
       existing &&
+      existing.immutable === next.immutable &&
       JSON.stringify(existing.data) === JSON.stringify(next.data) &&
       JSON.stringify(existing.lastAppliedKeys) === JSON.stringify(next.lastAppliedKeys) &&
       KubeLabels.equal(existing.labels, next.labels) &&
