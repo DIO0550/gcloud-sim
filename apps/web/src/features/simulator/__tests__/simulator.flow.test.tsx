@@ -130,16 +130,17 @@ test("ミッションを開始して条件を満たすとクリアの通知が�
     "gcloud billing projects link ace-prod-01 --billing-account=01AB2C-DEF345-6789AB",
   );
   await typeLine(terminal, "gcloud services enable compute.googleapis.com --project=ace-prod-01");
-  // 2 行の実行と再描画を挟むので、全体実行の負荷下では既定の 1 秒を超えることがある。
+  // 通知と端末出力は別々に描画される。負荷下でも両方の反映を待つ。
   await waitFor(
-    () =>
+    () => {
       expect(screen.getByRole("status")).toHaveTextContent(
         "ミッションクリア「ace-prod-01 で Compute Engine を使えるようにする」",
-      ),
+      );
+      expect(screenText(terminal)).toContain("gcloud-sim: ✓ ミッションクリア");
+    },
     { timeout: 4000 },
   );
-  expect(screenText(terminal)).toContain("gcloud-sim: ✓ ミッションクリア");
-  expect(screen.getByRole("tab", { name: "ミッション 1/55" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "ミッション 1/56" })).toBeInTheDocument();
 });
 
 test("ヒントは押すたびに 1 つ開く", async () => {

@@ -1,5 +1,6 @@
 import { isAlias, parseAllDocuments, visit } from "yaml";
 import { KubeConfig as Configuration, type KubeConfig } from "@/engine/domains/kube-config";
+import { KubeBinary } from "@/engine/domains/kube-config/binary";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { Result } from "@/utils/Result";
@@ -12,6 +13,7 @@ export type ConfigManifest = Readonly<{
   name: string;
   namespace: string | undefined;
   data: KubeConfig["data"];
+  binaryData: KubeConfig["binaryData"];
   labels: KubeLabels;
   immutable: boolean | undefined;
 }>;
@@ -54,7 +56,7 @@ const parseResource = (value: unknown): KubeManifest => {
     r,
     secret
       ? ["apiVersion", "kind", "metadata", "data", "stringData", "type", "immutable"]
-      : ["apiVersion", "kind", "metadata", "data", "immutable"],
+      : ["apiVersion", "kind", "metadata", "data", "binaryData", "immutable"],
     "manifest",
   );
   if (r.immutable !== undefined && typeof r.immutable !== "boolean")
@@ -82,7 +84,15 @@ const parseResource = (value: unknown): KubeManifest => {
     data: Array.from(data, ([key, value]) => ({ key, value })).toSorted((a, b) =>
       a.key.localeCompare(b.key),
     ),
+    binaryData: strings(r.binaryData, "binaryData")
+      .map(([key, value]) => {
+        const parsed = KubeBinary.parse(value);
+        if (!Result.isOk(parsed)) return fail(parsed.error);
+        return { key, value: parsed.value };
+      })
+      .toSorted((a, b) => a.key.localeCompare(b.key)),
     lastAppliedKeys: [],
+    lastAppliedBinaryKeys: [],
     createdAt: "",
   });
   if (!Result.isOk(config)) return fail(config.error);
@@ -91,6 +101,7 @@ const parseResource = (value: unknown): KubeManifest => {
     name: config.value.name,
     namespace: ns,
     data: config.value.data,
+    binaryData: config.value.binaryData,
     labels: config.value.labels,
     immutable: typeof r.immutable === "boolean" ? r.immutable : undefined,
   };
@@ -176,6 +187,41 @@ spec:
 `;
 
 export const KubeManifestExamples: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  "kubernetes-binary-data": {
+    "asset-settings.yaml": `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: asset-settings
+data:
+  MODE: production
+binaryData:
+  asset.bin: AP+AAQ==
+`,
+    "asset-web.yaml": `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: asset-web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: asset-web
+  template:
+    metadata:
+      labels:
+        app: asset-web
+    spec:
+      containers:
+        - name: asset-web
+          image: nginx:1
+          env:
+            - name: MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: asset-settings
+                  key: asset.bin
+`,
+  },
   "kubernetes-immutable": {
     "frozen-settings.yaml": `apiVersion: v1
 kind: ConfigMap

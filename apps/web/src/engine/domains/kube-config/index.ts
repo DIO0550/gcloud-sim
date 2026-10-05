@@ -3,6 +3,7 @@ import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { type KubeDeployment, KubeName, KubePod } from "@/engine/domains/kubernetes";
 import type { JsonRecord } from "@/types/Json";
 import { Result } from "@/utils/Result";
+import { KubeBinary } from "./binary";
 
 export type KubeConfig = Readonly<{
   projectId: string;
@@ -15,8 +16,12 @@ export type KubeConfig = Readonly<{
   /** Metadata label keys managed by the last simulated client-side apply. */
   lastAppliedLabelKeys: readonly string[];
   data: readonly Readonly<{ key: string; value: string }>[];
+  /** ConfigMap-only bytes, stored as canonical base64. */
+  binaryData: readonly Readonly<{ key: string; value: string }>[];
   /** Keys managed by the last simulated client-side apply. */
   lastAppliedKeys: readonly string[];
+  /** binaryData ownership is separate from text data ownership. */
+  lastAppliedBinaryKeys: readonly string[];
   createdAt: string;
 }>;
 export type KubeEnv = Readonly<{
@@ -32,6 +37,10 @@ export type PodEnvironment = Readonly<{
 }>;
 const validKey = (key: string) => /^[a-zA-Z0-9._-]+$/.test(key) && key.length <= 253;
 const validEnvName = (name: string) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name);
+const equalEntries = (a: KubeConfig["data"], b: KubeConfig["data"]): boolean =>
+  a.length === b.length &&
+  a.every((entry) => b.some((other) => other.key === entry.key && other.value === entry.value));
+
 export const KubeConfig = {
   validate(c: KubeConfig): Result<KubeConfig, string> {
     if (!KubeNamespace.valid(c.namespace)) return Result.err("Invalid Kubernetes namespace.");
@@ -48,17 +57,31 @@ export const KubeConfig = {
     )
       return Result.err("Invalid last-applied label keys.");
     if (
-      c.lastAppliedKeys.length > 100 ||
-      new Set(c.lastAppliedKeys).size !== c.lastAppliedKeys.length ||
-      c.lastAppliedKeys.some((key) => !validKey(key))
+      [c.lastAppliedKeys, c.lastAppliedBinaryKeys].some(
+        (keys) =>
+          keys.length > 100 ||
+          new Set(keys).size !== keys.length ||
+          keys.some((key) => !validKey(key)),
+      )
     )
       return Result.err("Invalid last-applied configuration keys.");
-    if (c.data.length > 100 || new Set(c.data.map((e) => e.key)).size !== c.data.length)
+    if (c.kind === "secret" && (c.binaryData.length || c.lastAppliedBinaryKeys.length))
+      return Result.err("binaryData is only supported on ConfigMaps.");
+
+    const entries = [...c.data, ...c.binaryData];
+    if (entries.length > 100 || new Set(entries.map((e) => e.key)).size !== entries.length)
       return Result.err("Configuration keys must be unique (maximum 100 on gcloud-sim).");
-    if (
-      c.data.some((e) => !validKey(e.key)) ||
-      new TextEncoder().encode(JSON.stringify(c.data)).length > 1048576
-    )
+
+    for (const entry of c.binaryData) {
+      const parsed = KubeBinary.parse(entry.value);
+      if (!Result.isOk(parsed) || parsed.value !== entry.value)
+        return Result.err("binaryData must contain canonical base64.");
+    }
+
+    const size =
+      c.data.reduce((sum, entry) => sum + new TextEncoder().encode(entry.value).length, 0) +
+      c.binaryData.reduce((sum, entry) => sum + KubeBinary.size(entry.value), 0);
+    if (entries.some((e) => !validKey(e.key)) || size > 1048576)
       return Result.err("Invalid configuration key or data exceeds 1 MiB.");
     return Result.ok(c);
   },
@@ -69,14 +92,14 @@ export const KubeConfig = {
         `${current.kind}/${current.name}: immutable cannot be unset; delete and recreate the resource.`,
       );
 
-    const unchanged =
-      current.data.length === next.data.length &&
-      current.data.every((entry) =>
-        next.data.some((other) => other.key === entry.key && other.value === entry.value),
-      );
-    if (!unchanged)
+    if (!equalEntries(current.data, next.data))
       return Result.err(
         `${current.kind}/${current.name}: data is immutable; delete and recreate the resource.`,
+      );
+
+    if (!equalEntries(current.binaryData, next.binaryData))
+      return Result.err(
+        `${current.kind}/${current.name}: binaryData is immutable; delete and recreate the resource.`,
       );
     return Result.ok(next);
   },
@@ -105,6 +128,16 @@ export const KubeConfig = {
       ...(c.kind === "secret" ? { type: "Opaque" } : {}),
       immutable: c.immutable,
       data,
+      ...(c.kind === "configmap" && c.binaryData.length
+        ? {
+            binaryData: Object.fromEntries(
+              c.binaryData.map((e) => [
+                e.key,
+                describe ? `${KubeBinary.size(e.value)} bytes` : e.value,
+              ]),
+            ),
+          }
+        : {}),
     };
   },
 } as const;

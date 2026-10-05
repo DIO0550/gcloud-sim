@@ -46,6 +46,11 @@ import {
   containerSatisfied,
 } from "@/engine/missions/containers";
 import {
+  type KubeBinaryDataAssertion,
+  KubeBinaryDataMissions,
+  kubeBinaryDataSatisfied,
+} from "@/engine/missions/kube-binary-data";
+import {
   type KubeConfigLabelsAssertion,
   KubeConfigLabelsMissions,
   kubeConfigLabelsSatisfied,
@@ -147,6 +152,7 @@ export type MissionAssertion =
   | KubeLivenessAssertion
   | KubeNamespaceAssertion
   | KubeImmutableAssertion
+  | KubeBinaryDataAssertion
   | KubeConfigLabelsAssertion
   | KubeContextAssertion
   | KubeStartupAssertion
@@ -305,6 +311,7 @@ const Missions: readonly Mission[] = [
   ...KubeStartupMissions,
   ...KubeNamespaceMissions,
   ...KubeImmutableMissions,
+  ...KubeBinaryDataMissions,
   ...KubeConfigLabelsMissions,
   ...KubeContextMissions,
   ...KubeHpaMissions,
@@ -770,6 +777,8 @@ const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
       return kubeHpaSatisfied(world);
     case "kubeImmutableRefreshed":
       return kubeImmutableSatisfied(world);
+    case "kubeBinaryDataSeparated":
+      return kubeBinaryDataSatisfied(world);
     case "kubeConfigLabelsClassified":
       return kubeConfigLabelsSatisfied(world);
     case "kubeContextSwitched":

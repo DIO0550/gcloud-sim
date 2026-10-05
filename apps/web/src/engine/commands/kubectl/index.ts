@@ -413,7 +413,7 @@ const collect = (
         rows: entries.map((c) => ({
           ...KubeConfig.toRecord(c, describe),
           name: c.name,
-          count: c.data.length,
+          count: c.data.length + c.binaryData.length,
           age: age(c.createdAt, ctx.now),
         })),
         columns: [
@@ -1633,7 +1633,7 @@ export const KubectlCommands: readonly CommandSpec[] = [
   kubectl({
     verb: "apply",
     summary:
-      "Apply virtual ConfigMap/Secret (including immutable)/Deployment/Service/HPA YAML/JSON or fixed samples.",
+      "Apply virtual ConfigMap/Secret (including immutable and ConfigMap binaryData)/Deployment/Service/HPA YAML/JSON or fixed samples.",
     positionals: [],
     flags: [FileFlag],
     permission: () => undefined,

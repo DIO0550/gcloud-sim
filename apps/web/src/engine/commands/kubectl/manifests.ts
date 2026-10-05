@@ -97,6 +97,10 @@ export const applyManifest = (
     const retained = (existing?.data ?? []).filter(
       (e) => !incoming.has(e.key) && !existing?.lastAppliedKeys.includes(e.key),
     );
+    const incomingBinary = new Set(manifest.binaryData.map((e) => e.key));
+    const retainedBinary = (existing?.binaryData ?? []).filter(
+      (e) => !incomingBinary.has(e.key) && !existing?.lastAppliedBinaryKeys.includes(e.key),
+    );
     const incomingLabels = Object.keys(manifest.labels);
     const retainedLabels = Object.entries(existing?.labels ?? {}).filter(
       ([key]) =>
@@ -111,6 +115,10 @@ export const applyManifest = (
       immutable: manifest.immutable ?? existing?.immutable ?? false,
       data: [...retained, ...manifest.data].toSorted((a, b) => a.key.localeCompare(b.key)),
       lastAppliedKeys: action === "apply" ? [...incoming].sort() : [],
+      binaryData: [...retainedBinary, ...manifest.binaryData].toSorted((a, b) =>
+        a.key.localeCompare(b.key),
+      ),
+      lastAppliedBinaryKeys: action === "apply" ? [...incomingBinary].sort() : [],
       labels: Object.fromEntries(Object.entries(labels).sort(([a], [b]) => a.localeCompare(b))),
       lastAppliedLabelKeys: action === "apply" ? incomingLabels.sort() : [],
       createdAt: existing?.createdAt ?? ctx.now,
@@ -127,6 +135,9 @@ export const applyManifest = (
       existing.immutable === next.immutable &&
       JSON.stringify(existing.data) === JSON.stringify(next.data) &&
       JSON.stringify(existing.lastAppliedKeys) === JSON.stringify(next.lastAppliedKeys) &&
+      JSON.stringify(existing.binaryData) === JSON.stringify(next.binaryData) &&
+      JSON.stringify(existing.lastAppliedBinaryKeys) ===
+        JSON.stringify(next.lastAppliedBinaryKeys) &&
       KubeLabels.equal(existing.labels, next.labels) &&
       JSON.stringify(existing.lastAppliedLabelKeys) === JSON.stringify(next.lastAppliedLabelKeys);
     configs = existing

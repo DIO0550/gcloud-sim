@@ -131,12 +131,13 @@ import { Result } from "@/utils/Result";
  * v19 はコンテキストごとの既定namespaceを持つ。
  * v20 はConfigMap/Secretのラベルとapply管理キーを持つ。
  * v21 はConfigMap/Secretのimmutableを持つ。
+ * v22 はConfigMapのbinaryDataとそのapply管理キーを持つ。
  */
-export const SchemaVersion = 21;
+export const SchemaVersion = 22;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
 const MigratableVersions = [
-  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
 ] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
@@ -562,12 +563,14 @@ const kubeConfig = D.object<KubeConfig>({
   labels: stringMap,
   lastAppliedLabelKeys: D.array(string),
   lastAppliedKeys: D.array(string),
+  lastAppliedBinaryKeys: D.array(string),
   projectId: string,
   cluster: string,
   namespace: string,
   kind: D.literal(["configmap", "secret"]),
   name: string,
   data: D.array(D.object({ key: string, value: string })),
+  binaryData: D.array(D.object({ key: string, value: string })),
   createdAt: string,
 });
 const kubeResources: Decoder<KubeResources> = (value, path) =>
@@ -1101,17 +1104,34 @@ const withDefaultNamespace = (value: unknown): unknown =>
 const withConfigLabels = (value: unknown): unknown =>
   Array.isArray(value)
     ? value.map((c) =>
-        isRecord(c) ? { ...c, labels: {}, lastAppliedLabelKeys: [], immutable: false } : c,
+        isRecord(c)
+          ? {
+              ...c,
+              labels: {},
+              lastAppliedLabelKeys: [],
+              immutable: false,
+              binaryData: [],
+              lastAppliedBinaryKeys: [],
+            }
+          : c,
       )
     : value;
 
 const migrate = (version: number, value: unknown): unknown => {
   if (version === SchemaVersion) return value;
-  if (version === 20 && isRecord(value))
+  if (version >= 20 && isRecord(value))
     return {
       ...value,
       kubeConfigs: Array.isArray(value.kubeConfigs)
-        ? value.kubeConfigs.map((c) => (isRecord(c) ? { ...c, immutable: false } : c))
+        ? value.kubeConfigs.map((c) => {
+            if (!isRecord(c)) return c;
+            return {
+              ...c,
+              ...(version === 20 ? { immutable: false } : {}),
+              binaryData: [],
+              lastAppliedBinaryKeys: [],
+            };
+          })
         : value.kubeConfigs,
     };
   if (version >= 18 && isRecord(value))
@@ -1142,6 +1162,8 @@ const migrate = (version: number, value: unknown): unknown => {
                         labels: {},
                         lastAppliedLabelKeys: [],
                         immutable: false,
+                        binaryData: [],
+                        lastAppliedBinaryKeys: [],
                       }
                     : c,
                 )

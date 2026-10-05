@@ -63,7 +63,9 @@ export const createConfig = (
     labels: {},
     lastAppliedLabelKeys: [],
     data,
+    binaryData: [],
     lastAppliedKeys: [],
+    lastAppliedBinaryKeys: [],
     createdAt: ctx.now,
   });
   if (!Result.isOk(config)) return invalid(config.error);
