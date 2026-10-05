@@ -10,6 +10,7 @@ import { KubeReadiness } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
 import { KubeStartup } from "@/engine/domains/kube-startup";
+import { KubeStorage } from "@/engine/domains/kube-storage";
 
 import { KubePod, KubeService } from "@/engine/domains/kubernetes";
 import { CloudRunService, GkeCluster } from "@/engine/domains/managed-services";
@@ -209,12 +210,19 @@ export const KubeDeploymentProperties = ({
       {d.volumes.length > 0 && (
         <>
           <Section
-            title="設定ファイルのマウント"
+            title={
+              d.volumes.some((v) => v.source === "persistentvolumeclaim")
+                ? "ファイルのマウント"
+                : "設定ファイルのマウント"
+            }
             rows={d.volumeMounts.map((m) => {
               const v = d.volumes.find((v) => v.name === m.name);
               return {
                 label: m.mountPath,
-                value: `${v?.source}/${v?.resource}${m.subPath ? ` subPath:${m.subPath}（Pod作成時の内容）` : "（設定更新を反映）"}${v?.optional ? " optional" : ""}`,
+                value:
+                  v?.source === "persistentvolumeclaim"
+                    ? `pvc/${v.resource}（永続データ）${m.readOnly || v.sourceReadOnly ? " readOnly" : " readWrite"}`
+                    : `${v?.source}/${v?.resource}${m.subPath ? ` subPath:${m.subPath}（Pod作成時の内容）` : "（設定更新を反映）"}${v?.optional ? " optional" : ""}`,
               };
             })}
           />
@@ -245,8 +253,7 @@ export const KubeDeploymentProperties = ({
         rows={KubePod.fromDeployment(d).map((p) => {
           if (!Option.isSome(cluster)) return { label: p.name, value: "Unknown" };
           const error =
-            ImagePull.error(world, cluster.value, d.image) ||
-            KubeRuntime.error(world.kubeConfigs, d, p.name);
+            ImagePull.error(world, cluster.value, d.image) || KubeRuntime.error(world, d, p.name);
           if (error) return { label: p.name, value: error };
           if (!p.ready) return { label: p.name, value: `${p.status} (NotReady) ${p.ip}` };
           return { label: p.name, value: `${p.status} ${p.ip}` };
@@ -698,5 +705,99 @@ export const KubeNamespaceProperties = ({
         },
       ]}
     />
+  );
+};
+
+export const KubeStorageProperties = ({
+  world,
+  selection,
+}: SelectionProps<"kube-storage">): ReactElement => {
+  const cluster = World.findCluster(world, selection.projectId, selection.cluster);
+  if (!Option.isSome(cluster)) return <NotFound what="ストレージ" />;
+  const scoped = (r: { projectId: string; cluster: string; name: string }) =>
+    r.projectId === selection.projectId &&
+    r.cluster === selection.cluster &&
+    r.name === selection.name;
+  if (selection.resourceKind === "storageclass") {
+    const s = KubeStorage.classes(world, cluster.value).find(scoped);
+    if (!s) return <NotFound what="StorageClass" />;
+    return (
+      <Section
+        title="動的プロビジョニング"
+        rows={[
+          { label: "provisioner", value: s.provisioner },
+          { label: "ディスク種類", value: s.diskType },
+          { label: "volumeBindingMode", value: s.bindingMode },
+          { label: "reclaimPolicy", value: s.reclaimPolicy },
+          { label: "容量拡張", value: String(s.allowVolumeExpansion) },
+          {
+            label: "管理",
+            value: KubeStorage.builtin(s.name)
+              ? "組み込み（読み取り専用）"
+              : "仮想マニフェストで管理",
+          },
+        ]}
+      />
+    );
+  }
+  if (selection.resourceKind === "pvc") {
+    const c = world.kubePvcs.find(
+      (c) => scoped(c) && c.namespace === (selection.namespace ?? "default"),
+    );
+    if (!c) return <NotFound what="PVC" />;
+    return (
+      <>
+        <Section
+          title="永続ストレージの要求"
+          rows={[
+            { label: "namespace", value: c.namespace },
+            {
+              label: "status",
+              value: c.deleting ? "Terminating" : c.volumeName ? "Bound" : "Pending",
+            },
+            { label: "要求容量", value: `${c.storageGi}Gi` },
+            { label: "StorageClass", value: c.storageClassName || "指定なし" },
+            { label: "PV", value: c.volumeName || "未割り当て" },
+            { label: "accessModes", value: "ReadWriteOnce（1ノード。Pod数の制限ではありません）" },
+            { label: "判定", value: KubeStorage.reason(world, c) },
+            {
+              label: "利用Deployment",
+              value:
+                KubeStorage.consumers(world, c)
+                  .map((d) => d.name)
+                  .join(", ") || "なし",
+            },
+          ]}
+        />
+        <p className="mb-3 text-sm text-muted">
+          Podの削除・再作成ではデータを保持します。PVC削除後の扱いはPVのreclaimPolicyで決まります。実ノード配置・ディスク接続は再現しません。
+        </p>
+      </>
+    );
+  }
+  const p = world.kubePvs.find(scoped);
+  if (!p) return <NotFound what="PV" />;
+  return (
+    <>
+      <Section
+        title="割り当てた永続ボリューム"
+        rows={[
+          { label: "status", value: p.released ? "Released" : "Bound" },
+          { label: "容量", value: `${p.storageGi}Gi` },
+          { label: "StorageClass", value: p.storageClassName },
+          { label: "claimRef", value: `${p.namespace}/${p.claim}` },
+          { label: "reclaimPolicy", value: p.reclaimPolicy },
+          { label: "保存ファイル数", value: String(p.files.length) },
+        ]}
+      />
+      <Section
+        title="永続ファイル（サイズ）"
+        rows={p.files.map((f) => ({ label: f.path, value: `${KubeBinary.size(f.value)} bytes` }))}
+      />
+      <p className="mb-3 text-sm text-muted">
+        Retainで残したPVは自動再利用しません。Released
+        PVの手動再バインドと実ディスクの操作は対象外です。
+      </p>
+    </>
   );
 };

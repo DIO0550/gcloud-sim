@@ -2,6 +2,7 @@ import { CommandFailure } from "@/engine/cli/command-failure";
 import { CommandOutput, type CommandResult, OutputMessage } from "@/engine/cli/command-spec";
 import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import type { GkeCluster } from "@/engine/domains/managed-services";
+import { World } from "@/engine/domains/world";
 import { Result } from "@/utils/Result";
 import { kubePermission } from "./configuration";
 import type { KubectlContext } from "./context";
@@ -46,14 +47,15 @@ export const applyNamespace = (
     const keep = (r: { projectId: string; cluster: string; namespace: string }) =>
       !sameCluster(r) || r.namespace !== name;
     return finish(
-      {
+      World.reconcileKubeStorage({
         ...ctx.world,
         kubeNamespaces: ctx.world.kubeNamespaces.filter((n) => !sameCluster(n) || n.name !== name),
         kubeDeployments: ctx.world.kubeDeployments.filter(keep),
         kubeServices: ctx.world.kubeServices.filter(keep),
         kubeConfigs: ctx.world.kubeConfigs.filter(keep),
         kubeHpas: ctx.world.kubeHpas.filter(keep),
-      },
+        kubePvcs: ctx.world.kubePvcs.map((c) => (keep(c) ? c : { ...c, deleting: ctx.now })),
+      }),
       "deleted",
     );
   }

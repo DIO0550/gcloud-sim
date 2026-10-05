@@ -31,6 +31,7 @@ import { Instance } from "@/engine/domains/compute";
 import { ConfigProperty, GcloudConfig } from "@/engine/domains/gcloud-config";
 import { IamMember, IamPolicy, RoleName } from "@/engine/domains/iam-policy";
 import { KubeNamespace } from "@/engine/domains/kube-namespace";
+import { KubeStorage } from "@/engine/domains/kube-storage";
 import { Operation, type OperationType } from "@/engine/domains/operation";
 import type { Principal } from "@/engine/domains/principal";
 import { PolicyTarget } from "@/engine/domains/resource-hierarchy";
@@ -152,6 +153,25 @@ export const Candidates = {
         )
       : [];
   }),
+  kubeStorage: ((world, projectId, positionals = []) => {
+    if (!Option.isSome(projectId)) return [];
+    const cluster = GcloudConfig.get(world.config, "container/cluster");
+    if (!Option.isSome(cluster)) return [];
+    const type = (positionals[0] ?? "").split("/")[0]?.toLowerCase() ?? "";
+    const items = [
+      "sc",
+      "storageclass",
+      "storageclasses",
+      "storageclasses.storage.k8s.io",
+    ].includes(type)
+      ? KubeStorage.classes(world, { projectId: projectId.value, name: cluster.value })
+      : ["pv", "persistentvolume", "persistentvolumes"].includes(type)
+        ? world.kubePvs
+        : world.kubePvcs;
+    return items
+      .filter((r) => r.projectId === projectId.value && r.cluster === cluster.value)
+      .map((r) => r.name);
+  }) satisfies CandidateSource,
   kubeHpas: inProject((world, projectId) => {
     const cluster = GcloudConfig.get(world.config, "container/cluster");
     if (!Option.isSome(cluster)) return [];

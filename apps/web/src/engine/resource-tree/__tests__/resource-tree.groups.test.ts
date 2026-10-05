@@ -77,6 +77,8 @@ test("クラスタの下にはノードプールと kubectl で作った Deploym
   const cluster = find(TreeNode.fromWorld(s.world), "app");
   expect(labels(cluster?.children ?? [])).toEqual([
     "pool: default-pool",
+    "sc: standard-rwo",
+    "sc: premium-rwo",
     "deploy: web",
     "svc: web",
   ]);
@@ -85,7 +87,10 @@ test("クラスタの下にはノードプールと kubectl で作った Deploym
     "gcloud services enable container.googleapis.com",
     "gcloud container clusters create-auto ap --region=asia-northeast1 --quiet",
   );
-  expect(labels(find(TreeNode.fromWorld(autopilot.world), "ap")?.children ?? [])).toEqual([]);
+  expect(labels(find(TreeNode.fromWorld(autopilot.world), "ap")?.children ?? [])).toEqual([
+    "sc: standard-rwo",
+    "sc: premium-rwo",
+  ]);
 });
 
 test("Pub/Sub のトピックの下にサブスクリプションが、請求アカウントの下に予算が出る", () => {

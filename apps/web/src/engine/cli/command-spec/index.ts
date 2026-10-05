@@ -14,7 +14,11 @@ export type { JsonRecord, JsonValue } from "@/types/Json";
  * Tab 補完の候補を World から引く関数（TBD-009）。`projectId` は `--project` か `core/project`。
  * 候補が World に依らないもの（ゾーン等）は引数を読まない。
  */
-export type CandidateSource = (world: World, projectId: Option<string>) => readonly string[];
+export type CandidateSource = (
+  world: World,
+  projectId: Option<string>,
+  positionals?: readonly string[],
+) => readonly string[];
 
 type FlagBase = Readonly<{
   /** Reject repetition where only one value is supported. */

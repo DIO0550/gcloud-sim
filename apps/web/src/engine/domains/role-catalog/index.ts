@@ -230,7 +230,14 @@ const NamespacePermissions = [
   "container.namespaces.list",
 ] as const;
 
+const KubeStoragePermissions = [
+  ...["storageClasses", "persistentVolumeClaims", "persistentVolumes"].flatMap((kind) =>
+    ["create", "get", "list", "update", "delete"].map((verb) => `container.${kind}.${verb}`),
+  ),
+] as const;
+
 const ContainerPermissions = [
+  ...KubeStoragePermissions,
   ...NamespacePermissions,
   ...KubeConfigPermissions,
   ...HpaPermissions,
@@ -255,6 +262,7 @@ const ContainerPermissions = [
 ] as const;
 
 const ContainerDeveloperPermissions = [
+  ...KubeStoragePermissions,
   ...NamespacePermissions,
   ...KubeConfigPermissions,
   ...HpaPermissions,
@@ -405,6 +413,7 @@ const ArtifactAdminPermissions = [
 ] as const;
 
 const ViewerPermissions = [
+  ...KubeStoragePermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
   ...BuildReadPermissions,
   ...ArtifactReadPermissions,
   ...MonitoringViewPermissions,
@@ -666,6 +675,7 @@ const Roles: readonly Role[] = [
   role("roles/container.admin", "Kubernetes Engine Admin", ContainerPermissions),
   role("roles/container.developer", "Kubernetes Engine Developer", ContainerDeveloperPermissions),
   role("roles/container.viewer", "Kubernetes Engine Viewer", [
+    ...KubeStoragePermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
     "container.namespaces.get",
     "container.namespaces.list",
     "container.configMaps.get",

@@ -46,6 +46,7 @@ import { createHpa, hpasOf, reconcileHpa } from "./hpa";
 import { applyManifest } from "./manifests";
 import { applyNamespace } from "./namespaces";
 import { probeContainers } from "./probes";
+import { removeStorage, storageListing, storagePermission, writePersistentFile } from "./storage";
 
 /**
  * `kubectl`（TBD-007）。コンテキストは `get-credentials` が書いた `container/cluster` で、
@@ -85,6 +86,9 @@ const usage = (message: string): CommandFailure => CommandFailure.invalidArgumen
 /** `deployment`, `deploy`, `deployments`, `deployment/web` の綴りを種別と名前に分ける。 */
 type ResourceRef = Readonly<{
   kind:
+    | "storageclass"
+    | "pvc"
+    | "pv"
     | "namespace"
     | "deployment"
     | "service"
@@ -99,6 +103,16 @@ type ResourceRef = Readonly<{
 }>;
 
 const ResourceAliases: Readonly<Record<string, ResourceRef["kind"]>> = {
+  storageclass: "storageclass",
+  storageclasses: "storageclass",
+  "storageclasses.storage.k8s.io": "storageclass",
+  sc: "storageclass",
+  persistentvolumeclaim: "pvc",
+  persistentvolumeclaims: "pvc",
+  pvc: "pvc",
+  persistentvolume: "pv",
+  persistentvolumes: "pv",
+  pv: "pv",
   namespace: "namespace",
   namespaces: "namespace",
   ns: "namespace",
@@ -140,7 +154,7 @@ const parseResource = (type: string, name: Option<string>): Result<ResourceRef, 
     return Result.err(
       CommandFailure.invalidValue(
         "",
-        `error: the server doesn't have a resource type "${kindText}"\ngcloud-sim: 対応しているのは namespaces / deployments / services / pods / nodes / replicasets / configmaps / secrets / hpa です。`,
+        `error: the server doesn't have a resource type "${kindText}"\ngcloud-sim: 対応しているのは namespaces / deployments / services / pods / nodes / replicasets / configmaps / secrets / hpa / pvc / pv / storageclasses です。`,
       ),
     );
   }
@@ -277,7 +291,7 @@ const podRow = (
 });
 
 const podError = (world: World, cluster: GkeCluster, d: KubeDeployment, name: string): string =>
-  ImagePull.error(world, cluster, d.image) || KubeRuntime.error(world.kubeConfigs, d, name);
+  ImagePull.error(world, cluster, d.image) || KubeRuntime.error(world, d, name);
 const deploymentErrors = (
   world: World,
   cluster: GkeCluster,
@@ -357,6 +371,10 @@ const collect = (
   );
   const services = World.kubeServicesOf(ctx.world, cluster, ctx.namespace);
   switch (ref.kind) {
+    case "storageclass":
+    case "pvc":
+    case "pv":
+      return storageListing(ctx, cluster, ref.kind, ref.name);
     case "namespace":
       return Result.map(
         pick(KubeNamespace.of(ctx.world, cluster), "namespaces", ref.name),
@@ -558,7 +576,7 @@ const get = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
     );
   let collected = collect(ctx, cluster.value, ref.value);
   if (!Result.isOk(collected)) return collected;
-  if (allNamespaces && ref.value.kind !== "node" && ref.value.kind !== "namespace") {
+  if (allNamespaces && !["node", "namespace", "pv", "storageclass"].includes(ref.value.kind)) {
     const rows: JsonRecord[] = [];
     for (const namespace of KubeNamespace.of(ctx.world, cluster.value)) {
       const listing = collect({ ...ctx, namespace: namespace.name }, cluster.value, ref.value);
@@ -892,6 +910,10 @@ const remove = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
   if (!Option.isSome(name))
     return Result.err(usage("resource(s) were provided, but no name was specified"));
   switch (ref.value.kind) {
+    case "storageclass":
+    case "pvc":
+    case "pv":
+      return removeStorage(ctx, cluster.value, ref.value.kind, name.value);
     case "namespace":
       return applyNamespace(ctx, cluster.value, name.value, "delete");
     case "hpa": {
@@ -1361,9 +1383,19 @@ const NamespaceFlag = Flag.string("namespace", "Namespace for this operation (de
 });
 const TypePositional = Positional.required(
   "TYPE[/NAME]",
-  "Resource type, e.g. pods, deployment/web.",
+  "Resource type, e.g. pods, deployment/web, pvc, pv, storageclass.",
+  () => Object.keys(ResourceAliases),
 );
-const NamePositional = Positional.optional("NAME", "Resource name.", Candidates.kubeDeployments);
+const NamePositional = Positional.optional(
+  "NAME",
+  "Resource name.",
+  (world, projectId, positionals = []) => {
+    const type = ResourceAliases[(positionals[0] ?? "").split("/")[0]?.toLowerCase() ?? ""];
+    if (type === "pvc" || type === "pv" || type === "storageclass")
+      return Candidates.kubeStorage(world, projectId, positionals);
+    return Candidates.kubeDeployments(world, projectId);
+  },
+);
 
 /** kubectl はコンテキストのクラスタで判定するので、どのコマンドも container の権限と API を要求する。 */
 type KubectlSeed = Readonly<{
@@ -1398,6 +1430,8 @@ const kubectl = (seed: KubectlSeed): CommandSpec =>
         !ParsedArgs.has(args, "filename") &&
         type !== "namespace" &&
         type !== "node" &&
+        type !== "storageclass" &&
+        type !== "pv" &&
         !ParsedArgs.boolean(args, "all-namespaces")
       ) {
         const checked = requireNamespace(scoped.value, cluster.value);
@@ -1424,6 +1458,8 @@ const resourcePermission =
     );
     if (!Result.isOk(ref)) return fallback;
     const verb = action === "delete" ? "delete" : Option.isSome(ref.value.name) ? "get" : "list";
+    if (["storageclass", "pvc", "pv"].includes(ref.value.kind))
+      return storagePermission(ref.value.kind as "storageclass" | "pvc" | "pv", verb);
     if (ref.value.kind === "namespace") return `container.namespaces.${verb}`;
     if (ref.value.kind === "hpa") return `container.horizontalPodAutoscalers.${verb}`;
     if (ref.value.kind === "service") return `container.services.${verb}`;
@@ -1469,7 +1505,7 @@ const execEnvironment = (ctx: KubectlContext, args: ParsedArgs): CommandResult =
       output: CommandOutput.messages(OutputMessage.plain(content.value)),
     });
   }
-  const env = KubeRuntime.environment(ctx.world.kubeConfigs, d, name);
+  const env = KubeRuntime.environment(ctx.world, d, name);
   if (!Result.isOk(env)) return Result.err(CommandFailure.invalidState(env.error));
   if (key && !env.value.values.some((e) => e.name === key))
     return Result.err(usage(`Environment variable ${key} is not set.`));
@@ -1527,6 +1563,28 @@ export const KubectlCommands: readonly CommandSpec[] = [
       const checked = requireNamespace(scoped.value, cluster.value);
       if (!Result.isOk(checked)) return checked;
       return probeContainers(checked.value, cluster.value, args);
+    },
+  }),
+  projectCommand({
+    path: ["sim", "kubernetes", "write-file"],
+    summary:
+      "Simulate an application writing a UTF-8 file to a mounted PVC (no shell or host files).",
+    positionals: [Positional.required("NAME", "Deployment name.", Candidates.kubeDeployments)],
+    flags: [
+      NamespaceFlag,
+      Flag.string("path", "Absolute mounted PVC file path.", { singleUse: true }),
+      Flag.string("content", "Simulated UTF-8 application content.", { singleUse: true }),
+    ],
+    permissions: ["container.deployments.get", "container.pods.exec"],
+    requiredApis: [ContainerApi],
+    run: (ctx, args) => {
+      const cluster = currentCluster(ctx);
+      if (!Result.isOk(cluster)) return cluster;
+      const scoped = namespaceContext(ctx, args);
+      if (!Result.isOk(scoped)) return scoped;
+      const checked = requireNamespace(scoped.value, cluster.value);
+      if (!Result.isOk(checked)) return checked;
+      return writePersistentFile(checked.value, cluster.value, args);
     },
   }),
   projectCommand({
@@ -1658,7 +1716,7 @@ export const KubectlCommands: readonly CommandSpec[] = [
   kubectl({
     verb: "apply",
     summary:
-      "Apply virtual ConfigMap/Secret (including immutable and ConfigMap binaryData)/Deployment/Service/HPA YAML/JSON or fixed samples.",
+      "Apply virtual ConfigMap/Secret (including immutable and ConfigMap binaryData)/Deployment/Service/HPA/PVC/StorageClass YAML/JSON or fixed samples.",
     positionals: [],
     flags: [FileFlag],
     permission: () => undefined,

@@ -99,7 +99,7 @@ export const kubeConfigurationSatisfied = (
   const pods = KubePod.fromDeployment(d);
   if (
     !pods.every((p) => {
-      const env = KubeRuntime.environment(world.kubeConfigs, d, p.name);
+      const env = KubeRuntime.environment(world, d, p.name);
       return (
         Result.isOk(env) &&
         env.value.values.some((e) => e.name === "APP_MODE" && e.value === "production")
@@ -130,7 +130,7 @@ export const kubeConfigurationSatisfied = (
           e.key === "API_TOKEN",
       ) &&
       pods.every((p) => {
-        const env = KubeRuntime.environment(world.kubeConfigs, d, p.name);
+        const env = KubeRuntime.environment(world, d, p.name);
         return (
           Result.isOk(env) &&
           env.value.values.some((e) => e.name === "API_TOKEN" && e.value === "demo-token")
@@ -148,7 +148,7 @@ export const kubeConfigurationSatisfied = (
     ) &&
     d.env.some((e) => e.name === "LOG_LEVEL" && e.source === "literal" && e.value === "info") &&
     pods.every((p) => {
-      const env = KubeRuntime.environment(world.kubeConfigs, d, p.name);
+      const env = KubeRuntime.environment(world, d, p.name);
       return (
         Result.isOk(env) &&
         env.value.values.some((e) => e.name === "API_TOKEN" && e.value === "demo-token")

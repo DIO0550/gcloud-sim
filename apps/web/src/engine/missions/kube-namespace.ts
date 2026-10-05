@@ -68,7 +68,7 @@ export const kubeNamespaceSatisfied = (world: World): boolean => {
       return false;
     if (
       !KubePod.fromDeployment(d).every((p) => {
-        const env = KubeRuntime.environment(world.kubeConfigs, d, p.name);
+        const env = KubeRuntime.environment(world, d, p.name);
         return (
           Result.isOk(env) && env.value.values.find((e) => e.name === "MODE")?.value === namespace
         );

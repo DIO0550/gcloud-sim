@@ -64,6 +64,7 @@ import type { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { KubeReadiness, type ReadinessProbe } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeStartup, type StartupProbe } from "@/engine/domains/kube-startup";
+import type { KubePv, KubePvc, KubeStorageClass } from "@/engine/domains/kube-storage";
 import type { KubeVolume } from "@/engine/domains/kube-volume";
 import {
   type KubeDeployment,
@@ -134,12 +135,13 @@ import { Result } from "@/utils/Result";
  * v21 はConfigMap/Secretのimmutableを持つ。
  * v22 はConfigMapのbinaryDataとそのapply管理キーを持つ。
  * v23 は設定volume・mount・Pod内の投影ファイルを持つ。
+ * v24 はStorageClass・PVC・動的PVと永続ファイルを持つ。
  */
-export const SchemaVersion = 23;
+export const SchemaVersion = 24;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
 const MigratableVersions = [
-  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
 ] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
@@ -575,6 +577,41 @@ const kubeConfig = D.object<KubeConfig>({
   binaryData: D.array(D.object({ key: string, value: string })),
   createdAt: string,
 });
+const kubeStorageClass = D.object<KubeStorageClass>({
+  projectId: string,
+  cluster: string,
+  name: string,
+  provisioner: D.literal(["pd.csi.storage.gke.io"]),
+  diskType: D.literal(["pd-balanced", "pd-ssd"]),
+  bindingMode: D.literal(["Immediate", "WaitForFirstConsumer"]),
+  reclaimPolicy: D.literal(["Delete", "Retain"]),
+  allowVolumeExpansion: D.boolean,
+  createdAt: string,
+});
+const kubePvc = D.object<KubePvc>({
+  projectId: string,
+  cluster: string,
+  namespace: string,
+  name: string,
+  storageClassName: string,
+  storageGi: D.number,
+  volumeName: string,
+  deleting: string,
+  createdAt: string,
+});
+const kubePv = D.object<KubePv>({
+  projectId: string,
+  cluster: string,
+  name: string,
+  namespace: string,
+  claim: string,
+  storageClassName: string,
+  storageGi: D.number,
+  reclaimPolicy: D.literal(["Delete", "Retain"]),
+  released: D.boolean,
+  files: D.array(D.object({ path: string, value: string })),
+  createdAt: string,
+});
 const kubeResources: Decoder<KubeResources> = (value, path) =>
   Result.mapErr(KubeResources.parse(value), (reason) => `${path}: ${reason}`);
 const readinessProbe: Decoder<ReadinessProbe> = (value, path) =>
@@ -583,13 +620,26 @@ const livenessProbe: Decoder<LivenessProbe> = (value, path) =>
   Result.mapErr(KubeLiveness.parse(value), (reason) => `${path}: ${reason}`);
 const startupProbe: Decoder<StartupProbe> = (value, path) =>
   Result.mapErr(KubeStartup.parse(value), (reason) => `${path}: ${reason}`);
-const kubeVolume = D.object<KubeVolume>({
+const kubeVolumeBase = D.object<Omit<KubeVolume, "sourceReadOnly">>({
   name: string,
-  source: D.literal(["configmap", "secret"]),
+  source: D.literal(["configmap", "secret", "persistentvolumeclaim"]),
   resource: string,
   optional: D.boolean,
   items: D.array(D.object({ key: string, path: string })),
 });
+const kubeVolume: Decoder<KubeVolume> = (value, path) => {
+  const parsed = kubeVolumeBase(value, path);
+  if (!Result.isOk(parsed)) return parsed;
+  if (!isRecord(value)) return Result.err(`${path}: expected a volume object`);
+  if (parsed.value.source === "persistentvolumeclaim")
+    return Result.map(
+      D.boolean(value.sourceReadOnly, `${path}.sourceReadOnly`),
+      (sourceReadOnly) => ({ ...parsed.value, sourceReadOnly }),
+    );
+  if (value.sourceReadOnly !== undefined)
+    return Result.err(`${path}: sourceReadOnly only applies to PVC volumes`);
+  return parsed;
+};
 const kubeVolumeMount = D.object({
   name: string,
   mountPath: string,
@@ -925,6 +975,9 @@ const world = D.object<World>({
   kubeServices: D.array(kubeService),
   kubeHpas: D.array(kubeHpa),
   kubeConfigs: D.array(kubeConfig),
+  kubeStorageClasses: D.array(kubeStorageClass),
+  kubePvcs: D.array(kubePvc),
+  kubePvs: D.array(kubePv),
   kubeFiles: D.record(string),
   kubeContextNamespaces: D.record(string),
   functions: D.array(cloudFunction),
@@ -1161,7 +1214,7 @@ const withVolumes = (value: unknown): unknown =>
     : value;
 const migratePrevious = (version: number, value: unknown): unknown => {
   if (version === SchemaVersion) return value;
-  if (version === 22) return value;
+  if (version >= 22) return value;
   if (version >= 20 && isRecord(value))
     return {
       ...value,
@@ -1273,7 +1326,13 @@ const migratePrevious = (version: number, value: unknown): unknown => {
 const migrate = (version: number, value: unknown): unknown => {
   const previous = migratePrevious(version, value);
   if (version === SchemaVersion || !isRecord(previous)) return previous;
-  return { ...previous, kubeDeployments: withVolumes(previous.kubeDeployments) };
+  return {
+    ...previous,
+    kubeStorageClasses: [],
+    kubePvcs: [],
+    kubePvs: [],
+    ...(version < 23 ? { kubeDeployments: withVolumes(previous.kubeDeployments) } : {}),
+  };
 };
 
 export const Snapshot = {

@@ -131,6 +131,11 @@ import {
   kubeStartupSatisfied,
 } from "./kube-startup";
 import {
+  type KubeStorageAssertion,
+  KubeStorageMissions,
+  kubeStorageSatisfied,
+} from "./kube-storage";
+import {
   type KubeWorkloadAssertion,
   KubeWorkloadMissions,
   kubeWorkloadSatisfied,
@@ -157,6 +162,7 @@ export type MissionAssertion =
   | KubeLivenessAssertion
   | KubeNamespaceAssertion
   | KubeImmutableAssertion
+  | KubeStorageAssertion
   | KubeVolumesAssertion
   | KubeBinaryDataAssertion
   | KubeConfigLabelsAssertion
@@ -318,6 +324,7 @@ const Missions: readonly Mission[] = [
   ...KubeNamespaceMissions,
   ...KubeImmutableMissions,
   ...KubeVolumesMissions,
+  ...KubeStorageMissions,
   ...KubeBinaryDataMissions,
   ...KubeConfigLabelsMissions,
   ...KubeContextMissions,
@@ -784,6 +791,10 @@ const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
       return kubeHpaSatisfied(world);
     case "kubeImmutableRefreshed":
       return kubeImmutableSatisfied(world);
+    case "kubePersistentDataReady":
+      return kubeStorageSatisfied(world, false);
+    case "kubeRetainedDataReady":
+      return kubeStorageSatisfied(world, true);
     case "kubeVolumesReady":
       return kubeVolumesSatisfied(world, false);
     case "kubeVolumeRefreshReady":

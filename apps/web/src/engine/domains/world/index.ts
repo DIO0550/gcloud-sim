@@ -34,6 +34,12 @@ import { KubeManifest } from "@/engine/domains/kube-manifest";
 import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { KubeReadiness } from "@/engine/domains/kube-readiness";
 import { KubeStartup } from "@/engine/domains/kube-startup";
+import {
+  type KubePv,
+  type KubePvc,
+  KubeStorage,
+  type KubeStorageClass,
+} from "@/engine/domains/kube-storage";
 import { KubeDeployment, type KubeService } from "@/engine/domains/kubernetes";
 import {
   type BackendService,
@@ -112,6 +118,9 @@ export type World = Readonly<{
   kubeServices: readonly KubeService[];
   kubeHpas: readonly KubeHpa[];
   kubeConfigs: readonly KubeConfig[];
+  kubeStorageClasses: readonly KubeStorageClass[];
+  kubePvcs: readonly KubePvc[];
+  kubePvs: readonly KubePv[];
   kubeFiles: Readonly<Record<string, string>>;
   functions: readonly CloudFunction[];
   appEngineApps: readonly AppEngineApp[];
@@ -284,6 +293,9 @@ const NamedCollectionKeys = [
   "kubeServices",
   "kubeHpas",
   "kubeConfigs",
+  "kubeStorageClasses",
+  "kubePvcs",
+  "kubePvs",
   "functions",
   "sqlInstances",
   "pubsubTopics",
@@ -1040,6 +1052,9 @@ export const World = {
       kubeServices: world.kubeServices.filter((s) => !belongs(s)),
       kubeHpas: world.kubeHpas.filter((h) => !belongs(h)),
       kubeConfigs: world.kubeConfigs.filter((s) => !belongs(s)),
+      kubeStorageClasses: world.kubeStorageClasses.filter((s) => !belongs(s)),
+      kubePvcs: world.kubePvcs.filter((s) => !belongs(s)),
+      kubePvs: world.kubePvs.filter((s) => !belongs(s)),
     };
   },
 
@@ -1102,26 +1117,27 @@ export const World = {
     return addUnique(
       world.kubeDeployments.some(sameKubeResource(deployment)),
       `deployments.apps "${deployment.name}"`,
-      () => ({
-        ...world,
-        kubeDeployments: [
-          ...world.kubeDeployments,
-          KubeReadiness.reconcile(
-            KubeLiveness.reconcile(
-              KubeStartup.reconcile(
-                KubeContainer.reconcile(
-                  KubeRuntime.reconcile(world.kubeConfigs, { ...deployment, podNetwork }),
+      () =>
+        World.reconcileKubeStorage({
+          ...world,
+          kubeDeployments: [
+            ...world.kubeDeployments,
+            KubeReadiness.reconcile(
+              KubeLiveness.reconcile(
+                KubeStartup.reconcile(
+                  KubeContainer.reconcile(
+                    KubeRuntime.reconcile(world, { ...deployment, podNetwork }),
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
-      }),
+          ],
+        }),
     );
   },
 
   replaceKubeDeployment(world: World, deployment: KubeDeployment): World {
-    return {
+    return World.reconcileKubeStorage({
       ...world,
       kubeDeployments: replaceBy(
         world.kubeDeployments,
@@ -1129,24 +1145,31 @@ export const World = {
         KubeReadiness.reconcile(
           KubeLiveness.reconcile(
             KubeStartup.reconcile(
-              KubeContainer.reconcile(KubeRuntime.reconcile(world.kubeConfigs, deployment)),
+              KubeContainer.reconcile(KubeRuntime.reconcile(world, deployment)),
             ),
           ),
         ),
       ),
-    };
+    });
   },
 
   withoutKubeDeployment(world: World, deployment: KubeDeployment): World {
     const same = sameKubeResource(deployment);
-    return { ...world, kubeDeployments: world.kubeDeployments.filter((d) => !same(d)) };
+    return World.reconcileKubeStorage({
+      ...world,
+      kubeDeployments: world.kubeDeployments.filter((d) => !same(d)),
+    });
   },
 
   withKubeConfigs(world: World, kubeConfigs: readonly KubeConfig[]): World {
+    return World.reconcileKubeStorage({ ...world, kubeConfigs });
+  },
+
+  reconcileKubeStorage(world: World): World {
+    const next = KubeStorage.reconcile(world);
     return {
-      ...world,
-      kubeConfigs,
-      kubeDeployments: world.kubeDeployments.map((d) => KubeRuntime.reconcile(kubeConfigs, d)),
+      ...next,
+      kubeDeployments: next.kubeDeployments.map((d) => KubeRuntime.reconcile(next, d)),
     };
   },
 
@@ -1404,6 +1427,7 @@ export const World = {
       ...world.kubeServices,
       ...world.kubeConfigs,
       ...world.kubeHpas,
+      ...world.kubePvcs,
     ]) {
       const cluster = World.findCluster(world, r.projectId, r.cluster);
       if (
@@ -1446,6 +1470,8 @@ export const World = {
       const checked = KubeConfig.validate(c);
       if (!Result.isOk(checked)) return Result.err(checked.error);
     }
+    if (!KubeStorage.valid(world))
+      return Result.err("Invalid Kubernetes persistent storage state.");
     const lab = ContainerLab.validate(world.containerLab);
     if (!Result.isOk(lab)) return lab;
     if (
@@ -1552,6 +1578,9 @@ const validateReferences = (world: World): Result<World, string> => {
     ...world.kubeServices,
     ...world.kubeHpas,
     ...world.kubeConfigs,
+    ...world.kubeStorageClasses,
+    ...world.kubePvcs,
+    ...world.kubePvs,
   ].find((r) => !Option.isSome(World.findCluster(world, r.projectId, r.cluster)));
   if (clusterless !== undefined) {
     return Result.err(

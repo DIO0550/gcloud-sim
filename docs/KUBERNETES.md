@@ -97,7 +97,7 @@ kubectl rollout restart deployment/web
 kubectl exec deployment/web -- printenv APP_MODE
 ```
 
-`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全58件、GKE拡充分は21件です。
+`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全60件、GKE拡充分は23件です。
 
 `sim files write FILE --content='…'`で独自のYAML/JSONを書き、`read`で読み、`replace --search=… --replacement=…`で1か所を編集できます。ファイルは `.yaml` / `.yml` / `.json` の相対パスで、32ファイル・1ファイル64,000文字まで。Terraformとは別に保存し、Terraformのplanに影響しません。`sim files delete FILE`はファイルだけを消します。クラスタ上の設定を消す操作は `kubectl delete -f FILE` です。教材の上書きは `sim files load kubernetes-config --force` で明示します。
 
@@ -133,7 +133,7 @@ kubectl rollout history deployment/manifest-web
 | 対象 | 対応するフィールド・動作 |
 | --- | --- |
 | Deployment | `apps/v1`、metadata.name、metadata.namespaceを指定可能（省略はコマンドのnamespace）、replicasは0〜1000。metadata.labelsとtemplate.metadata.labelsは独立した文字列map。非空のselector.matchLabelsはPodラベルの部分集合で、作成後は変更不可 |
-| コンテナ | 1個のみ、nameはDeployment名と同じ。image・env・resources（CPU/メモリのrequests/limits）を指定。envは文字列value（省略なら空文字）またはconfigMapKeyRef/secretKeyRef。HTTP readinessProbe/livenessProbe/startupProbeにも限定対応。envのoptional・envFrom・ports等は未対応。ConfigMap/Secretのvolumes・volumeMountsは後述の範囲で対応 |
+| コンテナ | 1個のみ、nameはDeployment名と同じ。image・env・resources（CPU/メモリのrequests/limits）を指定。envは文字列value（省略なら空文字）またはconfigMapKeyRef/secretKeyRef。HTTP readinessProbe/livenessProbe/startupProbeにも限定対応。envのoptional・envFrom・ports等は未対応。ConfigMap/Secret/PVCのvolumes・volumeMountsは後述の範囲で対応 |
 | Service | `v1`、ClusterIP/NodePort/LoadBalancer、selectorは非空の文字列map。metadata.labelsは省略可能。TCPの1ポート、port/targetPortは1〜65535の整数。省略時のtypeはClusterIP、targetPortはportと同じ |
 | 更新 | Deploymentのimage・env・Podラベル・resources・replicasを一度に変更してもtemplate revisionは1つだけ進む。replicasだけならrevisionと既存Podを保持。env省略は空、replicas省略は新規なら1・更新なら現在の値を保持 |
 | Service再適用 | selectorとport/targetPortの変更はClusterIP・外部IP・作成日時を保持。typeの変更はこの教材では拒否し、明示的な削除・再作成が必要 |
@@ -258,7 +258,7 @@ ConfigMap/Secretの操作はそれぞれ`container.configMaps.*`/`container.secr
 - ReplicaSetは読み取り専用の導出状態です。templateの識別子/Pod名は疑似値で、実際のハッシュ・annotationsは再現しません。イメージ変更/restartごとに新しいtemplateを作り、undoでは保存したtemplateを再利用します。
 - `.pkg.dev`以外のイメージは従来の簡略な成功モデルです。実在タグ/コンテナの起動可否の確認はしません。異常系ミッションでは存在確認できる教材レジストリを使います。
 
-ConfigMap/Secretのvolumeマウント・ラベル、複数コンテナを含むmanifest、readiness/liveness/startupの定期実行、VPA・HPAの定期評価/実測/安定化、StatefulSet/PVC、NetworkPolicy、ノードプール設定やWorkload Identity等は残作業です。Issue #15は閉じません。
+複数コンテナを含むmanifest、readiness/liveness/startupの定期実行、VPA・HPAの定期評価/実測/安定化、StatefulSet、Ingress/NetworkPolicy、ノードプール設定やWorkload Identity等は残作業です。Issue #15は閉じません。
 
 参照: [ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/)、[Secret](https://kubernetes.io/docs/concepts/configuration/secret/)、[kubectl set env](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_set/kubectl_set_env/)、[Deploymentの更新とロールバック](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)、[kubectl set image](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_set/kubectl_set_image/)、[kubectl rollout undo](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_rollout/kubectl_rollout_undo/)、[GKEのロールと権限](https://docs.cloud.google.com/iam/docs/roles-permissions/container)。
 
@@ -658,9 +658,9 @@ kubectl exec deployment/volume-web -- cat /etc/credentials/TOKEN
 
 Pod templateの`spec.volumes`に`configMap.name`または`secret.secretName`を指定し、コンテナの`volumeMounts`で同じvolume名を参照します。省略時は全キーを同名ファイルへ投影し、`items: [{key, path}]`なら選択したキーだけを相対パスへ配置します。ConfigMapのdataとbinaryData、SecretのUTF-8 dataに対応します。`optional: true`では欠落リソース/キーを空として扱い、通常マウントは参照先を後から作ると反映します。subPathに選んだファイルがなければ起動できません。`readOnly`はbooleanとして保存し、設定volumeの内容は本教材では常に読み取り専用です。
 
-volumeとmountは各20個まで、itemsは100件まで。volume名は重複不可、パスは空・`.`・`..`・制御文字・バックスラッシュを拒否します。mountPathは絶対パス、items.pathとsubPathは相対パスです。重複/包含関係のitemsパスとmountPathは教材の単純化のため拒否します。subPathはファイル1個に限定し、ディレクトリsubPath・subPathExpr・defaultMode/items.mode・projected/emptyDir/PVC等は未対応として拒否します。
+volumeとmountは各20個まで、itemsは100件まで。volume名は重複不可、パスは空・`.`・`..`・制御文字・バックスラッシュを拒否します。mountPathは絶対パス、items.pathとsubPathは相対パスです。重複/包含関係のitemsパスとmountPathは教材の単純化のため拒否します。subPathはファイル1個に限定し、ディレクトリsubPath・subPathExpr・defaultMode/items.mode・projected/emptyDir等は未対応として拒否します。
 
-必要な参照先がない場合もDeploymentのapplyは成功しますが、Podは`ContainerCreating`となりFailedMountを表示します。get/describe、rollout status、logs/exec、Service接続先、HPAの準備状態判定に同じ待機状態を反映します。参照先を修復すると待機Podが起動します。開始前のPodには環境変数の成功キャッシュを保存しません。起動済みPodの投影更新で必要なリソース/キーが失われた場合は前回の投影全体を保持し、新しいPodだけを待機させる教材モデルです。
+必要な参照先がない場合もDeploymentのapplyは成功しますが、Podは`ContainerCreating`となりFailedMountを表示します。get/describe、rollout status、logs/exec、Service接続先、HPAの準備状態判定に同じ待機状態を反映します。参照先を修復すると待機Podが起動します。開始前のPodには環境変数の成功キャッシュを保存しません。起動済みPodの投影更新で必要なリソース/キーが失われた場合は前回の設定投影全体を保持し、同居するPVCの内容は最新の永続データを使い、新しいPodだけを待機させる教材モデルです。
 
 `exec -- cat PATH`はマウント済みのUTF-8ファイルを読み、`base64 PATH`はバイト列をbase64で表示します。非UTF-8のcatは説明付きで拒否します。Pod名・pod/NAME・deployment/NAMEに対応し、Deploymentでは先頭Podを選びます。実シェル、任意プログラム、コンテナイメージ内やホストのファイルへアクセスしません。execには従来どおりcontainer.pods.execとContainer APIが必要です。Secretを明示的にcatした場合は値が出ますが、プロパティではファイルのパスとバイト数だけを表示します。
 
@@ -691,3 +691,53 @@ kubectl rollout status deployment/reload-web
 Snapshot v23はvolume/mountを現在templateと履歴へ保存し、Podごとの投影バイト列をbase64で保存します。通常マウントと古いsubPathが異なる状態も保持します。v1〜v22は空のvolume/mount/Podファイルへ補完し、従来の環境変数・immutable・binaryData・ラベル・namespace・コンテキスト・probe/HPA・履歴・仮想ファイルを保持します。不正なパス・base64・他Podのキャッシュや現在templateと履歴の不一致は拒否します。
 
 仕様の参照元: [ConfigMaps](https://kubernetes.io/docs/concepts/configuration/configmap/)、[Secrets](https://kubernetes.io/docs/concepts/configuration/secret/)、[Volumes](https://kubernetes.io/docs/concepts/storage/volumes/)。
+
+## PVC・StorageClass・PVと永続データ
+
+```sh
+gcloud services enable container.googleapis.com
+gcloud container clusters create-auto storage-gke --region=us-central1
+sim files load kubernetes-storage
+kubectl apply -f storage-claim.yaml
+kubectl apply -f storage-web.yaml
+kubectl describe pvc app-data
+kubectl get pods
+# StorageClass archiveがなくPVCはPending、PodはContainerCreating/FailedMount
+kubectl apply -f archive-class.yaml
+kubectl get storageclasses
+kubectl get pvc
+kubectl get pv
+# 利用Podが存在するためWaitForFirstConsumerのPVCをBoundへ進める
+sim files replace storage-claim.yaml --search=1Gi --replacement=2Gi
+kubectl apply -f storage-claim.yaml
+sim kubernetes write-file storage-web --path=/data/message.txt --content=survives-restart
+kubectl rollout restart deployment/storage-web
+kubectl exec deployment/storage-web -- cat /data/message.txt
+# 同じPVからsurvives-restartを読む
+```
+
+対応するStorageClassは`storage.k8s.io/v1`、provisionerは`pd.csi.storage.gke.io`のみです。parameters.typeは`pd-balanced`/`pd-ssd`（省略時pd-balanced）、volumeBindingModeは`Immediate`（省略時）/`WaitForFirstConsumer`、reclaimPolicyは`Delete`（省略時）/`Retain`、allowVolumeExpansionはboolean（省略時false）です。名前と対応するフィールド以外は拒否します。プロビジョナ・parameters・binding mode・reclaimPolicyの更新は拒否し、拡張許可は更新できます。既存PVは作成時のreclaimPolicyを保持します。
+
+各クラスタには読み取り専用の`standard-rwo`（pd-balanced）と`premium-rwo`（pd-ssd）を導出します。両方ともWaitForFirstConsumer・Delete・拡張可能です。これはCSIストレージの教材セットであり、実際のStandard/Autopilotの既定StorageClass選択は再現しません。PVCはstorageClassNameの明示を必須とし、空文字なら動的割り当てを行わずPendingとなります。クラスが欠落していてもPVC作成は成功し、あとから対応クラスを作ると復旧できます。
+
+PVCは`v1 PersistentVolumeClaim`、accessModesは`[ReadWriteOnce]`、volumeModeはFilesystem（省略可）、resources.requests.storageは文字列の整数1Gi〜1024Giに限定します。ReadWriteOnceは1ノードへの読み書きで、1 Podだけに制限する意味ではありません。教材では複数Pod/Deploymentによる同じPVCの利用を許可し、ノード配置・Multi-Attach制約・ディスク性能は計算しません。PVCのStorageClass変更・容量縮小は拒否し、Bound後の拡張には現在クラスのallowVolumeExpansion=trueが必要です。容量は即反映し、実ファイルシステムの拡張待ちや失敗・クォータを再現しません。
+
+PVは動的割り当てで生成し、クラスタ内で一意の名前を持ちます。ImmediateはPVC作成時、WaitForFirstConsumerは参照するDeploymentに1つ以上のPodができた時に割り当てます。replicas=0だけでは割り当てず、Boundになった後は利用Podがなくても保持します。PVCはnamespace内、StorageClass/PVはクラスタ全体のリソースです。get/describe/deleteの別名はpvc/pv/sc、JSON/YAMLとget -Aにも対応し、PV/SCにはNAMESPACE列を追加しません。get allは既存kubectlと同じ対象範囲を維持し、PVC/PV/SCを含めません。
+
+Deploymentのvolumeに`persistentVolumeClaim: {claimName, readOnly?}`を指定し、volumeMountsのmountPathへディレクトリとしてマウントします。参照PVCの欠落/PendingはFailedMountとなり、Ready・Service・HPA・rollout・logs/execへ反映します。PVCのマウントにはsubPathを許可しません。設定volumeとの混在、template履歴・undo、Pod再作成・scale・liveness/startupのコンテナ再起動も既存のルールに従います。
+
+`sim kubernetes write-file DEPLOYMENT --path=/data/FILE --content=TEXT`はアプリの書き込みを模擬する教材専用操作です。namespaceとコンテキストの規則を使い、先頭の起動可能PodのPVCマウント内へUTF-8文字列を書きます。volume側またはmount側のreadOnlyなら拒否します。`.`/`..`・ホスト/イメージ内のパス・設定volumeへの書き込み・既存ファイルと包含関係のパスは拒否します。内容は展開・実行せず、1 PVにつき100ファイル・UTF-8で合計1 MiBまでです。実ディスクの要求容量とは別の保存上限です。cat/base64で読み、プロパティはパス・ファイル数・バイト数だけを表示します。PV内の内容はPodの再起動/再作成/scaleやDeployment削除では消えません。
+
+利用中PVCのdeleteは削除要求を記録し、get一覧ではTerminatingになります。利用Podが残る間はPV/データと既存マウントを保持し、applyによる変更は拒否します。参照Deploymentの削除・scale=0・templateからの参照解除により全利用Podがなくなった時にPVC削除を完了します。Delete方針はPVと教材データを削除し、Retain方針はPVをReleasedにして内容を残します。新しい同名PVCはReleased PVを自動再利用せず、新しい空のPVを得ます。Bound PVは削除を拒否し、Released PVのdeleteは教材のPV記録を片付けます。実環境ではRetainのディスクはPVオブジェクトを削除しただけでは消えず、別のディスク管理操作が必要です。本教材にはその独立したディスクを作りません。
+
+namespace削除は利用Deploymentを取り除いてPVCの削除を完了し、Retain PVはクラスタ配下に残します。クラスタ削除はそのクラスタのPVを含む教材状態を片付けます。実環境の孤立ディスク・課金やクラスタ削除後のディスク回収を再現する動作ではありません。
+
+PVC・StorageClass・PVごとのcontainer.persistentVolumeClaims.* / container.storageClasses.* / container.persistentVolumes.*権限を使います。applyにはgetとcreate/updateを要求し、ファイルの失敗時は先行の割り当てや削除要求も原子的に戻します。container.admin/developerは対応操作、container.viewerとviewerは読み取り権限を持ちます。write-fileはcontainer.deployments.getとcontainer.pods.exec、すべての操作はContainer APIと現在クラスタの検証を通ります。namespace RBACとCSIドライバのSA/Compute権限は再現しません。
+
+Snapshot v24で独自StorageClass・PVCの容量/割り当て/削除要求・PVの保持方針/Released/ファイルを保存します。v1〜v23は空ストレージを追加し、v23の投影ファイル・古いsubPath・環境変数・履歴と以前のprobe/HPA・namespace/コンテキスト等を保持します。不正な容量・参照・同名PV・パス・base64を拒否します。
+
+ミッション「PVCを割り当てて再起動後もデータを保つ」と「PVC削除後にRetainでデータを残す」は初期Worldから実施できます。前者はマニフェストとライブ設定・2Giへの拡張・全PodのReady・データとrestart履歴、後者はRetain設定・0レプリカ・PVC削除完了・Released PV内の保持内容を確認します。設定の編集だけやTerminating途中では達成しません。全60ミッション・304コマンドです。
+
+StatefulSet/volumeClaimTemplates、静的PV・volumeNameによる手動バインド、Released PV再利用、PVC/SCのラベル・annotation/既定クラス切替、RWX/ROX/RWOP・Block・Filestore/Hyperdisk・topology/allowedTopologies、PVC subPath、実I/O・ノード配置・ディスク接続/回収・容量不足/拡張待ち・finalizer手動操作は対象外です。
+
+仕様の参照元: [GKE persistent volumes](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/persistent-volumes)、[Storage Classes](https://kubernetes.io/docs/concepts/storage/storage-classes/)、[Persistent Volumes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)、[GKE IAM権限](https://docs.cloud.google.com/iam/docs/roles-permissions/container)。
