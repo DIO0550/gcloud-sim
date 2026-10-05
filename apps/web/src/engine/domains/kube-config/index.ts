@@ -1,3 +1,4 @@
+import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { type KubeDeployment, KubeName, KubePod } from "@/engine/domains/kubernetes";
 import type { JsonRecord } from "@/types/Json";
@@ -9,6 +10,9 @@ export type KubeConfig = Readonly<{
   namespace: string;
   kind: "configmap" | "secret";
   name: string;
+  labels: KubeLabels;
+  /** Metadata label keys managed by the last simulated client-side apply. */
+  lastAppliedLabelKeys: readonly string[];
   data: readonly Readonly<{ key: string; value: string }>[];
   /** Keys managed by the last simulated client-side apply. */
   lastAppliedKeys: readonly string[];
@@ -31,6 +35,15 @@ export const KubeConfig = {
   validate(c: KubeConfig): Result<KubeConfig, string> {
     if (!KubeNamespace.valid(c.namespace)) return Result.err("Invalid Kubernetes namespace.");
     if (!Result.isOk(KubeName.parse(c.name))) return Result.err("Invalid configuration name.");
+    const labels = KubeLabels.parse(c.labels);
+    if (!Result.isOk(labels)) return Result.err(labels.error);
+    if (
+      new Set(c.lastAppliedLabelKeys).size !== c.lastAppliedLabelKeys.length ||
+      !Result.isOk(
+        KubeLabels.parse(Object.fromEntries(c.lastAppliedLabelKeys.map((key) => [key, ""]))),
+      )
+    )
+      return Result.err("Invalid last-applied label keys.");
     if (
       c.lastAppliedKeys.length > 100 ||
       new Set(c.lastAppliedKeys).size !== c.lastAppliedKeys.length ||
@@ -62,7 +75,12 @@ export const KubeConfig = {
     return {
       apiVersion: "v1",
       kind: c.kind === "secret" ? "Secret" : "ConfigMap",
-      metadata: { name: c.name, namespace: c.namespace, creationTimestamp: c.createdAt },
+      metadata: {
+        name: c.name,
+        namespace: c.namespace,
+        labels: c.labels,
+        creationTimestamp: c.createdAt,
+      },
       ...(c.kind === "secret" ? { type: "Opaque" } : {}),
       data,
     };

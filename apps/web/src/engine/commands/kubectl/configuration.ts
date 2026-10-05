@@ -8,6 +8,7 @@ import {
 } from "@/engine/cli/command-spec";
 import { EffectivePermissions } from "@/engine/domains/effective-permissions";
 import { KubeConfig, KubeEnv } from "@/engine/domains/kube-config";
+import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeDeployment } from "@/engine/domains/kubernetes";
 import type { GkeCluster } from "@/engine/domains/managed-services";
 import { Principal } from "@/engine/domains/principal";
@@ -58,6 +59,8 @@ export const createConfig = (
     namespace: ctx.namespace,
     kind,
     name,
+    labels: {},
+    lastAppliedLabelKeys: [],
     data,
     lastAppliedKeys: [],
     createdAt: ctx.now,
@@ -66,6 +69,74 @@ export const createConfig = (
   return Result.ok({
     world: World.withKubeConfigs(ctx.world, [...ctx.world.kubeConfigs, config.value]),
     output: CommandOutput.messages(OutputMessage.plain(`${kind}/${name} created`)),
+  });
+};
+
+/** Metadata edits preserve data, apply ownership and running Pod environments. */
+export const labelConfig = (
+  ctx: KubectlContext,
+  args: ParsedArgs,
+  cluster: GkeCluster,
+  kind: KubeConfig["kind"],
+  name: string,
+  changes: readonly string[],
+): CommandResult => {
+  const permission = `container.${kind === "secret" ? "secrets" : "configMaps"}`;
+  for (const verb of ["get", "update"]) {
+    const allowed = kubePermission(ctx, `${permission}.${verb}`);
+    if (!Result.isOk(allowed)) return allowed;
+  }
+  const config = ctx.world.kubeConfigs.find(
+    (c) =>
+      c.projectId === cluster.projectId &&
+      c.cluster === cluster.name &&
+      c.namespace === ctx.namespace &&
+      c.kind === kind &&
+      c.name === name,
+  );
+  if (!config) return Result.err(CommandFailure.notFoundWith(`${kind} "${name}" not found`));
+  if (!changes.length) return invalid("Specify one or more KEY=VALUE or KEY- labels.");
+
+  const labels = { ...config.labels };
+  const keys = new Set<string>();
+  for (const change of changes) {
+    const eq = change.indexOf("=");
+    const remove = eq === -1 && change.endsWith("-");
+    const key = remove ? change.slice(0, -1) : change.slice(0, eq);
+    const value = remove ? "" : change.slice(eq + 1);
+    if ((!remove && eq < 1) || !Result.isOk(KubeLabels.parse({ [key]: value })))
+      return invalid(`Invalid label assignment: ${change}`);
+    if (keys.has(key)) return invalid(`Duplicate label key: ${key}`);
+    keys.add(key);
+
+    if (remove) {
+      delete labels[key];
+      continue;
+    }
+    if (
+      Object.hasOwn(labels, key) &&
+      labels[key] !== value &&
+      !ParsedArgs.boolean(args, "overwrite")
+    )
+      return invalid(`Label ${key} already has a different value; use --overwrite.`);
+    labels[key] = value;
+  }
+
+  const parsed = KubeLabels.parse(labels);
+  if (!Result.isOk(parsed)) return invalid(parsed.error);
+
+  const unchanged = KubeLabels.equal(config.labels, parsed.value);
+  const next = { ...config, labels: parsed.value };
+  return Result.ok({
+    world: unchanged
+      ? ctx.world
+      : World.withKubeConfigs(
+          ctx.world,
+          ctx.world.kubeConfigs.map((c) => (c === config ? next : c)),
+        ),
+    output: CommandOutput.messages(
+      OutputMessage.plain(`${kind}/${name} ${unchanged ? "unchanged" : "labeled"}`),
+    ),
   });
 };
 

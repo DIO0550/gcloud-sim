@@ -39,7 +39,7 @@ import { SampleFile } from "@/engine/domains/sample-files";
 import { type AlreadyExists, World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
-import { createConfig, kubePermission, setEnv } from "./configuration";
+import { createConfig, kubePermission, labelConfig, setEnv } from "./configuration";
 import { type KubectlContext, namespaceContext, requireNamespace } from "./context";
 import { createHpa, hpasOf, reconcileHpa } from "./hpa";
 import { applyManifest } from "./manifests";
@@ -571,10 +571,14 @@ const get = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
   if (Option.isSome(selector)) {
     if (
       Option.isSome(ref.value.name) ||
-      !["deployment", "service", "pod", "replicaset", "all"].includes(ref.value.kind)
+      !["deployment", "service", "pod", "replicaset", "configmap", "secret", "all"].includes(
+        ref.value.kind,
+      )
     )
       return Result.err(
-        usage("--selector supports unnamed deployments, services, pods, replicasets or all."),
+        usage(
+          "--selector supports unnamed deployments, services, pods, replicasets, configmaps, secrets or all.",
+        ),
       );
     const labels = KubeLabels.query(selector.value);
     if (!Result.isOk(labels)) return Result.err(usage(labels.error));
@@ -1532,6 +1536,44 @@ export const KubectlCommands: readonly CommandSpec[] = [
         Result.flatMap(currentCluster(ctx), (cluster) => createConfig(ctx, args, cluster, kind)),
     }),
   ),
+  kubectl({
+    verb: "label",
+    summary: "Add, replace (--overwrite) or remove labels on one ConfigMap or Secret.",
+    positionals: [
+      Positional.required("TYPE[/NAME]", "ConfigMap or Secret.", (world, projectId) => [
+        "configmap",
+        "cm",
+        "secret",
+        ...Candidates.kubeConfigs(world, projectId),
+      ]),
+      Positional.variadic("NAME_OR_LABEL", "Resource name, KEY=VALUE or KEY-."),
+    ],
+    flags: [Flag.boolean("overwrite", "Allow replacing an existing label value.")],
+    permission: () => undefined,
+    run: (ctx, args) => {
+      const cluster = currentCluster(ctx);
+      if (!Result.isOk(cluster)) return cluster;
+      const ref = parseResource(
+        ParsedArgs.requiredPositional(args, 0),
+        ParsedArgs.positional(args, 1),
+      );
+      if (!Result.isOk(ref)) return ref;
+      if (
+        (ref.value.kind !== "configmap" && ref.value.kind !== "secret") ||
+        !Option.isSome(ref.value.name)
+      )
+        return Result.err(usage("label supports one named ConfigMap or Secret on gcloud-sim."));
+      const offset = args.positionals[0]?.includes("/") ? 1 : 2;
+      return labelConfig(
+        ctx,
+        args,
+        cluster.value,
+        ref.value.kind,
+        ref.value.name.value,
+        args.positionals.slice(offset),
+      );
+    },
+  }),
   kubectl({
     verb: "set env",
     summary: "Set/remove environment variables or import ConfigMap/Secret key references.",
