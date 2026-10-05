@@ -260,7 +260,21 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
           `pvc: ${c.name}`,
         ),
       );
-    return [...deployments, ...services, ...configs, ...hpas, ...claims];
+    const policies = world.kubeNetworkPolicies
+      .filter((p) => p.projectId === id && p.cluster === cluster.name && p.namespace === namespace)
+      .map((p) =>
+        leaf(
+          {
+            kind: "kube-network-policy",
+            projectId: id,
+            cluster: cluster.name,
+            namespace,
+            name: p.name,
+          },
+          `netpol: ${p.name}`,
+        ),
+      );
+    return [...deployments, ...services, ...configs, ...hpas, ...claims, ...policies];
   };
   const namespaces = world.kubeNamespaces
     .filter((n) => n.projectId === id && n.cluster === cluster.name)

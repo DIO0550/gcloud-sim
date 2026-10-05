@@ -45,6 +45,13 @@ export type TreeSelection =
       namespace?: string;
       name: string;
     }>
+  | Readonly<{
+      kind: "kube-network-policy";
+      projectId: string;
+      cluster: string;
+      namespace?: string;
+      name: string;
+    }>
   | Readonly<{ kind: "kube-namespace"; projectId: string; cluster: string; name: string }>
   | Readonly<{
       kind: "kube-deployment";
@@ -176,6 +183,8 @@ export const TreeSelection = {
         return `cluster:${selection.projectId}/${selection.name}`;
       case "node-pool":
         return `pool:${selection.projectId}/${selection.cluster}/${selection.name}`;
+      case "kube-network-policy":
+        return `netpol:${selection.projectId}/${selection.cluster}/${selection.namespace ?? "default"}/${selection.name}`;
       case "kube-storage":
         return `kube-storage:${selection.projectId}/${selection.cluster}/${selection.resourceKind}/${selection.namespace ?? ""}/${selection.name}`;
       case "kube-namespace":
@@ -312,6 +321,10 @@ export const TreeSelection = {
       case "kube-storage":
         return Option.some(
           `kubectl describe ${selection.resourceKind} ${selection.name}${selection.resourceKind === "pvc" ? ` --namespace=${selection.namespace ?? "default"}` : ""}`,
+        );
+      case "kube-network-policy":
+        return Option.some(
+          `kubectl describe netpol ${selection.name} --namespace=${selection.namespace ?? "default"}`,
         );
       case "kube-namespace":
         return Option.some(`kubectl describe namespace ${selection.name}`);

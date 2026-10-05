@@ -65,6 +65,7 @@ export const ClusterProperties = ({
       rows={[
         { label: "location", value: c.location },
         { label: "mode", value: c.autopilot ? "Autopilot" : "Standard" },
+        { label: "NetworkPolicy", value: c.networkPolicyEnabled ? "有効" : "無効" },
         { label: "nodeCount", value: String(c.nodeCount) },
         { label: "machineType", value: c.machineType },
         { label: "nodeServiceAccount", value: c.nodeServiceAccount || "default" },

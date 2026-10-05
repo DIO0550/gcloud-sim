@@ -94,6 +94,7 @@ const createCluster = (
       location: location.value,
       machineType: machineType.value.name,
       nodeServiceAccount,
+      networkPolicyEnabled: ParsedArgs.boolean(args, "enable-network-policy"),
       nodes,
     }),
     (m) => CommandFailure.invalidValue("NAME", m),
@@ -152,6 +153,10 @@ export const ContainerCommands: readonly CommandSpec[] = [
         "The number of nodes to be created in each of the cluster's zones (default 3).",
       ),
       Flag.string("machine-type", "The type of machine to use for nodes (default e2-medium)."),
+      Flag.boolean(
+        "enable-network-policy",
+        "Enable simulated NetworkPolicy enforcement on the new Standard cluster.",
+      ),
       ReleaseChannelFlag,
       Flag.string(
         "service-account",
@@ -345,6 +350,10 @@ export const ContainerCommands: readonly CommandSpec[] = [
         candidates: Candidates.clusters,
       }),
       Flag.string("machine-type", "The type of machine to use for nodes (default e2-medium)."),
+      Flag.boolean(
+        "enable-network-policy",
+        "Enable simulated NetworkPolicy enforcement on the new Standard cluster.",
+      ),
       Flag.integer(
         "num-nodes",
         "The number of nodes in the node pool in each of the cluster's zones (default 3).",

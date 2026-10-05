@@ -115,6 +115,7 @@ export const EmptyCollections = {
   kubeStorageClasses: [],
   kubePvcs: [],
   kubePvs: [],
+  kubeNetworkPolicies: [],
   kubeFiles: {},
   functions: [],
   appEngineApps: [],
