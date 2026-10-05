@@ -23,11 +23,11 @@
   試行錯誤できる。エラーの下に `gcloud-sim: hint:` で「その権限を含むロール」を出す
 - **リソースツリー**: 組織 → フォルダ → プロジェクト → リソース。クリックでプロパティと
   IAM の継承元、ダブルクリックで `describe` を入力行に挿入
-- **ミッション**: 56 本（ACE の 5 ドメインからカテゴリ→ミッション→手順を選択）。状態に対するアサーションでクリア判定する
+- **ミッション**: 58 本（ACE の 5 ドメインからカテゴリ→ミッション→手順を選択）。状態に対するアサーションでクリア判定する
   （コマンドの文字列一致ではない）
 - **保存**: コマンドごとに localStorage へ自動保存。設定から JSON の export / import / リセット
 - **kubectl**: `gcloud container clusters get-credentials` したクラスタに対して、Deployment / Service / Pod を
-  `apply` / `expose` / `scale` / `autoscale` / `rollout` などで動かせる（ConfigMap/Secret・単一コンテナのDeployment/Service・CPU HPAは編集可能なYAML/JSONに対応）。HTTP readinessProbeと応答コードによる明示評価で、未準備PodをServiceの接続先から外す練習もできる。HTTP livenessProbeでは同じPod内のコンテナ再起動とreadinessの再評価も確認できる。HTTP startupProbeでは起動確認が成功するまでreadiness/livenessを待機させる
+  `apply` / `expose` / `scale` / `autoscale` / `rollout` などで動かせる（ConfigMap/Secret・単一コンテナのDeployment/Service・CPU HPAは編集可能なYAML/JSONに対応）。ConfigMap/Secretのファイルマウント・items/optional/subPathと、cat/base64による内容確認にも対応。HTTP readinessProbeと応答コードによる明示評価で、未準備PodをServiceの接続先から外す練習もできる。HTTP livenessProbeでは同じPod内のコンテナ再起動とreadinessの再評価も確認できる。HTTP startupProbeでは起動確認が成功するまでreadiness/livenessを待機させる
 - **Console 風 GUI**（Phase 2）: ヘッダーの CLI / Console で切り替える。IAM・サービスアカウント・ロール・予算・
   VM・ファイアウォール・サブネット・バケット・クラスタ・Cloud Run の画面を持ち、作成フォームには
   「同等のコマンドライン」が出る。送信したものはターミナルにも `# Console:` 付きで残る
@@ -288,7 +288,7 @@ PR を出すと、そのブランチのサイトが
 static export をビルドして主要画面を撮り、main の画像（baseline）と画素で突き合わせる。
 
 撮る画面は [`visual-scenarios.mjs`](.github/scripts/visual-scenarios.mjs) に並べてある。
-今はトップ・設定・Console・ミッション・GKE の 20 画面を **PC 幅（1440px）とスマホ幅（430px）**の 2 通りで撮る。
+今はトップ・設定・Console・ミッション・GKE の 46 画面を **PC 幅（1440px）とスマホ幅（430px）**の 2 通りで撮る。
 画面を足したいときはこのファイルに 1 つ足すだけでよく、workflow は触らない。
 手順はボタンの文字で押す（`click`）、待つ（`wait`）、端末に 1 行打つ（`type`）、入力欄に入れる（`fill`）の 4 つ。画面に固有の操作が要るときは
 [`visual-regression.mjs`](.github/scripts/visual-regression.mjs) の `applyStep` に足す。

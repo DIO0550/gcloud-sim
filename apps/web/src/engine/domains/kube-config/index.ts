@@ -1,5 +1,6 @@
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeNamespace } from "@/engine/domains/kube-namespace";
+import { KubeVolumes } from "@/engine/domains/kube-volume";
 import { type KubeDeployment, KubeName, KubePod } from "@/engine/domains/kubernetes";
 import type { JsonRecord } from "@/types/Json";
 import { Result } from "@/utils/Result";
@@ -170,6 +171,8 @@ export const KubeRuntime = {
     d: KubeDeployment,
     podName: string,
   ): Result<PodEnvironment, string> {
+    const mounted = KubeVolumes.resolve(configs, d, podName);
+    if (!Result.isOk(mounted)) return Result.err(mounted.error);
     const cached = d.podEnvironments.find((p) => p.podName === podName);
     if (cached) return Result.ok(cached);
     const values: { name: string; value: string }[] = [];
@@ -200,7 +203,16 @@ export const KubeRuntime = {
       const env = KubeRuntime.environment(configs, d, p.name);
       return Result.isOk(env) ? [env.value] : [];
     });
-    return { ...d, podEnvironments };
+    const podFiles = KubePod.fromDeployment(d).flatMap((p) => {
+      const files = KubeVolumes.resolve(configs, d, p.name);
+      return d.volumes.length > 0 &&
+        Result.isOk(files) &&
+        (podEnvironments.some((e) => e.podName === p.name) ||
+          d.podFiles.some((saved) => saved.podName === p.name))
+        ? [files.value]
+        : [];
+    });
+    return { ...d, podEnvironments, podFiles };
   },
   error(configs: readonly KubeConfig[], d: KubeDeployment, podName: string): string {
     const env = KubeRuntime.environment(configs, d, podName);

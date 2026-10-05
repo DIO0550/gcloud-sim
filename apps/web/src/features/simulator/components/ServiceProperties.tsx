@@ -206,6 +206,29 @@ export const KubeDeploymentProperties = ({
           </p>
         </>
       )}
+      {d.volumes.length > 0 && (
+        <>
+          <Section
+            title="設定ファイルのマウント"
+            rows={d.volumeMounts.map((m) => {
+              const v = d.volumes.find((v) => v.name === m.name);
+              return {
+                label: m.mountPath,
+                value: `${v?.source}/${v?.resource}${m.subPath ? ` subPath:${m.subPath}（Pod作成時の内容）` : "（設定更新を反映）"}${v?.optional ? " optional" : ""}`,
+              };
+            })}
+          />
+          <Section
+            title="マウント済みファイル（サイズ）"
+            rows={d.podFiles.flatMap((p) =>
+              p.files.map((f) => ({
+                label: `${p.podName}: ${f.path}`,
+                value: `${KubeBinary.size(f.value)} bytes`,
+              })),
+            )}
+          />
+        </>
+      )}
       <Section
         title="更新履歴（最大11件）"
         rows={d.revisions.map((r) => ({

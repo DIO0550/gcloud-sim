@@ -77,7 +77,7 @@ kubectl exec deployment/web -- printenv APP_MODE
 
 参照先やキーが欠けた新しいPodはCreateContainerConfigErrorとなり、get/describeに原因を表示します。既存の起動済みPodは動き続けるため、READYが1/2の状態も再現します。未起動Podのlogs/execとDeploymentのrollout statusは失敗します。足りないキーを作ると待機Podが即座に値を取得して起動します。再試行時間は再現しません。
 
-`kubectl exec POD -- printenv [KEY]`または`env`は、この教材で注入した変数だけを表示します。`deployment/NAME`なら先頭Podです。シェルやコンテナ内の任意プログラムは実行しません。イメージ内蔵のENV、変数展開、volume、envFromの動的な全キー取込、複数コンテナは未対応です。環境取得は仮想Pod作成時に行い、イメージpullのタイミング・ノードキャッシュは従来の簡略モデルのままです。
+`kubectl exec POD -- printenv [KEY]`または`env`は、この教材で注入した変数だけを表示します。`deployment/NAME`なら先頭Podです。シェルやコンテナ内の任意プログラムは実行しません。イメージ内蔵のENV、変数展開、envFromの動的な全キー取込、複数コンテナは未対応です。環境取得は仮想Pod作成時に行い、イメージpullのタイミング・ノードキャッシュは従来の簡略モデルのままです。
 
 「ConfigMapとSecretから環境変数を渡す」「ConfigMapの変更をPodの再起動で反映する」の2ミッションを追加し、GKEの追加ミッションは計4件です。
 
@@ -97,7 +97,7 @@ kubectl rollout restart deployment/web
 kubectl exec deployment/web -- printenv APP_MODE
 ```
 
-`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全56件、GKE拡充分は19件です。
+`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全58件、GKE拡充分は21件です。
 
 `sim files write FILE --content='…'`で独自のYAML/JSONを書き、`read`で読み、`replace --search=… --replacement=…`で1か所を編集できます。ファイルは `.yaml` / `.yml` / `.json` の相対パスで、32ファイル・1ファイル64,000文字まで。Terraformとは別に保存し、Terraformのplanに影響しません。`sim files delete FILE`はファイルだけを消します。クラスタ上の設定を消す操作は `kubectl delete -f FILE` です。教材の上書きは `sim files load kubernetes-config --force` で明示します。
 
@@ -107,7 +107,7 @@ kubectl exec deployment/web -- printenv APP_MODE
 
 権限はConfigMap/Secretごとに判定します。applyはgetと、新規ならcreate・既存ならupdateを要求します（同じ値への再適用にもupdateを要求する簡略モデル）。create/deleteは対象のcreate/deleteだけで、Deployment権限は不要です。複数リソースは全体を検証し、途中の権限不足・不正なmanifest・重複・削除対象の欠落があれば一切変更しません。実kubectlの複数リソース処理は途中まで反映されることがあるため、この原子的な動作は教材上の簡略化です。
 
-ConfigMap/Secretのannotations、volume、対応範囲外のDeployment/Service manifest、List、ディレクトリ/URL/stdin入力、server-side apply、patch/edit、YAML alias/明示タグは未対応として拒否します。認識できないフィールドもエラーにし、無視して成功扱いにはしません。`deployment.yaml` / `service.yaml` は仮想ファイルがない場合のみ従来の固定教材として利用できます。同名ファイルがあれば必ず内容を解釈し、壊れていても固定教材へ切り替えません。
+ConfigMap/Secretのannotations、対応範囲外のDeployment/Service manifest、List、ディレクトリ/URL/stdin入力、server-side apply、patch/edit、YAML alias/明示タグは未対応として拒否します。認識できないフィールドもエラーにし、無視して成功扱いにはしません。`deployment.yaml` / `service.yaml` は仮想ファイルがない場合のみ従来の固定教材として利用できます。同名ファイルがあれば必ず内容を解釈し、壊れていても固定教材へ切り替えません。
 
 ## Deployment・Serviceのファイル適用と接続先
 
@@ -133,7 +133,7 @@ kubectl rollout history deployment/manifest-web
 | 対象 | 対応するフィールド・動作 |
 | --- | --- |
 | Deployment | `apps/v1`、metadata.name、metadata.namespaceを指定可能（省略はコマンドのnamespace）、replicasは0〜1000。metadata.labelsとtemplate.metadata.labelsは独立した文字列map。非空のselector.matchLabelsはPodラベルの部分集合で、作成後は変更不可 |
-| コンテナ | 1個のみ、nameはDeployment名と同じ。image・env・resources（CPU/メモリのrequests/limits）を指定。envは文字列value（省略なら空文字）またはconfigMapKeyRef/secretKeyRef。HTTP readinessProbe/livenessProbe/startupProbeにも限定対応。optional・envFrom・ports・volume等は未対応 |
+| コンテナ | 1個のみ、nameはDeployment名と同じ。image・env・resources（CPU/メモリのrequests/limits）を指定。envは文字列value（省略なら空文字）またはconfigMapKeyRef/secretKeyRef。HTTP readinessProbe/livenessProbe/startupProbeにも限定対応。envのoptional・envFrom・ports等は未対応。ConfigMap/Secretのvolumes・volumeMountsは後述の範囲で対応 |
 | Service | `v1`、ClusterIP/NodePort/LoadBalancer、selectorは非空の文字列map。metadata.labelsは省略可能。TCPの1ポート、port/targetPortは1〜65535の整数。省略時のtypeはClusterIP、targetPortはportと同じ |
 | 更新 | Deploymentのimage・env・Podラベル・resources・replicasを一度に変更してもtemplate revisionは1つだけ進む。replicasだけならrevisionと既存Podを保持。env省略は空、replicas省略は新規なら1・更新なら現在の値を保持 |
 | Service再適用 | selectorとport/targetPortの変更はClusterIP・外部IP・作成日時を保持。typeの変更はこの教材では拒否し、明示的な削除・再作成が必要 |
@@ -611,7 +611,7 @@ binaryData:
 - `immutable: true`はテキストとバイナリの両方を保護します。バイト列・キーの追加/削除を拒否し、同じバイト列の再apply・ラベル変更は可能です。変更するには削除・再作成します。
 - `configMapKeyRef`と`set env --from=configmap/NAME`は`data`だけを読みます。`binaryData`のキーは、内容がUTF-8や空のバイト列でも環境変数に使えません。キー参照した新しいPodはCreateContainerConfigErrorとなります。`set env --keys`で選ぶとキー不足として拒否します。
 - 既存の起動済みPodの環境変数は保持します。テキストキーをバイナリへ移しても既存Podの値は変えず、新しいPodだけが起動を待ちます。テキストキーを戻すと待機Podが読み直し、既存Podの値はそのままです。
-- API・ConfigMapの操作権限、プロジェクト/クラスタ/namespaceの分離、ファイル全体の原子的適用は既存の規則を使います。ファイル入力・表示・環境変数の区別までの教材で、volumeマウント・ファイル実行・実バイト通信・`--from-file`・patch/editは未対応です。
+- API・ConfigMapの操作権限、プロジェクト/クラスタ/namespaceの分離、ファイル全体の原子的適用は既存の規則を使います。ファイル入力・表示・環境変数の区別までの教材で、ファイル実行・実バイト通信・`--from-file`・patch/editは未対応です。
 
 ```sh
 gcloud services enable container.googleapis.com
@@ -635,3 +635,59 @@ kubectl exec deployment/asset-web -- printenv MODE
 Snapshot v22でbinaryDataとそのapply管理キーを保存します。v1〜v21から空のmap/管理キーを補完し、v21のimmutable・ラベル・テキスト管理キー、namespace・コンテキスト・Pod内の値・probe・HPA・履歴・ファイルを保持します。現行Snapshotの不正base64・キー重複・SecretのbinaryDataは拒否します。
 
 参照: [ConfigMap APIのdata・binaryData](https://kubernetes.io/docs/reference/kubernetes-api/core/config-map-v1/)、[ConfigMapのサイズ・immutable](https://kubernetes.io/docs/concepts/configuration/configmap/)。
+
+
+## ConfigMap・Secretをファイルへマウントする
+
+```sh
+gcloud services enable container.googleapis.com
+gcloud container clusters create-auto volume-gke --region=us-central1
+sim files load kubernetes-volumes
+kubectl apply -f volume-settings.yaml
+kubectl apply -f volume-credentials.yaml
+kubectl apply -f volume-web.yaml
+kubectl get pods
+# ContainerCreating: FailedMount — itemsのmissing.confが参照先にない
+sim files replace volume-web.yaml --search='key: missing.conf' --replacement='key: app.conf'
+kubectl apply -f volume-web.yaml
+kubectl rollout status deployment/volume-web
+kubectl exec deployment/volume-web -- cat /etc/app/app.conf
+kubectl exec deployment/volume-web -- base64 /etc/app/assets/asset.bin
+kubectl exec deployment/volume-web -- cat /etc/credentials/TOKEN
+```
+
+Pod templateの`spec.volumes`に`configMap.name`または`secret.secretName`を指定し、コンテナの`volumeMounts`で同じvolume名を参照します。省略時は全キーを同名ファイルへ投影し、`items: [{key, path}]`なら選択したキーだけを相対パスへ配置します。ConfigMapのdataとbinaryData、SecretのUTF-8 dataに対応します。`optional: true`では欠落リソース/キーを空として扱い、通常マウントは参照先を後から作ると反映します。subPathに選んだファイルがなければ起動できません。`readOnly`はbooleanとして保存し、設定volumeの内容は本教材では常に読み取り専用です。
+
+volumeとmountは各20個まで、itemsは100件まで。volume名は重複不可、パスは空・`.`・`..`・制御文字・バックスラッシュを拒否します。mountPathは絶対パス、items.pathとsubPathは相対パスです。重複/包含関係のitemsパスとmountPathは教材の単純化のため拒否します。subPathはファイル1個に限定し、ディレクトリsubPath・subPathExpr・defaultMode/items.mode・projected/emptyDir/PVC等は未対応として拒否します。
+
+必要な参照先がない場合もDeploymentのapplyは成功しますが、Podは`ContainerCreating`となりFailedMountを表示します。get/describe、rollout status、logs/exec、Service接続先、HPAの準備状態判定に同じ待機状態を反映します。参照先を修復すると待機Podが起動します。開始前のPodには環境変数の成功キャッシュを保存しません。起動済みPodの投影更新で必要なリソース/キーが失われた場合は前回の投影全体を保持し、新しいPodだけを待機させる教材モデルです。
+
+`exec -- cat PATH`はマウント済みのUTF-8ファイルを読み、`base64 PATH`はバイト列をbase64で表示します。非UTF-8のcatは説明付きで拒否します。Pod名・pod/NAME・deployment/NAMEに対応し、Deploymentでは先頭Podを選びます。実シェル、任意プログラム、コンテナイメージ内やホストのファイルへアクセスしません。execには従来どおりcontainer.pods.execとContainer APIが必要です。Secretを明示的にcatした場合は値が出ますが、プロパティではファイルのパスとバイト数だけを表示します。
+
+## 通常マウント・subPath・環境変数の更新差
+
+```sh
+gcloud container clusters create-auto reload-gke --region=us-central1
+sim files load kubernetes-volume-refresh
+kubectl apply -f reload-settings.yaml
+kubectl apply -f reload-web.yaml
+sim files replace reload-settings.yaml --search='MODE: staging' --replacement='MODE: production'
+kubectl apply -f reload-settings.yaml
+kubectl exec deployment/reload-web -- cat /etc/config/MODE
+# production（通常マウント）
+kubectl exec deployment/reload-web -- cat /etc/mode.conf
+# staging（subPath）
+kubectl exec deployment/reload-web -- printenv MODE
+# staging（環境変数）
+kubectl rollout restart deployment/reload-web
+kubectl rollout status deployment/reload-web
+# 再作成後は3つともproduction
+```
+
+実環境では通常マウントの更新に遅延がありますが、この教材では設定変更を確定する操作の時点で即時投影し、タイマーやkubeletキャッシュを再現しません。subPathの内容はPod単位で保存し、設定変更でも保持します。1つのPod削除ではそのPodだけ新しい内容になり、scaleで追加したPodも現在値を取得します。コンテナのliveness/startup再起動では同じPodのsubPathを保持します。volume/mountのtemplate変更は1つのrevisionを作り、再applyは冪等、undoは元のマウント設定を復元して現在の参照先から新しいPodを作ります。
+
+ミッション「設定ファイルのマウント障害を直す」と「マウントと環境変数の更新差を確認する」を追加しました。ファイルとクラスタのマウント設定、nginx:1・2レプリカ・全Podの準備と内容を確認します。更新差のミッションでは参照環境変数とrestart履歴も必要です。編集だけ、設定更新だけ、1つのPodだけの再作成では達成しません。
+
+Snapshot v23はvolume/mountを現在templateと履歴へ保存し、Podごとの投影バイト列をbase64で保存します。通常マウントと古いsubPathが異なる状態も保持します。v1〜v22は空のvolume/mount/Podファイルへ補完し、従来の環境変数・immutable・binaryData・ラベル・namespace・コンテキスト・probe/HPA・履歴・仮想ファイルを保持します。不正なパス・base64・他Podのキャッシュや現在templateと履歴の不一致は拒否します。
+
+仕様の参照元: [ConfigMaps](https://kubernetes.io/docs/concepts/configuration/configmap/)、[Secrets](https://kubernetes.io/docs/concepts/configuration/secret/)、[Volumes](https://kubernetes.io/docs/concepts/storage/volumes/)。

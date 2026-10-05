@@ -371,7 +371,10 @@ test.each([
       { name: "web", image: "nginx:1", envFrom: [{ configMapRef: { name: "settings" } }] },
     ],
   },
-  { containers: [{ name: "web", image: "nginx:1" }], volumes: [] },
+  {
+    containers: [{ name: "web", image: "nginx:1" }],
+    volumes: [{ name: "disk", persistentVolumeClaim: { claimName: "data" } }],
+  },
 ])("unsupported Pod template fields never silently disappear: %#", (spec) => {
   const d = deployment();
   const manifest = { ...d, spec: { ...d.spec, template: { ...d.spec.template, spec } } };

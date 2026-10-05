@@ -27,6 +27,7 @@ import { KubeReadiness } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
 import { KubeStartup } from "@/engine/domains/kube-startup";
+import { KubeVolumes } from "@/engine/domains/kube-volume";
 import {
   KubeDeployment,
   KubePod,
@@ -237,11 +238,13 @@ const podRow = (
 ): JsonRecord => ({
   ...KubePod.toRecord(pod),
   spec: {
+    ...KubeVolumes.fields(deployment.volumes),
     containers: [
       {
         name: deployment.name,
         image: pod.image,
         env: deployment.env.map(KubeEnv.toRecord),
+        ...KubeVolumes.mountFields(deployment.volumeMounts),
         ...KubeResources.toContainerFields(deployment.resources),
         ...KubeReadiness.fields(deployment.readinessProbe),
         ...KubeLiveness.fields(deployment.livenessProbe),
@@ -452,11 +455,13 @@ const collect = (
               template: {
                 metadata: { labels: r.podLabels },
                 spec: {
+                  ...KubeVolumes.fields(r.volumes),
                   containers: [
                     {
                       name: d.name,
                       image: r.image,
                       env: r.env.map(KubeEnv.toRecord),
+                      ...KubeVolumes.mountFields(r.volumeMounts),
                       ...KubeResources.toContainerFields(r.resources),
                       ...KubeReadiness.fields(r.readinessProbe),
                       ...KubeLiveness.fields(r.livenessProbe),
@@ -1157,11 +1162,13 @@ const rollout = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
               kind: "PodTemplate",
               metadata: { labels: record.podLabels },
               spec: {
+                ...KubeVolumes.fields(record.volumes),
                 containers: [
                   {
                     name: d.name,
                     image: record.image,
                     env: record.env.map(KubeEnv.toRecord),
+                    ...KubeVolumes.mountFields(record.volumeMounts),
                     ...KubeResources.toContainerFields(record.resources),
                     ...KubeReadiness.fields(record.readinessProbe),
                     ...KubeLiveness.fields(record.livenessProbe),
@@ -1429,9 +1436,16 @@ const execEnvironment = (ctx: KubectlContext, args: ParsedArgs): CommandResult =
   const cluster = currentCluster(ctx);
   if (!Result.isOk(cluster)) return cluster;
   const [resource, command, key, ...extra] = args.positionals;
-  if ((command !== "printenv" && command !== "env") || extra.length || (command === "env" && key))
+  if (
+    !["printenv", "env", "cat", "base64"].includes(command ?? "") ||
+    extra.length ||
+    (command === "env" && key) ||
+    ((command === "cat" || command === "base64") && !key)
+  )
     return Result.err(
-      usage("Only exec POD -- printenv [KEY] or env is simulated; no shell is executed."),
+      usage(
+        "Only exec POD -- printenv [KEY], env, cat PATH or base64 PATH is simulated; no shell is executed.",
+      ),
     );
   const d = World.kubeDeploymentsOf(ctx.world, cluster.value, ctx.namespace).find(
     (d) =>
@@ -1445,6 +1459,16 @@ const execEnvironment = (ctx: KubectlContext, args: ParsedArgs): CommandResult =
   if (!name) return Result.err(usage("Deployment has no Pods."));
   const error = podError(ctx.world, cluster.value, d, name);
   if (error) return Result.err(CommandFailure.invalidState(`Container is waiting: ${error}`));
+  if (command === "cat" || command === "base64") {
+    const file = d.podFiles.find((p) => p.podName === name)?.files.find((f) => f.path === key);
+    if (!file) return Result.err(CommandFailure.notFoundWith(`Mounted file ${key} not found.`));
+    const content = command === "base64" ? Result.ok(file.value) : KubeVolumes.content(file);
+    if (!Result.isOk(content)) return Result.err(usage(content.error));
+    return Result.ok({
+      world: ctx.world,
+      output: CommandOutput.messages(OutputMessage.plain(content.value)),
+    });
+  }
   const env = KubeRuntime.environment(ctx.world.kubeConfigs, d, name);
   if (!Result.isOk(env)) return Result.err(CommandFailure.invalidState(env.error));
   if (key && !env.value.values.some((e) => e.name === key))
@@ -1604,10 +1628,11 @@ export const KubectlCommands: readonly CommandSpec[] = [
   }),
   kubectl({
     verb: "exec",
-    summary: "Inspect simulated Pod environment with printenv or env (no shell execution).",
+    summary:
+      "Inspect Pod env with printenv/env and mounted files with cat/base64 (no shell execution).",
     positionals: [
       Positional.required("POD", "Pod name or deployment/NAME."),
-      Positional.variadic("COMMAND", "-- printenv [KEY] or -- env."),
+      Positional.variadic("COMMAND", "-- printenv [KEY], -- env, -- cat PATH or -- base64 PATH."),
     ],
     flags: [],
     permission: "container.pods.exec",
