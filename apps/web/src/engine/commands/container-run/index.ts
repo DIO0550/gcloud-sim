@@ -19,15 +19,26 @@ import {
   CloudRunService,
   GkeCluster,
   type GkeClusterSeed,
+  NextMasterVersion,
   NodePool,
 } from "@/engine/domains/managed-services";
 import { Principal } from "@/engine/domains/principal";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
+import { autoscalingArgs, updatePool } from "./nodepools";
 
 const ContainerApi = "container.googleapis.com" as const;
 const RunApi = "run.googleapis.com" as const;
+
+const clusterRecord = (world: World, cluster: GkeCluster) => ({
+  ...GkeCluster.toRecord(cluster),
+  nodeVersion:
+    World.nodePoolsOf(world, cluster)
+      .map((p) => p.version)
+      .filter((v, i, all) => all.indexOf(v) === i)
+      .join(",") || "-",
+});
 
 const ClusterColumns = [
   Column.create("NAME", "name"),
@@ -35,7 +46,7 @@ const ClusterColumns = [
   Column.create("MASTER_VERSION", "currentMasterVersion"),
   Column.create("MASTER_IP", "endpoint"),
   Column.create("MACHINE_TYPE", "nodeConfig.machineType"),
-  Column.create("NODE_VERSION", "currentMasterVersion"),
+  Column.create("NODE_VERSION", "nodeVersion"),
   Column.create("NUM_NODES", "currentNodeCount"),
   Column.create("STATUS", "status"),
 ];
@@ -45,6 +56,11 @@ const resolveLocation = (
   ctx: ProjectContext,
   args: ParsedArgs,
 ): Result<Zone | Region, CommandFailure> => {
+  if (
+    Option.isSome(ParsedArgs.string(args, "region")) &&
+    Option.isSome(ParsedArgs.string(args, "zone"))
+  )
+    return Result.err(CommandFailure.invalidState("Specify either --zone or --region."));
   const region = ParsedArgs.string(args, "region");
   return Option.isSome(region)
     ? CommandContext.resolveRegion(ctx, region)
@@ -108,7 +124,7 @@ const createCluster = (
         world,
         GcloudConfig.set(world.config, "container/cluster", created.name),
       ),
-      output: CommandOutput.table([GkeCluster.toRecord(created)], ClusterColumns, [
+      output: CommandOutput.table([clusterRecord(world, created)], ClusterColumns, [
         OutputMessage.plain(`Creating cluster ${created.name} in ${created.location}... done.`),
         OutputMessage.plain(`Created [${GkeCluster.selfLink(created)}].`),
         OutputMessage.plain(`kubeconfig entry generated for ${created.name}.`),
@@ -134,6 +150,53 @@ const clusterArg = (ctx: ProjectContext, args: ParsedArgs): Result<GkeCluster, C
 };
 
 const LocationFlags = [CommonFlags.zone, CommonFlags.region];
+
+const PoolAutoscalingFlags = [
+  Flag.boolean("enable-autoscaling", "Save simulated node pool autoscaling settings."),
+  Flag.integer("min-nodes", "Minimum nodes per zone (0..1000; requires --enable-autoscaling)."),
+  Flag.integer("max-nodes", "Maximum nodes per zone (1..1000; requires --enable-autoscaling)."),
+];
+const PoolManagementFlags = [
+  Flag.boolean(
+    "enable-autorepair",
+    "Save node auto-repair setting (no periodic repair is simulated).",
+  ),
+  Flag.boolean("enable-autoupgrade", "Save node auto-upgrade setting (use upgrade explicitly)."),
+];
+const PoolClusterFlags = [
+  ...LocationFlags,
+  Flag.string("cluster", "The cluster the node pool belongs to.", {
+    required: true,
+    candidates: Candidates.clusters,
+  }),
+];
+const poolClusterArg = (
+  ctx: ProjectContext,
+  args: ParsedArgs,
+): Result<GkeCluster, CommandFailure> =>
+  Result.flatMap(
+    clusterArg(ctx, { ...args, positionals: [ParsedArgs.requiredString(args, "cluster")] }),
+    (cluster) =>
+      cluster.autopilot
+        ? Result.err(
+            CommandFailure.invalidState(
+              `Cluster ${cluster.name} is an Autopilot cluster; node pools are managed by GKE.`,
+            ),
+          )
+        : Result.ok(cluster),
+  );
+const poolArg = (
+  ctx: ProjectContext,
+  cluster: GkeCluster,
+  name: string,
+): Result<NodePool, CommandFailure> =>
+  Option.toResult(
+    Option.fromNullable(World.nodePoolsOf(ctx.world, cluster).find((p) => p.name === name)),
+    () =>
+      CommandFailure.notFoundWith(
+        `ResponseError: code=404, message=Not found: projects/${ctx.project.projectId}/locations/${cluster.location}/clusters/${cluster.name}/nodePools/${name}.`,
+      ),
+  );
 
 const ReleaseChannelFlag = Flag.enum(
   "release-channel",
@@ -196,7 +259,9 @@ export const ContainerCommands: readonly CommandSpec[] = [
       Result.ok({
         world: ctx.world,
         output: CommandOutput.table(
-          World.clustersOf(ctx.world, ctx.project.projectId).map(GkeCluster.toRecord),
+          World.clustersOf(ctx.world, ctx.project.projectId).map((c) =>
+            clusterRecord(ctx.world, c),
+          ),
           ClusterColumns,
         ),
       }),
@@ -278,10 +343,9 @@ export const ContainerCommands: readonly CommandSpec[] = [
     flags: [
       ...LocationFlags,
       Flag.integer("num-nodes", "Target number of nodes in the cluster.", { required: true }),
-      Flag.string(
-        "node-pool",
-        "The node pool to resize (accepted; the default pool is simulated).",
-      ),
+      Flag.string("node-pool", "The node pool to resize (default default-pool).", {
+        candidates: Candidates.nodePools,
+      }),
     ],
     destructive: true,
     permission: "container.clusters.update",
@@ -289,20 +353,31 @@ export const ContainerCommands: readonly CommandSpec[] = [
     run: (ctx, args) => {
       const cluster = clusterArg(ctx, args);
       if (!Result.isOk(cluster)) return cluster;
-      const resized = Result.mapErr(
-        GkeCluster.withNodeCount(
-          cluster.value,
-          Option.unwrapOr(ParsedArgs.integer(args, "num-nodes"), 0),
-        ),
-        CommandFailure.invalidState,
+      if (cluster.value.autopilot)
+        return Result.err(
+          CommandFailure.invalidState(
+            `Cluster ${cluster.value.name} is an Autopilot cluster; node count is managed by GKE and cannot be resized.`,
+          ),
+        );
+      const pool = poolArg(
+        ctx,
+        cluster.value,
+        Option.unwrapOr(ParsedArgs.string(args, "node-pool"), "default-pool"),
       );
-      return Result.map(resized, (next) => ({
-        world: World.replaceCluster(ctx.world, next),
-        output: CommandOutput.messages(
-          OutputMessage.plain(`Resizing ${next.name}...done.`),
-          OutputMessage.plain(`Updated [${GkeCluster.selfLink(next)}].`),
+      if (!Result.isOk(pool)) return pool;
+      return Result.map(
+        Result.mapErr(
+          NodePool.resize(pool.value, Option.unwrapOr(ParsedArgs.integer(args, "num-nodes"), 0)),
+          CommandFailure.invalidState,
         ),
-      }));
+        (next) => ({
+          world: World.replaceNodePool(ctx.world, next),
+          output: CommandOutput.messages(
+            OutputMessage.plain(`Resizing node pool ${next.name}...done.`),
+            OutputMessage.plain(`Node count: ${next.nodeCount} (per zone; simulated).`),
+          ),
+        }),
+      );
     },
   }),
   projectCommand({
@@ -314,10 +389,10 @@ export const ContainerCommands: readonly CommandSpec[] = [
     flags: [
       ...LocationFlags,
       Flag.boolean("master", "Upgrade the cluster's master to the latest supported version."),
-      Flag.string(
-        "cluster-version",
-        "The Kubernetes release version to upgrade to (accepted; the next version is used).",
-      ),
+      Flag.string("node-pool", "Upgrade only this Standard node pool.", {
+        candidates: Candidates.nodePools,
+      }),
+      Flag.string("cluster-version", "The supported Kubernetes release version to upgrade to."),
     ],
     destructive: true,
     permission: "container.clusters.update",
@@ -325,18 +400,54 @@ export const ContainerCommands: readonly CommandSpec[] = [
     run: (ctx, args) => {
       const cluster = clusterArg(ctx, args);
       if (!Result.isOk(cluster)) return cluster;
-      const upgraded = Result.mapErr(
-        GkeCluster.upgraded(cluster.value),
-        CommandFailure.invalidState,
-      );
-      return Result.map(upgraded, (next) => ({
-        world: World.replaceCluster(ctx.world, next),
-        output: CommandOutput.messages(
-          OutputMessage.plain(`Upgrading ${next.name}...done.`),
-          OutputMessage.plain(`Updated [${GkeCluster.selfLink(next)}].`),
-          OutputMessage.plain(`Master version: ${next.currentMasterVersion}`),
+      const master = ParsedArgs.boolean(args, "master");
+      const poolName = ParsedArgs.string(args, "node-pool");
+      const target = ParsedArgs.string(args, "cluster-version");
+      if (master && Option.isSome(poolName))
+        return Result.err(
+          CommandFailure.invalidState("--master and --node-pool cannot be combined."),
+        );
+      if (master) {
+        if (Option.isSome(target) && target.value !== NextMasterVersion)
+          return Result.err(
+            CommandFailure.invalidState(`Supported master upgrade version: ${NextMasterVersion}.`),
+          );
+        return Result.map(
+          Result.mapErr(GkeCluster.upgraded(cluster.value), CommandFailure.invalidState),
+          (next) => ({
+            world: World.replaceCluster(ctx.world, next),
+            output: CommandOutput.messages(
+              OutputMessage.plain(`Upgrading ${next.name} control plane...done.`),
+              OutputMessage.plain(`Master version: ${next.currentMasterVersion}`),
+            ),
+          }),
+        );
+      }
+      if (!Option.isSome(poolName))
+        return Result.err(
+          CommandFailure.invalidState("Specify --master or an explicit --node-pool on gcloud-sim."),
+        );
+      if (cluster.value.autopilot)
+        return Result.err(CommandFailure.invalidState("Autopilot node pools are managed by GKE."));
+      const pool = poolArg(ctx, cluster.value, poolName.value);
+      if (!Result.isOk(pool)) return pool;
+      return Result.map(
+        Result.mapErr(
+          NodePool.upgrade(
+            pool.value,
+            cluster.value.currentMasterVersion,
+            Option.unwrapOr(target, cluster.value.currentMasterVersion),
+          ),
+          CommandFailure.invalidState,
         ),
-      }));
+        (next) => ({
+          world: World.replaceNodePool(ctx.world, next),
+          output: CommandOutput.messages(
+            OutputMessage.plain(`Upgrading node pool ${next.name}...done.`),
+            OutputMessage.plain(`Node version: ${next.version}`),
+          ),
+        }),
+      );
     },
   }),
   projectCommand({
@@ -350,10 +461,8 @@ export const ContainerCommands: readonly CommandSpec[] = [
         candidates: Candidates.clusters,
       }),
       Flag.string("machine-type", "The type of machine to use for nodes (default e2-medium)."),
-      Flag.boolean(
-        "enable-network-policy",
-        "Enable simulated NetworkPolicy enforcement on the new Standard cluster.",
-      ),
+      ...PoolAutoscalingFlags,
+      ...PoolManagementFlags,
       Flag.integer(
         "num-nodes",
         "The number of nodes in the node pool in each of the cluster's zones (default 3).",
@@ -385,6 +494,8 @@ export const ContainerCommands: readonly CommandSpec[] = [
         ),
       );
       if (!Result.isOk(machineType)) return machineType;
+      const autoscaling = autoscalingArgs(args, Option.none);
+      if (!Result.isOk(autoscaling)) return autoscaling;
       const pool = Result.mapErr(
         NodePool.create({
           projectId: ctx.project.projectId,
@@ -394,6 +505,9 @@ export const ContainerCommands: readonly CommandSpec[] = [
           nodeCount: ParsedArgs.integer(args, "num-nodes"),
           diskSizeGb: ParsedArgs.integer(args, "disk-size"),
           version: cluster.value.currentMasterVersion,
+          autoscaling: autoscaling.value,
+          autoRepair: Option.unwrapOr(ParsedArgs.booleanChoice(args, "enable-autorepair"), true),
+          autoUpgrade: Option.unwrapOr(ParsedArgs.booleanChoice(args, "enable-autoupgrade"), true),
         }),
         (m) => CommandFailure.invalidValue("NAME", m),
       );
@@ -433,7 +547,7 @@ export const ContainerCommands: readonly CommandSpec[] = [
       return Result.ok({
         world: ctx.world,
         output: CommandOutput.table(
-          nodePoolsIncludingDefault(ctx.world, cluster.value).map(NodePool.toRecord),
+          World.nodePoolsOf(ctx.world, cluster.value).map(NodePool.toRecord),
           NodePoolColumns,
         ),
       });
@@ -442,7 +556,7 @@ export const ContainerCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "container", "node-pools", "describe"],
     summary: "Describe an existing node pool for a cluster.",
-    positionals: [Positional.required("NAME", "The name of the node pool.")],
+    positionals: [Positional.required("NAME", "The name of the node pool.", Candidates.nodePools)],
     flags: [
       ...LocationFlags,
       Flag.string("cluster", "The cluster the node pool belongs to.", {
@@ -461,7 +575,7 @@ export const ContainerCommands: readonly CommandSpec[] = [
       const name = ParsedArgs.requiredPositional(args, 0);
       const pool = Option.toResult(
         Option.fromNullable(
-          nodePoolsIncludingDefault(ctx.world, cluster.value).find((p) => p.name === name),
+          World.nodePoolsOf(ctx.world, cluster.value).find((p) => p.name === name),
         ),
         () =>
           CommandFailure.notFoundWith(
@@ -474,17 +588,88 @@ export const ContainerCommands: readonly CommandSpec[] = [
       }));
     },
   }),
+  projectCommand({
+    path: ["gcloud", "container", "node-pools", "update"],
+    summary: "Update simulated autoscaling or node management settings.",
+    positionals: [Positional.required("NAME", "The node pool to update.", Candidates.nodePools)],
+    flags: [...PoolClusterFlags, ...PoolAutoscalingFlags, ...PoolManagementFlags],
+    permission: "container.clusters.update",
+    requiredApis: [ContainerApi],
+    run: (ctx, args) =>
+      Result.flatMap(poolClusterArg(ctx, args), (cluster) =>
+        Result.flatMap(poolArg(ctx, cluster, ParsedArgs.requiredPositional(args, 0)), (pool) =>
+          Result.map(updatePool(pool, args), (next) => ({
+            world: World.replaceNodePool(ctx.world, next),
+            output: CommandOutput.yaml(NodePool.toRecord(next)),
+          })),
+        ),
+      ),
+  }),
+  projectCommand({
+    path: ["gcloud", "container", "node-pools", "delete"],
+    summary: "Delete a Standard node pool (no Pod scheduling is simulated).",
+    positionals: [Positional.required("NAME", "The node pool to delete.", Candidates.nodePools)],
+    flags: PoolClusterFlags,
+    permission: "container.clusters.update",
+    requiredApis: [ContainerApi],
+    destructive: true,
+    run: (ctx, args) =>
+      Result.flatMap(poolClusterArg(ctx, args), (cluster) =>
+        Result.map(poolArg(ctx, cluster, ParsedArgs.requiredPositional(args, 0)), (pool) => ({
+          world: World.withoutNodePool(ctx.world, pool),
+          output: CommandOutput.messages(
+            OutputMessage.plain(`Deleted node pool ${pool.name}. No Pod scheduling is simulated.`),
+          ),
+        })),
+      ),
+  }),
+  projectCommand({
+    path: ["sim", "gke", "autoscale-nodes"],
+    summary: "Evaluate one node pool's bounds using explicit simulated required nodes.",
+    positionals: [Positional.required("NAME", "The node pool to evaluate.", Candidates.nodePools)],
+    flags: [
+      ...PoolClusterFlags,
+      Flag.integer(
+        "required-nodes",
+        "Explicit nodes needed per zone; not derived from CPU usage or Pod placement.",
+        { required: true },
+      ),
+    ],
+    permission: "container.clusters.update",
+    requiredApis: [ContainerApi],
+    run: (ctx, args) =>
+      Result.flatMap(poolClusterArg(ctx, args), (cluster) =>
+        Result.flatMap(poolArg(ctx, cluster, ParsedArgs.requiredPositional(args, 0)), (pool) =>
+          Result.map(
+            Result.mapErr(
+              NodePool.scale(pool, Option.unwrapOr(ParsedArgs.integer(args, "required-nodes"), 0)),
+              CommandFailure.invalidState,
+            ),
+            (next) => ({
+              world: World.replaceNodePool(ctx.world, next),
+              output: CommandOutput.messages(
+                OutputMessage.plain(`Node pool: ${next.name}`),
+                OutputMessage.plain(
+                  `Required nodes: ${Option.unwrapOr(ParsedArgs.integer(args, "required-nodes"), 0)} → ${pool.nodeCount} → ${next.nodeCount} (per zone; bounded).`,
+                ),
+                OutputMessage.hint(
+                  "Explicit simulated demand only. No Pod scheduling, CPU measurement, periodic autoscaling or real nodes.",
+                ),
+              ),
+            }),
+          ),
+        ),
+      ),
+  }),
 ];
-
-/** クラスタのノードプール。Standard は `default-pool` を先頭に持ち、Autopilot は持たない。 */
-const nodePoolsIncludingDefault = (world: World, cluster: GkeCluster): readonly NodePool[] =>
-  cluster.autopilot ? [] : [NodePool.defaultPool(cluster), ...World.nodePoolsOf(world, cluster)];
 
 const NodePoolColumns = [
   Column.create("NAME", "name"),
   Column.create("MACHINE_TYPE", "config.machineType"),
   Column.create("DISK_SIZE_GB", "config.diskSizeGb"),
   Column.create("NODE_VERSION", "version"),
+  Column.create("NUM_NODES", "initialNodeCount"),
+  Column.create("AUTOSCALING", "autoscaling.enabled"),
 ];
 
 const RunColumns = [

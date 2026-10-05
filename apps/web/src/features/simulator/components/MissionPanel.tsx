@@ -44,6 +44,10 @@ const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElem
 
 const assertionLabel = (assertion: Mission["assertions"][number]): string => {
   switch (assertion.kind) {
+    case "gkeNodePoolUpgraded":
+      return "制御プレーンとappsを更新し、既定プールの版・数を保持";
+    case "gkeNodePoolScaled":
+      return "自動修復・更新と上下限を設定し、必要数10の教材評価で上限4を確認";
     case "kubeHpaManifestConfigured":
       return "HPAのファイルと設定を一致させ、再評価で3→6レプリカへ増やす";
     case "kubeHpaScaled":

@@ -140,7 +140,7 @@ test("ミッションを開始して条件を満たすとクリアの通知が�
     },
     { timeout: 4000 },
   );
-  expect(screen.getByRole("tab", { name: "ミッション 1/64" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "ミッション 1/66" })).toBeInTheDocument();
 });
 
 test("ヒントは押すたびに 1 つ開く", async () => {

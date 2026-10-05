@@ -19,8 +19,8 @@ export type GkeCluster = Readonly<{
 }>;
 
 /** 作成時のマスターバージョンと、`upgrade` で上がる先。`--cluster-version` は受けない（DJ-005）。 */
-const MasterVersion = "1.31.5-gke.1068000";
-const NextMasterVersion = "1.32.2-gke.1182000";
+export const MasterVersion = "1.31.5-gke.1068000";
+export const NextMasterVersion = "1.32.2-gke.1182000";
 
 /** `GkeCluster.create` に渡す材料。Autopilot はノード数を持たない。 */
 export type GkeClusterSeed = Readonly<{
@@ -41,6 +41,8 @@ export const GkeCluster = {
    * @returns 作ったクラスタ。名前の形式が悪ければ理由
    */
   create(seed: GkeClusterSeed): Result<GkeCluster, string> {
+    if (seed.nodes.kind === "standard" && !NodePool.validCount(seed.nodes.count))
+      return Result.err("Node count must be an integer from 0 to 1000 on gcloud-sim.");
     return Result.map(ResourceName.parse(seed.name), (name) => ({
       projectId: seed.projectId,
       name,
@@ -53,23 +55,6 @@ export const GkeCluster = {
       currentMasterVersion: MasterVersion,
       nodeServiceAccount: seed.nodeServiceAccount ?? "",
     }));
-  },
-
-  /**
-   * ノード数を替える（`clusters resize`）。Autopilot はノード数を持たないので拒む。
-   *
-   * @param cluster 元
-   * @param nodeCount 新しいノード数（0 以上）
-   * @returns 替えたクラスタ。Autopilot か負なら理由
-   */
-  withNodeCount(cluster: GkeCluster, nodeCount: number): Result<GkeCluster, string> {
-    if (cluster.autopilot) {
-      return Result.err(
-        `Cluster ${cluster.name} is an Autopilot cluster; node count is managed by GKE and cannot be resized.`,
-      );
-    }
-    if (nodeCount < 0) return Result.err(`Invalid value for [--num-nodes]: ${nodeCount}.`);
-    return Result.ok({ ...cluster, nodeCount });
   },
 
   /**
@@ -161,6 +146,17 @@ export type NodePool = Readonly<{
   nodeCount: number;
   diskSizeGb: number;
   version: string;
+  autoRepair: boolean;
+  autoUpgrade: boolean;
+  autoscaling: Option<NodePoolAutoscaling>;
+  lastScale: Option<NodePoolScale>;
+}>;
+
+export type NodePoolAutoscaling = Readonly<{ minNodes: number; maxNodes: number }>;
+export type NodePoolScale = Readonly<{
+  requiredNodes: number;
+  beforeNodes: number;
+  afterNodes: number;
 }>;
 
 export const NodePool = {
@@ -179,20 +175,38 @@ export const NodePool = {
       nodeCount: Option<number>;
       diskSizeGb: Option<number>;
       version: string;
+      autoRepair?: boolean;
+      autoUpgrade?: boolean;
+      autoscaling?: Option<NodePoolAutoscaling>;
     }>,
   ): Result<NodePool, string> {
+    const nodeCount = Option.unwrapOr(seed.nodeCount, 3);
+    const diskSizeGb = Option.unwrapOr(seed.diskSizeGb, 100);
+    const autoscaling = seed.autoscaling ?? Option.none;
+    if (!NodePool.validCount(nodeCount))
+      return Result.err("Node count must be an integer from 0 to 1000 on gcloud-sim.");
+    if (!Number.isSafeInteger(diskSizeGb) || diskSizeGb < 10 || diskSizeGb > 65536)
+      return Result.err("Disk size must be an integer from 10 to 65536 GB on gcloud-sim.");
+    if (Option.isSome(autoscaling) && !NodePool.validLimits(autoscaling.value))
+      return Result.err(
+        "Autoscaling requires 0 <= min-nodes <= max-nodes <= 1000 and max-nodes > 0.",
+      );
     return Result.map(ResourceName.parse(seed.name), (name) => ({
       projectId: seed.projectId,
       cluster: seed.cluster,
       name,
       machineType: seed.machineType,
-      nodeCount: Option.unwrapOr(seed.nodeCount, 3),
-      diskSizeGb: Option.unwrapOr(seed.diskSizeGb, 100),
+      nodeCount,
+      diskSizeGb,
       version: seed.version,
+      autoRepair: seed.autoRepair ?? true,
+      autoUpgrade: seed.autoUpgrade ?? true,
+      autoscaling,
+      lastScale: Option.none,
     }));
   },
 
-  /** 作成時にクラスタが持つ既定のプール。`node-pools list` に出す（保存しない）。 */
+  /** 作成時にクラスタが持つ既定のプール。`node-pools list` に出す（Worldへ保存する）。 */
   defaultPool(cluster: GkeCluster): NodePool {
     return {
       projectId: cluster.projectId,
@@ -202,14 +216,101 @@ export const NodePool = {
       nodeCount: cluster.nodeCount,
       diskSizeGb: 100,
       version: cluster.currentMasterVersion,
+      autoRepair: true,
+      autoUpgrade: true,
+      autoscaling: Option.none,
+      lastScale: Option.none,
     };
+  },
+
+  validCount(n: number): boolean {
+    return Number.isSafeInteger(n) && n >= 0 && n <= 1000;
+  },
+
+  validLimits(a: NodePoolAutoscaling): boolean {
+    return (
+      NodePool.validCount(a.minNodes) &&
+      NodePool.validCount(a.maxNodes) &&
+      a.minNodes <= a.maxNodes &&
+      a.maxNodes > 0
+    );
+  },
+
+  valid(pool: NodePool): boolean {
+    if (
+      !NodePool.validCount(pool.nodeCount) ||
+      !Number.isSafeInteger(pool.diskSizeGb) ||
+      pool.diskSizeGb < 10 ||
+      pool.diskSizeGb > 65536 ||
+      ![MasterVersion, NextMasterVersion].includes(pool.version)
+    )
+      return false;
+    if (Option.isSome(pool.autoscaling) && !NodePool.validLimits(pool.autoscaling.value))
+      return false;
+    if (!Option.isSome(pool.lastScale)) return true;
+    const e = pool.lastScale.value;
+    return (
+      Number.isSafeInteger(e.requiredNodes) &&
+      e.requiredNodes >= 0 &&
+      e.requiredNodes <= 1000000 &&
+      NodePool.validCount(e.beforeNodes) &&
+      e.afterNodes === pool.nodeCount &&
+      Option.isSome(pool.autoscaling) &&
+      e.afterNodes ===
+        Math.max(
+          pool.autoscaling.value.minNodes,
+          Math.min(pool.autoscaling.value.maxNodes, e.requiredNodes),
+        )
+    );
+  },
+
+  resize(pool: NodePool, nodeCount: number): Result<NodePool, string> {
+    if (!NodePool.validCount(nodeCount))
+      return Result.err("Node count must be an integer from 0 to 1000 on gcloud-sim.");
+    if (Option.isSome(pool.autoscaling))
+      return Result.err(
+        "Disable autoscaling with node-pools update --no-enable-autoscaling before manual resize on gcloud-sim.",
+      );
+    return Result.ok({ ...pool, nodeCount, lastScale: Option.none });
+  },
+
+  upgrade(pool: NodePool, masterVersion: string, target: string): Result<NodePool, string> {
+    const versions = [MasterVersion, NextMasterVersion];
+    if (!versions.includes(target)) return Result.err("Unsupported cluster-version on gcloud-sim.");
+    if (versions.indexOf(target) > versions.indexOf(masterVersion))
+      return Result.err(
+        "Node version cannot be newer than the control plane. Upgrade --master first.",
+      );
+    if (versions.indexOf(target) < versions.indexOf(pool.version))
+      return Result.err("Node downgrades are not supported on gcloud-sim.");
+    if (pool.version === target)
+      return Result.err(`Node pool ${pool.name} is already on version ${target}.`);
+    return Result.ok({ ...pool, version: target });
+  },
+
+  scale(pool: NodePool, requiredNodes: number): Result<NodePool, string> {
+    if (!Number.isSafeInteger(requiredNodes) || requiredNodes < 0 || requiredNodes > 1000000)
+      return Result.err("required-nodes must be an integer from 0 to 1000000 on gcloud-sim.");
+    if (!Option.isSome(pool.autoscaling))
+      return Result.err("Autoscaling is disabled for this node pool.");
+    const { minNodes, maxNodes } = pool.autoscaling.value;
+    const nodeCount = Math.max(minNodes, Math.min(maxNodes, requiredNodes));
+    return Result.ok({
+      ...pool,
+      nodeCount,
+      lastScale: Option.some({ requiredNodes, beforeNodes: pool.nodeCount, afterNodes: nodeCount }),
+    });
   },
 
   toRecord(pool: NodePool): JsonRecord {
     return {
       name: pool.name,
-      config: { machineType: pool.machineType, diskSizeGb: pool.diskSizeGb },
       initialNodeCount: pool.nodeCount,
+      management: { autoRepair: pool.autoRepair, autoUpgrade: pool.autoUpgrade },
+      autoscaling: Option.isSome(pool.autoscaling)
+        ? { enabled: true, ...pool.autoscaling.value }
+        : { enabled: false },
+      config: { machineType: pool.machineType, diskSizeGb: pool.diskSizeGb },
       version: pool.version,
       status: "RUNNING",
     };

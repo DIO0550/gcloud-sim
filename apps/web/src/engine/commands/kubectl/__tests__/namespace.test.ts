@@ -396,7 +396,7 @@ test("snapshot v17 retains probes/restarts/HPA/files/env/history while adding de
     for (const r of value.world[key]) delete r.namespace;
   const migrated = Result.unwrap(Snapshot.fromUnknown(value));
   expect(migrated).toEqual(s.world);
-  expect(Snapshot.create(migrated, Now).schemaVersion).toBe(26);
+  expect(Snapshot.create(migrated, Now).schemaVersion).toBe(27);
 });
 
 test.each([

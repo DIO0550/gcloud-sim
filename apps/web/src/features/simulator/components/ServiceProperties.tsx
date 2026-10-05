@@ -83,9 +83,7 @@ export const NodePoolProperties = ({
 }: SelectionProps<"node-pool">): ReactElement => {
   const cluster = World.findCluster(world, selection.projectId, selection.cluster);
   const pool = Option.flatMap(cluster, (c) =>
-    Option.fromNullable(
-      World.nodePoolsWithDefault(world, c).find((p) => p.name === selection.name),
-    ),
+    Option.fromNullable(World.nodePoolsOf(world, c).find((p) => p.name === selection.name)),
   );
   if (!Option.isSome(pool)) return <NotFound what="ノードプール" />;
   return (
@@ -97,6 +95,27 @@ export const NodePoolProperties = ({
         { label: "nodeCount", value: String(pool.value.nodeCount) },
         { label: "diskSizeGb", value: String(pool.value.diskSizeGb) },
         { label: "version", value: pool.value.version },
+        { label: "autoRepair", value: String(pool.value.autoRepair) },
+        { label: "autoUpgrade", value: String(pool.value.autoUpgrade) },
+        {
+          label: "autoscaling",
+          value: Option.isSome(pool.value.autoscaling)
+            ? `${pool.value.autoscaling.value.minNodes}〜${pool.value.autoscaling.value.maxNodes} / zone`
+            : "無効",
+        },
+        {
+          label: "必要ノード数（教材）",
+          value: Option.isSome(pool.value.lastScale)
+            ? String(pool.value.lastScale.value.requiredNodes)
+            : "未評価",
+        },
+        {
+          label: "前回評価",
+          value: Option.isSome(pool.value.lastScale)
+            ? `${pool.value.lastScale.value.beforeNodes} → ${pool.value.lastScale.value.afterNodes}`
+            : "未評価",
+        },
+        { label: "再現範囲", value: "明示した必要数と上下限。実ノード・Pod配置・定期処理は未再現" },
       ]}
     />
   );

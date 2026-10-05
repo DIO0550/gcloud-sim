@@ -104,6 +104,11 @@ import type { ValueOf } from "@/types/ValueOf";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 import {
+  type GkeNodePoolAssertion,
+  GkeNodePoolMissions,
+  gkeNodePoolSatisfied,
+} from "./gke-nodepools";
+import {
   type KubeConfigurationAssertion,
   KubeConfigurationMissions,
   kubeConfigurationSatisfied,
@@ -163,6 +168,7 @@ export type MissionDomain = ValueOf<typeof MissionDomains>;
 
 /** World に対する述語（DJ-010: コマンド文字列ではなく状態で判定する）。値の語彙はドメインの型で閉じる。 */
 export type MissionAssertion =
+  | GkeNodePoolAssertion
   | BuildAssertion
   | KubeWorkloadAssertion
   | KubeLabelAssertion
@@ -339,6 +345,7 @@ const Missions: readonly Mission[] = [
   ...KubeStorageMissions,
   ...KubeNetworkMissions,
   ...KubeIngressMissions,
+  ...GkeNodePoolMissions,
   ...KubeBinaryDataMissions,
   ...KubeConfigLabelsMissions,
   ...KubeContextMissions,
@@ -799,6 +806,10 @@ const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: 
 
 const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
+    case "gkeNodePoolUpgraded":
+      return gkeNodePoolSatisfied(world, false);
+    case "gkeNodePoolScaled":
+      return gkeNodePoolSatisfied(world, true);
     case "kubeHpaManifestConfigured":
       return kubeHpaManifestSatisfied(world);
     case "kubeHpaScaled":

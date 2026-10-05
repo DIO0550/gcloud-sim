@@ -382,7 +382,7 @@ test("Snapshot v25 roundtrip preserves policies and v24 migration keeps PVC file
     "kubectl apply -f storage-web.yaml",
     "sim kubernetes write-file storage-web --path=/data/x --content=keep",
   );
-  expect(Snapshot.create(s.world, Now).schemaVersion).toBe(26);
+  expect(Snapshot.create(s.world, Now).schemaVersion).toBe(27);
   expect(restored(s).world).toEqual(s.world);
   const raw = JSON.parse(JSON.stringify(Snapshot.create(s.world, Now)));
   raw.schemaVersion = 24;
