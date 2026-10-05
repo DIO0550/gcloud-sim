@@ -136,7 +136,7 @@ export const GkeControlPlane = {
       Option.isSome(config.authorizedNetworks) &&
       (source.endpoint === "public" || config.enforcePrivateEndpoint);
     // 内部endpointへ強制する場合は自動のVPC許可より明示CIDRを優先する。
-    const implicitVpc = sameVpc && !config.enforcePrivateEndpoint;
+    const implicitVpc = sameVpc && (source.endpoint === "public" || !config.enforcePrivateEndpoint);
     if (
       restricted &&
       !implicitVpc &&

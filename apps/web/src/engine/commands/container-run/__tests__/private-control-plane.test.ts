@@ -522,3 +522,15 @@ test("deleting a source-only VPC clears the stored check and does not leave inva
   expect(restored(s).world).toEqual(s.world);
   rejected(s, check("public", "203.0.113.20", "source"), "not found");
 });
+
+test("private endpoint CIDR enforcement leaves the public endpoint VPC exception independent", () => {
+  const s = execute(
+    ready(),
+    update(
+      "--enable-master-authorized-networks --master-authorized-networks=10.128.0.5/32 --enable-authorized-networks-on-private-endpoint",
+    ),
+  );
+  expect(execute(s, check("private", "10.128.0.6", "default")).text).toContain("DENY");
+  expect(execute(s, check("public", "10.128.0.6", "default")).text).toContain("ALLOW");
+  expect(execute(s, check("public", "203.0.113.20")).text).toContain("DENY");
+});
