@@ -91,6 +91,16 @@ export const Candidates = {
     World.bucketsOf(world, projectId).map((b) => `gs://${b.name}`),
   ),
   clusters: inProject((world, projectId) => World.clustersOf(world, projectId).map((c) => c.name)),
+  nodePools: inProject((world, projectId) => {
+    const cluster = Option.unwrapOr(GcloudConfig.get(world.config, "container/cluster"), "");
+    return [
+      ...new Set(
+        world.nodePools
+          .filter((p) => p.projectId === projectId && p.cluster === cluster)
+          .map((p) => p.name),
+      ),
+    ];
+  }),
   runServices: inProject((world, projectId) =>
     World.runServicesOf(world, projectId).map((s) => s.name),
   ),

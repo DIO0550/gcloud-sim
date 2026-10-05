@@ -49,7 +49,13 @@ import {
   type HealthCheck,
   LbScope,
 } from "@/engine/domains/load-balancing";
-import { type CloudRunService, type GkeCluster, NodePool } from "@/engine/domains/managed-services";
+import {
+  type CloudRunService,
+  type GkeCluster,
+  MasterVersion,
+  NextMasterVersion,
+  NodePool,
+} from "@/engine/domains/managed-services";
 import { MissionProgress } from "@/engine/domains/mission-progress";
 import type { AlertPolicy, Dashboard, LogMetric, UptimeCheck } from "@/engine/domains/monitoring";
 import type { LogSink } from "@/engine/domains/observability";
@@ -1033,11 +1039,20 @@ export const World = {
   },
 
   withCluster(world: World, cluster: GkeCluster): Result<World, AlreadyExists> {
-    return World.withNamed(
-      world,
-      "clusters",
-      cluster,
-      `projects/${cluster.projectId}/locations/${cluster.location}/clusters/${cluster.name}`,
+    return Result.map(
+      World.withNamed(
+        world,
+        "clusters",
+        cluster,
+        `projects/${cluster.projectId}/locations/${cluster.location}/clusters/${cluster.name}`,
+      ),
+      (next) =>
+        cluster.autopilot
+          ? next
+          : {
+              ...next,
+              nodePools: [...next.nodePools, NodePool.defaultPool(cluster)],
+            },
     );
   },
 
@@ -1074,19 +1089,35 @@ export const World = {
     return world.nodePools.filter(inCluster(cluster));
   },
 
-  /** クラスタのノードプール。Standard は `default-pool` を先頭に持ち、Autopilot は 1 つも持たない。 */
-  nodePoolsWithDefault(world: World, cluster: GkeCluster): readonly NodePool[] {
-    return cluster.autopilot
-      ? []
-      : [NodePool.defaultPool(cluster), ...World.nodePoolsOf(world, cluster)];
-  },
-
   withNodePool(world: World, pool: NodePool): Result<World, AlreadyExists> {
     const exists = world.nodePools.some(sameInCluster(pool));
     return addUnique(
-      exists || pool.name === "default-pool",
+      exists,
       `projects/${pool.projectId}/locations/-/clusters/${pool.cluster}/nodePools/${pool.name}`,
-      () => ({ ...world, nodePools: [...world.nodePools, pool] }),
+      () => World.syncNodeCount({ ...world, nodePools: [...world.nodePools, pool] }, pool),
+    );
+  },
+
+  syncNodeCount(world: World, pool: Pick<NodePool, "projectId" | "cluster">): World {
+    const cluster = World.findCluster(world, pool.projectId, pool.cluster);
+    if (!Option.isSome(cluster)) return world;
+    return World.replaceCluster(world, {
+      ...cluster.value,
+      nodeCount: World.nodePoolsOf(world, cluster.value).reduce((n, p) => n + p.nodeCount, 0),
+    });
+  },
+
+  replaceNodePool(world: World, pool: NodePool): World {
+    return World.syncNodeCount(
+      { ...world, nodePools: world.nodePools.map((p) => (sameInCluster(pool)(p) ? pool : p)) },
+      pool,
+    );
+  },
+
+  withoutNodePool(world: World, pool: NodePool): World {
+    return World.syncNodeCount(
+      { ...world, nodePools: world.nodePools.filter((p) => !sameInCluster(pool)(p)) },
+      pool,
     );
   },
 
@@ -1609,6 +1640,21 @@ const validateReferences = (world: World): Result<World, string> => {
     return Result.err(
       `[${clusterless.name}] belongs to a missing cluster [${clusterless.cluster}]`,
     );
+  }
+  const invalidPool = world.nodePools.find((p) => !NodePool.valid(p));
+  if (invalidPool) return Result.err(`node pool [${invalidPool.name}] has invalid settings`);
+  for (const c of world.clusters) {
+    const pools = World.nodePoolsOf(world, c);
+    if (c.autopilot && pools.length > 0)
+      return Result.err(`Autopilot cluster [${c.name}] cannot have managed node pools`);
+    if (c.autopilot) continue;
+    if (c.nodeCount !== pools.reduce((n, p) => n + p.nodeCount, 0))
+      return Result.err(`cluster [${c.name}] node count does not match its pools`);
+    if (
+      pools.some((p) => p.version === NextMasterVersion) &&
+      c.currentMasterVersion === MasterVersion
+    )
+      return Result.err(`cluster [${c.name}] has a node version newer than its control plane`);
   }
   const orphanBackup = world.sqlBackups.find(
     (b) =>

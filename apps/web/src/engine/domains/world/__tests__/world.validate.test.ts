@@ -161,7 +161,9 @@ test("クラスタの無い Deployment は弾かれる", () => {
     "kubectl create deployment web --image=nginx",
   );
   expect(failure(s.world)).toBe("");
-  expect(failure({ ...s.world, clusters: [] })).toBe("[web] belongs to a missing cluster [app]");
+  expect(failure({ ...s.world, clusters: [], nodePools: [] })).toBe(
+    "[web] belongs to a missing cluster [app]",
+  );
 });
 
 test("SQL インスタンスの無いバックアップは弾かれる", () => {

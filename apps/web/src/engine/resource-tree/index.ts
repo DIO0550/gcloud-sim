@@ -185,7 +185,7 @@ const networkNodes = (world: World, id: string): readonly TreeNode[] =>
 /** クラスタの下にノードプールと、kubectl で作った Deployment / Service を束ねる。 */
 const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[] => {
   const id = cluster.projectId;
-  const pools = World.nodePoolsWithDefault(world, cluster).map((p) =>
+  const pools = World.nodePoolsOf(world, cluster).map((p) =>
     leaf(
       { kind: "node-pool", projectId: id, cluster: cluster.name, name: p.name },
       `pool: ${p.name}`,

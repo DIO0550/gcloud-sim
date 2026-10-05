@@ -144,12 +144,13 @@ import { Result } from "@/utils/Result";
  * v24 はStorageClass・PVC・動的PVと永続ファイルを持つ。
  * v25 はNetworkPolicyとクラスタの強制設定を持つ。
  * v26 はIngressのホスト・パスとServiceバックエンドを持つ。
+ * v27 は既定ノードプールを保存し、プールの管理・自動スケール設定と評価を持つ。
  */
-export const SchemaVersion = 26;
+export const SchemaVersion = 27;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
 const MigratableVersions = [
-  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
 ] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
@@ -562,6 +563,12 @@ const nodePool = D.object<NodePool>({
   nodeCount: D.number,
   diskSizeGb: D.number,
   version: string,
+  autoRepair: D.boolean,
+  autoUpgrade: D.boolean,
+  autoscaling: D.option(D.object({ minNodes: D.number, maxNodes: D.number })),
+  lastScale: D.option(
+    D.object({ requiredNodes: D.number, beforeNodes: D.number, afterNodes: D.number }),
+  ),
 });
 
 const kubeEnv = D.object<KubeEnv>({
@@ -1375,14 +1382,72 @@ const migratePrevious = (version: number, value: unknown): unknown => {
 const migrate = (version: number, value: unknown): unknown => {
   const previous = migratePrevious(version, value);
   if (version === SchemaVersion || !isRecord(previous)) return previous;
+  const oldPools = Array.isArray(previous.nodePools) ? previous.nodePools : [];
+  const defaults = Array.isArray(previous.clusters)
+    ? previous.clusters.flatMap((c) =>
+        isRecord(c) &&
+        c.autopilot === false &&
+        !oldPools.some(
+          (p) =>
+            isRecord(p) &&
+            p.projectId === c.projectId &&
+            p.cluster === c.name &&
+            p.name === "default-pool",
+        )
+          ? [
+              {
+                projectId: c.projectId,
+                cluster: c.name,
+                name: "default-pool",
+                machineType: c.machineType,
+                nodeCount: c.nodeCount,
+                diskSizeGb: 100,
+                version: c.currentMasterVersion,
+              },
+            ]
+          : [],
+      )
+    : [];
+  const pools = [...defaults, ...oldPools].map((p) =>
+    isRecord(p)
+      ? {
+          ...p,
+          autoRepair: true,
+          autoUpgrade: true,
+          autoscaling: Option.none,
+          lastScale: Option.none,
+        }
+      : p,
+  );
+  const clusters = Array.isArray(previous.clusters)
+    ? previous.clusters.map((c) =>
+        isRecord(c) && c.autopilot === false
+          ? {
+              ...c,
+              nodeCount: pools.reduce(
+                (sum, p) =>
+                  isRecord(p) &&
+                  p.projectId === c.projectId &&
+                  p.cluster === c.name &&
+                  typeof p.nodeCount === "number"
+                    ? sum + p.nodeCount
+                    : sum,
+                0,
+              ),
+            }
+          : c,
+      )
+    : previous.clusters;
   return {
     ...previous,
-    kubeIngresses: [],
+    nodePools: pools,
+    clusters,
+    ...(version < 26 ? { kubeIngresses: [] } : {}),
     ...(version < 25
       ? {
           kubeNetworkPolicies: [],
-          clusters: Array.isArray(previous.clusters)
-            ? previous.clusters.map((c) =>
+          clusters: Array.isArray(clusters)
+            ? clusters.map((c) =>
                 isRecord(c) ? { ...c, networkPolicyEnabled: c.autopilot === true } : c,
               )
             : previous.clusters,

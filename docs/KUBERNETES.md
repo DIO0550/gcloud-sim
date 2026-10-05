@@ -848,3 +848,39 @@ sim kubernetes request recovery-entry --host=app.example.test --path=/
 Snapshot v26はIngressを保存し、v1〜v25に空のIngress集合を補完します。v25のNetworkPolicy/クラスタ強制状態、PVC/PVのデータ、Service・Pod環境・probe・HPA・履歴・namespace/コンテキスト・仮想ファイルを保持します。namespace/クラスタ削除時はIngressも削除し、Service単体の削除時はIngressを残して参照切れを診断します。
 
 仕様の参照元: [Kubernetes Ingress](https://kubernetes.io/docs/concepts/services-networking/ingress/)、[Ingress API](https://kubernetes.io/docs/reference/kubernetes-api/networking/ingress-v1/)、[GKE Ingress](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/ingress)、[GKE外部Ingress](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/load-balance-ingress)、[GKE Ingress health checks](https://docs.cloud.google.com/kubernetes-engine/docs/troubleshooting/ingress-health-checks)。
+
+## GKE Standardのノードプール運用
+
+既定の`default-pool`も保存するリソースとして扱います。作成時のmachine type・boot disk size、ノード数、Kubernetes版、自動修復・自動更新、プール単位の自動スケール上下限をget/describe・ツリー・プロパティで確認できます。`clusters resize --node-pool=NAME`は指定プールだけを変更し、省略ならdefault-poolを対象にします。プールの削除後は一覧から消え、同名プールを新規作成できます。
+
+```sh
+gcloud services enable container.googleapis.com
+gcloud container clusters create ops-gke --zone=us-central1-a --num-nodes=2
+gcloud container node-pools create apps --cluster=ops-gke --zone=us-central1-a --machine-type=e2-standard-4 --disk-size=200 --num-nodes=4
+gcloud container clusters resize ops-gke --zone=us-central1-a --node-pool=apps --num-nodes=3 --quiet
+gcloud container clusters upgrade ops-gke --zone=us-central1-a --master --quiet
+gcloud container node-pools list --cluster=ops-gke --zone=us-central1-a
+gcloud container clusters upgrade ops-gke --zone=us-central1-a --node-pool=apps --quiet
+```
+
+制御プレーンと既存ノードの版を独立して保存します。`--master`で更新してもノードの版は変わりません。ノード更新は明示した`--node-pool`だけが対象で、指定版を省略すると現在の制御プレーン版になります。教材に収録した1.31.5-gke.1068000→1.32.2-gke.1182000のみを扱い、制御プレーンより新しい版・ダウングレード・未収録版・masterとnode-poolの同時指定を拒否します。省略による全プール更新は未対応です。
+
+```sh
+gcloud container node-pools update apps --cluster=ops-gke --zone=us-central1-a --enable-autoscaling --min-nodes=1 --max-nodes=4
+sim gke autoscale-nodes apps --cluster=ops-gke --zone=us-central1-a --required-nodes=10
+sim gke autoscale-nodes apps --cluster=ops-gke --zone=us-central1-a --required-nodes=0
+gcloud container node-pools update apps --cluster=ops-gke --zone=us-central1-a --no-enable-autoscaling
+gcloud container node-pools update apps --cluster=ops-gke --zone=us-central1-a --no-enable-autorepair --no-enable-autoupgrade
+```
+
+設定だけではノード数を変えません。`sim gke autoscale-nodes`が明示した必要数を上下限へ収めて1回評価し、評価前後の数を保存します。上の例は必要数10を4へ、0を1へ制限します。必要数はPod配置やCPU測定から算出せず、クラスタオートスケーラーとHPAの違いを学ぶ教材入力です。実GKEのクラスタオートスケーラーはPodのresource requestsと配置可能性を基に判断します。
+
+上下限を指定するときは`--enable-autoscaling`が必要です。既存の上下限は片方だけ変更できます。無効化や上下限変更では前回評価を消し、管理設定だけの変更では保持します。自動スケール設定と自動修復/更新は別コマンドで変更します。自動スケール中の手動resizeは、この教材では先に無効化する必要があります。設定済みの自動修復/更新による定期処理は再現せず、ノード更新は明示したupgrade操作だけで行います。
+
+ノード数/上下限は各プール0〜1000（最大上限は1以上）、boot diskは10〜65536 GB、必要数入力は0〜1000000です。ノード数・上下限はzoneあたりの設定値として保存し、クラスタのnodeCountはそれらの教材上の合計です。リージョン内の複数zone配置・実際の総VM数や可用性は再現しません。Autopilotのユーザー管理プール操作、total-min/max-nodes・node locations・node labels/taints・machine/disk変更・upgrade戦略/サージ・ノードSAごとのPod割り当て・Workload Identity・quota/実VM・drain/PDB/eviction・実スケジューリング/自動修復は対象外です。プール削除やサイズ0でも既存Podを変更しません。
+
+Snapshot v27に既定プールと管理/自動スケール設定・前回評価を保存します。v1〜v26では旧クラスタの既定プールを明示化し、追加プールとノード数・disk・版を保持します。管理設定はtrue、自動スケールは無効・未評価で補完します。旧形式には既定ノード独自の版がないため、旧クラスタの保存済みmaster版を引き継ぎます。v26のIngress、NetworkPolicy、PVC/PVデータと従来の状態を保持します。
+
+独立した2ミッションで、制御プレーン/ノードの別更新と、管理設定・上下限・明示評価を確認します。
+
+参照: [node-pools update](https://docs.cloud.google.com/sdk/gcloud/reference/container/node-pools/update)、[clusters upgrade](https://docs.cloud.google.com/sdk/gcloud/reference/container/clusters/upgrade)、[GKE cluster autoscaling](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/cluster-autoscaler)。
