@@ -1,7 +1,9 @@
 import type { ReactElement } from "react";
+import { GkeControlPlane } from "@/engine/domains/gke-control-plane";
 import { ImagePull } from "@/engine/domains/image-pull";
 import { KubeEnv, KubeRuntime } from "@/engine/domains/kube-config";
 import { KubeBinary } from "@/engine/domains/kube-config/binary";
+import { KubeContext } from "@/engine/domains/kube-context";
 import { KubeHpa } from "@/engine/domains/kube-hpa";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeLiveness } from "@/engine/domains/kube-liveness";
@@ -60,20 +62,75 @@ export const ClusterProperties = ({
   if (!Option.isSome(cluster)) return <NotFound what="クラスタ" />;
   const c = cluster.value;
   return (
-    <Section
-      title="基本"
-      rows={[
-        { label: "location", value: c.location },
-        { label: "mode", value: c.autopilot ? "Autopilot" : "Standard" },
-        { label: "NetworkPolicy", value: c.networkPolicyEnabled ? "有効" : "無効" },
-        { label: "nodeCount", value: String(c.nodeCount) },
-        { label: "machineType", value: c.machineType },
-        { label: "nodeServiceAccount", value: c.nodeServiceAccount || "default" },
-        { label: "masterVersion", value: c.currentMasterVersion },
-        { label: "status", value: c.status },
-        { label: "selfLink", value: GkeCluster.selfLink(c) },
-      ]}
-    />
+    <>
+      <Section
+        title="基本"
+        rows={[
+          { label: "location", value: c.location },
+          { label: "mode", value: c.autopilot ? "Autopilot" : "Standard" },
+          { label: "NetworkPolicy", value: c.networkPolicyEnabled ? "有効" : "無効" },
+          { label: "nodeCount", value: String(c.nodeCount) },
+          { label: "machineType", value: c.machineType },
+          { label: "nodeServiceAccount", value: c.nodeServiceAccount || "default" },
+          { label: "masterVersion", value: c.currentMasterVersion },
+          { label: "status", value: c.status },
+          { label: "selfLink", value: GkeCluster.selfLink(c) },
+        ]}
+      />
+      <Section
+        title="制御プレーンへの接続"
+        rows={[
+          {
+            label: "privateノード",
+            value: Option.isSome(c.controlPlane.privateNetwork) ? "有効（設定のみ）" : "無効",
+          },
+          {
+            label: "VPC / subnet",
+            value: Option.isSome(c.controlPlane.privateNetwork)
+              ? `${c.controlPlane.privateNetwork.value.network} / ${c.controlPlane.privateNetwork.value.subnetwork}`
+              : "未設定",
+          },
+          {
+            label: "master CIDR",
+            value: Option.isSome(c.controlPlane.privateNetwork)
+              ? c.controlPlane.privateNetwork.value.masterIpv4Cidr
+              : "未設定",
+          },
+          { label: "公開endpoint", value: c.controlPlane.privateEndpoint ? "無効" : "34.85.0.1" },
+          {
+            label: "内部endpoint",
+            value: Option.unwrapOr(GkeControlPlane.privateIp(c.controlPlane), "未設定"),
+          },
+          {
+            label: "許可CIDR",
+            value: Option.isSome(c.controlPlane.authorizedNetworks)
+              ? c.controlPlane.authorizedNetworks.value.join(", ") || "なし（明示CIDRは全拒否）"
+              : "制限なし",
+          },
+          {
+            label: "内部endpointのCIDR強制",
+            value: c.controlPlane.enforcePrivateEndpoint ? "有効" : "無効",
+          },
+          { label: "kubeconfigの接続先", value: KubeContext.endpoint(world, c) },
+          {
+            label: "前回の教材評価",
+            value: Option.isSome(c.controlPlane.lastCheck)
+              ? `${c.controlPlane.lastCheck.value.allowed ? "ALLOW" : "DENY"} / ${c.controlPlane.lastCheck.value.reason}`
+              : "未評価",
+          },
+          {
+            label: "評価した送信元",
+            value: Option.isSome(c.controlPlane.lastCheck)
+              ? `${c.controlPlane.lastCheck.value.sourceIp} / ${c.controlPlane.lastCheck.value.sourceNetwork || "VPC指定なし"} → ${c.controlPlane.lastCheck.value.endpoint}`
+              : "未評価",
+          },
+          {
+            label: "再現範囲",
+            value: "宣言したIP・同じregionのVPC・許可CIDR。実通信/認証/RBACとkubectlの疎通は未再現",
+          },
+        ]}
+      />
+    </>
   );
 };
 

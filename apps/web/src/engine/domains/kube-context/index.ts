@@ -1,4 +1,5 @@
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
+import { type ControlPlaneEndpoint, GkeControlPlane } from "@/engine/domains/gke-control-plane";
 import type { GkeCluster } from "@/engine/domains/managed-services";
 import type { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
@@ -12,6 +13,20 @@ export const KubeContext = {
     return Option.flatMap(GcloudConfig.get(world.config, "container/cluster"), (name) =>
       Option.fromNullable(world.clusters.find((c) => c.projectId === projectId && c.name === name)),
     );
+  },
+  endpoint(world: World, cluster: GkeCluster): ControlPlaneEndpoint {
+    return world.kubeContextEndpoints[KubeContext.name(cluster)] ?? "public";
+  },
+  server(world: World, cluster: GkeCluster): string {
+    return `https://${Option.unwrapOr(GkeControlPlane.endpoint(cluster.controlPlane, KubeContext.endpoint(world, cluster)), "unavailable")}`;
+  },
+  setEndpoint(world: World, cluster: GkeCluster, endpoint: ControlPlaneEndpoint): World {
+    const key = KubeContext.name(cluster);
+    const { [key]: _previous, ...rest } = world.kubeContextEndpoints;
+    return {
+      ...world,
+      kubeContextEndpoints: endpoint === "public" ? rest : { ...rest, [key]: endpoint },
+    };
   },
   configuredNamespace(world: World, cluster: GkeCluster): string | undefined {
     return world.kubeContextNamespaces[KubeContext.name(cluster)];

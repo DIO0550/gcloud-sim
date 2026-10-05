@@ -1,5 +1,6 @@
 import type { MachineTypeName, Region, Zone } from "@/engine/domains/catalog";
 import { ResourceName } from "@/engine/domains/compute";
+import { GkeControlPlane } from "@/engine/domains/gke-control-plane";
 import type { JsonRecord } from "@/types/Json";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -12,6 +13,7 @@ export type GkeCluster = Readonly<{
   nodeCount: number;
   autopilot: boolean;
   networkPolicyEnabled: boolean;
+  controlPlane: GkeControlPlane;
   status: "RUNNING";
   machineType: MachineTypeName;
   currentMasterVersion: string;
@@ -30,6 +32,7 @@ export type GkeClusterSeed = Readonly<{
   machineType: MachineTypeName;
   nodeServiceAccount?: string;
   networkPolicyEnabled?: boolean;
+  controlPlane?: GkeControlPlane;
   nodes: Readonly<{ kind: "autopilot" }> | Readonly<{ kind: "standard"; count: number }>;
 }>;
 
@@ -43,6 +46,8 @@ export const GkeCluster = {
   create(seed: GkeClusterSeed): Result<GkeCluster, string> {
     if (seed.nodes.kind === "standard" && !NodePool.validCount(seed.nodes.count))
       return Result.err("Node count must be an integer from 0 to 1000 on gcloud-sim.");
+    if (!GkeControlPlane.valid(seed.controlPlane ?? GkeControlPlane.public()))
+      return Result.err("Invalid GKE control plane configuration.");
     return Result.map(ResourceName.parse(seed.name), (name) => ({
       projectId: seed.projectId,
       name,
@@ -50,6 +55,7 @@ export const GkeCluster = {
       nodeCount: seed.nodes.kind === "standard" ? seed.nodes.count : 0,
       autopilot: seed.nodes.kind === "autopilot",
       networkPolicyEnabled: seed.nodes.kind === "autopilot" || seed.networkPolicyEnabled === true,
+      controlPlane: seed.controlPlane ?? GkeControlPlane.public(),
       status: "RUNNING",
       machineType: seed.machineType,
       currentMasterVersion: MasterVersion,
@@ -88,7 +94,37 @@ export const GkeCluster = {
         machineType: cluster.machineType,
         serviceAccount: cluster.nodeServiceAccount || "default",
       },
-      endpoint: "34.85.0.1",
+      privateClusterConfig: {
+        enablePrivateNodes: Option.isSome(cluster.controlPlane.privateNetwork),
+        enablePrivateEndpoint: cluster.controlPlane.privateEndpoint,
+        masterIpv4CidrBlock: Option.isSome(cluster.controlPlane.privateNetwork)
+          ? cluster.controlPlane.privateNetwork.value.masterIpv4Cidr
+          : undefined,
+        privateEndpoint: Option.unwrapOr(
+          GkeControlPlane.privateIp(cluster.controlPlane),
+          undefined,
+        ),
+        publicEndpoint: cluster.controlPlane.privateEndpoint ? undefined : "34.85.0.1",
+      },
+      network: Option.isSome(cluster.controlPlane.privateNetwork)
+        ? cluster.controlPlane.privateNetwork.value.network
+        : undefined,
+      subnetwork: Option.isSome(cluster.controlPlane.privateNetwork)
+        ? cluster.controlPlane.privateNetwork.value.subnetwork
+        : undefined,
+      masterAuthorizedNetworksConfig: {
+        enabled: Option.isSome(cluster.controlPlane.authorizedNetworks),
+        privateEndpointEnforcementEnabled: cluster.controlPlane.enforcePrivateEndpoint,
+        cidrBlocks: Option.unwrapOr(cluster.controlPlane.authorizedNetworks, []).map(
+          (cidrBlock) => ({ cidrBlock }),
+        ),
+      },
+      endpoint: cluster.controlPlane.privateEndpoint
+        ? Option.unwrapOr(GkeControlPlane.privateIp(cluster.controlPlane), "-")
+        : "34.85.0.1",
+      simulatedControlPlaneCheck: Option.isSome(cluster.controlPlane.lastCheck)
+        ? { ...cluster.controlPlane.lastCheck.value }
+        : undefined,
     };
   },
 } as const;

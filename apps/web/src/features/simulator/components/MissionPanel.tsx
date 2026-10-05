@@ -44,6 +44,10 @@ const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElem
 
 const assertionLabel = (assertion: Mission["assertions"][number]): string => {
   switch (assertion.kind) {
+    case "gkePrivateAccessSecured":
+      return "公開endpoint無効・内部CIDR制限・認証情報・指定送信元のALLOW";
+    case "gkeAuthorizedSourceRecovered":
+      return "限定した公開CIDRと指定送信元のALLOWを確認";
     case "gkeNodePoolUpgraded":
       return "制御プレーンとappsを更新し、既定プールの版・数を保持";
     case "gkeNodePoolScaled":

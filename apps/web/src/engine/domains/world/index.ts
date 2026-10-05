@@ -21,6 +21,7 @@ import type {
 import type { DmDeployment } from "@/engine/domains/deployment-manager";
 import type { DnsManagedZone } from "@/engine/domains/dns";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
+import { GkeControlPlane } from "@/engine/domains/gke-control-plane";
 import { IamPolicy, type RoleName } from "@/engine/domains/iam-policy";
 import type { InstanceTemplate, ManagedInstanceGroup } from "@/engine/domains/instance-groups";
 import type { KmsKeyRing } from "@/engine/domains/kms";
@@ -122,6 +123,7 @@ export type World = Readonly<{
   nodePools: readonly NodePool[];
   kubeNamespaces: readonly KubeNamespace[];
   kubeContextNamespaces: Readonly<Record<string, string>>;
+  kubeContextEndpoints: Readonly<Record<string, "public" | "private">>;
   kubeDeployments: readonly KubeDeployment[];
   kubeServices: readonly KubeService[];
   kubeHpas: readonly KubeHpa[];
@@ -876,6 +878,11 @@ export const World = {
     return Result.ok({
       ...world,
       networks: world.networks.filter((n) => !sameInProject(network.projectId, network.name)(n)),
+      clusters: world.clusters.map((c) =>
+        c.projectId === network.projectId
+          ? { ...c, controlPlane: { ...c.controlPlane, lastCheck: Option.none } }
+          : c,
+      ),
     });
   },
 
@@ -888,11 +895,21 @@ export const World = {
   },
 
   withSubnet(world: World, subnet: Subnet): Result<World, AlreadyExists> {
-    return World.withNamed(
-      world,
-      "subnets",
-      subnet,
-      `projects/${subnet.projectId}/regions/${subnet.region}/subnetworks/${subnet.name}`,
+    return Result.map(
+      World.withNamed(
+        world,
+        "subnets",
+        subnet,
+        `projects/${subnet.projectId}/regions/${subnet.region}/subnetworks/${subnet.name}`,
+      ),
+      (next) => ({
+        ...next,
+        clusters: next.clusters.map((c) =>
+          c.projectId === subnet.projectId
+            ? { ...c, controlPlane: { ...c.controlPlane, lastCheck: Option.none } }
+            : c,
+        ),
+      }),
     );
   },
 
@@ -1064,6 +1081,11 @@ export const World = {
       ...World.withoutNamed(world, "clusters", cluster),
       nodePools: world.nodePools.filter((p) => !belongs(p)),
       kubeNamespaces: world.kubeNamespaces.filter((n) => !belongs(n)),
+      kubeContextEndpoints: Object.fromEntries(
+        Object.entries(world.kubeContextEndpoints).filter(
+          ([key]) => key !== KubeContext.name(cluster),
+        ),
+      ),
       kubeContextNamespaces: Object.fromEntries(
         Object.entries(world.kubeContextNamespaces).filter(
           ([key]) => key !== KubeContext.name(cluster),
@@ -1450,6 +1472,21 @@ export const World = {
         !world.clusters.some((c) => KubeContext.name(c) === name)
       )
         return Result.err("Invalid Kubernetes context namespace.");
+    }
+    for (const cluster of world.clusters) {
+      const checked = GkeControlPlane.validate(world, cluster);
+      if (!Result.isOk(checked)) return Result.err(checked.error);
+    }
+    for (const [name, endpoint] of Object.entries(world.kubeContextEndpoints)) {
+      if (
+        !["public", "private"].includes(endpoint) ||
+        !world.clusters.some(
+          (c) =>
+            KubeContext.name(c) === name &&
+            (endpoint === "public" || Option.isSome(c.controlPlane.privateNetwork)),
+        )
+      )
+        return Result.err("Invalid Kubernetes context endpoint.");
     }
     if (!KubeManifest.validFiles(world.kubeFiles))
       return Result.err("Invalid Kubernetes virtual files.");

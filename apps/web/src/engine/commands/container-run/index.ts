@@ -15,6 +15,8 @@ import { alreadyExists, Candidates, CommonFlags, projectCommand } from "@/engine
 import { DefaultMachineType, MachineType, type Region, type Zone } from "@/engine/domains/catalog";
 import { EffectivePermissions } from "@/engine/domains/effective-permissions";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
+import { GkeControlPlane, Ipv4 } from "@/engine/domains/gke-control-plane";
+import { KubeContext } from "@/engine/domains/kube-context";
 import {
   CloudRunService,
   GkeCluster,
@@ -26,6 +28,12 @@ import { Principal } from "@/engine/domains/principal";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
+import {
+  ControlPlaneFlags,
+  controlPlaneArgs,
+  createControlPlane,
+  PrivateNetworkFlags,
+} from "./control-plane";
 import { autoscalingArgs, updatePool } from "./nodepools";
 
 const ContainerApi = "container.googleapis.com" as const;
@@ -103,6 +111,8 @@ const createCluster = (
         ),
       );
   }
+  const controlPlane = createControlPlane(args, nodes.kind === "autopilot");
+  if (!Result.isOk(controlPlane)) return controlPlane;
   const cluster = Result.mapErr(
     GkeCluster.create({
       projectId: ctx.project.projectId,
@@ -111,17 +121,24 @@ const createCluster = (
       machineType: machineType.value.name,
       nodeServiceAccount,
       networkPolicyEnabled: ParsedArgs.boolean(args, "enable-network-policy"),
+      controlPlane: controlPlane.value,
       nodes,
     }),
     (m) => CommandFailure.invalidValue("NAME", m),
   );
   if (!Result.isOk(cluster)) return cluster;
+  const references = GkeControlPlane.validate(ctx.world, cluster.value);
+  if (!Result.isOk(references)) return Result.err(CommandFailure.invalidState(references.error));
   const created = cluster.value;
   return Result.map(
     Result.mapErr(World.withCluster(ctx.world, created), alreadyExists),
     (world) => ({
       world: World.withConfig(
-        world,
+        KubeContext.setEndpoint(
+          world,
+          created,
+          created.controlPlane.privateEndpoint ? "private" : "public",
+        ),
         GcloudConfig.set(world.config, "container/cluster", created.name),
       ),
       output: CommandOutput.table([clusterRecord(world, created)], ClusterColumns, [
@@ -211,6 +228,11 @@ export const ContainerCommands: readonly CommandSpec[] = [
     positionals: [Positional.required("NAME", "The name of the cluster to create.")],
     flags: [
       ...LocationFlags,
+      ...PrivateNetworkFlags,
+      Flag.boolean(
+        "enable-ip-alias",
+        "Required for private Standard cluster creation here; secondary range allocation is not simulated.",
+      ),
       Flag.integer(
         "num-nodes",
         "The number of nodes to be created in each of the cluster's zones (default 3).",
@@ -240,6 +262,7 @@ export const ContainerCommands: readonly CommandSpec[] = [
     positionals: [Positional.required("NAME", "The name of the cluster to create.")],
     flags: [
       ...LocationFlags,
+      ...PrivateNetworkFlags,
       ReleaseChannelFlag,
       Flag.string(
         "service-account",
@@ -319,20 +342,127 @@ export const ContainerCommands: readonly CommandSpec[] = [
     ],
     permissions: ["container.clusters.get", "container.clusters.getCredentials"],
     requiredApis: [ContainerApi],
-    run: (ctx, args) =>
-      Result.map(clusterArg(ctx, args), (cluster) => ({
+    run: (ctx, args) => {
+      const found = clusterArg(ctx, args);
+      if (!Result.isOk(found)) return found;
+      const cluster = found.value;
+      const internal = Option.unwrapOr(
+        ParsedArgs.booleanChoice(args, "internal-ip"),
+        cluster.controlPlane.privateEndpoint,
+      );
+      const endpoint = internal ? "private" : "public";
+      const address = GkeControlPlane.endpoint(cluster.controlPlane, endpoint);
+      if (!Option.isSome(address))
+        return Result.err(
+          CommandFailure.invalidState(
+            `The ${endpoint} endpoint is unavailable on this simulated cluster.`,
+          ),
+        );
+      return Result.ok({
         world: World.withConfig(
-          ctx.world,
+          KubeContext.setEndpoint(ctx.world, cluster, endpoint),
           GcloudConfig.set(ctx.world.config, "container/cluster", cluster.name),
         ),
         output: CommandOutput.messages(
           OutputMessage.plain("Fetching cluster endpoint and auth data."),
           OutputMessage.plain(`kubeconfig entry generated for ${cluster.name}.`),
+          OutputMessage.plain(`Endpoint: ${endpoint} (https://${address.value}).`),
           OutputMessage.hint(
-            `gcloud-sim: kubectl のコンテキストを ${cluster.name} にしました（kubectl get pods / create deployment / expose / scale が使えます）。`,
+            "gcloud-sim: 認証情報の取得はネットワーク到達を保証しません。sim gke check-control-planeで送信元を明示して確認してください。kubectlはネットワークを再現しない操作モデルです。",
           ),
         ),
-      })),
+      });
+    },
+  }),
+  projectCommand({
+    path: ["gcloud", "container", "clusters", "update"],
+    summary: "Update simulated private endpoint and authorized network settings.",
+    positionals: [Positional.required("NAME", "Cluster name.", Candidates.clusters)],
+    flags: [...LocationFlags, ...ControlPlaneFlags],
+    permission: "container.clusters.update",
+    requiredApis: [ContainerApi],
+    run: (ctx, args) => {
+      const found = clusterArg(ctx, args);
+      if (!Result.isOk(found)) return found;
+      if (!ControlPlaneFlags.some((f) => ParsedArgs.has(args, f.name)))
+        return Result.err(
+          CommandFailure.invalidState("Specify a control plane setting to update."),
+        );
+      return Result.map(controlPlaneArgs(args, found.value.controlPlane), (controlPlane) => ({
+        world: World.replaceCluster(ctx.world, { ...found.value, controlPlane }),
+        output: CommandOutput.messages(
+          OutputMessage.plain(
+            `Updated control plane settings for ${found.value.name}. Previous check cleared; evaluate access again.`,
+          ),
+        ),
+      }));
+    },
+  }),
+  projectCommand({
+    path: ["sim", "gke", "check-control-plane"],
+    summary: "Evaluate one declared source against simulated GKE endpoint/VPC/CIDR settings.",
+    positionals: [Positional.required("NAME", "Cluster name.", Candidates.clusters)],
+    flags: [
+      ...LocationFlags,
+      Flag.enum(
+        "endpoint",
+        "Endpoint to evaluate (independent of credentials).",
+        ["public", "private"],
+        { required: true },
+      ),
+      Flag.string("source-ip", "Canonical source IPv4 address.", { required: true }),
+      Flag.string(
+        "source-network",
+        "Source VPC in the cluster project; private access needs a same-region subnet IP.",
+        { candidates: Candidates.networks },
+      ),
+    ],
+    permission: "container.clusters.get",
+    requiredApis: [ContainerApi],
+    run: (ctx, args) => {
+      const found = clusterArg(ctx, args);
+      if (!Result.isOk(found)) return found;
+      const sourceIp = ParsedArgs.requiredString(args, "source-ip");
+      if (!Option.isSome(Ipv4.address(sourceIp)))
+        return Result.err(
+          CommandFailure.invalidState("source-ip must be a canonical IPv4 address."),
+        );
+      const sourceNetwork = Option.unwrapOr(ParsedArgs.string(args, "source-network"), "");
+      if (
+        sourceNetwork &&
+        !ctx.world.networks.some(
+          (n) => n.projectId === ctx.project.projectId && n.name === sourceNetwork,
+        )
+      )
+        return Result.err(CommandFailure.notFound(`networks/${sourceNetwork}`));
+      const check = GkeControlPlane.evaluate(ctx.world, found.value, {
+        endpoint: ParsedArgs.requiredString(args, "endpoint") as "public" | "private",
+        sourceIp,
+        sourceNetwork,
+      });
+      const next = {
+        ...found.value,
+        controlPlane: { ...found.value.controlPlane, lastCheck: Option.some(check) },
+      };
+      return Result.ok({
+        world: World.replaceCluster(ctx.world, next),
+        output: CommandOutput.table(
+          [{ ...check, result: check.allowed ? "ALLOW" : "DENY" }],
+          [
+            Column.create("ENDPOINT", "endpoint"),
+            Column.create("SOURCE_IP", "sourceIp"),
+            Column.create("SOURCE_VPC", "sourceNetwork"),
+            Column.create("RESULT", "result"),
+            Column.create("REASON", "reason"),
+          ],
+          [
+            OutputMessage.hint(
+              "gcloud-sim: 明示した送信元の教材評価です。認証/RBAC・実通信・経路/NAT/VPN/peeringは再現しません。kubectlの疎通結果ではありません。",
+            ),
+          ],
+        ),
+      });
+    },
   }),
   projectCommand({
     path: ["gcloud", "container", "clusters", "resize"],

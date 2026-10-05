@@ -50,6 +50,11 @@ import {
   type ConfigValues,
   type GcloudConfig,
 } from "@/engine/domains/gcloud-config";
+import {
+  type ControlPlaneCheck,
+  GkeControlPlane,
+  type GkePrivateNetwork,
+} from "@/engine/domains/gke-control-plane";
 import { type IamBinding, IamMember, type IamPolicy, RoleName } from "@/engine/domains/iam-policy";
 import type {
   Autoscaling,
@@ -145,12 +150,13 @@ import { Result } from "@/utils/Result";
  * v25 はNetworkPolicyとクラスタの強制設定を持つ。
  * v26 はIngressのホスト・パスとServiceバックエンドを持つ。
  * v27 は既定ノードプールを保存し、プールの管理・自動スケール設定と評価を持つ。
+ * v28 はprivate制御プレーン・許可CIDR・前回接続判定とコンテキスト別endpointを持つ。
  */
-export const SchemaVersion = 27;
+export const SchemaVersion = 28;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
 const MigratableVersions = [
-  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
 ] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
@@ -374,6 +380,25 @@ const bucket = D.object<Bucket>({
   timeCreated: string,
 });
 
+const privateNetwork = D.object<GkePrivateNetwork>({
+  network: string,
+  subnetwork: string,
+  masterIpv4Cidr: string,
+});
+const controlPlaneCheck = D.object<ControlPlaneCheck>({
+  endpoint: D.literal(["public", "private"]),
+  sourceIp: string,
+  sourceNetwork: string,
+  allowed: D.boolean,
+  reason: string,
+});
+const controlPlane = D.object<GkeControlPlane>({
+  privateNetwork: D.option(privateNetwork),
+  privateEndpoint: D.boolean,
+  authorizedNetworks: D.option(D.array(string)),
+  enforcePrivateEndpoint: D.boolean,
+  lastCheck: D.option(controlPlaneCheck),
+});
 const cluster = D.object<GkeCluster>({
   projectId: string,
   name: string,
@@ -381,6 +406,7 @@ const cluster = D.object<GkeCluster>({
   nodeCount: D.number,
   autopilot: D.boolean,
   networkPolicyEnabled: D.boolean,
+  controlPlane,
   status: D.literal(["RUNNING"]),
   machineType,
   currentMasterVersion: string,
@@ -1036,6 +1062,7 @@ const world = D.object<World>({
   kubeNetworkPolicies: D.array(kubeNetworkPolicy),
   kubeFiles: D.record(string),
   kubeContextNamespaces: D.record(string),
+  kubeContextEndpoints: D.record(D.literal(["public", "private"])),
   functions: D.array(cloudFunction),
   appEngineApps: D.array(appEngineApp),
   appVersions: D.array(appVersion),
@@ -1379,9 +1406,9 @@ const migratePrevious = (version: number, value: unknown): unknown => {
   };
 };
 
-const migrate = (version: number, value: unknown): unknown => {
+const migrateV27 = (version: number, value: unknown): unknown => {
   const previous = migratePrevious(version, value);
-  if (version === SchemaVersion || !isRecord(previous)) return previous;
+  if (version >= 27 || !isRecord(previous)) return previous;
   const oldPools = Array.isArray(previous.nodePools) ? previous.nodePools : [];
   const defaults = Array.isArray(previous.clusters)
     ? previous.clusters.flatMap((c) =>
@@ -1455,6 +1482,20 @@ const migrate = (version: number, value: unknown): unknown => {
       : {}),
     ...(version < 24 ? { kubeStorageClasses: [], kubePvcs: [], kubePvs: [] } : {}),
     ...(version < 23 ? { kubeDeployments: withVolumes(previous.kubeDeployments) } : {}),
+  };
+};
+
+const migrate = (version: number, value: unknown): unknown => {
+  const previous = migrateV27(version, value);
+  if (version >= 28 || !isRecord(previous)) return previous;
+  return {
+    ...previous,
+    kubeContextEndpoints: {},
+    clusters: Array.isArray(previous.clusters)
+      ? previous.clusters.map((c) =>
+          isRecord(c) ? { ...c, controlPlane: GkeControlPlane.public() } : c,
+        )
+      : previous.clusters,
   };
 };
 

@@ -91,3 +91,5 @@ CLIを持たない管理手続きや性能測定、AI推論/外部API、公式�
 Phase 21（#15）: 限定IngressのHTTPホスト・最長パス・Exact/Prefix・defaultBackend、NodePort Service参照/ポート/Ready接続先の診断、namespace、CLI/ツリー/プロパティ、Snapshot v26と2ミッションを追加。実LB・IP・DNS・TLS・NEG・BackendConfig・外部クライアントのNetworkPolicyやStatefulSet等は残作業です。
 
 Phase 22（#15）: Standardの既定/追加ノードプールを保存し、対象プールのresize/delete、管理/自動スケール設定、制御プレーンとノードの独立更新、明示した必要ノード数の上下限評価、Snapshot v27と運用2ミッションを追加。実ノード配置・regional可用性・private設定・Workload Identity・自動修復/定期更新・upgrade戦略・StatefulSet等は継続します。
+
+Phase 23（#15）: privateノード/制御プレーンendpoint・VPC/subnet/master CIDR・公開/内部endpointの許可CIDR設定、送信元を明示する接続条件評価とコンテキスト接続先保存、Snapshot v28とセキュリティ2ミッションを追加。実通信/認証/RBAC・regional HA/実ノード配置・Workload Identity・StatefulSet/複数コンテナ・VPA/Autopilot固有要件は継続します。
