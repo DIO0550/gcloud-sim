@@ -23,6 +23,8 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 
 ## 実装済み（303）
 
+ConfigMap/SecretのYAML/JSONは`immutable: true`に対応します。保護後はデータ更新とfalseへの変更を拒否し、ラベル更新・削除/再作成は可能です。get/describe・プロパティにもフラグを表示します。詳細と教材は[KUBERNETES.md](KUBERNETES.md)に記載しています。
+
 Kubernetesは`kubectl create/get/describe/delete namespace`（`ns`別名）とNamespace manifestに対応します。各kubectl操作と`sim kubernetes probe/reconcile`で`-n/--namespace`を使い、`kubectl get -A/--all-namespaces`でnamespaceを横断した一覧を確認できます。省略時はコンテキストの既定namespace（未設定なら`default`）です。`kubectl config set-context --current --namespace=staging`または既存CONTEXT名で設定し、空文字で解除できます。詳細は[KUBERNETES.md](KUBERNETES.md)。
 
 ### Cloud Build

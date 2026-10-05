@@ -10,6 +10,7 @@ export type KubeConfig = Readonly<{
   namespace: string;
   kind: "configmap" | "secret";
   name: string;
+  immutable: boolean;
   labels: KubeLabels;
   /** Metadata label keys managed by the last simulated client-side apply. */
   lastAppliedLabelKeys: readonly string[];
@@ -35,6 +36,8 @@ export const KubeConfig = {
   validate(c: KubeConfig): Result<KubeConfig, string> {
     if (!KubeNamespace.valid(c.namespace)) return Result.err("Invalid Kubernetes namespace.");
     if (!Result.isOk(KubeName.parse(c.name))) return Result.err("Invalid configuration name.");
+    if (typeof c.immutable !== "boolean") return Result.err("immutable must be a boolean.");
+
     const labels = KubeLabels.parse(c.labels);
     if (!Result.isOk(labels)) return Result.err(labels.error);
     if (
@@ -59,6 +62,24 @@ export const KubeConfig = {
       return Result.err("Invalid configuration key or data exceeds 1 MiB.");
     return Result.ok(c);
   },
+  update(current: KubeConfig, next: KubeConfig): Result<KubeConfig, string> {
+    if (!current.immutable) return Result.ok(next);
+    if (!next.immutable)
+      return Result.err(
+        `${current.kind}/${current.name}: immutable cannot be unset; delete and recreate the resource.`,
+      );
+
+    const unchanged =
+      current.data.length === next.data.length &&
+      current.data.every((entry) =>
+        next.data.some((other) => other.key === entry.key && other.value === entry.value),
+      );
+    if (!unchanged)
+      return Result.err(
+        `${current.kind}/${current.name}: data is immutable; delete and recreate the resource.`,
+      );
+    return Result.ok(next);
+  },
   toRecord(c: KubeConfig, describe = false): JsonRecord {
     const data = Object.fromEntries(
       c.data.map((e) => {
@@ -82,6 +103,7 @@ export const KubeConfig = {
         creationTimestamp: c.createdAt,
       },
       ...(c.kind === "secret" ? { type: "Opaque" } : {}),
+      immutable: c.immutable,
       data,
     };
   },

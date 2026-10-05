@@ -13,6 +13,7 @@ export type ConfigManifest = Readonly<{
   namespace: string | undefined;
   data: KubeConfig["data"];
   labels: KubeLabels;
+  immutable: boolean | undefined;
 }>;
 export type NamespaceManifest = Readonly<{ kind: "namespace"; name: string; namespace: undefined }>;
 export type KubeManifest = NamespaceManifest | ConfigManifest | WorkloadManifest | HpaManifest;
@@ -52,10 +53,13 @@ const parseResource = (value: unknown): KubeManifest => {
   fields(
     r,
     secret
-      ? ["apiVersion", "kind", "metadata", "data", "stringData", "type"]
-      : ["apiVersion", "kind", "metadata", "data"],
+      ? ["apiVersion", "kind", "metadata", "data", "stringData", "type", "immutable"]
+      : ["apiVersion", "kind", "metadata", "data", "immutable"],
     "manifest",
   );
+  if (r.immutable !== undefined && typeof r.immutable !== "boolean")
+    return fail("immutable must be a boolean.");
+
   const meta = record(r.metadata, "metadata");
   fields(meta, ["name", "namespace", "labels"], "metadata");
   const labels = KubeLabels.parse(meta.labels === undefined ? {} : meta.labels);
@@ -72,6 +76,7 @@ const parseResource = (value: unknown): KubeManifest => {
     namespace: ns ?? "default",
     kind: secret ? "secret" : "configmap",
     name: meta.name,
+    immutable: r.immutable === true,
     labels: labels.value,
     lastAppliedLabelKeys: [],
     data: Array.from(data, ([key, value]) => ({ key, value })).toSorted((a, b) =>
@@ -87,6 +92,7 @@ const parseResource = (value: unknown): KubeManifest => {
     namespace: ns,
     data: config.value.data,
     labels: config.value.labels,
+    immutable: typeof r.immutable === "boolean" ? r.immutable : undefined,
   };
 };
 export const KubeManifest = {
@@ -170,6 +176,58 @@ spec:
 `;
 
 export const KubeManifestExamples: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  "kubernetes-immutable": {
+    "frozen-settings.yaml": `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frozen-settings
+  labels:
+    app: frozen-web
+immutable: true
+data:
+  MODE: staging
+`,
+    "frozen-credentials.yaml": `apiVersion: v1
+kind: Secret
+metadata:
+  name: frozen-credentials
+  labels:
+    app: frozen-web
+type: Opaque
+immutable: true
+stringData:
+  TOKEN: demo-token-v1
+`,
+    "frozen-web.yaml": `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frozen-web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frozen-web
+  template:
+    metadata:
+      labels:
+        app: frozen-web
+    spec:
+      containers:
+        - name: frozen-web
+          image: nginx:1
+          env:
+            - name: MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: frozen-settings
+                  key: MODE
+            - name: TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: frozen-credentials
+                  key: TOKEN
+`,
+  },
   "kubernetes-config-labels": {
     "labeled-configs.yaml": `apiVersion: v1
 kind: ConfigMap

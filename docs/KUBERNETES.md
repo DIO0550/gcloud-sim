@@ -97,7 +97,7 @@ kubectl rollout restart deployment/web
 kubectl exec deployment/web -- printenv APP_MODE
 ```
 
-`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全54件、GKE拡充分は17件です。
+`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全55件、GKE拡充分は18件です。
 
 `sim files write FILE --content='…'`で独自のYAML/JSONを書き、`read`で読み、`replace --search=… --replacement=…`で1か所を編集できます。ファイルは `.yaml` / `.yml` / `.json` の相対パスで、32ファイル・1ファイル64,000文字まで。Terraformとは別に保存し、Terraformのplanに影響しません。`sim files delete FILE`はファイルだけを消します。クラスタ上の設定を消す操作は `kubectl delete -f FILE` です。教材の上書きは `sim files load kubernetes-config --force` で明示します。
 
@@ -107,7 +107,7 @@ kubectl exec deployment/web -- printenv APP_MODE
 
 権限はConfigMap/Secretごとに判定します。applyはgetと、新規ならcreate・既存ならupdateを要求します（同じ値への再適用にもupdateを要求する簡略モデル）。create/deleteは対象のcreate/deleteだけで、Deployment権限は不要です。複数リソースは全体を検証し、途中の権限不足・不正なmanifest・重複・削除対象の欠落があれば一切変更しません。実kubectlの複数リソース処理は途中まで反映されることがあるため、この原子的な動作は教材上の簡略化です。
 
-ConfigMap/Secretのannotations、immutable、binaryData、volume、対応範囲外のDeployment/Service manifest、List、ディレクトリ/URL/stdin入力、server-side apply、patch/edit、YAML alias/明示タグは未対応として拒否します。認識できないフィールドもエラーにし、無視して成功扱いにはしません。`deployment.yaml` / `service.yaml` は仮想ファイルがない場合のみ従来の固定教材として利用できます。同名ファイルがあれば必ず内容を解釈し、壊れていても固定教材へ切り替えません。
+ConfigMap/Secretのannotations、binaryData、volume、対応範囲外のDeployment/Service manifest、List、ディレクトリ/URL/stdin入力、server-side apply、patch/edit、YAML alias/明示タグは未対応として拒否します。認識できないフィールドもエラーにし、無視して成功扱いにはしません。`deployment.yaml` / `service.yaml` は仮想ファイルがない場合のみ従来の固定教材として利用できます。同名ファイルがあれば必ず内容を解釈し、壊れていても固定教材へ切り替えません。
 
 ## Deployment・Serviceのファイル適用と接続先
 
@@ -143,7 +143,7 @@ kubectl rollout history deployment/manifest-web
 
 Deployment/Serviceのapplyは対応するspec値を反映する限定モデルです。ConfigMap/Secretの管理キー処理とは異なり、last-applied annotationや三方向マージ・server-side applyは再現しません。ラベルmapは指定値で置換し、metadata.labels省略は空になります。複数コンテナ・名前付きポート・複数ポート・UDP・headless/ExternalName・Serviceのtype変更は未対応です。
 
-接続先は学習用の表示で、EndpointSliceリソース・プロセスの待受ポート・実通信を確認するものではありません。Serviceだけを先に作ってもよく、Deploymentを削除してもServiceは残ります。Snapshot v20でnamespace・コンテキスト既定値・ラベル・selector・resources・HPAとreadiness/liveness/startup設定・評価・共通再起動回数を保存します。
+接続先は学習用の表示で、EndpointSliceリソース・プロセスの待受ポート・実通信を確認するものではありません。Serviceだけを先に作ってもよく、Deploymentを削除してもServiceは残ります。Snapshot v21でnamespace・コンテキスト既定値・ラベル・selector・resources・HPAとreadiness/liveness/startup設定・評価・共通再起動回数を保存します。
 
 ## 複数ラベルとServiceの公開先切り替え
 
@@ -499,7 +499,7 @@ manifestのnamespaceは省略するとコマンドのnamespaceを使います。
 
 `kubectl get -A/--all-namespaces`はNAMESPACE列付きの一覧を返します。JSON/YAMLでもmetadata.namespaceを確認できます。`-A`と`-n`・個別名の組み合わせは未対応として拒否します。`-A`はgetだけに対応します。ツリーではカスタムnamespaceの下へリソースをまとめ、各プロパティとダブルクリックのdescribeコマンドにnamespaceを反映します。補完は現在クラスタのnamespace名・リソース名を候補にし、リソース名の候補は全namespaceを含みます。現在コンテキストの既定namespaceは下記のset-contextで変更できます。root位置のフラグ・namespace RBAC・Namespace自身のラベル操作等は未対応です。
 
-`kubectl delete namespace NAME`は同じプロジェクト・クラスタ・namespace内の全Deployment（導出Pod/ReplicaSetを含む）・Service・ConfigMap・Secret・HPAを即時削除します。組み込みnamespaceは削除対象外です。実際のTerminating/finalizer/終了待ち・削除保護は再現しません。必要な権限は`container.namespaces.create/get/list/update/delete`で、namespace削除はそのdelete権限で子リソースも削除する教材モデルです。admin/developerへ追加し、viewerはget/listだけを持ちます。クラスタ削除でもカスタムnamespaceを削除します。Snapshot v20はこの分離とコンテキストの既定namespaceを保存します。v18は既定namespace未設定でそのまま保持し、v1〜v17はリソースをdefaultへ移行します。
+`kubectl delete namespace NAME`は同じプロジェクト・クラスタ・namespace内の全Deployment（導出Pod/ReplicaSetを含む）・Service・ConfigMap・Secret・HPAを即時削除します。組み込みnamespaceは削除対象外です。実際のTerminating/finalizer/終了待ち・削除保護は再現しません。必要な権限は`container.namespaces.create/get/list/update/delete`で、namespace削除はそのdelete権限で子リソースも削除する教材モデルです。admin/developerへ追加し、viewerはget/listだけを持ちます。クラスタ削除でもカスタムnamespaceを削除します。Snapshot v21はこの分離とコンテキストの既定namespaceを保存します。v18は既定namespace未設定でそのまま保持し、v1〜v17はリソースをdefaultへ移行します。
 
 
 ## コンテキストの既定namespace
@@ -520,7 +520,7 @@ kubectl config set-context --current --namespace=''
 
 通常のコマンドは「明示-n → コンテキスト既定値 → default」の順で決定します。manifestのmetadata.namespaceが明示されていればその値を使い、明示-nとの不一致だけを拒否します。get -Aは既定値によらず全namespaceを表示します。sim kubernetes probe/reconcileも同じ優先順です。get-contextsはNAMESPACE列、viewはcontext.namespace、端末見出しは明示した既定値を表示します。ツリーからのdescribeはdefaultも含めnamespaceを明示し、既定値で別環境の同名リソースを選ばないようにします。
 
-config操作も既存のkubectlと同じAPI/プロジェクト/container.clusters.get確認を通る教材仕様です。ローカル設定だけを更新し、クラウドリソース・revision・Podを変えず、viewerでも変更できます。Snapshot v20で設定を保存し、v1〜v18は未設定へ補完します。v18のnamespace・probe・HPA・履歴・設定・仮想ファイル等は変更しません。
+config操作も既存のkubectlと同じAPI/プロジェクト/container.clusters.get確認を通る教材仕様です。ローカル設定だけを更新し、クラウドリソース・revision・Podを変えず、viewerでも変更できます。Snapshot v21で設定を保存し、v1〜v18は未設定へ補完します。v18のnamespace・probe・HPA・履歴・設定・仮想ファイル等は変更しません。
 
 
 ## ConfigMap・Secretをラベルで分類する
@@ -545,4 +545,45 @@ kubectl exec deployment/web -- printenv MODE
 
 ConfigMap/Secretのapplyはデータキーとラベルキーを別々に管理します。前回applyに含めたラベルをファイルから省くと削除し、CLIで追加した未管理ラベルは保持します。CLIで削除したラベルもファイルに残っていれば再applyで戻ります。`create -f`だけでは管理キーを記録しません。ラベル変更は作成日時・設定データ・Deploymentのrevision・起動済みPodの環境変数を保ちます。ServiceのselectorはPodラベルを選ぶため、設定リソースのラベルでは接続先が変わりません。
 
-ミッション「ラベルでConfigMap・Secretを分類する」は3つの設定を分類し、temporaryラベルを消すと達成します。参照元のデータとwebのnginx:1・1レプリカ・revision 1も条件です。Snapshot v20は設定ラベルとapply管理キーを保存します。v1〜v19は空ラベル・空管理キーへ補完し、v18/v19のnamespace・コンテキスト設定・probe・HPA・履歴・Pod内の値を引き継ぎます。
+ミッション「ラベルでConfigMap・Secretを分類する」は3つの設定を分類し、temporaryラベルを消すと達成します。参照元のデータとwebのnginx:1・1レプリカ・revision 1も条件です。Snapshot v21は設定ラベルとapply管理キーを保存します。v1〜v19は空ラベル・空管理キーへ補完し、v18/v19のnamespace・コンテキスト設定・probe・HPA・履歴・Pod内の値を引き継ぎます。
+
+
+## 変更できないConfigMap・Secret
+
+```sh
+gcloud services enable container.googleapis.com
+gcloud container clusters create-auto immutable-gke --region=us-central1
+sim files load kubernetes-immutable
+kubectl apply -f frozen-settings.yaml
+kubectl apply -f frozen-credentials.yaml
+kubectl apply -f frozen-web.yaml
+kubectl get cm frozen-settings -o yaml
+sim files replace frozen-settings.yaml --search=staging --replacement=production
+kubectl apply -f frozen-settings.yaml
+```
+
+最後のapplyは`data is immutable`で失敗します。ConfigMapとOpaque Secretはトップレベルの`immutable: true`を持てます。新規で省略した場合とliteral作成はfalseで、mutableな設定は更新時にtrueへ変更できます。一度trueにした設定のデータキーの追加・削除・値変更と、falseへ戻す更新は拒否します。Secretはbase64 dataとstringDataを解決した実際の値で比べます。同じデータの再apply、CLIやmanifestによるラベル更新は可能です。既存設定へのapplyでimmutableを省略すると現在値を保持する教材モデルで、immutableフィールドの三方向マージは再現しません。
+
+値を変えるには設定を削除・再作成するか、別名の設定へ参照を切り替えます。教材では同名の設定を作り直します。
+
+```sh
+sim files replace frozen-credentials.yaml --search=demo-token-v1 --replacement=demo-token-v2
+kubectl delete -f frozen-settings.yaml
+kubectl apply -f frozen-settings.yaml
+kubectl delete -f frozen-credentials.yaml
+kubectl apply -f frozen-credentials.yaml
+kubectl exec deployment/frozen-web -- printenv MODE
+kubectl exec deployment/frozen-web -- printenv TOKEN
+kubectl rollout restart deployment/frozen-web
+kubectl rollout status deployment/frozen-web
+kubectl exec deployment/frozen-web -- printenv MODE
+kubectl exec deployment/frozen-web -- printenv TOKEN
+```
+
+再起動前の2つのPodはstagingとdemo-token-v1、再起動後はproductionとdemo-token-v2を使います。設定削除だけでは既存Podを止めず、新しいPodは参照元がないとCreateContainerConfigErrorで待ちます。設定の再作成で待機Podだけが新しい値を取得します。get/describeとプロパティにimmutableを表示し、Secretの一覧・describe・プロパティは従来どおり値を隠します。明示したSecret getのJSON/YAMLはbase64 dataを返します。
+
+API・種別ごとのget/create/update/delete権限、Namespace/コンテキスト/プロジェクト/クラスタ境界を従来どおり検証します。保護中の変更が混在ファイル内で失敗すると、先行したNamespace・Deployment・Service・ConfigMapの変更とIP採番も確定しません。削除は指定した名前が対象で、編集後のファイルでも削除可能です。immutableは削除保護や暗号化ではなく、設定データの更新を禁止するフラグです。監視負荷削減・kubeletのwatch・volumeや伝播遅延は再現しません。
+
+ミッション「変更できない設定を作り直してPodへ反映する」はファイルとクラスタのMODE=production・TOKEN=demo-token-v2をそろえ、両設定のimmutable: true・参照環境変数・nginx:1・2レプリカ・最後の履歴がrestartであることを確認します。ファイル編集だけ、設定の再作成だけ、1つのPodだけの再作成、literal env、mutableな再作成では達成しません。Snapshot v21はimmutableを保存し、v1〜v20はfalseを補完します。v20のラベルとapply管理キー、Namespace・コンテキスト・Pod環境・probe・HPA・履歴・ファイルを保持します。
+
+参考: [Kubernetes ConfigMaps](https://kubernetes.io/docs/concepts/configuration/configmap/#immutable-configmaps)、[Immutable Secrets](https://kubernetes.io/docs/concepts/configuration/secret/#immutable-secrets)、[環境変数で使うConfigMapの更新](https://kubernetes.io/docs/tutorials/configuration/updating-configuration-via-a-configmap/)。

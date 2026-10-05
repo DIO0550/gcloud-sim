@@ -66,6 +66,11 @@ import {
   kubeHpaManifestSatisfied,
 } from "@/engine/missions/kube-hpa-manifests";
 import {
+  type KubeImmutableAssertion,
+  KubeImmutableMissions,
+  kubeImmutableSatisfied,
+} from "@/engine/missions/kube-immutable";
+import {
   type KubeNamespaceAssertion,
   KubeNamespaceMissions,
   kubeNamespaceSatisfied,
@@ -141,6 +146,7 @@ export type MissionAssertion =
   | KubeReadinessAssertion
   | KubeLivenessAssertion
   | KubeNamespaceAssertion
+  | KubeImmutableAssertion
   | KubeConfigLabelsAssertion
   | KubeContextAssertion
   | KubeStartupAssertion
@@ -298,6 +304,7 @@ const Missions: readonly Mission[] = [
   ...KubeLivenessMissions,
   ...KubeStartupMissions,
   ...KubeNamespaceMissions,
+  ...KubeImmutableMissions,
   ...KubeConfigLabelsMissions,
   ...KubeContextMissions,
   ...KubeHpaMissions,
@@ -761,6 +768,8 @@ const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
       return kubeHpaManifestSatisfied(world);
     case "kubeHpaScaled":
       return kubeHpaSatisfied(world);
+    case "kubeImmutableRefreshed":
+      return kubeImmutableSatisfied(world);
     case "kubeConfigLabelsClassified":
       return kubeConfigLabelsSatisfied(world);
     case "kubeContextSwitched":

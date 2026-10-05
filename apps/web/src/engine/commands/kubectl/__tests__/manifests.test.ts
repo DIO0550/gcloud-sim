@@ -138,7 +138,7 @@ test.each([
   JSON.stringify({ ...cm(), kind: "Deployment" }),
   JSON.stringify(cm({ BOOL: true })),
   JSON.stringify(cm({ NUM: 12 })),
-  JSON.stringify({ ...cm(), immutable: true }),
+  JSON.stringify({ ...cm(), immutable: "true" }),
   JSON.stringify({ ...cm(), binaryData: { BIN: "YQ==" } }),
   JSON.stringify({ ...cm(), metadata: { name: "settings", namespace: "INVALID" } }),
   JSON.stringify({ ...cm(), metadata: { name: "settings", annotations: { app: "web" } } }),
@@ -163,9 +163,9 @@ test("multiple YAML resources are applied/deleted together and invalid later ent
   expect(execute(applied, "kubectl delete -f bundle.yaml").world.kubeConfigs).toHaveLength(0);
   const broken = write(
     s,
-    `${JSON.stringify(cm())}\n---\n${JSON.stringify({ ...secret(), immutable: true })}`,
+    `${JSON.stringify(cm())}\n---\n${JSON.stringify({ ...secret(), immutable: "true" })}`,
   );
-  rejected(broken, "kubectl apply -f config.json", "Unsupported");
+  rejected(broken, "kubectl apply -f config.json", "immutable must be a boolean");
   rejected(
     write(s, `${JSON.stringify(cm())}\n---\n${JSON.stringify(cm())}`),
     "kubectl apply -f config.json",
