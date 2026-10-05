@@ -680,3 +680,32 @@ test("write requires consuming Pods, explicit path and content and enforces tota
     "1 MiB total",
   );
 });
+
+test("failed configuration refresh keeps its old projection while mixed PVC writes remain live", () => {
+  const mixed = workload();
+  const spec = mixed.spec.template.spec as unknown as {
+    volumes: Record<string, unknown>[];
+    containers: {
+      name: string;
+      image: string;
+      volumeMounts: { name: string; mountPath: string }[];
+    }[];
+  };
+  spec.volumes.unshift({ name: "settings", configMap: { name: "settings" } });
+  required(spec.containers[0]).volumeMounts.unshift({ name: "settings", mountPath: "/etc/config" });
+  let s = execute(applied(), "kubectl create configmap settings --from-literal=MODE=production");
+  s = execute(write(s, mixed), "kubectl apply -f storage.json");
+  s = execute(put(s, "before"), "kubectl delete cm settings");
+  expect(execute(s, "kubectl exec deployment/storage-web -- cat /etc/config/MODE").text).toBe(
+    "production",
+  );
+  s = put(s, "after");
+  expect(cat(s)).toBe("after");
+  expect(execute(s, "kubectl exec deployment/storage-web -- cat /etc/config/MODE").text).toBe(
+    "production",
+  );
+  s = execute(s, "kubectl rollout restart deployment/storage-web");
+  rejected(s, "kubectl exec deployment/storage-web -- cat /data/message.txt", "FailedMount");
+  s = execute(s, "kubectl create configmap settings --from-literal=MODE=restored");
+  expect(cat(s)).toBe("after");
+});

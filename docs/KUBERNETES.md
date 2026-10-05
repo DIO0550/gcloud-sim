@@ -660,7 +660,7 @@ Pod templateの`spec.volumes`に`configMap.name`または`secret.secretName`を�
 
 volumeとmountは各20個まで、itemsは100件まで。volume名は重複不可、パスは空・`.`・`..`・制御文字・バックスラッシュを拒否します。mountPathは絶対パス、items.pathとsubPathは相対パスです。重複/包含関係のitemsパスとmountPathは教材の単純化のため拒否します。subPathはファイル1個に限定し、ディレクトリsubPath・subPathExpr・defaultMode/items.mode・projected/emptyDir等は未対応として拒否します。
 
-必要な参照先がない場合もDeploymentのapplyは成功しますが、Podは`ContainerCreating`となりFailedMountを表示します。get/describe、rollout status、logs/exec、Service接続先、HPAの準備状態判定に同じ待機状態を反映します。参照先を修復すると待機Podが起動します。開始前のPodには環境変数の成功キャッシュを保存しません。起動済みPodの投影更新で必要なリソース/キーが失われた場合は前回の投影全体を保持し、新しいPodだけを待機させる教材モデルです。
+必要な参照先がない場合もDeploymentのapplyは成功しますが、Podは`ContainerCreating`となりFailedMountを表示します。get/describe、rollout status、logs/exec、Service接続先、HPAの準備状態判定に同じ待機状態を反映します。参照先を修復すると待機Podが起動します。開始前のPodには環境変数の成功キャッシュを保存しません。起動済みPodの投影更新で必要なリソース/キーが失われた場合は前回の設定投影全体を保持し、同居するPVCの内容は最新の永続データを使い、新しいPodだけを待機させる教材モデルです。
 
 `exec -- cat PATH`はマウント済みのUTF-8ファイルを読み、`base64 PATH`はバイト列をbase64で表示します。非UTF-8のcatは説明付きで拒否します。Pod名・pod/NAME・deployment/NAMEに対応し、Deploymentでは先頭Podを選びます。実シェル、任意プログラム、コンテナイメージ内やホストのファイルへアクセスしません。execには従来どおりcontainer.pods.execとContainer APIが必要です。Secretを明示的にcatした場合は値が出ますが、プロパティではファイルのパスとバイト数だけを表示します。
 

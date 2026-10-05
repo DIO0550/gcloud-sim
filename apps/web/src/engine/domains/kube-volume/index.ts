@@ -140,19 +140,33 @@ export const KubeVolumes = {
     storage?: Pick<World, "kubePvcs" | "kubePvs">,
   ): Result<PodFiles, string> {
     const cached = d.podFiles.find((p) => p.podName === podName);
-    const fail = (message: string): Result<PodFiles, string> =>
-      cached ? Result.ok(cached) : Result.err(`ContainerCreating: FailedMount: ${message}`);
     const projected = new Map<string, readonly { path: string; value: string }[]>();
+    // Persistent data must stay live even when configuration projection refresh fails.
+    for (const v of d.volumes.filter((v) => v.source === "persistentvolumeclaim")) {
+      const pv = storage && KubeStorage.volume(storage, d, v.resource);
+      if (!pv)
+        return Result.err(
+          `ContainerCreating: FailedMount: persistentvolumeclaim/${v.resource} is missing or Pending`,
+        );
+      projected.set(v.name, pv.files);
+    }
+    const persistentMounts = d.volumeMounts.filter((m) => projected.has(m.name));
+    const fail = (message: string): Result<PodFiles, string> => {
+      if (!cached) return Result.err(`ContainerCreating: FailedMount: ${message}`);
+      if (!persistentMounts.length) return Result.ok(cached);
+      const configurationFiles = cached.files.filter(
+        (f) => !persistentMounts.some((m) => f.path.startsWith(`${m.mountPath}/`)),
+      );
+      const persistentFiles = persistentMounts.flatMap((m) =>
+        (projected.get(m.name) ?? []).map((f) => ({
+          path: `${m.mountPath}/${f.path}`,
+          value: f.value,
+        })),
+      );
+      return Result.ok({ podName, files: [...configurationFiles, ...persistentFiles] });
+    };
     for (const v of d.volumes) {
-      if (v.source === "persistentvolumeclaim") {
-        const pv = storage && KubeStorage.volume(storage, d, v.resource);
-        if (!pv)
-          return Result.err(
-            `ContainerCreating: FailedMount: persistentvolumeclaim/${v.resource} is missing or Pending`,
-          );
-        projected.set(v.name, pv.files);
-        continue;
-      }
+      if (v.source === "persistentvolumeclaim") continue;
       const config = configs.find(
         (c) =>
           c.projectId === d.projectId &&
