@@ -32,6 +32,7 @@ import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeLiveness } from "@/engine/domains/kube-liveness";
 import { KubeManifest } from "@/engine/domains/kube-manifest";
 import { KubeNamespace } from "@/engine/domains/kube-namespace";
+import { KubeNetworkPolicy } from "@/engine/domains/kube-network-policy";
 import { KubeReadiness } from "@/engine/domains/kube-readiness";
 import { KubeStartup } from "@/engine/domains/kube-startup";
 import {
@@ -121,6 +122,7 @@ export type World = Readonly<{
   kubeStorageClasses: readonly KubeStorageClass[];
   kubePvcs: readonly KubePvc[];
   kubePvs: readonly KubePv[];
+  kubeNetworkPolicies: readonly KubeNetworkPolicy[];
   kubeFiles: Readonly<Record<string, string>>;
   functions: readonly CloudFunction[];
   appEngineApps: readonly AppEngineApp[];
@@ -296,6 +298,7 @@ const NamedCollectionKeys = [
   "kubeStorageClasses",
   "kubePvcs",
   "kubePvs",
+  "kubeNetworkPolicies",
   "functions",
   "sqlInstances",
   "pubsubTopics",
@@ -1055,6 +1058,7 @@ export const World = {
       kubeStorageClasses: world.kubeStorageClasses.filter((s) => !belongs(s)),
       kubePvcs: world.kubePvcs.filter((s) => !belongs(s)),
       kubePvs: world.kubePvs.filter((s) => !belongs(s)),
+      kubeNetworkPolicies: world.kubeNetworkPolicies.filter((s) => !belongs(s)),
     };
   },
 
@@ -1428,6 +1432,7 @@ export const World = {
       ...world.kubeConfigs,
       ...world.kubeHpas,
       ...world.kubePvcs,
+      ...world.kubeNetworkPolicies,
     ]) {
       const cluster = World.findCluster(world, r.projectId, r.cluster);
       if (
@@ -1436,6 +1441,15 @@ export const World = {
       )
         return Result.err("Kubernetes resource belongs to a missing or invalid namespace.");
     }
+    if (
+      world.clusters.some(
+        (c) =>
+          typeof c.networkPolicyEnabled !== "boolean" || (c.autopilot && !c.networkPolicyEnabled),
+      )
+    )
+      return Result.err("Invalid cluster NetworkPolicy enforcement configuration.");
+    if (world.kubeNetworkPolicies.some((p) => !KubeNetworkPolicy.valid(p)))
+      return Result.err("Invalid Kubernetes NetworkPolicy.");
     for (const deployment of world.kubeDeployments) {
       const checked = KubeDeployment.validate(deployment);
       if (!Result.isOk(checked)) return Result.err(checked.error);
@@ -1581,6 +1595,7 @@ const validateReferences = (world: World): Result<World, string> => {
     ...world.kubeStorageClasses,
     ...world.kubePvcs,
     ...world.kubePvs,
+    ...world.kubeNetworkPolicies,
   ].find((r) => !Option.isSome(World.findCluster(world, r.projectId, r.cluster)));
   if (clusterless !== undefined) {
     return Result.err(

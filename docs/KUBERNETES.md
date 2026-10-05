@@ -97,7 +97,7 @@ kubectl rollout restart deployment/web
 kubectl exec deployment/web -- printenv APP_MODE
 ```
 
-`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全60件、GKE拡充分は23件です。
+`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全62件、GKE拡充分は25件です。
 
 `sim files write FILE --content='…'`で独自のYAML/JSONを書き、`read`で読み、`replace --search=… --replacement=…`で1か所を編集できます。ファイルは `.yaml` / `.yml` / `.json` の相対パスで、32ファイル・1ファイル64,000文字まで。Terraformとは別に保存し、Terraformのplanに影響しません。`sim files delete FILE`はファイルだけを消します。クラスタ上の設定を消す操作は `kubectl delete -f FILE` です。教材の上書きは `sim files load kubernetes-config --force` で明示します。
 
@@ -258,7 +258,7 @@ ConfigMap/Secretの操作はそれぞれ`container.configMaps.*`/`container.secr
 - ReplicaSetは読み取り専用の導出状態です。templateの識別子/Pod名は疑似値で、実際のハッシュ・annotationsは再現しません。イメージ変更/restartごとに新しいtemplateを作り、undoでは保存したtemplateを再利用します。
 - `.pkg.dev`以外のイメージは従来の簡略な成功モデルです。実在タグ/コンテナの起動可否の確認はしません。異常系ミッションでは存在確認できる教材レジストリを使います。
 
-複数コンテナを含むmanifest、readiness/liveness/startupの定期実行、VPA・HPAの定期評価/実測/安定化、StatefulSet、Ingress/NetworkPolicy、ノードプール設定やWorkload Identity等は残作業です。Issue #15は閉じません。
+複数コンテナを含むmanifest、readiness/liveness/startupの定期実行、VPA・HPAの定期評価/実測/安定化、StatefulSet、Ingress、NetworkPolicyの未対応設定、ノードプール設定やWorkload Identity等は残作業です。Issue #15は閉じません。
 
 参照: [ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/)、[Secret](https://kubernetes.io/docs/concepts/configuration/secret/)、[kubectl set env](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_set/kubectl_set_env/)、[Deploymentの更新とロールバック](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)、[kubectl set image](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_set/kubectl_set_image/)、[kubectl rollout undo](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_rollout/kubectl_rollout_undo/)、[GKEのロールと権限](https://docs.cloud.google.com/iam/docs/roles-permissions/container)。
 
@@ -493,7 +493,7 @@ kubectl describe service web-service -n production
 
 Deployment・Pod・ReplicaSet・Service・ConfigMap・Secret・HPAをnamespaceごとに識別します。各kubectl操作と`sim kubernetes probe/reconcile`の`-n/--namespace`はその1回の対象を指定し、省略時はコンテキストの既定namespace（未設定なら`default`）です。存在しないnamespaceはNotFoundで拒否します。namespaceとNode自体の操作はクラスタ単位です。リソースの作成・取得・更新・削除・rollout・環境変数・resources・probe・HPAは同名の別namespaceを変更しません。Podの名前は別namespaceで同じになる場合がありますが、仮想Pod IPはクラスタ内で重複しません。
 
-ConfigMap/Secret参照、Service selector、HPA targetは同じnamespace内だけで解決します。別namespaceの同名ConfigMapが存在していても、ローカルの設定が欠けていれば新しいPodはCreateContainerConfigErrorです。起動済みPodの環境変数キャッシュは従来どおり保持します。namespace自体はRBACやNetworkPolicyではなく、この教材では権限はプロジェクト単位・通信も未再現です。
+ConfigMap/Secret参照、Service selector、HPA targetは同じnamespace内だけで解決します。別namespaceの同名ConfigMapが存在していても、ローカルの設定が欠けていれば新しいPodはCreateContainerConfigErrorです。起動済みPodの環境変数キャッシュは従来どおり保持します。namespace作成だけでは通信を遮断しません。権限はプロジェクト単位で判定し、Pod通信の教材用判定は後述のNetworkPolicyで扱います。
 
 manifestのnamespaceは省略するとコマンドのnamespaceを使います。`-n`なしでmetadata.namespaceを指定すればそのnamespaceへ適用します。`-n`を明示した場合は全リソースの明示namespaceと一致する必要があり、不一致は全体を拒否します。1ファイルに同名の別namespaceリソースを置けますが、namespaceを解決した後に重複するリソースは拒否します。Namespaceとリソースを同じファイルに書く場合はNamespaceを先に書きます。後続の検証・権限で失敗すると、先行Namespaceも含めファイル全体の変更を戻す教材用の原子的操作です。
 
@@ -736,8 +736,63 @@ PVC・StorageClass・PVごとのcontainer.persistentVolumeClaims.* / container.s
 
 Snapshot v24で独自StorageClass・PVCの容量/割り当て/削除要求・PVの保持方針/Released/ファイルを保存します。v1〜v23は空ストレージを追加し、v23の投影ファイル・古いsubPath・環境変数・履歴と以前のprobe/HPA・namespace/コンテキスト等を保持します。不正な容量・参照・同名PV・パス・base64を拒否します。
 
-ミッション「PVCを割り当てて再起動後もデータを保つ」と「PVC削除後にRetainでデータを残す」は初期Worldから実施できます。前者はマニフェストとライブ設定・2Giへの拡張・全PodのReady・データとrestart履歴、後者はRetain設定・0レプリカ・PVC削除完了・Released PV内の保持内容を確認します。設定の編集だけやTerminating途中では達成しません。全60ミッション・304コマンドです。
+ミッション「PVCを割り当てて再起動後もデータを保つ」と「PVC削除後にRetainでデータを残す」は初期Worldから実施できます。前者はマニフェストとライブ設定・2Giへの拡張・全PodのReady・データとrestart履歴、後者はRetain設定・0レプリカ・PVC削除完了・Released PV内の保持内容を確認します。設定の編集だけやTerminating途中では達成しません。
 
 StatefulSet/volumeClaimTemplates、静的PV・volumeNameによる手動バインド、Released PV再利用、PVC/SCのラベル・annotation/既定クラス切替、RWX/ROX/RWOP・Block・Filestore/Hyperdisk・topology/allowedTopologies、PVC subPath、実I/O・ノード配置・ディスク接続/回収・容量不足/拡張待ち・finalizer手動操作は対象外です。
 
 仕様の参照元: [GKE persistent volumes](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/persistent-volumes)、[Storage Classes](https://kubernetes.io/docs/concepts/storage/storage-classes/)、[Persistent Volumes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)、[GKE IAM権限](https://docs.cloud.google.com/iam/docs/roles-permissions/container)。
+
+## NetworkPolicyでPod通信を制限する
+
+networking.k8s.io/v1のNetworkPolicyを仮想YAML/JSONでcreate/apply/deleteできます。`get/describe/delete netpol`、namespace指定、`get netpol -A`、メタデータラベルによる`-l`、JSON/YAML出力、ツリーとプロパティにも対応します。applyはselector・方向・ルールをファイルの設定へ置き換え、作成日時を保持します。複数文書の途中でエラーになれば全体を取り消します。実kubectlの3-way mergeやCNI処理は再現しません。
+
+Autopilotクラスタは教材の強制機能が有効です。Standardでは`gcloud container clusters create NAME --region=us-central1 --enable-network-policy`で新規作成してください。フラグなしのStandardでもポリシーは保存できますが、通信判定に強制しない旨を表示します。既存クラスタで強制機能を切り替えるupdate操作、実GKEで必要になるノード更新や最小容量は対象外です。
+
+```sh
+gcloud services enable container.googleapis.com
+gcloud container clusters create-auto policy-gke --region=us-central1
+sim files load kubernetes-network-policy
+kubectl apply -f network-workloads.yaml
+kubectl apply -f deny-ingress.json
+kubectl apply -f deny-egress.json
+sim kubernetes connect client --to=backend --port=8080
+sim files replace allow-ingress.json --search=wrong-client --replacement=client
+kubectl apply -f allow-ingress.json
+sim kubernetes connect client --to=backend --port=8080
+sim files replace allow-egress.json --search=wrong-backend --replacement=backend
+kubectl apply -f allow-egress.json
+sim kubernetes connect client --to=backend --port=8080
+sim kubernetes connect intruder --to=backend --port=8080
+sim kubernetes connect client --to=backend --port=8081
+kubectl get netpol
+kubectl describe netpol allow-client
+```
+
+最初はIngress/EgressともDENIED、受信側の修正後もEgressでDENIED、両方の修正後はALLOWEDです。intruderと8081は遮断を保ちます。判定は現在のPodラベルから毎回導出し、Pod再作成は要求しません。
+
+| 設定 | 教材の判定 |
+|---|---|
+| Pod・方向を選ぶポリシーがない | その方向を許可 |
+| `podSelector: {}` | ポリシーと同じnamespaceの全Podを選択 |
+| 対象方向の許可ルールなし | その方向で分離。他のポリシーによる許可がなければ遮断 |
+| 複数のポリシー・ルール | 許可を合算。評価順序や明示denyの優先順位なし |
+| 送信と受信 | 送信元Egress・宛先Ingressの両方が許可した場合だけ許可 |
+| 同じpeerのnamespaceSelectorとpodSelector | AND条件 |
+| 別々のpeer | OR条件 |
+| podSelectorだけのpeer | ポリシーと同じnamespace内で照合 |
+| `namespaceSelector: {}` | 全namespaceで照合 |
+| 空peer `{}`、空/省略したfrom・to | 全namespaceの全Pod |
+| 省略したports | 教材が扱う全TCP宛先ポート |
+| policyTypesの省略 | Ingress。空でないegressルールがあればEgressも追加 |
+
+`sim kubernetes connect`は2つのDeploymentの先頭Pod間の新規TCP通信を模擬判定します。`-n/--namespace`は送信元、`--to-namespace`は宛先です。0レプリカ、設定不足、イメージ取得失敗など待機中のPodは評価を拒否します。Readyだけが失敗したPodの直接通信は評価できます。自分自身への通信と許可済み通信の返信は許可扱いです。遮断してもPodのReadyやServiceの接続先を変更しません。ServiceのIP、DNS、NAT、外部通信、待受プロセス、実パケット、既存接続やCNIの反映時間は扱いません。
+
+selectorはmatchLabelsの等価条件、namespaceラベルは自動の`kubernetes.io/metadata.name`だけを扱います。TCPポートは数値1〜65535です。任意のnamespaceラベル、matchExpressions、ipBlock、名前付きポート、endPort、UDP/SCTP等は成功扱いにせず拒否します。実際のNetworkPolicyはこれらも扱えるため、このTCP限定の教材モデルをそのまま実クラスタの疎通保証として使わないでください。
+
+namespaceを跨ぐ教材は同じバンドルの`network-namespaces.yaml`、`cross-workloads.yaml`、`cross-deny.yaml`をapplyし、`cross-ingress.json`のwrong-clientと`cross-egress.json`のwrong-backendを直してapplyします。`sim kubernetes connect client -n client-ns --to=backend --to-namespace=data-ns --port=8080`で許可、送信元other-ns・宛先intruder・8081では遮断します。同じpeerのnamespaceとPod条件を分けると許可範囲が広がります。
+
+2ミッション「NetworkPolicyで必要なPod通信だけを許可する」「namespaceとPodラベルで通信先を絞る」は初期Worldから開始できます。ファイルとライブポリシーの一致、既定遮断の維持、両方向の許可、余分な通信の遮断を確認します。後者は同じpeerのAND条件も確認します。編集だけ・片方向の修正・全許可では達成しません。全62ミッション・305コマンドです。
+
+Snapshot v25はポリシーとクラスタの強制状態を保存します。v1〜v24には空ポリシーとAutopilot有効/Standard無効を追加し、v24のPVC/PV/StorageClass・永続データと従来の設定・Pod環境・probe・HPA・履歴・namespace/コンテキストを保持します。namespace/クラスタの削除時は関連ポリシーも削除します。
+
+仕様の参照元: [Network Policies](https://kubernetes.io/docs/concepts/services-networking/network-policies/)、[NetworkPolicy API](https://kubernetes.io/docs/reference/kubernetes-api/networking/network-policy-v1/)、[GKE NetworkPolicy](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/network-policy)、[GKE IAM権限](https://docs.cloud.google.com/iam/docs/roles-permissions/container)。

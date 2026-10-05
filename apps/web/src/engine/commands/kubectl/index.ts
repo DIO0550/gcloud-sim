@@ -23,6 +23,7 @@ import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeLiveness } from "@/engine/domains/kube-liveness";
 import { KubeManifest } from "@/engine/domains/kube-manifest";
 import { KubeNamespace } from "@/engine/domains/kube-namespace";
+import { KubeNetworkPolicy } from "@/engine/domains/kube-network-policy";
 import { KubeReadiness } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
@@ -45,6 +46,7 @@ import { type KubectlContext, namespaceContext, requireNamespace } from "./conte
 import { createHpa, hpasOf, reconcileHpa } from "./hpa";
 import { applyManifest } from "./manifests";
 import { applyNamespace } from "./namespaces";
+import { connectPods, removeNetworkPolicy } from "./network-policy";
 import { probeContainers } from "./probes";
 import { removeStorage, storageListing, storagePermission, writePersistentFile } from "./storage";
 
@@ -86,6 +88,7 @@ const usage = (message: string): CommandFailure => CommandFailure.invalidArgumen
 /** `deployment`, `deploy`, `deployments`, `deployment/web` の綴りを種別と名前に分ける。 */
 type ResourceRef = Readonly<{
   kind:
+    | "networkpolicy"
     | "storageclass"
     | "pvc"
     | "pv"
@@ -103,6 +106,10 @@ type ResourceRef = Readonly<{
 }>;
 
 const ResourceAliases: Readonly<Record<string, ResourceRef["kind"]>> = {
+  networkpolicy: "networkpolicy",
+  networkpolicies: "networkpolicy",
+  netpol: "networkpolicy",
+  "networkpolicies.networking.k8s.io": "networkpolicy",
   storageclass: "storageclass",
   storageclasses: "storageclass",
   "storageclasses.storage.k8s.io": "storageclass",
@@ -154,7 +161,7 @@ const parseResource = (type: string, name: Option<string>): Result<ResourceRef, 
     return Result.err(
       CommandFailure.invalidValue(
         "",
-        `error: the server doesn't have a resource type "${kindText}"\ngcloud-sim: 対応しているのは namespaces / deployments / services / pods / nodes / replicasets / configmaps / secrets / hpa / pvc / pv / storageclasses です。`,
+        `error: the server doesn't have a resource type "${kindText}"\ngcloud-sim: 対応しているのは namespaces / deployments / services / pods / nodes / replicasets / configmaps / secrets / hpa / pvc / pv / storageclasses / networkpolicies です。`,
       ),
     );
   }
@@ -371,6 +378,37 @@ const collect = (
   );
   const services = World.kubeServicesOf(ctx.world, cluster, ctx.namespace);
   switch (ref.kind) {
+    case "networkpolicy":
+      return Result.map(
+        pick(
+          KubeNetworkPolicy.of(ctx.world, cluster, ctx.namespace),
+          "networkpolicies.networking.k8s.io",
+          ref.name,
+        ),
+        (entries) => ({
+          rows: entries.map((p) => ({
+            ...KubeNetworkPolicy.toRecord(p),
+            name: p.name,
+            selector: KubeNetworkPolicy.selectorText(p.podSelector),
+            age: age(p.createdAt, ctx.now),
+            ...(describe
+              ? {
+                  simulator: {
+                    enforcement: cluster.networkPolicyEnabled ? "enabled" : "disabled",
+                    selectedPods: KubeNetworkPolicy.selectedPods(ctx.world, p).map((p) => p.name),
+                    model:
+                      "TCP Pod-to-Pod permission only; additive policies; both directions required",
+                  },
+                }
+              : {}),
+          })),
+          columns: [
+            Column.create("NAME", "name"),
+            Column.create("POD-SELECTOR", "selector"),
+            Column.create("AGE", "age"),
+          ],
+        }),
+      );
     case "storageclass":
     case "pvc":
     case "pv":
@@ -594,13 +632,20 @@ const get = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
   if (Option.isSome(selector)) {
     if (
       Option.isSome(ref.value.name) ||
-      !["deployment", "service", "pod", "replicaset", "configmap", "secret", "all"].includes(
-        ref.value.kind,
-      )
+      ![
+        "deployment",
+        "service",
+        "pod",
+        "replicaset",
+        "configmap",
+        "secret",
+        "networkpolicy",
+        "all",
+      ].includes(ref.value.kind)
     )
       return Result.err(
         usage(
-          "--selector supports unnamed deployments, services, pods, replicasets, configmaps, secrets or all.",
+          "--selector supports unnamed deployments, services, pods, replicasets, configmaps, secrets, networkpolicies or all.",
         ),
       );
     const labels = KubeLabels.query(selector.value);
@@ -910,6 +955,8 @@ const remove = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
   if (!Option.isSome(name))
     return Result.err(usage("resource(s) were provided, but no name was specified"));
   switch (ref.value.kind) {
+    case "networkpolicy":
+      return removeNetworkPolicy(ctx, cluster.value, name.value);
     case "storageclass":
     case "pvc":
     case "pv":
@@ -1383,7 +1430,7 @@ const NamespaceFlag = Flag.string("namespace", "Namespace for this operation (de
 });
 const TypePositional = Positional.required(
   "TYPE[/NAME]",
-  "Resource type, e.g. pods, deployment/web, pvc, pv, storageclass.",
+  "Resource type, e.g. pods, deployment/web, pvc, pv, storageclass, netpol.",
   () => Object.keys(ResourceAliases),
 );
 const NamePositional = Positional.optional(
@@ -1391,6 +1438,7 @@ const NamePositional = Positional.optional(
   "Resource name.",
   (world, projectId, positionals = []) => {
     const type = ResourceAliases[(positionals[0] ?? "").split("/")[0]?.toLowerCase() ?? ""];
+    if (type === "networkpolicy") return Candidates.kubeNetworkPolicies(world, projectId);
     if (type === "pvc" || type === "pv" || type === "storageclass")
       return Candidates.kubeStorage(world, projectId, positionals);
     return Candidates.kubeDeployments(world, projectId);
@@ -1460,6 +1508,7 @@ const resourcePermission =
     const verb = action === "delete" ? "delete" : Option.isSome(ref.value.name) ? "get" : "list";
     if (["storageclass", "pvc", "pv"].includes(ref.value.kind))
       return storagePermission(ref.value.kind as "storageclass" | "pvc" | "pv", verb);
+    if (ref.value.kind === "networkpolicy") return `container.networkPolicies.${verb}`;
     if (ref.value.kind === "namespace") return `container.namespaces.${verb}`;
     if (ref.value.kind === "hpa") return `container.horizontalPodAutoscalers.${verb}`;
     if (ref.value.kind === "service") return `container.services.${verb}`;
@@ -1519,6 +1568,41 @@ const execEnvironment = (ctx: KubectlContext, args: ParsedArgs): CommandResult =
 };
 
 export const KubectlCommands: readonly CommandSpec[] = [
+  projectCommand({
+    path: ["sim", "kubernetes", "connect"],
+    summary:
+      "Evaluate one new TCP connection between the first Pods of two Deployments (no sockets or process/port check).",
+    positionals: [
+      Positional.required("SOURCE", "Source Deployment name.", Candidates.kubeDeployments),
+    ],
+    flags: [
+      NamespaceFlag,
+      Flag.string("to", "Destination Deployment name (required).", {
+        singleUse: true,
+        candidates: Candidates.kubeDeployments,
+      }),
+      Flag.string("to-namespace", "Destination namespace; defaults to the source namespace.", {
+        singleUse: true,
+        candidates: Candidates.kubeNamespaces,
+      }),
+      Flag.integer("port", "Destination TCP port 1..65535 (required).", { singleUse: true }),
+    ],
+    permissions: [
+      "container.deployments.get",
+      "container.pods.exec",
+      "container.networkPolicies.list",
+    ],
+    requiredApis: [ContainerApi],
+    run: (ctx, args) => {
+      const cluster = currentCluster(ctx);
+      if (!Result.isOk(cluster)) return cluster;
+      const scoped = namespaceContext(ctx, args);
+      if (!Result.isOk(scoped)) return scoped;
+      const checked = requireNamespace(scoped.value, cluster.value);
+      if (!Result.isOk(checked)) return checked;
+      return connectPods(checked.value, cluster.value, args);
+    },
+  }),
   kubectl({
     verb: "autoscale",
     summary: "Create a CPU utilization HPA for one Deployment (explicit simulator evaluation).",

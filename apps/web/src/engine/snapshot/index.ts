@@ -61,6 +61,11 @@ import type { KubeConfig, KubeEnv } from "@/engine/domains/kube-config";
 import { type HpaEvaluation, HpaReasons, type KubeHpa } from "@/engine/domains/kube-hpa";
 import { KubeLiveness, type LivenessProbe } from "@/engine/domains/kube-liveness";
 import type { KubeNamespace } from "@/engine/domains/kube-namespace";
+import type {
+  KubeNetworkPolicy,
+  KubePolicyPeer,
+  KubePolicyRule,
+} from "@/engine/domains/kube-network-policy";
 import { KubeReadiness, type ReadinessProbe } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeStartup, type StartupProbe } from "@/engine/domains/kube-startup";
@@ -136,12 +141,13 @@ import { Result } from "@/utils/Result";
  * v22 はConfigMapのbinaryDataとそのapply管理キーを持つ。
  * v23 は設定volume・mount・Pod内の投影ファイルを持つ。
  * v24 はStorageClass・PVC・動的PVと永続ファイルを持つ。
+ * v25 はNetworkPolicyとクラスタの強制設定を持つ。
  */
-export const SchemaVersion = 24;
+export const SchemaVersion = 25;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
 const MigratableVersions = [
-  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
 ] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
@@ -371,6 +377,7 @@ const cluster = D.object<GkeCluster>({
   location,
   nodeCount: D.number,
   autopilot: D.boolean,
+  networkPolicyEnabled: D.boolean,
   status: D.literal(["RUNNING"]),
   machineType,
   currentMasterVersion: string,
@@ -575,6 +582,26 @@ const kubeConfig = D.object<KubeConfig>({
   name: string,
   data: D.array(D.object({ key: string, value: string })),
   binaryData: D.array(D.object({ key: string, value: string })),
+  createdAt: string,
+});
+const kubePolicyPeer = D.object<KubePolicyPeer>({
+  podSelector: D.option(D.record(string)),
+  namespaceSelector: D.option(D.record(string)),
+});
+const kubePolicyRule = D.object<KubePolicyRule>({
+  peers: D.array(kubePolicyPeer),
+  ports: D.array(D.number),
+});
+const kubeNetworkPolicy = D.object<KubeNetworkPolicy>({
+  projectId: string,
+  cluster: string,
+  namespace: string,
+  name: string,
+  labels: D.record(string),
+  podSelector: D.record(string),
+  policyTypes: D.array(D.literal(["Ingress", "Egress"])),
+  ingress: D.array(kubePolicyRule),
+  egress: D.array(kubePolicyRule),
   createdAt: string,
 });
 const kubeStorageClass = D.object<KubeStorageClass>({
@@ -978,6 +1005,7 @@ const world = D.object<World>({
   kubeStorageClasses: D.array(kubeStorageClass),
   kubePvcs: D.array(kubePvc),
   kubePvs: D.array(kubePv),
+  kubeNetworkPolicies: D.array(kubeNetworkPolicy),
   kubeFiles: D.record(string),
   kubeContextNamespaces: D.record(string),
   functions: D.array(cloudFunction),
@@ -1328,9 +1356,13 @@ const migrate = (version: number, value: unknown): unknown => {
   if (version === SchemaVersion || !isRecord(previous)) return previous;
   return {
     ...previous,
-    kubeStorageClasses: [],
-    kubePvcs: [],
-    kubePvs: [],
+    kubeNetworkPolicies: [],
+    clusters: Array.isArray(previous.clusters)
+      ? previous.clusters.map((c) =>
+          isRecord(c) ? { ...c, networkPolicyEnabled: c.autopilot === true } : c,
+        )
+      : previous.clusters,
+    ...(version < 24 ? { kubeStorageClasses: [], kubePvcs: [], kubePvs: [] } : {}),
     ...(version < 23 ? { kubeDeployments: withVolumes(previous.kubeDeployments) } : {}),
   };
 };

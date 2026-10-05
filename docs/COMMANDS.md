@@ -21,7 +21,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（304）
+## 実装済み（305）
 
 ConfigMap/SecretのYAML/JSONは`immutable: true`に対応します。保護後はデータ更新とfalseへの変更を拒否し、ラベル更新・削除/再作成は可能です。get/describe・プロパティにもフラグを表示します。詳細と教材は[KUBERNETES.md](KUBERNETES.md)に記載しています。
 
@@ -30,6 +30,8 @@ ConfigMapの`binaryData`もYAML/JSONで保存できます。getはbase64、descr
 Kubernetesは`kubectl create/get/describe/delete namespace`（`ns`別名）とNamespace manifestに対応します。各kubectl操作と`sim kubernetes probe/reconcile`で`-n/--namespace`を使い、`kubectl get -A/--all-namespaces`でnamespaceを横断した一覧を確認できます。省略時はコンテキストの既定namespace（未設定なら`default`）です。`kubectl config set-context --current --namespace=staging`または既存CONTEXT名で設定し、空文字で解除できます。詳細は[KUBERNETES.md](KUBERNETES.md)。
 
 PVC/StorageClassの仮想create/apply/deleteと、PVC/PV/StorageClassのget/describe/delete（pvc/pv/sc別名）に対応します。動的割り当て、WaitForFirstConsumer、容量拡張、削除保護、Delete/Retainを教材として再現します。アプリの書き込みは`sim kubernetes write-file DEPLOYMENT --path=PATH --content=TEXT`、確認は`kubectl exec -- cat/base64 PATH`です。操作ごとにcontainer.persistentVolumeClaims.* / container.persistentVolumes.* / container.storageClasses.*を要求します。制限と2ミッションは[KUBERNETES.md](KUBERNETES.md)に記載しています。
+
+NetworkPolicyはnetworking.k8s.io/v1の仮想YAML/JSONによるcreate/apply/deleteと、get/describe/delete（networkpolicy/networkpolicies/netpol別名）に対応します。操作ごとに`container.networkPolicies.create/get/list/update/delete`を要求し、`get -A`、`-l`、JSON/YAML出力を使えます。Autopilotは強制有効、Standardは作成時の`--enable-network-policy`で有効にします。`sim kubernetes connect SOURCE --to=DESTINATION --port=N`は両Deploymentの先頭Pod間の新規TCP通信を判定します。実通信や待受ポートの確認は行いません。既定遮断・許可の合算・両方向の許可と2ミッションは[KUBERNETES.md](KUBERNETES.md)に記載しています。`get all`にはNetworkPolicyを含めません。
 
 ### Cloud Build
 
@@ -351,7 +353,7 @@ GCS backend使用時、stateを読むshow/output/state list/showにもstorage.ob
 
 | コマンド | 必要な権限 | 必要な API | フラグ |
 |---|---|---|---|
-| `gcloud container clusters create` | `container.clusters.create` | `container.googleapis.com` | `--zone` `--region` `--num-nodes` `--machine-type` `--release-channel` |
+| `gcloud container clusters create` | `container.clusters.create` | `container.googleapis.com` | `--zone` `--region` `--num-nodes` `--machine-type` `--release-channel` `--enable-network-policy` |
 | `gcloud container clusters create-auto` | `container.clusters.create` | `container.googleapis.com` | `--zone` `--region` `--release-channel` |
 | `gcloud container clusters list` | `container.clusters.list` | `container.googleapis.com` | — |
 | `gcloud container clusters describe` | `container.clusters.get` | `container.googleapis.com` | `--zone` `--region` |
@@ -375,15 +377,16 @@ HPAは`autoscale`またはautoscaling/v2の仮想YAML/JSONで作成し、`get/de
 | `kubectl label` | ConfigMap/Secretのgetとupdate | `container.googleapis.com` | `--overwrite` `--namespace`（1リソースのKEY=VALUE / KEY-） |
 | `kubectl set env` | 更新: `container.deployments.update`、一覧: `container.deployments.get`、取込元のgetも必要 | `container.googleapis.com` | `--from` `--keys` `--prefix` `--list` `--namespace` |
 | `kubectl exec` | `container.pods.exec` | `container.googleapis.com` | `--namespace`（printenv/envのみ） |
-| `kubectl get` | Deployment/Service/ConfigMap/Secret/HPA: 対象のget/list、その他: `container.pods.list` | `container.googleapis.com` | `--output` `--selector` (`-l`) `--namespace` |
+| `kubectl get` | Deployment/Service/ConfigMap/Secret/HPA/NetworkPolicy: 対象のget/list、その他: `container.pods.list` | `container.googleapis.com` | `--output` `--selector` (`-l`) `--namespace` |
 | `kubectl apply` | 仮想ファイル: 対象のgetとcreate/update、固定教材: `container.deployments.update` | `container.googleapis.com` | `--filename` `--namespace` |
 | `kubectl create` | 仮想ファイル: 対象のcreate、Deployment/固定教材: `container.deployments.create` | `container.googleapis.com` | `--filename` `--image` `--replicas` `--namespace` |
-| `kubectl delete` | Deployment/Service/ConfigMap/Secret/HPA: 対象のdelete、その他・固定教材: `container.deployments.delete` | `container.googleapis.com` | `--filename` `--namespace` |
-| `kubectl describe` | Deployment/Service/ConfigMap/Secret/HPA: 対象のget/list、その他: `container.pods.get` | `container.googleapis.com` | `--namespace` |
+| `kubectl delete` | Deployment/Service/ConfigMap/Secret/HPA/NetworkPolicy: 対象のdelete、その他・固定教材: `container.deployments.delete` | `container.googleapis.com` | `--filename` `--namespace` |
+| `kubectl describe` | Deployment/Service/ConfigMap/Secret/HPA/NetworkPolicy: 対象のget/list、その他: `container.pods.get` | `container.googleapis.com` | `--namespace` |
 | `kubectl expose` | `container.services.create` | `container.googleapis.com` | `--type` `--port` `--target-port` `--name` `--namespace` |
 | `kubectl autoscale` | `container.horizontalPodAutoscalers.create`、`container.deployments.get` | `container.googleapis.com` | `--min` `--max` `--cpu-percent` `--name` `--namespace` |
 | `sim kubernetes probe` | `container.deployments.update` | `container.googleapis.com` | `--status-code`（必須）、`--pod`（省略時は対象Deploymentの全Pod）、`--kind=readiness|liveness|startup`（既定readiness） |
 | `sim kubernetes write-file` | `container.deployments.get` + `container.pods.exec` | `container.googleapis.com` | `--namespace/-n`, `--path`, `--content` |
+| `sim kubernetes connect` | `container.deployments.get` + `container.pods.exec` + `container.networkPolicies.list` | `container.googleapis.com` | `--to`, `--port`（両方必須）、`--namespace/-n`（送信元）、`--to-namespace`（省略時は送信元と同じ） |
 | `sim kubernetes reconcile` | `container.horizontalPodAutoscalers.update`、`container.deployments.update` | `container.googleapis.com` | `--cpu`（1 Podあたりの教材用使用量） |
 | `kubectl scale` | `container.deployments.update` | `container.googleapis.com` | `--replicas` `--namespace` |
 | `kubectl set resources` | `container.deployments.update` | `container.googleapis.com` | `--requests` `--limits` `--containers` (`-c`) `--namespace` |

@@ -11,6 +11,7 @@ export type GkeCluster = Readonly<{
   location: Zone | Region;
   nodeCount: number;
   autopilot: boolean;
+  networkPolicyEnabled: boolean;
   status: "RUNNING";
   machineType: MachineTypeName;
   currentMasterVersion: string;
@@ -28,6 +29,7 @@ export type GkeClusterSeed = Readonly<{
   location: Zone | Region;
   machineType: MachineTypeName;
   nodeServiceAccount?: string;
+  networkPolicyEnabled?: boolean;
   nodes: Readonly<{ kind: "autopilot" }> | Readonly<{ kind: "standard"; count: number }>;
 }>;
 
@@ -45,6 +47,7 @@ export const GkeCluster = {
       location: seed.location,
       nodeCount: seed.nodes.kind === "standard" ? seed.nodes.count : 0,
       autopilot: seed.nodes.kind === "autopilot",
+      networkPolicyEnabled: seed.nodes.kind === "autopilot" || seed.networkPolicyEnabled === true,
       status: "RUNNING",
       machineType: seed.machineType,
       currentMasterVersion: MasterVersion,
@@ -95,6 +98,7 @@ export const GkeCluster = {
       currentMasterVersion: cluster.currentMasterVersion,
       currentNodeCount: cluster.nodeCount,
       autopilot: { enabled: cluster.autopilot },
+      networkPolicy: { enabled: cluster.networkPolicyEnabled },
       nodeConfig: {
         machineType: cluster.machineType,
         serviceAccount: cluster.nodeServiceAccount || "default",

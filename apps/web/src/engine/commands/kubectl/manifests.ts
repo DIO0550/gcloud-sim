@@ -10,6 +10,7 @@ import { kubePermission } from "./configuration";
 import { type KubectlContext, requireNamespace } from "./context";
 import { applyHpa } from "./hpa-manifests";
 import { applyNamespace } from "./namespaces";
+import { applyNetworkPolicy } from "./network-policy";
 import { applyStorage } from "./storage";
 import { applyWorkload } from "./workload-manifests";
 
@@ -58,6 +59,13 @@ export const applyManifest = (
     const scoped = { ...ctx, world, namespace: manifest.namespace ?? ctx.namespace };
     const checked = requireNamespace(scoped, cluster);
     if (!Result.isOk(checked)) return checked;
+    if (manifest.kind === "networkpolicy") {
+      const applied = applyNetworkPolicy(scoped, cluster, manifest, action);
+      if (!Result.isOk(applied)) return applied;
+      world = applied.value.world;
+      messages.push(...applied.value.output.messages);
+      continue;
+    }
     if (manifest.kind === "pvc") {
       const applied = applyStorage(scoped, cluster, manifest, action);
       if (!Result.isOk(applied)) return applied;

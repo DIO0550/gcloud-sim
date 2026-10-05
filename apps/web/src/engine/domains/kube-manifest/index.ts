@@ -5,6 +5,8 @@ import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { Result } from "@/utils/Result";
 import { type HpaManifest, parseHpa } from "./hpa";
+import { KubeNetworkExamples } from "./network-examples";
+import { type NetworkPolicyManifest, parseNetworkPolicy } from "./network-policy";
 import { parseStorage, type StorageManifest } from "./storage";
 import { KubeStorageExamples } from "./storage-examples";
 import { fail, fields, namespace, record } from "./validation";
@@ -26,7 +28,8 @@ export type KubeManifest =
   | ConfigManifest
   | WorkloadManifest
   | HpaManifest
-  | StorageManifest;
+  | StorageManifest
+  | NetworkPolicyManifest;
 const strings = (value: unknown, field: string): [string, string][] =>
   Object.entries(value === undefined ? {} : record(value, field)).map(([key, value]) => {
     if (typeof value !== "string")
@@ -53,12 +56,13 @@ const parseResource = (value: unknown): KubeManifest => {
       return fail("Invalid v1 Namespace name.");
     return { kind: "namespace", name: meta.name, namespace: undefined };
   }
+  if (r.kind === "NetworkPolicy") return parseNetworkPolicy(r);
   if (r.kind === "StorageClass" || r.kind === "PersistentVolumeClaim") return parseStorage(r);
   if (r.kind === "HorizontalPodAutoscaler") return parseHpa(r);
   if (r.kind === "Deployment" || r.kind === "Service") return parseWorkload(r);
   if (r.apiVersion !== "v1" || (r.kind !== "ConfigMap" && r.kind !== "Secret"))
     return fail(
-      "Virtual manifests support ConfigMap, Secret, apps/v1 Deployment, v1 Service/PersistentVolumeClaim, storage.k8s.io/v1 StorageClass and autoscaling/v2 HorizontalPodAutoscaler.",
+      "Virtual manifests support ConfigMap, Secret, apps/v1 Deployment, v1 Service/PersistentVolumeClaim, storage.k8s.io/v1 StorageClass autoscaling/v2 HorizontalPodAutoscaler and networking.k8s.io/v1 NetworkPolicy.",
     );
   const secret = r.kind === "Secret";
   fields(
@@ -198,6 +202,7 @@ spec:
 export const KubeManifestExamples: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   ...KubeVolumeExamples,
   ...KubeStorageExamples,
+  ...KubeNetworkExamples,
   "kubernetes-binary-data": {
     "asset-settings.yaml": `apiVersion: v1
 kind: ConfigMap

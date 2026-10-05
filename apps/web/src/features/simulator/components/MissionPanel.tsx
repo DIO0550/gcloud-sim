@@ -50,6 +50,10 @@ const assertionLabel = (assertion: Mission["assertions"][number]): string => {
       return "CPU requestとHPAを設定し、教材評価で2→4レプリカへ増やす";
     case "kubeImmutableRefreshed":
       return "ConfigMap・Secretのimmutableを保ち、ファイルとクラスタを更新してrestartで全Podへ新しい値を反映";
+    case "kubeNetworkRestricted":
+      return "既定遮断を保ち、client→backendのTCP 8080だけをIngress・Egressの両方で許可する";
+    case "kubeNamespaceNetworkRestricted":
+      return "namespaceとPodラベルのAND条件で通信を絞り、別namespace・別Pod・別ポートを遮断する";
     case "kubePersistentDataReady":
       return "PVCの割り当て・拡張・Pod再起動後のデータ保持";
     case "kubeRetainedDataReady":

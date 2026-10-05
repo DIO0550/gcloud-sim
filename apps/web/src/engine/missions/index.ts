@@ -114,6 +114,11 @@ import {
   KubeLivenessMissions,
   kubeLivenessSatisfied,
 } from "./kube-liveness";
+import {
+  type KubeNetworkAssertion,
+  KubeNetworkMissions,
+  kubeNetworkSatisfied,
+} from "./kube-network-policy";
 import { type KubeQosAssertion, KubeQosMissions, kubeQosSatisfied } from "./kube-qos";
 import {
   type KubeReadinessAssertion,
@@ -162,6 +167,7 @@ export type MissionAssertion =
   | KubeLivenessAssertion
   | KubeNamespaceAssertion
   | KubeImmutableAssertion
+  | KubeNetworkAssertion
   | KubeStorageAssertion
   | KubeVolumesAssertion
   | KubeBinaryDataAssertion
@@ -325,6 +331,7 @@ const Missions: readonly Mission[] = [
   ...KubeImmutableMissions,
   ...KubeVolumesMissions,
   ...KubeStorageMissions,
+  ...KubeNetworkMissions,
   ...KubeBinaryDataMissions,
   ...KubeConfigLabelsMissions,
   ...KubeContextMissions,
@@ -791,6 +798,10 @@ const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
       return kubeHpaSatisfied(world);
     case "kubeImmutableRefreshed":
       return kubeImmutableSatisfied(world);
+    case "kubeNetworkRestricted":
+      return kubeNetworkSatisfied(world, false);
+    case "kubeNamespaceNetworkRestricted":
+      return kubeNetworkSatisfied(world, true);
     case "kubePersistentDataReady":
       return kubeStorageSatisfied(world, false);
     case "kubeRetainedDataReady":

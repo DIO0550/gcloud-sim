@@ -230,6 +230,10 @@ const NamespacePermissions = [
   "container.namespaces.list",
 ] as const;
 
+const KubeNetworkPolicyPermissions = ["create", "get", "list", "update", "delete"].map(
+  (verb) => `container.networkPolicies.${verb}`,
+);
+
 const KubeStoragePermissions = [
   ...["storageClasses", "persistentVolumeClaims", "persistentVolumes"].flatMap((kind) =>
     ["create", "get", "list", "update", "delete"].map((verb) => `container.${kind}.${verb}`),
@@ -238,6 +242,7 @@ const KubeStoragePermissions = [
 
 const ContainerPermissions = [
   ...KubeStoragePermissions,
+  ...KubeNetworkPolicyPermissions,
   ...NamespacePermissions,
   ...KubeConfigPermissions,
   ...HpaPermissions,
@@ -263,6 +268,7 @@ const ContainerPermissions = [
 
 const ContainerDeveloperPermissions = [
   ...KubeStoragePermissions,
+  ...KubeNetworkPolicyPermissions,
   ...NamespacePermissions,
   ...KubeConfigPermissions,
   ...HpaPermissions,
@@ -414,6 +420,7 @@ const ArtifactAdminPermissions = [
 
 const ViewerPermissions = [
   ...KubeStoragePermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
+  ...KubeNetworkPolicyPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
   ...BuildReadPermissions,
   ...ArtifactReadPermissions,
   ...MonitoringViewPermissions,
@@ -676,6 +683,7 @@ const Roles: readonly Role[] = [
   role("roles/container.developer", "Kubernetes Engine Developer", ContainerDeveloperPermissions),
   role("roles/container.viewer", "Kubernetes Engine Viewer", [
     ...KubeStoragePermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
+    ...KubeNetworkPolicyPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
     "container.namespaces.get",
     "container.namespaces.list",
     "container.configMaps.get",
