@@ -4,10 +4,12 @@ import { KubeLiveness, type LivenessProbe } from "@/engine/domains/kube-liveness
 import { KubeReadiness, type ReadinessProbe } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeStartup, type StartupProbe } from "@/engine/domains/kube-startup";
+import type { KubeVolume, KubeVolumeMount } from "@/engine/domains/kube-volume";
 import { KubeDeployment, KubeName, KubeServiceType } from "@/engine/domains/kubernetes";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 import { fail, fields, namespace, record } from "./validation";
+import { parseVolumes } from "./volumes";
 
 export type WorkloadManifest =
   | Readonly<{
@@ -17,6 +19,8 @@ export type WorkloadManifest =
       image: string;
       replicas: number | undefined;
       env: readonly KubeEnv[];
+      volumes: readonly KubeVolume[];
+      volumeMounts: readonly KubeVolumeMount[];
       resources: KubeResources;
       readinessProbe: Option<ReadinessProbe>;
       livenessProbe: Option<LivenessProbe>;
@@ -126,13 +130,22 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
   if (!KubeLabels.matches(matchLabels, podLabels))
     return fail("Deployment selector must match template labels.");
   const pod = record(template.spec, "template.spec");
-  fields(pod, ["containers"], "template.spec");
+  fields(pod, ["containers", "volumes"], "template.spec");
   if (!Array.isArray(pod.containers) || pod.containers.length !== 1)
     return fail("Use exactly one container.");
   const container = record(pod.containers[0], "container");
   fields(
     container,
-    ["name", "image", "env", "resources", "readinessProbe", "livenessProbe", "startupProbe"],
+    [
+      "name",
+      "image",
+      "env",
+      "volumeMounts",
+      "resources",
+      "readinessProbe",
+      "livenessProbe",
+      "startupProbe",
+    ],
     "container",
   );
   if (container.name !== meta.name)
@@ -174,6 +187,7 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
     image: container.image,
     replicas: spec.replicas,
     env,
+    ...parseVolumes(pod.volumes, container.volumeMounts),
     resources: resources.value,
     readinessProbe: probe.value,
     livenessProbe: liveness.value,

@@ -81,6 +81,11 @@ import {
   kubeNamespaceSatisfied,
 } from "@/engine/missions/kube-namespace";
 import {
+  type KubeVolumesAssertion,
+  KubeVolumesMissions,
+  kubeVolumesSatisfied,
+} from "@/engine/missions/kube-volumes";
+import {
   type KubernetesAssertion,
   KubernetesMissions,
   kubernetesSatisfied,
@@ -152,6 +157,7 @@ export type MissionAssertion =
   | KubeLivenessAssertion
   | KubeNamespaceAssertion
   | KubeImmutableAssertion
+  | KubeVolumesAssertion
   | KubeBinaryDataAssertion
   | KubeConfigLabelsAssertion
   | KubeContextAssertion
@@ -311,6 +317,7 @@ const Missions: readonly Mission[] = [
   ...KubeStartupMissions,
   ...KubeNamespaceMissions,
   ...KubeImmutableMissions,
+  ...KubeVolumesMissions,
   ...KubeBinaryDataMissions,
   ...KubeConfigLabelsMissions,
   ...KubeContextMissions,
@@ -777,6 +784,10 @@ const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
       return kubeHpaSatisfied(world);
     case "kubeImmutableRefreshed":
       return kubeImmutableSatisfied(world);
+    case "kubeVolumesReady":
+      return kubeVolumesSatisfied(world, false);
+    case "kubeVolumeRefreshReady":
+      return kubeVolumesSatisfied(world, true);
     case "kubeBinaryDataSeparated":
       return kubeBinaryDataSatisfied(world);
     case "kubeConfigLabelsClassified":

@@ -64,6 +64,7 @@ import type { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { KubeReadiness, type ReadinessProbe } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeStartup, type StartupProbe } from "@/engine/domains/kube-startup";
+import type { KubeVolume } from "@/engine/domains/kube-volume";
 import {
   type KubeDeployment,
   type KubeService,
@@ -132,12 +133,13 @@ import { Result } from "@/utils/Result";
  * v20 はConfigMap/Secretのラベルとapply管理キーを持つ。
  * v21 はConfigMap/Secretのimmutableを持つ。
  * v22 はConfigMapのbinaryDataとそのapply管理キーを持つ。
+ * v23 は設定volume・mount・Pod内の投影ファイルを持つ。
  */
-export const SchemaVersion = 22;
+export const SchemaVersion = 23;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
 const MigratableVersions = [
-  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
 ] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
@@ -581,7 +583,26 @@ const livenessProbe: Decoder<LivenessProbe> = (value, path) =>
   Result.mapErr(KubeLiveness.parse(value), (reason) => `${path}: ${reason}`);
 const startupProbe: Decoder<StartupProbe> = (value, path) =>
   Result.mapErr(KubeStartup.parse(value), (reason) => `${path}: ${reason}`);
+const kubeVolume = D.object<KubeVolume>({
+  name: string,
+  source: D.literal(["configmap", "secret"]),
+  resource: string,
+  optional: D.boolean,
+  items: D.array(D.object({ key: string, path: string })),
+});
+const kubeVolumeMount = D.object({
+  name: string,
+  mountPath: string,
+  subPath: string,
+  readOnly: D.boolean,
+});
+const podFiles = D.array(
+  D.object({ podName: string, files: D.array(D.object({ path: string, value: string })) }),
+);
 const kubeDeployment = D.object<KubeDeployment>({
+  volumes: D.array(kubeVolume),
+  volumeMounts: D.array(kubeVolumeMount),
+  podFiles,
   labels: stringMap,
   selector: stringMap,
   podLabels: stringMap,
@@ -607,6 +628,7 @@ const kubeDeployment = D.object<KubeDeployment>({
         "create",
         "image",
         "env",
+        "volumes",
         "resources",
         "readiness",
         "liveness",
@@ -622,6 +644,8 @@ const kubeDeployment = D.object<KubeDeployment>({
       livenessProbe: D.option(livenessProbe),
       startupProbe: D.option(startupProbe),
       env: D.array(kubeEnv),
+      volumes: D.array(kubeVolume),
+      volumeMounts: D.array(kubeVolumeMount),
     }),
   ),
   env: D.array(kubeEnv),
@@ -1117,8 +1141,27 @@ const withConfigLabels = (value: unknown): unknown =>
       )
     : value;
 
-const migrate = (version: number, value: unknown): unknown => {
+const withVolumes = (value: unknown): unknown =>
+  Array.isArray(value)
+    ? value.map((d) =>
+        isRecord(d)
+          ? {
+              ...d,
+              volumes: [],
+              volumeMounts: [],
+              podFiles: [],
+              revisions: Array.isArray(d.revisions)
+                ? d.revisions.map((r) =>
+                    isRecord(r) ? { ...r, volumes: [], volumeMounts: [] } : r,
+                  )
+                : d.revisions,
+            }
+          : d,
+      )
+    : value;
+const migratePrevious = (version: number, value: unknown): unknown => {
   if (version === SchemaVersion) return value;
+  if (version === 22) return value;
   if (version >= 20 && isRecord(value))
     return {
       ...value,
@@ -1225,6 +1268,12 @@ const migrate = (version: number, value: unknown): unknown => {
     ...observed,
     terraform: { ...observed.terraform, backend: TerraformState.empty().backend, plans },
   };
+};
+
+const migrate = (version: number, value: unknown): unknown => {
+  const previous = migratePrevious(version, value);
+  if (version === SchemaVersion || !isRecord(previous)) return previous;
+  return { ...previous, kubeDeployments: withVolumes(previous.kubeDeployments) };
 };
 
 export const Snapshot = {

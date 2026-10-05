@@ -63,6 +63,8 @@ export const applyWorkload = (
         manifest.readinessProbe,
         manifest.livenessProbe,
         manifest.startupProbe,
+        manifest.volumes,
+        manifest.volumeMounts,
       );
       if (next === current.value) return finish(ctx.world, "unchanged");
       return finish(World.replaceKubeDeployment(ctx.world, next), "configured");
@@ -83,6 +85,8 @@ export const applyWorkload = (
     const deployment = {
       ...created.value,
       env: manifest.env,
+      volumes: manifest.volumes,
+      volumeMounts: manifest.volumeMounts,
       resources: manifest.resources,
       readinessProbe: manifest.readinessProbe,
       livenessProbe: manifest.livenessProbe,
@@ -90,6 +94,8 @@ export const applyWorkload = (
       revisions: created.value.revisions.map((r) => ({
         ...r,
         env: manifest.env,
+        volumes: manifest.volumes,
+        volumeMounts: manifest.volumeMounts,
         resources: manifest.resources,
         readinessProbe: manifest.readinessProbe,
         livenessProbe: manifest.livenessProbe,

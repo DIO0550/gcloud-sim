@@ -6,6 +6,7 @@ import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { Result } from "@/utils/Result";
 import { type HpaManifest, parseHpa } from "./hpa";
 import { fail, fields, namespace, record } from "./validation";
+import { KubeVolumeExamples } from "./volume-examples";
 import { parseWorkload, type WorkloadManifest } from "./workloads";
 
 export type ConfigManifest = Readonly<{
@@ -187,6 +188,7 @@ spec:
 `;
 
 export const KubeManifestExamples: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  ...KubeVolumeExamples,
   "kubernetes-binary-data": {
     "asset-settings.yaml": `apiVersion: v1
 kind: ConfigMap

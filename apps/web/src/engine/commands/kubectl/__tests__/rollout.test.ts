@@ -239,6 +239,8 @@ test("v8 migration preserves local/registry state and node identity, without inv
       startupProbe: Option.none,
       resources: { requests: {}, limits: {} },
       env: [],
+      volumes: [],
+      volumeMounts: [],
       podLabels: { app: "hello" },
     },
   ]);

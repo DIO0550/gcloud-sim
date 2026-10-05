@@ -18,7 +18,7 @@ export const KubeBinaryDataMissions: readonly Mission[] = [
       { kind: "setProject", projectId: F.devProjectId },
     ],
     description:
-      "binary-gkeにasset-settingsとasset-webを配置します。ConfigMapにはdataのMODE=productionと、binaryDataのasset.bin（AP+AAQ==、4 bytes）が入っています。asset-webは誤ってasset.binを環境変数として参照して起動できません。asset-web.yamlの参照キーをMODEへ直してapplyし、nginx:1・2レプリカをReadyにしてください。binaryDataは環境変数へ注入できません。バイナリを保存したまま、テキスト設定だけを使います。volumeマウントは今回の教材では未対応です。",
+      "binary-gkeにasset-settingsとasset-webを配置します。ConfigMapにはdataのMODE=productionと、binaryDataのasset.bin（AP+AAQ==、4 bytes）が入っています。asset-webは誤ってasset.binを環境変数として参照して起動できません。asset-web.yamlの参照キーをMODEへ直してapplyし、nginx:1・2レプリカをReadyにしてください。binaryDataは環境変数へ注入できません。バイナリを保存したまま、テキスト設定だけを使います。ファイルとして使うvolumeマウントは別のミッションで扱います。",
     hints: [
       "gcloud services enable container.googleapis.com → gcloud container clusters create-auto binary-gke --region=us-central1 → sim files load kubernetes-binary-data",
       "kubectl apply -f asset-settings.yaml → kubectl apply -f asset-web.yaml → kubectl get pods。binaryDataのキーはconfigMapKeyRefから読めず、CreateContainerConfigErrorになります。",

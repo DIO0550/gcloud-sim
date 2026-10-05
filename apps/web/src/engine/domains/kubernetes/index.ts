@@ -10,6 +10,12 @@ import {
 } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeStartup, type PodStartup, type StartupProbe } from "@/engine/domains/kube-startup";
+import {
+  type KubeVolume,
+  type KubeVolumeMount,
+  KubeVolumes,
+  type PodFiles,
+} from "@/engine/domains/kube-volume";
 import type { JsonRecord } from "@/types/Json";
 import type { ValueOf } from "@/types/ValueOf";
 import { Option } from "@/utils/Option";
@@ -40,6 +46,7 @@ export type KubeRevision = Readonly<{
     | "create"
     | "image"
     | "env"
+    | "volumes"
     | "resources"
     | "readiness"
     | "liveness"
@@ -49,6 +56,8 @@ export type KubeRevision = Readonly<{
     | "undo"
     | "migrated";
   env: readonly KubeEnv[];
+  volumes: readonly KubeVolume[];
+  volumeMounts: readonly KubeVolumeMount[];
   resources: KubeResources;
   readinessProbe: Option<ReadinessProbe>;
   livenessProbe: Option<LivenessProbe>;
@@ -62,6 +71,8 @@ export type KubeDeployment = Readonly<{
   name: string;
   image: string;
   env: readonly KubeEnv[];
+  volumes: readonly KubeVolume[];
+  volumeMounts: readonly KubeVolumeMount[];
   resources: KubeResources;
   readinessProbe: Option<ReadinessProbe>;
   livenessProbe: Option<LivenessProbe>;
@@ -71,6 +82,7 @@ export type KubeDeployment = Readonly<{
   podStartup: readonly PodStartup[];
   podRestarts: readonly PodRestart[];
   podEnvironments: readonly PodEnvironment[];
+  podFiles: readonly PodFiles[];
   labels: KubeLabels;
   selector: KubeLabels;
   podLabels: KubeLabels;
@@ -98,12 +110,16 @@ const newRevision = (
   readinessProbe = d.readinessProbe,
   livenessProbe = d.livenessProbe,
   startupProbe = d.startupProbe,
+  volumes = d.volumes,
+  volumeMounts = d.volumeMounts,
 ): KubeDeployment => {
   const revision = d.revision + 1;
   return {
     ...d,
     image,
     env,
+    volumes,
+    volumeMounts,
     resources,
     readinessProbe,
     livenessProbe,
@@ -123,6 +139,8 @@ const newRevision = (
         templateId,
         reason,
         env,
+        volumes,
+        volumeMounts,
         podLabels,
         resources,
         readinessProbe,
@@ -200,6 +218,8 @@ export const KubeDeployment = {
       name,
       image: seed.image,
       env: [],
+      volumes: [],
+      volumeMounts: [],
       resources: KubeResources.empty(),
       readinessProbe: Option.none,
       livenessProbe: Option.none,
@@ -209,6 +229,7 @@ export const KubeDeployment = {
       podStartup: [],
       podRestarts: [],
       podEnvironments: [],
+      podFiles: [],
       labels,
       selector,
       podLabels,
@@ -223,6 +244,8 @@ export const KubeDeployment = {
           image: seed.image,
           reason: "create",
           env: [],
+          volumes: [],
+          volumeMounts: [],
           podLabels,
           resources: KubeResources.empty(),
           readinessProbe: Option.none,
@@ -280,6 +303,8 @@ export const KubeDeployment = {
     readinessProbe = deployment.readinessProbe,
     livenessProbe = deployment.livenessProbe,
     startupProbe = deployment.startupProbe,
+    volumes = deployment.volumes,
+    volumeMounts = deployment.volumeMounts,
   ): KubeDeployment {
     const metadata = KubeLabels.equal(labels, deployment.labels)
       ? deployment
@@ -292,18 +317,21 @@ export const KubeDeployment = {
       KubeResources.equal(resources, deployment.resources) &&
       KubeReadiness.equal(readinessProbe, deployment.readinessProbe) &&
       KubeLiveness.equal(livenessProbe, deployment.livenessProbe) &&
-      KubeStartup.equal(startupProbe, deployment.startupProbe)
+      KubeStartup.equal(startupProbe, deployment.startupProbe) &&
+      KubeVolumes.equal({ volumes, volumeMounts }, deployment)
     )
       return scaled;
-    const reason = templateChangeReason(
-      deployment,
-      image,
-      env,
-      resources,
-      readinessProbe,
-      livenessProbe,
-      startupProbe,
-    );
+    const reason = !KubeVolumes.equal({ volumes, volumeMounts }, deployment)
+      ? "volumes"
+      : templateChangeReason(
+          deployment,
+          image,
+          env,
+          resources,
+          readinessProbe,
+          livenessProbe,
+          startupProbe,
+        );
     return {
       ...newRevision(
         scaled,
@@ -316,6 +344,8 @@ export const KubeDeployment = {
         readinessProbe,
         livenessProbe,
         startupProbe,
+        volumes,
+        volumeMounts,
       ),
       generation: deployment.generation + 1,
     };
@@ -351,6 +381,8 @@ export const KubeDeployment = {
         previous.readinessProbe,
         previous.livenessProbe,
         previous.startupProbe,
+        previous.volumes,
+        previous.volumeMounts,
       ),
     );
   },
@@ -366,6 +398,17 @@ export const KubeDeployment = {
   },
 
   validate(d: KubeDeployment): Result<KubeDeployment, string> {
+    const currentRevision = d.revisions.at(-1);
+    if (
+      [d, ...d.revisions].some((r) => !KubeVolumes.validate(r.volumes, r.volumeMounts)) ||
+      !currentRevision ||
+      !KubeVolumes.equal(d, currentRevision) ||
+      !KubeVolumes.validFiles(
+        d,
+        KubePod.fromDeployment(d).map((p) => p.name),
+      )
+    )
+      return Result.err("Invalid Deployment volumes or saved Pod files.");
     if (!KubeContainer.validate(d) || !KubeStartup.validate(d))
       return Result.err("Invalid Deployment startup probe or container state.");
     if (!KubeLiveness.validate(d))
@@ -485,11 +528,13 @@ export const KubeDeployment = {
         template: {
           metadata: { labels: deployment.podLabels },
           spec: {
+            ...KubeVolumes.fields(deployment.volumes),
             containers: [
               {
                 name: deployment.name,
                 image: deployment.image,
                 env: deployment.env.map(KubeEnv.toRecord),
+                ...KubeVolumes.mountFields(deployment.volumeMounts),
                 ...KubeResources.toContainerFields(deployment.resources),
                 ...KubeReadiness.fields(deployment.readinessProbe),
                 ...KubeLiveness.fields(deployment.livenessProbe),
