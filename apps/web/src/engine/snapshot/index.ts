@@ -59,6 +59,7 @@ import type {
 import type { KmsKeyRing } from "@/engine/domains/kms";
 import type { KubeConfig, KubeEnv } from "@/engine/domains/kube-config";
 import { type HpaEvaluation, HpaReasons, type KubeHpa } from "@/engine/domains/kube-hpa";
+import type { IngressBackend, IngressPath, KubeIngress } from "@/engine/domains/kube-ingress";
 import { KubeLiveness, type LivenessProbe } from "@/engine/domains/kube-liveness";
 import type { KubeNamespace } from "@/engine/domains/kube-namespace";
 import type {
@@ -142,12 +143,13 @@ import { Result } from "@/utils/Result";
  * v23 は設定volume・mount・Pod内の投影ファイルを持つ。
  * v24 はStorageClass・PVC・動的PVと永続ファイルを持つ。
  * v25 はNetworkPolicyとクラスタの強制設定を持つ。
+ * v26 はIngressのホスト・パスとServiceバックエンドを持つ。
  */
-export const SchemaVersion = 25;
+export const SchemaVersion = 26;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
 const MigratableVersions = [
-  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 ] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
@@ -584,6 +586,24 @@ const kubeConfig = D.object<KubeConfig>({
   binaryData: D.array(D.object({ key: string, value: string })),
   createdAt: string,
 });
+const ingressBackend = D.object<IngressBackend>({ name: string, port: D.number });
+const ingressPath = D.object<IngressPath>({
+  host: string,
+  path: string,
+  pathType: D.literal(["Exact", "Prefix"]),
+  backend: ingressBackend,
+});
+const kubeIngress = D.object<KubeIngress>({
+  projectId: string,
+  cluster: string,
+  namespace: string,
+  name: string,
+  labels: D.record(string),
+  annotations: D.record(string),
+  paths: D.array(ingressPath),
+  defaultBackend: D.option(ingressBackend),
+  createdAt: string,
+});
 const kubePolicyPeer = D.object<KubePolicyPeer>({
   podSelector: D.option(D.record(string)),
   namespaceSelector: D.option(D.record(string)),
@@ -1005,6 +1025,7 @@ const world = D.object<World>({
   kubeStorageClasses: D.array(kubeStorageClass),
   kubePvcs: D.array(kubePvc),
   kubePvs: D.array(kubePv),
+  kubeIngresses: D.array(kubeIngress),
   kubeNetworkPolicies: D.array(kubeNetworkPolicy),
   kubeFiles: D.record(string),
   kubeContextNamespaces: D.record(string),
@@ -1356,12 +1377,17 @@ const migrate = (version: number, value: unknown): unknown => {
   if (version === SchemaVersion || !isRecord(previous)) return previous;
   return {
     ...previous,
-    kubeNetworkPolicies: [],
-    clusters: Array.isArray(previous.clusters)
-      ? previous.clusters.map((c) =>
-          isRecord(c) ? { ...c, networkPolicyEnabled: c.autopilot === true } : c,
-        )
-      : previous.clusters,
+    kubeIngresses: [],
+    ...(version < 25
+      ? {
+          kubeNetworkPolicies: [],
+          clusters: Array.isArray(previous.clusters)
+            ? previous.clusters.map((c) =>
+                isRecord(c) ? { ...c, networkPolicyEnabled: c.autopilot === true } : c,
+              )
+            : previous.clusters,
+        }
+      : {}),
     ...(version < 24 ? { kubeStorageClasses: [], kubePvcs: [], kubePvs: [] } : {}),
     ...(version < 23 ? { kubeDeployments: withVolumes(previous.kubeDeployments) } : {}),
   };

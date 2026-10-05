@@ -97,7 +97,7 @@ kubectl rollout restart deployment/web
 kubectl exec deployment/web -- printenv APP_MODE
 ```
 
-`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全62件、GKE拡充分は25件です。
+`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全64件、GKE拡充分は27件です。
 
 `sim files write FILE --content='…'`で独自のYAML/JSONを書き、`read`で読み、`replace --search=… --replacement=…`で1か所を編集できます。ファイルは `.yaml` / `.yml` / `.json` の相対パスで、32ファイル・1ファイル64,000文字まで。Terraformとは別に保存し、Terraformのplanに影響しません。`sim files delete FILE`はファイルだけを消します。クラスタ上の設定を消す操作は `kubectl delete -f FILE` です。教材の上書きは `sim files load kubernetes-config --force` で明示します。
 
@@ -258,7 +258,7 @@ ConfigMap/Secretの操作はそれぞれ`container.configMaps.*`/`container.secr
 - ReplicaSetは読み取り専用の導出状態です。templateの識別子/Pod名は疑似値で、実際のハッシュ・annotationsは再現しません。イメージ変更/restartごとに新しいtemplateを作り、undoでは保存したtemplateを再利用します。
 - `.pkg.dev`以外のイメージは従来の簡略な成功モデルです。実在タグ/コンテナの起動可否の確認はしません。異常系ミッションでは存在確認できる教材レジストリを使います。
 
-複数コンテナを含むmanifest、readiness/liveness/startupの定期実行、VPA・HPAの定期評価/実測/安定化、StatefulSet、Ingress、NetworkPolicyの未対応設定、ノードプール設定やWorkload Identity等は残作業です。Issue #15は閉じません。
+複数コンテナを含むmanifest、readiness/liveness/startupの定期実行、VPA・HPAの定期評価/実測/安定化、StatefulSet、Ingress/NetworkPolicyの未対応設定、ノードプール設定やWorkload Identity等は残作業です。Issue #15は閉じません。
 
 参照: [ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/)、[Secret](https://kubernetes.io/docs/concepts/configuration/secret/)、[kubectl set env](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_set/kubectl_set_env/)、[Deploymentの更新とロールバック](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)、[kubectl set image](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_set/kubectl_set_image/)、[kubectl rollout undo](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_rollout/kubectl_rollout_undo/)、[GKEのロールと権限](https://docs.cloud.google.com/iam/docs/roles-permissions/container)。
 
@@ -791,8 +791,60 @@ selectorはmatchLabelsの等価条件、namespaceラベルは自動の`kubernete
 
 namespaceを跨ぐ教材は同じバンドルの`network-namespaces.yaml`、`cross-workloads.yaml`、`cross-deny.yaml`をapplyし、`cross-ingress.json`のwrong-clientと`cross-egress.json`のwrong-backendを直してapplyします。`sim kubernetes connect client -n client-ns --to=backend --to-namespace=data-ns --port=8080`で許可、送信元other-ns・宛先intruder・8081では遮断します。同じpeerのnamespaceとPod条件を分けると許可範囲が広がります。
 
-2ミッション「NetworkPolicyで必要なPod通信だけを許可する」「namespaceとPodラベルで通信先を絞る」は初期Worldから開始できます。ファイルとライブポリシーの一致、既定遮断の維持、両方向の許可、余分な通信の遮断を確認します。後者は同じpeerのAND条件も確認します。編集だけ・片方向の修正・全許可では達成しません。全62ミッション・305コマンドです。
+2ミッション「NetworkPolicyで必要なPod通信だけを許可する」「namespaceとPodラベルで通信先を絞る」は初期Worldから開始できます。ファイルとライブポリシーの一致、既定遮断の維持、両方向の許可、余分な通信の遮断を確認します。後者は同じpeerのAND条件も確認します。編集だけ・片方向の修正・全許可では達成しません。全64ミッション・306コマンドです。
 
 Snapshot v25はポリシーとクラスタの強制状態を保存します。v1〜v24には空ポリシーとAutopilot有効/Standard無効を追加し、v24のPVC/PV/StorageClass・永続データと従来の設定・Pod環境・probe・HPA・履歴・namespace/コンテキストを保持します。namespace/クラスタの削除時は関連ポリシーも削除します。
 
 仕様の参照元: [Network Policies](https://kubernetes.io/docs/concepts/services-networking/network-policies/)、[NetworkPolicy API](https://kubernetes.io/docs/reference/kubernetes-api/networking/network-policy-v1/)、[GKE NetworkPolicy](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/network-policy)、[GKE IAM権限](https://docs.cloud.google.com/iam/docs/roles-permissions/container)。
+
+## IngressでHTTPを振り分ける
+
+networking.k8s.io/v1の限定IngressをYAML/JSONでcreate/apply/deleteできます。`get/describe/delete ingress`（`ingresses`・`ing`・`ingresses.networking.k8s.io`）、`-n`、`get ing -A`、メタデータラベルの`-l`、JSON/YAML、ツリーとプロパティに対応します。applyはlabels・annotations・ルール・defaultBackendを全体置換し、作成日時を保持します。途中でエラーになる複数文書は全体を取り消します。実kubectlの3-way mergeは行いません。
+
+```sh
+gcloud services enable container.googleapis.com
+gcloud container clusters create-auto ingress-gke --region=us-central1
+sim files load kubernetes-ingress
+kubectl apply -f ingress-workloads.yaml
+kubectl apply -f ingress-routes.json
+kubectl describe ing app-entry
+sim kubernetes request app-entry --host=app.example.test --path=/api/users
+sim files replace ingress-routes.json --search=wrong-api --replacement=api
+kubectl apply -f ingress-routes.json
+sim kubernetes request app-entry --host=app.example.test --path=/api/health
+sim kubernetes request app-entry --host=app.example.test --path=/api/health/detail
+sim kubernetes request app-entry --host=app.example.test --path=/apix
+kubectl get ing -o yaml
+```
+
+`app.example.test`だけを対象に、`/`はweb、`/api`以下はapi、`/api/health`のExactはhealthへ振り分けます。`/api/health/detail`はapi、`/apix`はwebです。DNS形式のhostは完全一致（入力ホストの大文字小文字は無視）で、host省略は全ホストに一致します。パスは大文字小文字を区別し、Prefixは`/`で区切った要素単位で判定します。Prefixの末尾`/`は無視します。複数一致は最長パス、同じ長さならExact、さらに同順位なら名前付きhostを優先する教材モデルです。未一致は任意のdefaultBackendへ送ります。なければ`NO_ROUTE`となり、実HTTPの応答コードや本文は生成しません。
+
+バックエンドは同じnamespaceの`service.name`と`service.port.number`を参照します。Service port 80、targetPort 8080ならIngressの指定は80です。NodePort Serviceのみを扱い、Service selectorに一致するReadyなPodのtargetPortを接続先として表示します。参照切れ、Service type/port違い、Readyな接続先なしは`BACKEND_UNAVAILABLE`と診断します。存在しないServiceを参照するIngress自体は保存できるため、applyの順序やService削除/再作成も確認できます。リクエストは選んだ接続先だけを判定し、別ルートの障害はdescribeの診断に残ります。実LBの構成完了やヘルスチェック成功を保証する状態ではありません。
+
+この教材はGKE外部`gce`を想定し、`kubernetes.io/ingress.class: gce`またはannotation省略を扱います。GKEはこのannotationでcontrollerを選ぶため、`spec.ingressClassName`はこの教材では拒否します。TLS、内部gce-internal/他controller、ワイルドカードhost/path、ImplementationSpecific、名前付きService port、resource backend、NEG・BackendConfig・その他annotationは未対応として拒否します。ルール/パスの合計は32件まで、同じhost/pathType/pathの重複も拒否します。pathは`/`で始め、query・fragment・空白を含められません。
+
+`sim kubernetes request INGRESS --host=HOST [--path=/PATH] [-n NS]`は読み取り専用です。実LB、外部IP、DNS、TLS、HTTP通信・待受確認、GKE LBヘルスチェック、外部クライアントとNetworkPolicyの関係を再現しません。ADDRESSは`<simulated>`、APIの`status.loadBalancer`は空です。実GKEではNEGを使う構成や別途LBヘルスチェックがあり、Pod readinessだけでLBの状態を判断できません。
+
+復旧ミッションは独立した初期Worldから次の手順で実施できます。
+
+```sh
+gcloud services enable container.googleapis.com
+gcloud container clusters create-auto ingress-fix-gke --region=us-central1
+sim files load kubernetes-ingress
+kubectl apply -f ingress-recovery.yaml
+kubectl apply -f ingress-broken.json
+sim kubernetes request recovery-entry --host=app.example.test --path=/
+sim files replace ingress-broken.json --search=8080 --replacement=80
+kubectl apply -f ingress-broken.json
+sim files replace ingress-recovery.yaml --search=wrong-recovery --replacement=recovery
+kubectl apply -f ingress-recovery.yaml
+kubectl get endpoints recovery
+sim kubernetes probe recovery --status-code=200
+sim kubernetes request recovery-entry --host=app.example.test --path=/
+```
+
+2ミッション「Ingressでホストとパスを振り分ける」「IngressからReadyなService接続先を復旧する」は、ファイルとライブ設定の一致、指定ルート、2個のReadyな接続先を確認します。編集だけ・portだけ・selectorだけの修正では達成しません。全64ミッション・306コマンドです。
+
+Snapshot v26はIngressを保存し、v1〜v25に空のIngress集合を補完します。v25のNetworkPolicy/クラスタ強制状態、PVC/PVのデータ、Service・Pod環境・probe・HPA・履歴・namespace/コンテキスト・仮想ファイルを保持します。namespace/クラスタ削除時はIngressも削除し、Service単体の削除時はIngressを残して参照切れを診断します。
+
+仕様の参照元: [Kubernetes Ingress](https://kubernetes.io/docs/concepts/services-networking/ingress/)、[Ingress API](https://kubernetes.io/docs/reference/kubernetes-api/networking/ingress-v1/)、[GKE Ingress](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/ingress)、[GKE外部Ingress](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/load-balance-ingress)、[GKE Ingress health checks](https://docs.cloud.google.com/kubernetes-engine/docs/troubleshooting/ingress-health-checks)。

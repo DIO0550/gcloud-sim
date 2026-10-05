@@ -87,3 +87,5 @@ CLIを持たない管理手続きや性能測定、AI推論/外部API、公式�
 | 基礎コース/T-ESSCICS-I-4-l1-ja-file-54.ja.pdf | 1 |
 | 基礎コース/T-ESSCIF-I-4-l1-ja-file-45.ja.pdf | 1 |
 | 基礎コース/T-ESSCIF-I-Locales-0-l2-file-ja-2.pdf.ja | 1 |
+
+Phase 21（#15）: 限定IngressのHTTPホスト・最長パス・Exact/Prefix・defaultBackend、NodePort Service参照/ポート/Ready接続先の診断、namespace、CLI/ツリー/プロパティ、Snapshot v26と2ミッションを追加。実LB・IP・DNS・TLS・NEG・BackendConfig・外部クライアントのNetworkPolicyやStatefulSet等は残作業です。

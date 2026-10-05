@@ -260,6 +260,20 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
           `pvc: ${c.name}`,
         ),
       );
+    const ingresses = world.kubeIngresses
+      .filter((p) => p.projectId === id && p.cluster === cluster.name && p.namespace === namespace)
+      .map((p) =>
+        leaf(
+          {
+            kind: "kube-ingress",
+            projectId: id,
+            cluster: cluster.name,
+            namespace,
+            name: p.name,
+          },
+          `ing: ${p.name}`,
+        ),
+      );
     const policies = world.kubeNetworkPolicies
       .filter((p) => p.projectId === id && p.cluster === cluster.name && p.namespace === namespace)
       .map((p) =>
@@ -274,7 +288,7 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
           `netpol: ${p.name}`,
         ),
       );
-    return [...deployments, ...services, ...configs, ...hpas, ...claims, ...policies];
+    return [...deployments, ...services, ...configs, ...hpas, ...claims, ...policies, ...ingresses];
   };
   const namespaces = world.kubeNamespaces
     .filter((n) => n.projectId === id && n.cluster === cluster.name)

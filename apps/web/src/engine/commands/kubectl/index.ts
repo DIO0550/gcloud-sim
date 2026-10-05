@@ -19,6 +19,7 @@ import { ImagePull } from "@/engine/domains/image-pull";
 import { KubeConfig, KubeEnv, KubeRuntime } from "@/engine/domains/kube-config";
 import { KubeContext } from "@/engine/domains/kube-context";
 import { KubeHpa } from "@/engine/domains/kube-hpa";
+import { KubeIngress } from "@/engine/domains/kube-ingress";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeLiveness } from "@/engine/domains/kube-liveness";
 import { KubeManifest } from "@/engine/domains/kube-manifest";
@@ -44,6 +45,7 @@ import { Result } from "@/utils/Result";
 import { createConfig, kubePermission, labelConfig, setEnv } from "./configuration";
 import { type KubectlContext, namespaceContext, requireNamespace } from "./context";
 import { createHpa, hpasOf, reconcileHpa } from "./hpa";
+import { removeIngress, requestIngress } from "./ingress";
 import { applyManifest } from "./manifests";
 import { applyNamespace } from "./namespaces";
 import { connectPods, removeNetworkPolicy } from "./network-policy";
@@ -88,6 +90,7 @@ const usage = (message: string): CommandFailure => CommandFailure.invalidArgumen
 /** `deployment`, `deploy`, `deployments`, `deployment/web` の綴りを種別と名前に分ける。 */
 type ResourceRef = Readonly<{
   kind:
+    | "ingress"
     | "networkpolicy"
     | "storageclass"
     | "pvc"
@@ -106,6 +109,10 @@ type ResourceRef = Readonly<{
 }>;
 
 const ResourceAliases: Readonly<Record<string, ResourceRef["kind"]>> = {
+  ingress: "ingress",
+  ingresses: "ingress",
+  ing: "ingress",
+  "ingresses.networking.k8s.io": "ingress",
   networkpolicy: "networkpolicy",
   networkpolicies: "networkpolicy",
   netpol: "networkpolicy",
@@ -161,7 +168,7 @@ const parseResource = (type: string, name: Option<string>): Result<ResourceRef, 
     return Result.err(
       CommandFailure.invalidValue(
         "",
-        `error: the server doesn't have a resource type "${kindText}"\ngcloud-sim: 対応しているのは namespaces / deployments / services / pods / nodes / replicasets / configmaps / secrets / hpa / pvc / pv / storageclasses / networkpolicies です。`,
+        `error: the server doesn't have a resource type "${kindText}"\ngcloud-sim: 対応しているのは namespaces / deployments / services / pods / nodes / replicasets / configmaps / secrets / hpa / pvc / pv / storageclasses / networkpolicies / ingresses です。`,
       ),
     );
   }
@@ -378,6 +385,42 @@ const collect = (
   );
   const services = World.kubeServicesOf(ctx.world, cluster, ctx.namespace);
   switch (ref.kind) {
+    case "ingress":
+      return Result.map(
+        pick(
+          KubeIngress.of(ctx.world, cluster, ctx.namespace),
+          "ingresses.networking.k8s.io",
+          ref.name,
+        ),
+        (entries) => ({
+          rows: entries.map((i) => ({
+            ...KubeIngress.toRecord(i),
+            name: i.name,
+            class: "gce",
+            hosts: [...new Set(i.paths.map((p) => p.host || "*"))].join(",") || "*",
+            address: "<simulated>",
+            ports: "80",
+            age: age(i.createdAt, ctx.now),
+            ...(describe
+              ? {
+                  simulator: {
+                    diagnostics: KubeIngress.diagnostics(ctx.world, i),
+                    model:
+                      "Host/path routing to Ready NodePort endpoints only; no real LB, DNS, TLS, HTTP health checks or external-client NetworkPolicy.",
+                  },
+                }
+              : {}),
+          })),
+          columns: [
+            Column.create("NAME", "name"),
+            Column.create("CLASS", "class"),
+            Column.create("HOSTS", "hosts"),
+            Column.create("ADDRESS", "address"),
+            Column.create("PORTS", "ports"),
+            Column.create("AGE", "age"),
+          ],
+        }),
+      );
     case "networkpolicy":
       return Result.map(
         pick(
@@ -639,6 +682,7 @@ const get = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
         "replicaset",
         "configmap",
         "secret",
+        "ingress",
         "networkpolicy",
         "all",
       ].includes(ref.value.kind)
@@ -955,6 +999,8 @@ const remove = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
   if (!Option.isSome(name))
     return Result.err(usage("resource(s) were provided, but no name was specified"));
   switch (ref.value.kind) {
+    case "ingress":
+      return removeIngress(ctx, cluster.value, name.value);
     case "networkpolicy":
       return removeNetworkPolicy(ctx, cluster.value, name.value);
     case "storageclass":
@@ -1438,6 +1484,7 @@ const NamePositional = Positional.optional(
   "Resource name.",
   (world, projectId, positionals = []) => {
     const type = ResourceAliases[(positionals[0] ?? "").split("/")[0]?.toLowerCase() ?? ""];
+    if (type === "ingress") return Candidates.kubeIngresses(world, projectId);
     if (type === "networkpolicy") return Candidates.kubeNetworkPolicies(world, projectId);
     if (type === "pvc" || type === "pv" || type === "storageclass")
       return Candidates.kubeStorage(world, projectId, positionals);
@@ -1508,6 +1555,7 @@ const resourcePermission =
     const verb = action === "delete" ? "delete" : Option.isSome(ref.value.name) ? "get" : "list";
     if (["storageclass", "pvc", "pv"].includes(ref.value.kind))
       return storagePermission(ref.value.kind as "storageclass" | "pvc" | "pv", verb);
+    if (ref.value.kind === "ingress") return `container.ingresses.${verb}`;
     if (ref.value.kind === "networkpolicy") return `container.networkPolicies.${verb}`;
     if (ref.value.kind === "namespace") return `container.namespaces.${verb}`;
     if (ref.value.kind === "hpa") return `container.horizontalPodAutoscalers.${verb}`;
@@ -1568,6 +1616,32 @@ const execEnvironment = (ctx: KubectlContext, args: ParsedArgs): CommandResult =
 };
 
 export const KubectlCommands: readonly CommandSpec[] = [
+  projectCommand({
+    path: ["sim", "kubernetes", "request"],
+    summary: "Evaluate HTTP host/path routing to a Ready NodePort Service backend (no real LB).",
+    positionals: [Positional.required("INGRESS", "Ingress name.", Candidates.kubeIngresses)],
+    flags: [
+      NamespaceFlag,
+      Flag.string("host", "Request host (required).", { singleUse: true }),
+      Flag.string("path", "Absolute request path; defaults to /.", { singleUse: true }),
+    ],
+    permissions: [
+      "container.ingresses.get",
+      "container.services.get",
+      "container.deployments.list",
+      "container.pods.list",
+    ],
+    requiredApis: [ContainerApi],
+    run: (ctx, args) => {
+      const cluster = currentCluster(ctx);
+      if (!Result.isOk(cluster)) return cluster;
+      const scoped = namespaceContext(ctx, args);
+      if (!Result.isOk(scoped)) return scoped;
+      const checked = requireNamespace(scoped.value, cluster.value);
+      if (!Result.isOk(checked)) return checked;
+      return requestIngress(checked.value, cluster.value, args);
+    },
+  }),
   projectCommand({
     path: ["sim", "kubernetes", "connect"],
     summary:
