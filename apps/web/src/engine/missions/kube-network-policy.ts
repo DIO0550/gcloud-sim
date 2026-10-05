@@ -122,6 +122,7 @@ export const kubeNetworkSatisfied = (world: World, cross: boolean): boolean => {
       (p) =>
         p.name === "deny-backend" &&
         p.namespace === targetNs &&
+        JSON.stringify(p.podSelector) === JSON.stringify({ app: "backend" }) &&
         p.policyTypes.includes("Ingress") &&
         !p.ingress.length,
     )
@@ -132,6 +133,7 @@ export const kubeNetworkSatisfied = (world: World, cross: boolean): boolean => {
       (p) =>
         p.name === "deny-client" &&
         p.namespace === sourceNs &&
+        JSON.stringify(p.podSelector) === JSON.stringify({ app: "client" }) &&
         p.policyTypes.includes("Egress") &&
         !p.egress.length,
     )

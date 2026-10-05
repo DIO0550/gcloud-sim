@@ -528,6 +528,19 @@ test("a permissive policy cannot satisfy the restricted mission", () => {
   expect(kubeNetworkSatisfied(permissive.world, false)).toBe(false);
 });
 
+test("the mission requires default deny policies to still select their intended Pods", () => {
+  const s = repaired();
+  expect(kubeNetworkSatisfied(s.world, false)).toBe(true);
+  const file = JSON.parse(required(s.world.kubeFiles["deny-ingress.json"]));
+  file.spec.podSelector.matchLabels.app = "unselected";
+  const changed = execute(
+    write(s, file, "deny-ingress.json"),
+    "kubectl apply -f deny-ingress.json",
+  );
+  connect(changed);
+  expect(kubeNetworkSatisfied(changed.world, false)).toBe(false);
+});
+
 test("the namespace mission rejects split OR peers even when no existing Pod exposes their broader scope", () => {
   let s = execute(
     session(),
