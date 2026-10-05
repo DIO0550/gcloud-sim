@@ -304,7 +304,7 @@ test("v26 migration materializes old default and retains custom settings and Ing
   expect(next.kubeDeployments).toEqual(s.world.kubeDeployments);
   expect(next.kubeNetworkPolicies).toEqual(s.world.kubeNetworkPolicies);
   expect(next.kubePvs).toEqual(s.world.kubePvs);
-  expect(Snapshot.create(next, Now).schemaVersion).toBe(27);
+  expect(Snapshot.create(next, Now).schemaVersion).toBe(28);
 });
 
 test.each(["count", "bounds", "newer", "evaluation", "autopilot"])(

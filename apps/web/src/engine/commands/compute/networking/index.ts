@@ -47,6 +47,7 @@ import {
   NetworkPeering,
   Router,
 } from "@/engine/domains/compute-networking";
+import { Ipv4 } from "@/engine/domains/gke-control-plane";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -212,6 +213,18 @@ const createSubnet = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
     (m) => CommandFailure.invalidValue(m.includes("ipCidrRange") ? "--range" : "NAME", m),
   );
   if (!Result.isOk(subnet)) return subnet;
+  if (
+    ctx.world.clusters.some(
+      (c) =>
+        c.projectId === ctx.project.projectId &&
+        Option.isSome(c.controlPlane.privateNetwork) &&
+        c.controlPlane.privateNetwork.value.network === networkName &&
+        Ipv4.overlaps(subnet.value.ipCidrRange, c.controlPlane.privateNetwork.value.masterIpv4Cidr),
+    )
+  )
+    return Result.err(
+      CommandFailure.invalidState("Subnet overlaps an existing GKE master-ipv4-cidr."),
+    );
   return Result.map(
     Result.mapErr(World.withSubnet(ctx.world, subnet.value), alreadyExists),
     (world) => ({

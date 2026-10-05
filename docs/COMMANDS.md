@@ -21,7 +21,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（309）
+## 実装済み（311）
 
 ConfigMap/SecretのYAML/JSONは`immutable: true`に対応します。保護後はデータ更新とfalseへの変更を拒否し、ラベル更新・削除/再作成は可能です。get/describe・プロパティにもフラグを表示します。詳細と教材は[KUBERNETES.md](KUBERNETES.md)に記載しています。
 
@@ -355,10 +355,11 @@ GCS backend使用時、stateを読むshow/output/state list/showにもstorage.ob
 
 | コマンド | 必要な権限 | 必要な API | フラグ |
 |---|---|---|---|
-| `gcloud container clusters create` | `container.clusters.create` | `container.googleapis.com` | `--zone` `--region` `--num-nodes` `--machine-type` `--release-channel` `--enable-network-policy` |
-| `gcloud container clusters create-auto` | `container.clusters.create` | `container.googleapis.com` | `--zone` `--region` `--release-channel` |
+| `gcloud container clusters create` | `container.clusters.create` | `container.googleapis.com` | `--zone` `--region` `--num-nodes` `--machine-type` `--release-channel` `--enable-network-policy` `--enable-private-nodes` `--enable-private-endpoint` `--master-ipv4-cidr` `--network` `--subnetwork` `--enable-master-authorized-networks` `--master-authorized-networks` `--enable-authorized-networks-on-private-endpoint` `--enable-ip-alias` |
+| `gcloud container clusters create-auto` | `container.clusters.create` | `container.googleapis.com` | `--zone` `--region` `--release-channel` `--enable-private-nodes` `--enable-private-endpoint` `--master-ipv4-cidr` `--network` `--subnetwork` `--enable-master-authorized-networks` `--master-authorized-networks` `--enable-authorized-networks-on-private-endpoint` |
 | `gcloud container clusters list` | `container.clusters.list` | `container.googleapis.com` | — |
 | `gcloud container clusters describe` | `container.clusters.get` | `container.googleapis.com` | `--zone` `--region` |
+| `gcloud container clusters update` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--enable-private-endpoint` `--enable-master-authorized-networks` `--master-authorized-networks` `--enable-authorized-networks-on-private-endpoint` |
 | `gcloud container clusters delete` | `container.clusters.delete` | `container.googleapis.com` | `--zone` `--region` `--async` |
 | `gcloud container clusters get-credentials` | `container.clusters.get` `container.clusters.getCredentials` | `container.googleapis.com` | `--zone` `--region` `--internal-ip` |
 | `gcloud container clusters resize` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--num-nodes` `--node-pool` |
@@ -369,6 +370,7 @@ GCS backend使用時、stateを読むshow/output/state list/showにもstorage.ob
 | `gcloud container node-pools update` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--cluster` `--enable-autoscaling` `--min-nodes` `--max-nodes` `--enable-autorepair` `--enable-autoupgrade` |
 | `gcloud container node-pools delete` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--cluster` |
 | `sim gke autoscale-nodes` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--cluster` `--required-nodes` |
+| `sim gke check-control-plane` | `container.clusters.get` | `container.googleapis.com` | `--zone` `--region` `--endpoint` `--source-ip` `--source-network` |
 
 ### `kubectl`
 

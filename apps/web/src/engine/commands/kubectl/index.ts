@@ -1446,7 +1446,7 @@ const config = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
           })),
           clusters: clusters.map((c) => ({
             name: contextName(c),
-            cluster: { server: "https://34.85.0.1" },
+            cluster: { server: KubeContext.server(ctx.world, c) },
           })),
         }),
       });

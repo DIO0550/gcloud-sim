@@ -97,7 +97,7 @@ kubectl rollout restart deployment/web
 kubectl exec deployment/web -- printenv APP_MODE
 ```
 
-`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全64件、GKE拡充分は27件です。
+`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全68件、GKE拡充分は31件です。
 
 `sim files write FILE --content='…'`で独自のYAML/JSONを書き、`read`で読み、`replace --search=… --replacement=…`で1か所を編集できます。ファイルは `.yaml` / `.yml` / `.json` の相対パスで、32ファイル・1ファイル64,000文字まで。Terraformとは別に保存し、Terraformのplanに影響しません。`sim files delete FILE`はファイルだけを消します。クラスタ上の設定を消す操作は `kubectl delete -f FILE` です。教材の上書きは `sim files load kubernetes-config --force` で明示します。
 
@@ -884,3 +884,37 @@ Snapshot v27に既定プールと管理/自動スケール設定・前回評価�
 独立した2ミッションで、制御プレーン/ノードの別更新と、管理設定・上下限・明示評価を確認します。
 
 参照: [node-pools update](https://docs.cloud.google.com/sdk/gcloud/reference/container/node-pools/update)、[clusters upgrade](https://docs.cloud.google.com/sdk/gcloud/reference/container/clusters/upgrade)、[GKE cluster autoscaling](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/cluster-autoscaler)。
+
+
+## privateクラスタと制御プレーンの接続条件
+
+privateノードと公開endpointの有効/無効は別の設定です。Standard/Autopilotの作成で`--enable-private-nodes`と`--master-ipv4-cidr`を保存し、`--enable-private-endpoint`で公開endpointを無効にします。教材では既存の同一プロジェクトVPC/subnetが必要です。省略は`default`、subnetはクラスタと同じregionへ限定し、Standardでは`--enable-ip-alias`も要求します。master CIDRは正しいIPv4ネットワークアドレスの/28を明示し、同じVPCの全subnet/他クラスタとの重複を拒否します。subnet追加も既存master CIDRと重複できません。実ノード/外部IP・Pod/Service secondary range・IPAM・HAを作る処理はありません。
+
+```sh
+gcloud services enable container.googleapis.com
+gcloud container clusters create private-gke --region=us-central1 --enable-private-nodes --enable-ip-alias --master-ipv4-cidr=172.16.0.0/28
+sim gke check-control-plane private-gke --region=us-central1 --endpoint=public --source-ip=203.0.113.20
+gcloud container clusters update private-gke --region=us-central1 --enable-private-endpoint --enable-master-authorized-networks --master-authorized-networks=10.128.0.5/32 --enable-authorized-networks-on-private-endpoint
+gcloud container clusters get-credentials private-gke --region=us-central1 --internal-ip
+kubectl config view
+sim gke check-control-plane private-gke --region=us-central1 --endpoint=public --source-ip=203.0.113.20
+sim gke check-control-plane private-gke --region=us-central1 --endpoint=private --source-ip=10.128.0.6 --source-network=default
+sim gke check-control-plane private-gke --region=us-central1 --endpoint=private --source-ip=10.128.0.5 --source-network=default
+```
+
+最初のpublic評価はALLOWです。privateノードだけでは公開endpointが閉じません。update後のpublicは`endpoint-disabled`、内部IP `.6`は`source-not-authorized`のDENY、許可した`.5`はALLOW/`authorized-cidr`になります。`--master-authorized-networks`はCIDR集合の置換で、同じコマンドに`--enable-master-authorized-networks`を必要とします。CIDRはhost bitを含まないIPv4表記、重複なし、private最大100/public最大50。`0.0.0.0/0`は全IPv4を許可し、/32は単一IPです。制限を有効にして明示CIDRが空なら明示CIDRは全拒否します。既存設定でCIDRフラグを省略すると前の集合を維持します。`--no-enable-master-authorized-networks`で無効/集合を解除できますが、内部endpoint強制が有効なら同時に`--no-enable-authorized-networks-on-private-endpoint`を指定してください。
+
+内部評価には`--source-network`で同じVPCを明示し、送信元IPがそのVPCの同じregionのsubnet内にあることが必要です。許可CIDRだけで経路は作れず、VPCなし・異なるVPC/region・subnet外は`no-same-region-vpc-route`のDENYです。内部強制なしでは、このVPC条件を満たす送信元は暗黙に許可します。内部強制ありではさらに明示CIDRへ照合します。Google Cloud所有外部IPの自動許可、VPN/peering/Shared VPC・カスタム経路・global access・Firewall/NAT・DNS endpoint・IPv6は評価しません。ソースIP/VPCは利用者が宣言した教材入力で、実環境から測定しません。ALLOWは教材上のネットワーク条件を満たした意味で、認証/RBACやAPI処理の成功を保証しません。
+
+`get-credentials --internal-ip`はコンテキストごとの接続先を保存し、namespace設定を保持します。フラグなしは公開endpoint有効ならpublic、無効ならprivateを選びます。利用できないendpointを明示選択すると失敗します。この教材でpublic-onlyクラスタの内部endpointは未収録です。設定変更で保存済みpublic接続先が無効になる場合、`kubectl config view`は`https://unavailable`を表示し、get-credentialsで更新してください。CLI上のkubectl操作自体には端末のネットワーク送信元を導入せず、疎通遮断は再現しません。認証情報の取得と接続判定を分け、`sim gke check-control-plane`で送信元を明示して1回評価します。
+
+評価はクラスタへ保存し、describe/プロパティで送信元・endpoint・ALLOW/DENY/理由を表示します。接続設定updateや同じプロジェクトのsubnet追加は前回評価を消すため、再評価が必要です。制御プレーン/ノードプールの版やPod状態は接続設定変更で変わりません。IPは固定の教材値（public `34.85.0.1`、privateはmaster CIDR内の+2）で、実アドレス割当/予約・制御プレーン構築や移行を行いません。privateノード/VPC/CIDRの既存クラスタ変更と未収録フラグは拒否します。
+
+Snapshot v28に接続設定・前回評価・コンテキスト別endpointを保存します。v1〜v27は従来のpublic設定・未評価/接続先の未指定で補完します。v27の既定プール削除・管理/自動スケール評価は変更せず、Ingress/NetworkPolicy・PVC/PVデータと従来の状態を保持します。クラスタ削除は接続先/namespace設定も片付けます。privateの構築と公開CIDRの復旧を学ぶ2ミッションを追加し、限定CIDR・指定送信元のALLOWを必要とします。単なる設定変更や広いCIDRへの開放は完了条件を満たしません。
+
+公式参照（設定の意味とコマンド構文）:
+- https://docs.cloud.google.com/sdk/gcloud/reference/container/clusters/create
+- https://docs.cloud.google.com/sdk/gcloud/reference/container/clusters/create-auto
+- https://docs.cloud.google.com/sdk/gcloud/reference/container/clusters/update
+- https://docs.cloud.google.com/sdk/gcloud/reference/container/clusters/get-credentials
+- https://docs.cloud.google.com/kubernetes-engine/docs/how-to/latest/network-isolation

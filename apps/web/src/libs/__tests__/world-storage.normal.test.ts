@@ -35,10 +35,10 @@ test("壊れた JSON は退避してから理由を返す", () => {
 test("版が違う保存も退避して unsupportedVersion で返す", () => {
   localStorage.setItem(
     StorageKey,
-    JSON.stringify({ schemaVersion: 28, exportedAt: Now, world: {} }),
+    JSON.stringify({ schemaVersion: 29, exportedAt: Now, world: {} }),
   );
   const loaded = WorldStorage.load();
   expect(Result.isOk(loaded)).toBe(false);
   if (!Result.isOk(loaded))
-    expect(loaded.error.failure).toEqual({ kind: "unsupportedVersion", version: "28" });
+    expect(loaded.error.failure).toEqual({ kind: "unsupportedVersion", version: "29" });
 });

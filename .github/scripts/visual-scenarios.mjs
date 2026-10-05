@@ -77,7 +77,83 @@ const nodePoolSteps = [
     type: "gcloud container node-pools create apps --cluster=ops-gke --zone=us-central1-a --machine-type=e2-standard-4 --disk-size=200 --num-nodes=1",
   },
 ];
+const privateSteps = [
+  { wait: 800 },
+  { type: "gcloud services enable container.googleapis.com" },
+  {
+    type: "gcloud container clusters create private-gke --region=us-central1 --enable-private-nodes --enable-ip-alias --master-ipv4-cidr=172.16.0.0/28",
+  },
+];
+const securePrivate = {
+  type: "gcloud container clusters update private-gke --region=us-central1 --enable-private-endpoint --enable-master-authorized-networks --master-authorized-networks=10.128.0.5/32 --enable-authorized-networks-on-private-endpoint",
+};
 export const SCENARIOS = [
+  ...[
+    ["private", "private制御プレーンへの接続条件を確認する"],
+    ["authorized", "公開endpointの許可CIDRを直して接続を確認する"],
+  ].map(([name, title]) => ({
+    name: `mission-gke-control-plane-${name}`,
+    label: `ミッション: ${title}`,
+    steps: [
+      { wait: 800 },
+      { click: "ミッション 0/68" },
+      { click: "アクセスとセキュリティ0/9 クリア" },
+      { click: `${title}未着手` },
+      { click: "開始" },
+      { click: "ヒント（0/5）" },
+      { wait: 300 },
+    ],
+  })),
+  ...[
+    ["allowed", "private", "10.128.0.5", "内部endpointの限定CIDRを許可"],
+    ["source-denied", "private", "10.128.0.6", "内部endpointの許可範囲外を拒否"],
+    ["public-disabled", "public", "203.0.113.20", "公開endpointを無効にして拒否"],
+  ].map(([name, endpoint, source, label]) => ({
+    name: `gke-control-plane-${name}`,
+    label: `GKE: ${label}`,
+    steps: [
+      ...privateSteps,
+      securePrivate,
+      {
+        type: "gcloud container clusters get-credentials private-gke --region=us-central1 --internal-ip",
+      },
+      {
+        type: `sim gke check-control-plane private-gke --region=us-central1 --endpoint=${endpoint} --source-ip=${source}${endpoint === "private" ? " --source-network=default" : ""}`,
+      },
+      { click: "private-gke" },
+      { wait: 300 },
+    ],
+  })),
+  {
+    name: "gke-control-plane-private-nodes-public",
+    label: "GKE: privateノードでも公開endpointは有効",
+    steps: [
+      ...privateSteps,
+      {
+        type: "sim gke check-control-plane private-gke --region=us-central1 --endpoint=public --source-ip=203.0.113.20",
+      },
+      { click: "private-gke" },
+      { wait: 300 },
+    ],
+  },
+  ...[
+    ["denied", "203.0.113.0/28"],
+    ["recovered", "203.0.113.16/28"],
+  ].map(([name, cidr]) => ({
+    name: `gke-control-plane-public-cidr-${name}`,
+    label: `GKE: 公開endpoint許可CIDR ${cidr}`,
+    steps: [
+      ...privateSteps,
+      {
+        type: `gcloud container clusters update private-gke --region=us-central1 --enable-master-authorized-networks --master-authorized-networks=${cidr}`,
+      },
+      {
+        type: "sim gke check-control-plane private-gke --region=us-central1 --endpoint=public --source-ip=203.0.113.20",
+      },
+      { click: "private-gke" },
+      { wait: 300 },
+    ],
+  })),
   ...[
     ["upgrade", "制御プレーンとノードプールを別々に更新する"],
     ["autoscaling", "ノード自動スケールの上限と管理設定を確認する"],
@@ -86,7 +162,7 @@ export const SCENARIOS = [
     label: `ミッション: ${title}`,
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
+      { click: "ミッション 0/68" },
       { click: "運用の維持0/37 クリア" },
       { click: `${title}未着手` },
       { click: "開始" },
@@ -148,7 +224,7 @@ export const SCENARIOS = [
     label: `ミッション: ${title}`,
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
+      { click: "ミッション 0/68" },
       { click: category },
       { click: `${title}未着手` },
       { click: "開始" },
@@ -234,8 +310,8 @@ export const SCENARIOS = [
     label: `ミッション: ${title}`,
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
-      { click: "アクセスとセキュリティ0/7 クリア" },
+      { click: "ミッション 0/68" },
+      { click: "アクセスとセキュリティ0/9 クリア" },
       { click: `${title}未着手` },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -320,7 +396,7 @@ export const SCENARIOS = [
     label: `ミッション: ${title}`,
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
+      { click: "ミッション 0/68" },
       { click: "運用の維持0/37 クリア" },
       { click: `${title}未着手` },
       { click: "開始" },
@@ -412,7 +488,7 @@ export const SCENARIOS = [
     label: `ミッション: ${title}`,
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
+      { click: "ミッション 0/68" },
       { click: "運用の維持0/37 クリア" },
       { click: `${title}未着手` },
       { click: "開始" },
@@ -468,7 +544,7 @@ export const SCENARIOS = [
     label: "ミッション: バイナリ設定と環境変数の分離",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
+      { click: "ミッション 0/68" },
       { click: "運用の維持0/37 クリア" },
       { click: "バイナリ設定と環境変数の参照を分ける未着手" },
       { click: "開始" },
@@ -499,7 +575,7 @@ export const SCENARIOS = [
     label: "ミッション: 変更不可の設定を再作成して反映",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
+      { click: "ミッション 0/68" },
       { click: "運用の維持0/37 クリア" },
       { click: "変更できない設定を作り直してPodへ反映する未着手" },
       { click: "開始" },
@@ -532,7 +608,7 @@ export const SCENARIOS = [
     label: "ミッション: ConfigMap・Secretのラベル分類",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
+      { click: "ミッション 0/68" },
       { click: "運用の維持0/37 クリア" },
       { click: "ラベルでConfigMap・Secretを分類する未着手" },
       { click: "開始" },
@@ -565,7 +641,7 @@ export const SCENARIOS = [
     label: "ミッション: コンテキストの既定namespace切り替え",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
+      { click: "ミッション 0/68" },
       { click: "運用の維持0/37 クリア" },
       { click: "コンテキストの既定namespaceを切り替える未着手" },
       { click: "開始" },
@@ -600,7 +676,7 @@ export const SCENARIOS = [
     label: "ミッション: namespaceで検証と本番を分離",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
+      { click: "ミッション 0/68" },
       { click: "運用の維持0/37 クリア" },
       { click: "namespaceで検証環境と本番環境を分ける未着手" },
       { click: "開始" },
@@ -633,7 +709,7 @@ export const SCENARIOS = [
     label: "ミッション: startupでコンテナ再起動",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
+      { click: "ミッション 0/68" },
       { click: "運用の維持0/37 クリア" },
       { click: "起動確認が済んだPodだけをServiceへ接続する未着手" },
       { click: "開始" },
@@ -664,7 +740,7 @@ export const SCENARIOS = [
     label: "ミッション: livenessでコンテナ再起動",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
+      { click: "ミッション 0/68" },
       { click: "運用の維持0/37 クリア" },
       { click: "liveness失敗でコンテナを再起動して復旧する未着手" },
       { click: "開始" },
@@ -696,7 +772,7 @@ export const SCENARIOS = [
     label: "ミッション: 未準備PodをServiceから外す",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
+      { click: "ミッション 0/68" },
       { click: "運用の維持0/37 クリア" },
       { click: "未準備のPodをServiceの接続先から外す未着手" },
       { click: "開始" },
@@ -729,7 +805,7 @@ export const SCENARIOS = [
     label: "ミッション: PodのQoSを比較する",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
+      { click: "ミッション 0/68" },
       { click: "運用の維持0/37 クリア" },
       { click: "requestsとlimitsからPodのQoSを比較する未着手" },
       { click: "開始" },
@@ -757,7 +833,7 @@ export const SCENARIOS = [
     label: "ミッション: HPA設定ファイルの変更と再評価",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
+      { click: "ミッション 0/68" },
       { click: "運用の維持0/37 クリア" },
       { click: "HPAの設定ファイルを変更して再評価する未着手" },
       { click: "開始" },
@@ -793,7 +869,7 @@ export const SCENARIOS = [
     label: "ミッション: CPU使用率によるPodの増加",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
+      { click: "ミッション 0/68" },
       { click: "運用の維持0/37 クリア" },
       { click: "CPU使用率に合わせてPodを増やす未着手" },
       { click: "開始" },
@@ -822,7 +898,7 @@ export const SCENARIOS = [
     label: "ミッション: CPU・メモリの必要量と上限",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
+      { click: "ミッション 0/68" },
       { click: "運用の維持0/37 クリア" },
       { click: "CPU・メモリの必要量と上限を設定する未着手" },
       { click: "開始" },
@@ -852,7 +928,7 @@ export const SCENARIOS = [
     label: "ミッション: 複数ラベルで公開先を切り替え",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
+      { click: "ミッション 0/68" },
       { click: "運用の維持0/37 クリア" },
       { click: "ラベルでServiceの公開先を切り替える未着手" },
       { click: "開始" },
@@ -884,7 +960,7 @@ export const SCENARIOS = [
     label: "ミッション: マニフェスト更新とService接続先",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
+      { click: "ミッション 0/68" },
       { click: "運用の維持0/37 クリア" },
       { click: "マニフェストでアプリを更新しServiceの接続先を直す未着手" },
       { click: "開始" },
@@ -913,7 +989,7 @@ export const SCENARIOS = [
     label: "ミッション: 設定ファイルをapplyして反映",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
+      { click: "ミッション 0/68" },
       { click: "運用の維持0/37 クリア" },
       { click: "設定ファイルをapplyしてPodへ反映する未着手" },
       { click: "開始" },
@@ -941,7 +1017,7 @@ export const SCENARIOS = [
     label: "ミッション: ConfigMap変更を再起動で反映",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
+      { click: "ミッション 0/68" },
       { click: "運用の維持0/37 クリア" },
       { click: "ConfigMapの変更をPodの再起動で反映する未着手" },
       { click: "開始" },
@@ -954,7 +1030,7 @@ export const SCENARIOS = [
     label: "ミッション: GKE更新失敗からの復旧",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
+      { click: "ミッション 0/68" },
       { click: "運用の維持0/37 クリア" },
       { click: "失敗したGKEの更新をロールバックする未着手" },
       { click: "開始" },
@@ -967,7 +1043,7 @@ export const SCENARIOS = [
     label: "ミッション: コンテナ教材の片付け",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
+      { click: "ミッション 0/68" },
       { click: "運用の維持0/37 クリア" },
       { click: "残すイメージを守りながらコンテナ教材を片付ける未着手" },
       { click: "開始" },
@@ -978,14 +1054,14 @@ export const SCENARIOS = [
   {
     name: "mission-categories",
     label: "ミッション: カテゴリ選択",
-    steps: [{ wait: 800 }, { click: "ミッション 0/66" }, { wait: 300 }],
+    steps: [{ wait: 800 }, { click: "ミッション 0/68" }, { wait: 300 }],
   },
   {
     name: "mission-list",
     label: "ミッション: カテゴリ内の一覧",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
+      { click: "ミッション 0/68" },
       { click: "環境セットアップ0/3 クリア" },
       { wait: 300 },
     ],
@@ -995,7 +1071,7 @@ export const SCENARIOS = [
     label: "ミッション: 選んだ1件の手順",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/66" },
+      { click: "ミッション 0/68" },
       { click: "環境セットアップ0/3 クリア" },
       { click: "本番用の configuration を用意する未着手" },
       { click: "開始" },
