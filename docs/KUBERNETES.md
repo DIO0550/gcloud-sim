@@ -97,17 +97,17 @@ kubectl rollout restart deployment/web
 kubectl exec deployment/web -- printenv APP_MODE
 ```
 
-`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全55件、GKE拡充分は18件です。
+`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全56件、GKE拡充分は19件です。
 
 `sim files write FILE --content='…'`で独自のYAML/JSONを書き、`read`で読み、`replace --search=… --replacement=…`で1か所を編集できます。ファイルは `.yaml` / `.yml` / `.json` の相対パスで、32ファイル・1ファイル64,000文字まで。Terraformとは別に保存し、Terraformのplanに影響しません。`sim files delete FILE`はファイルだけを消します。クラスタ上の設定を消す操作は `kubectl delete -f FILE` です。教材の上書きは `sim files load kubernetes-config --force` で明示します。
 
-対応するmanifestは `apiVersion: v1` のConfigMapとOpaque Secretです。`metadata.name`と任意の`metadata.namespace`・`metadata.labels`、ConfigMapの文字列`data`、Secretのbase64 `data`と平文`stringData`を読みます。同じキーではstringDataを優先し、取得時はbase64 dataで返します。Secretの内容はUTF-8のみ。YAMLは数値・booleanを自動で文字列へ変換しないため、文字列の値は必要に応じて引用符で囲みます。複数行文字列と `---` 区切りの最大32リソースも使えます。
+対応するmanifestは `apiVersion: v1` のConfigMapとOpaque Secretです。`metadata.name`と任意の`metadata.namespace`・`metadata.labels`、ConfigMapの文字列`data`とbase64の`binaryData`、Secretのbase64 `data`と平文`stringData`を読みます。同じキーではstringDataを優先し、取得時はbase64 dataで返します。Secretの内容はUTF-8のみ。YAMLは数値・booleanを自動で文字列へ変換しないため、文字列の値は必要に応じて引用符で囲みます。複数行文字列と `---` 区切りの最大32リソースも使えます。
 
 `create -f`は新規作成専用で、既存なら失敗します。`apply -f`は作成または更新し、同じ構成の再適用はunchangedです。前回applyで管理したキーをファイルから取り除くとそのキーを削除し、applyで管理していない既存キーは保持します。設定の作成日時と既存Podは維持し、起動時の値は再起動で更新します。履歴として保持するのは管理キーだけで、実kubectlのlast-applied-configuration annotationやフィールド管理全体は再現しません。
 
 権限はConfigMap/Secretごとに判定します。applyはgetと、新規ならcreate・既存ならupdateを要求します（同じ値への再適用にもupdateを要求する簡略モデル）。create/deleteは対象のcreate/deleteだけで、Deployment権限は不要です。複数リソースは全体を検証し、途中の権限不足・不正なmanifest・重複・削除対象の欠落があれば一切変更しません。実kubectlの複数リソース処理は途中まで反映されることがあるため、この原子的な動作は教材上の簡略化です。
 
-ConfigMap/Secretのannotations、binaryData、volume、対応範囲外のDeployment/Service manifest、List、ディレクトリ/URL/stdin入力、server-side apply、patch/edit、YAML alias/明示タグは未対応として拒否します。認識できないフィールドもエラーにし、無視して成功扱いにはしません。`deployment.yaml` / `service.yaml` は仮想ファイルがない場合のみ従来の固定教材として利用できます。同名ファイルがあれば必ず内容を解釈し、壊れていても固定教材へ切り替えません。
+ConfigMap/Secretのannotations、volume、対応範囲外のDeployment/Service manifest、List、ディレクトリ/URL/stdin入力、server-side apply、patch/edit、YAML alias/明示タグは未対応として拒否します。認識できないフィールドもエラーにし、無視して成功扱いにはしません。`deployment.yaml` / `service.yaml` は仮想ファイルがない場合のみ従来の固定教材として利用できます。同名ファイルがあれば必ず内容を解釈し、壊れていても固定教材へ切り替えません。
 
 ## Deployment・Serviceのファイル適用と接続先
 
@@ -143,7 +143,7 @@ kubectl rollout history deployment/manifest-web
 
 Deployment/Serviceのapplyは対応するspec値を反映する限定モデルです。ConfigMap/Secretの管理キー処理とは異なり、last-applied annotationや三方向マージ・server-side applyは再現しません。ラベルmapは指定値で置換し、metadata.labels省略は空になります。複数コンテナ・名前付きポート・複数ポート・UDP・headless/ExternalName・Serviceのtype変更は未対応です。
 
-接続先は学習用の表示で、EndpointSliceリソース・プロセスの待受ポート・実通信を確認するものではありません。Serviceだけを先に作ってもよく、Deploymentを削除してもServiceは残ります。Snapshot v21でnamespace・コンテキスト既定値・ラベル・selector・resources・HPAとreadiness/liveness/startup設定・評価・共通再起動回数を保存します。
+接続先は学習用の表示で、EndpointSliceリソース・プロセスの待受ポート・実通信を確認するものではありません。Serviceだけを先に作ってもよく、Deploymentを削除してもServiceは残ります。Snapshot v22でnamespace・コンテキスト既定値・ラベル・selector・resources・HPAとreadiness/liveness/startup設定・評価・共通再起動回数を保存します。
 
 ## 複数ラベルとServiceの公開先切り替え
 
@@ -499,7 +499,7 @@ manifestのnamespaceは省略するとコマンドのnamespaceを使います。
 
 `kubectl get -A/--all-namespaces`はNAMESPACE列付きの一覧を返します。JSON/YAMLでもmetadata.namespaceを確認できます。`-A`と`-n`・個別名の組み合わせは未対応として拒否します。`-A`はgetだけに対応します。ツリーではカスタムnamespaceの下へリソースをまとめ、各プロパティとダブルクリックのdescribeコマンドにnamespaceを反映します。補完は現在クラスタのnamespace名・リソース名を候補にし、リソース名の候補は全namespaceを含みます。現在コンテキストの既定namespaceは下記のset-contextで変更できます。root位置のフラグ・namespace RBAC・Namespace自身のラベル操作等は未対応です。
 
-`kubectl delete namespace NAME`は同じプロジェクト・クラスタ・namespace内の全Deployment（導出Pod/ReplicaSetを含む）・Service・ConfigMap・Secret・HPAを即時削除します。組み込みnamespaceは削除対象外です。実際のTerminating/finalizer/終了待ち・削除保護は再現しません。必要な権限は`container.namespaces.create/get/list/update/delete`で、namespace削除はそのdelete権限で子リソースも削除する教材モデルです。admin/developerへ追加し、viewerはget/listだけを持ちます。クラスタ削除でもカスタムnamespaceを削除します。Snapshot v21はこの分離とコンテキストの既定namespaceを保存します。v18は既定namespace未設定でそのまま保持し、v1〜v17はリソースをdefaultへ移行します。
+`kubectl delete namespace NAME`は同じプロジェクト・クラスタ・namespace内の全Deployment（導出Pod/ReplicaSetを含む）・Service・ConfigMap・Secret・HPAを即時削除します。組み込みnamespaceは削除対象外です。実際のTerminating/finalizer/終了待ち・削除保護は再現しません。必要な権限は`container.namespaces.create/get/list/update/delete`で、namespace削除はそのdelete権限で子リソースも削除する教材モデルです。admin/developerへ追加し、viewerはget/listだけを持ちます。クラスタ削除でもカスタムnamespaceを削除します。Snapshot v22はこの分離とコンテキストの既定namespaceを保存します。v18は既定namespace未設定でそのまま保持し、v1〜v17はリソースをdefaultへ移行します。
 
 
 ## コンテキストの既定namespace
@@ -520,7 +520,7 @@ kubectl config set-context --current --namespace=''
 
 通常のコマンドは「明示-n → コンテキスト既定値 → default」の順で決定します。manifestのmetadata.namespaceが明示されていればその値を使い、明示-nとの不一致だけを拒否します。get -Aは既定値によらず全namespaceを表示します。sim kubernetes probe/reconcileも同じ優先順です。get-contextsはNAMESPACE列、viewはcontext.namespace、端末見出しは明示した既定値を表示します。ツリーからのdescribeはdefaultも含めnamespaceを明示し、既定値で別環境の同名リソースを選ばないようにします。
 
-config操作も既存のkubectlと同じAPI/プロジェクト/container.clusters.get確認を通る教材仕様です。ローカル設定だけを更新し、クラウドリソース・revision・Podを変えず、viewerでも変更できます。Snapshot v21で設定を保存し、v1〜v18は未設定へ補完します。v18のnamespace・probe・HPA・履歴・設定・仮想ファイル等は変更しません。
+config操作も既存のkubectlと同じAPI/プロジェクト/container.clusters.get確認を通る教材仕様です。ローカル設定だけを更新し、クラウドリソース・revision・Podを変えず、viewerでも変更できます。Snapshot v22で設定を保存し、v1〜v18は未設定へ補完します。v18のnamespace・probe・HPA・履歴・設定・仮想ファイル等は変更しません。
 
 
 ## ConfigMap・Secretをラベルで分類する
@@ -545,7 +545,7 @@ kubectl exec deployment/web -- printenv MODE
 
 ConfigMap/Secretのapplyはデータキーとラベルキーを別々に管理します。前回applyに含めたラベルをファイルから省くと削除し、CLIで追加した未管理ラベルは保持します。CLIで削除したラベルもファイルに残っていれば再applyで戻ります。`create -f`だけでは管理キーを記録しません。ラベル変更は作成日時・設定データ・Deploymentのrevision・起動済みPodの環境変数を保ちます。ServiceのselectorはPodラベルを選ぶため、設定リソースのラベルでは接続先が変わりません。
 
-ミッション「ラベルでConfigMap・Secretを分類する」は3つの設定を分類し、temporaryラベルを消すと達成します。参照元のデータとwebのnginx:1・1レプリカ・revision 1も条件です。Snapshot v21は設定ラベルとapply管理キーを保存します。v1〜v19は空ラベル・空管理キーへ補完し、v18/v19のnamespace・コンテキスト設定・probe・HPA・履歴・Pod内の値を引き継ぎます。
+ミッション「ラベルでConfigMap・Secretを分類する」は3つの設定を分類し、temporaryラベルを消すと達成します。参照元のデータとwebのnginx:1・1レプリカ・revision 1も条件です。Snapshot v22は設定ラベルとapply管理キーを保存します。v1〜v19は空ラベル・空管理キーへ補完し、v18/v19のnamespace・コンテキスト設定・probe・HPA・履歴・Pod内の値を引き継ぎます。
 
 
 ## 変更できないConfigMap・Secret
@@ -584,6 +584,54 @@ kubectl exec deployment/frozen-web -- printenv TOKEN
 
 API・種別ごとのget/create/update/delete権限、Namespace/コンテキスト/プロジェクト/クラスタ境界を従来どおり検証します。保護中の変更が混在ファイル内で失敗すると、先行したNamespace・Deployment・Service・ConfigMapの変更とIP採番も確定しません。削除は指定した名前が対象で、編集後のファイルでも削除可能です。immutableは削除保護や暗号化ではなく、設定データの更新を禁止するフラグです。監視負荷削減・kubeletのwatch・volumeや伝播遅延は再現しません。
 
-ミッション「変更できない設定を作り直してPodへ反映する」はファイルとクラスタのMODE=production・TOKEN=demo-token-v2をそろえ、両設定のimmutable: true・参照環境変数・nginx:1・2レプリカ・最後の履歴がrestartであることを確認します。ファイル編集だけ、設定の再作成だけ、1つのPodだけの再作成、literal env、mutableな再作成では達成しません。Snapshot v21はimmutableを保存し、v1〜v20はfalseを補完します。v20のラベルとapply管理キー、Namespace・コンテキスト・Pod環境・probe・HPA・履歴・ファイルを保持します。
+ミッション「変更できない設定を作り直してPodへ反映する」はファイルとクラスタのMODE=production・TOKEN=demo-token-v2をそろえ、両設定のimmutable: true・参照環境変数・nginx:1・2レプリカ・最後の履歴がrestartであることを確認します。ファイル編集だけ、設定の再作成だけ、1つのPodだけの再作成、literal env、mutableな再作成では達成しません。Snapshot v22はimmutableを保存し、v1〜v20はfalseを補完します。v20のラベルとapply管理キー、Namespace・コンテキスト・Pod環境・probe・HPA・履歴・ファイルを保持します。
 
 参考: [Kubernetes ConfigMaps](https://kubernetes.io/docs/concepts/configuration/configmap/#immutable-configmaps)、[Immutable Secrets](https://kubernetes.io/docs/concepts/configuration/secret/#immutable-secrets)、[環境変数で使うConfigMapの更新](https://kubernetes.io/docs/tutorials/configuration/updating-configuration-via-a-configmap/)。
+
+## ConfigMapのテキストとバイナリを分ける
+
+ConfigMapは`data`にUTF-8の文字列、`binaryData`にbase64で表したバイト列を保存できます。バイナリはUTF-8へ変換せず、正規化したbase64のまま保持します。Secretの`data`とは別の機能で、Secretに`binaryData`は指定できません。この教材のSecretは引き続きUTF-8に限定します。
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: asset-settings
+data:
+  MODE: production
+binaryData:
+  asset.bin: AP+AAQ==
+```
+
+`asset.bin`は4 bytes（00 ff 80 01）です。両方のmapのキーは英数字・`-`・`_`・`.`を使い、253文字まで。`data`と`binaryData`で同じキーを使えず、教材の合計上限は100キーです。サイズはテキスト値のUTF-8バイト数とバイナリの復号後のバイト数を合計して1 MiBまでとし、base64の文字数・paddingやJSONの記号は数えません。仮想ファイル自体の64,000文字制限は別に適用します。
+
+空のバイナリ値`""`は0 bytesの有効なキーです。base64は通常のalphabetとpaddingに限定し、不正値・空白・URL-safe表記を拒否します。同じバイト列になるpadding bitsの違いは正規化し、同じ設定のapplyを冪等にします。`get -o json/yaml`はbase64を返し、一覧のDATAは両mapのキー数です。describe・プロパティはバイナリのキーとバイト数を表示し、生のバイト列を文字として描画しません。ConfigMapは秘密情報の保管庫ではありません。
+
+- applyは`data`と`binaryData`の管理キーを別々に保存します。前回applyしたキーの省略は削除し、createで配置した未管理キーは保持します。管理しているキーをテキストとバイナリの間で移せますが、保持した未管理キーと衝突する場合は更新を拒否します。
+- `immutable: true`はテキストとバイナリの両方を保護します。バイト列・キーの追加/削除を拒否し、同じバイト列の再apply・ラベル変更は可能です。変更するには削除・再作成します。
+- `configMapKeyRef`と`set env --from=configmap/NAME`は`data`だけを読みます。`binaryData`のキーは、内容がUTF-8や空のバイト列でも環境変数に使えません。キー参照した新しいPodはCreateContainerConfigErrorとなります。`set env --keys`で選ぶとキー不足として拒否します。
+- 既存の起動済みPodの環境変数は保持します。テキストキーをバイナリへ移しても既存Podの値は変えず、新しいPodだけが起動を待ちます。テキストキーを戻すと待機Podが読み直し、既存Podの値はそのままです。
+- API・ConfigMapの操作権限、プロジェクト/クラスタ/namespaceの分離、ファイル全体の原子的適用は既存の規則を使います。ファイル入力・表示・環境変数の区別までの教材で、volumeマウント・ファイル実行・実バイト通信・`--from-file`・patch/editは未対応です。
+
+```sh
+gcloud services enable container.googleapis.com
+gcloud container clusters create-auto binary-gke --region=us-central1
+sim files load kubernetes-binary-data
+kubectl apply -f asset-settings.yaml
+kubectl apply -f asset-web.yaml
+kubectl get pods
+# asset.binを環境変数に参照したためCreateContainerConfigError
+kubectl get cm asset-settings -o yaml
+kubectl describe cm asset-settings
+# binaryDataはAP+AAQ== / 4 bytes、dataのMODEはproduction
+sim files replace asset-web.yaml --search='key: asset.bin' --replacement='key: MODE'
+kubectl apply -f asset-web.yaml
+kubectl rollout status deployment/asset-web
+kubectl exec deployment/asset-web -- printenv MODE
+```
+
+ミッション「バイナリ設定と環境変数の参照を分ける」はConfigMapとファイルのMODE=production・asset.bin=AP+AAQ==を保持し、Deploymentとファイルの参照をMODEへ修正します。nginx:1・2レプリカ・全PodのReadyとproduction取得を確認します。ファイル編集だけ、literal env、バイナリの削除/変更、1レプリカでは達成しません。
+
+Snapshot v22でbinaryDataとそのapply管理キーを保存します。v1〜v21から空のmap/管理キーを補完し、v21のimmutable・ラベル・テキスト管理キー、namespace・コンテキスト・Pod内の値・probe・HPA・履歴・ファイルを保持します。現行Snapshotの不正base64・キー重複・SecretのbinaryDataは拒否します。
+
+参照: [ConfigMap APIのdata・binaryData](https://kubernetes.io/docs/reference/kubernetes-api/core/config-map-v1/)、[ConfigMapのサイズ・immutable](https://kubernetes.io/docs/concepts/configuration/configmap/)。

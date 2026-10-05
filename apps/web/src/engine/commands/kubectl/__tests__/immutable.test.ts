@@ -423,7 +423,7 @@ test.each([18, 19, 20])(
 );
 
 test.each([undefined, null, "true", 1])(
-  "v21 rejects missing or malformed immutable fields: %j",
+  "v22 rejects missing or malformed immutable fields: %j",
   (immutable) => {
     const snapshot = JSON.parse(JSON.stringify(Snapshot.create(ready().world, Now)));
     snapshot.world.kubeConfigs[0].immutable = immutable;

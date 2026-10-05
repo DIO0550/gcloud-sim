@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { ImagePull } from "@/engine/domains/image-pull";
 import { KubeEnv, KubeRuntime } from "@/engine/domains/kube-config";
+import { KubeBinary } from "@/engine/domains/kube-config/binary";
 import { KubeHpa } from "@/engine/domains/kube-hpa";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeLiveness } from "@/engine/domains/kube-liveness";
@@ -573,6 +574,15 @@ export const KubeConfigProperties = ({
             c.kind === "secret" ? `${new TextEncoder().encode(e.value).length} bytes` : e.value,
         }))}
       />
+      {c.binaryData.length > 0 && (
+        <Section
+          title="binaryData（サイズ）"
+          rows={c.binaryData.map((e) => ({
+            label: e.key,
+            value: `${KubeBinary.size(e.value)} bytes`,
+          }))}
+        />
+      )}
     </>
   );
 };

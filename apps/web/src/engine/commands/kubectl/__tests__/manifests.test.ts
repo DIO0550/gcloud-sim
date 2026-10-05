@@ -139,7 +139,7 @@ test.each([
   JSON.stringify(cm({ BOOL: true })),
   JSON.stringify(cm({ NUM: 12 })),
   JSON.stringify({ ...cm(), immutable: "true" }),
-  JSON.stringify({ ...cm(), binaryData: { BIN: "YQ==" } }),
+  JSON.stringify({ ...cm(), binaryData: { BIN: "invalid-base64!" } }),
   JSON.stringify({ ...cm(), metadata: { name: "settings", namespace: "INVALID" } }),
   JSON.stringify({ ...cm(), metadata: { name: "settings", annotations: { app: "web" } } }),
   JSON.stringify({ ...secret(), type: "kubernetes.io/dockerconfigjson" }),
