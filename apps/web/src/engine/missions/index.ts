@@ -108,6 +108,11 @@ import {
   KubeConfigurationMissions,
   kubeConfigurationSatisfied,
 } from "./kube-configuration";
+import {
+  type KubeIngressAssertion,
+  KubeIngressMissions,
+  kubeIngressSatisfied,
+} from "./kube-ingress";
 import { type KubeLabelAssertion, KubeLabelMissions, kubeLabelsSatisfied } from "./kube-labels";
 import {
   type KubeLivenessAssertion,
@@ -167,6 +172,7 @@ export type MissionAssertion =
   | KubeLivenessAssertion
   | KubeNamespaceAssertion
   | KubeImmutableAssertion
+  | KubeIngressAssertion
   | KubeNetworkAssertion
   | KubeStorageAssertion
   | KubeVolumesAssertion
@@ -332,6 +338,7 @@ const Missions: readonly Mission[] = [
   ...KubeVolumesMissions,
   ...KubeStorageMissions,
   ...KubeNetworkMissions,
+  ...KubeIngressMissions,
   ...KubeBinaryDataMissions,
   ...KubeConfigLabelsMissions,
   ...KubeContextMissions,
@@ -798,6 +805,10 @@ const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
       return kubeHpaSatisfied(world);
     case "kubeImmutableRefreshed":
       return kubeImmutableSatisfied(world);
+    case "kubeIngressRouted":
+      return kubeIngressSatisfied(world, false);
+    case "kubeIngressRecovered":
+      return kubeIngressSatisfied(world, true);
     case "kubeNetworkRestricted":
       return kubeNetworkSatisfied(world, false);
     case "kubeNamespaceNetworkRestricted":

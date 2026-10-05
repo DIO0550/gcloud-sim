@@ -172,6 +172,13 @@ export const Candidates = {
       .filter((r) => r.projectId === projectId.value && r.cluster === cluster.value)
       .map((r) => r.name);
   }) satisfies CandidateSource,
+  kubeIngresses: inProject((world, projectId) => {
+    const cluster = GcloudConfig.get(world.config, "container/cluster");
+    if (!Option.isSome(cluster)) return [];
+    return world.kubeIngresses
+      .filter((p) => p.projectId === projectId && p.cluster === cluster.value)
+      .map((p) => p.name);
+  }),
   kubeNetworkPolicies: inProject((world, projectId) => {
     const cluster = GcloudConfig.get(world.config, "container/cluster");
     if (!Option.isSome(cluster)) return [];

@@ -57,6 +57,7 @@ import {
 } from "@/features/simulator/components/ServiceProperties";
 import { type ConsoleScreen, ConsoleScreens } from "@/features/simulator/features/console";
 import { Option } from "@/utils/Option";
+import { IngressProperties } from "./IngressProperties";
 
 type PropertiesPanelProps = Readonly<{
   world: World;
@@ -113,6 +114,8 @@ const Body = ({
       return <ClusterProperties world={world} selection={selection} />;
     case "node-pool":
       return <NodePoolProperties world={world} selection={selection} />;
+    case "kube-ingress":
+      return <IngressProperties world={world} selection={selection} />;
     case "kube-network-policy":
       return <NetworkPolicyProperties world={world} selection={selection} />;
     case "kube-storage":
@@ -193,6 +196,7 @@ const titleOf = (selection: TreeSelection): string => {
     case "forwarding-rule":
     case "cluster":
     case "node-pool":
+    case "kube-ingress":
     case "kube-network-policy":
     case "kube-storage":
     case "kube-namespace":
@@ -267,6 +271,8 @@ const kindLabel = (selection: TreeSelection): string => {
       return "container#cluster";
     case "node-pool":
       return `container#nodePool · clusters/${selection.cluster}`;
+    case "kube-ingress":
+      return `networking.k8s.io/v1 Ingress · clusters/${selection.cluster}`;
     case "kube-network-policy":
       return `networking.k8s.io/v1 NetworkPolicy · clusters/${selection.cluster}`;
     case "kube-storage":
