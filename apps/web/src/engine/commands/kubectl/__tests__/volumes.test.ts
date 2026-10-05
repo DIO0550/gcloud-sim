@@ -545,3 +545,22 @@ test("waiting environment references are not cached until files and environment 
   expect(execute(next, "kubectl exec deployment/web -- cat /etc/config/MODE").text).toBe("mounted");
   expect(execute(next, "kubectl exec deployment/web -- printenv MODE").text).toBe("ready");
 });
+
+test("failed environment reload during container restart preserves subPath until Pod recreation", () => {
+  const started = execute(
+    reloaded(),
+    "sim files replace reload-web.yaml --search='          image: nginx:1' --replacement='          image: nginx:1\n          livenessProbe:\n            httpGet:\n              path: /health\n              port: 80\n            failureThreshold: 1'",
+    "kubectl apply -f reload-web.yaml",
+  );
+  const s = execute(update(started), "kubectl delete cm reload-settings");
+  const pod = json(s, "kubectl get pods -o json").items[0].name;
+  const restarted = execute(
+    s,
+    `sim kubernetes probe reload-web --kind=liveness --status-code=500 --pod=${pod}`,
+  );
+  expect(execute(restarted, "kubectl get pods").text).toContain("CreateContainerConfigError");
+  const repaired = execute(restore(restarted), "kubectl apply -f reload-settings.yaml");
+  expect(execute(repaired, `kubectl exec ${pod} -- cat /etc/mode.conf`).text).toBe("staging");
+  expect(execute(repaired, `kubectl exec ${pod} -- cat /etc/config/MODE`).text).toBe("production");
+  expect(execute(repaired, `kubectl exec ${pod} -- printenv MODE`).text).toBe("production");
+});

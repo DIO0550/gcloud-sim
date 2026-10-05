@@ -207,7 +207,8 @@ export const KubeRuntime = {
       const files = KubeVolumes.resolve(configs, d, p.name);
       return d.volumes.length > 0 &&
         Result.isOk(files) &&
-        podEnvironments.some((e) => e.podName === p.name)
+        (podEnvironments.some((e) => e.podName === p.name) ||
+          d.podFiles.some((saved) => saved.podName === p.name))
         ? [files.value]
         : [];
     });
