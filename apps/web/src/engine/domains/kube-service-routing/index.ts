@@ -14,14 +14,15 @@ export const KubeServiceRouting = {
   ): readonly Readonly<{ deployment: string; pod: string; endpoint: string }>[] {
     const cluster = World.findCluster(world, service.projectId, service.cluster);
     if (!Option.isSome(cluster)) return [];
-    return World.kubeDeploymentsOf(world, cluster.value, service.namespace).flatMap((d) => {
-      if (
-        !KubeLabels.matches(service.selector, d.podLabels) ||
-        ImagePull.error(world, cluster.value, d.image)
-      )
-        return [];
+    return World.kubeWorkloadsOf(world, cluster.value, service.namespace).flatMap((d) => {
+      if (ImagePull.error(world, cluster.value, d.image)) return [];
       return KubePod.fromDeployment(d)
-        .filter((p) => !KubeRuntime.error(world, d, p.name) && KubeReadiness.ready(d, p.name))
+        .filter(
+          (p) =>
+            KubeLabels.matches(service.selector, p.labels) &&
+            !KubeRuntime.error(world, d, p.name) &&
+            KubeReadiness.ready(d, p.name),
+        )
         .map((p) => ({
           deployment: d.name,
           pod: p.name,

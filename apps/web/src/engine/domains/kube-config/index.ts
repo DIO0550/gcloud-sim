@@ -203,7 +203,7 @@ export const KubeRuntime = {
     }
     return Result.ok({ podName, values });
   },
-  reconcile(source: RuntimeSource, d: KubeDeployment): KubeDeployment {
+  reconcile<T extends KubeDeployment>(source: RuntimeSource, d: T): T {
     const podEnvironments = KubePod.fromDeployment(d).flatMap((p) => {
       const env = KubeRuntime.environment(source, d, p.name);
       return Result.isOk(env) ? [env.value] : [];

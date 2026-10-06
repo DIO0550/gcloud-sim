@@ -44,6 +44,10 @@ const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElem
 
 const assertionLabel = (assertion: Mission["assertions"][number]): string => {
   switch (assertion.kind) {
+    case "kubeStatefulPodRecovered":
+      return "同じPod名・PVC・データで復旧し、もう1つのPodを保持";
+    case "kubeStatefulScaleRecovered":
+      return "1→2レプリカへ戻し、元のPVC/PVとデータを再利用";
     case "gkePrivateAccessSecured":
       return "公開endpoint無効・内部CIDR制限・認証情報・指定送信元のALLOW";
     case "gkeAuthorizedSourceRecovered":

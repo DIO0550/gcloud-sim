@@ -65,6 +65,20 @@ export type KubeRevision = Readonly<{
   podLabels: KubeLabels;
 }>;
 export type KubeDeployment = Readonly<{
+  /** Shared single-container runtime; StatefulSets are stored in their own collection. */
+  statefulSet?: Readonly<{
+    serviceName: string;
+    volumeClaimTemplates: readonly Readonly<{
+      name: string;
+      storageClassName: string;
+      storageGi: number;
+    }>[];
+    lastScale?: Readonly<{
+      from: number;
+      to: number;
+      reusedClaims: readonly Readonly<{ name: string; volumeName: string }>[];
+    }>;
+  }>;
   projectId: string;
   cluster: string;
   namespace: string;
@@ -592,20 +606,29 @@ export const KubePod = {
         .toString(36)
         .padStart(5, "x")
         .slice(-5);
+      const name = deployment.statefulSet
+        ? `${deployment.name}-${i}`
+        : `${deployment.name}-${hash}-${suffix}`;
       return {
-        name: `${deployment.name}-${hash}-${suffix}`,
+        name,
         namespace: deployment.namespace,
         deployment: deployment.name,
-        labels: deployment.podLabels,
+        labels: deployment.statefulSet
+          ? {
+              ...deployment.podLabels,
+              "statefulset.kubernetes.io/pod-name": name,
+              "apps.kubernetes.io/pod-index": String(i),
+            }
+          : deployment.podLabels,
         resources: deployment.resources,
         readinessProbe: deployment.readinessProbe,
         livenessProbe: deployment.livenessProbe,
         startupProbe: deployment.startupProbe,
-        started: KubeContainer.started(deployment, `${deployment.name}-${hash}-${suffix}`),
-        ready: KubeReadiness.ready(deployment, `${deployment.name}-${hash}-${suffix}`),
+        started: KubeContainer.started(deployment, name),
+        ready: KubeReadiness.ready(deployment, name),
         image: deployment.image,
         status: "Running",
-        restarts: KubeContainer.restarts(deployment, `${deployment.name}-${hash}-${suffix}`),
+        restarts: KubeContainer.restarts(deployment, name),
         ip: `10.${deployment.podNetwork >> 6}.${(deployment.podNetwork % 64) * 4 + ((i + 2) >> 8)}.${(i + 2) % 256}`,
       };
     });

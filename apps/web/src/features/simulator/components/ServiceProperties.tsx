@@ -838,10 +838,10 @@ export const KubeStorageProperties = ({
             { label: "accessModes", value: "ReadWriteOnce（1ノード。Pod数の制限ではありません）" },
             { label: "判定", value: KubeStorage.reason(world, c) },
             {
-              label: "利用Deployment",
+              label: "利用Workload",
               value:
                 KubeStorage.consumers(world, c)
-                  .map((d) => d.name)
+                  .map((d) => `${d.statefulSet ? "StatefulSet" : "Deployment"} ${d.name}`)
                   .join(", ") || "なし",
             },
           ]}

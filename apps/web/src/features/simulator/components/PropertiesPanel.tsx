@@ -58,6 +58,7 @@ import {
 import { type ConsoleScreen, ConsoleScreens } from "@/features/simulator/features/console";
 import { Option } from "@/utils/Option";
 import { IngressProperties } from "./IngressProperties";
+import { StatefulSetProperties } from "./StatefulSetProperties";
 
 type PropertiesPanelProps = Readonly<{
   world: World;
@@ -122,6 +123,8 @@ const Body = ({
       return <KubeStorageProperties world={world} selection={selection} />;
     case "kube-namespace":
       return <KubeNamespaceProperties world={world} selection={selection} />;
+    case "kube-statefulset":
+      return <StatefulSetProperties world={world} selection={selection} />;
     case "kube-deployment":
       return <KubeDeploymentProperties world={world} selection={selection} />;
     case "kube-hpa":
@@ -200,6 +203,7 @@ const titleOf = (selection: TreeSelection): string => {
     case "kube-network-policy":
     case "kube-storage":
     case "kube-namespace":
+    case "kube-statefulset":
     case "kube-deployment":
     case "kube-service":
     case "kube-config":
@@ -279,6 +283,8 @@ const kindLabel = (selection: TreeSelection): string => {
       return `${selection.resourceKind === "storageclass" ? "storage.k8s.io/v1 StorageClass" : selection.resourceKind === "pvc" ? "v1 PersistentVolumeClaim" : "v1 PersistentVolume"} · clusters/${selection.cluster}`;
     case "kube-namespace":
       return `v1 Namespace · clusters/${selection.cluster}`;
+    case "kube-statefulset":
+      return `apps/v1 StatefulSet · clusters/${selection.cluster}`;
     case "kube-deployment":
       return `apps/v1 Deployment · clusters/${selection.cluster}`;
     case "kube-hpa":

@@ -38,6 +38,7 @@ export type WorkloadManifest =
       labels: KubeLabels;
       port: number;
       targetPort: number;
+      headless: boolean;
     }>;
 
 const labelMap = (value: unknown, required = false): KubeLabels => {
@@ -91,10 +92,12 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
     return fail("Invalid metadata.name.");
   const spec = record(r.spec, "spec");
   if (!deployment) {
-    fields(spec, ["type", "selector", "ports"], "Service.spec");
+    fields(spec, ["type", "selector", "ports", "clusterIP"], "Service.spec");
     const type = KubeServiceType.parse(typeof spec.type === "string" ? spec.type : "ClusterIP");
     if (!Option.isSome(type) || (spec.type !== undefined && typeof spec.type !== "string"))
       return fail("Unsupported Service type.");
+    if (spec.clusterIP !== undefined && (spec.clusterIP !== "None" || type.value !== "ClusterIP"))
+      return fail("Explicit clusterIP supports headless ClusterIP Services (None) only.");
     const selector = labelMap(spec.selector, true);
     if (!Array.isArray(spec.ports) || spec.ports.length !== 1)
       return fail("Use exactly one Service port.");
@@ -116,6 +119,7 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
       labels,
       port: port.port,
       targetPort,
+      headless: spec.clusterIP === "None",
     };
   }
   fields(spec, ["replicas", "selector", "template"], "Deployment.spec");

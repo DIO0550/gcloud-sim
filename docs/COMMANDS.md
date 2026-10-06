@@ -374,6 +374,8 @@ GCS backend使用時、stateを読むshow/output/state list/showにもstorage.ob
 
 ### `kubectl`
 
+StatefulSetは`sts/statefulset/statefulsets.apps`のget/describe/delete、仮想manifestのcreate/apply/deleteとscaleに対応します。対象の`container.statefulSets.get/list/create/update/delete`を要求し、Pod操作はpodsの権限を使います。`get all`はStatefulSetのlist権限も必要です。`sim files load kubernetes-statefulset`で教材を読めます。`sim kubernetes write-file pod/NAME`は指定PodのPVCへ書き込みます。Parallel、Retain、単一image/PVCマウントに限定し、詳しい再現範囲は[KUBERNETES.md](KUBERNETES.md)を参照してください。
+
 HPAは`autoscale`またはautoscaling/v2の仮想YAML/JSONで作成し、`get/describe/delete hpa`で確認・削除できます。HPAファイルの`create/apply/delete -f`にも対応し、applyは目標値・レプリカ範囲・対象を置き換えます。`get all`はHPAのlist権限も要求します。CPU使用量は`sim kubernetes reconcile NAME --cpu=250m`で1 Podあたりの値を明示し、1回だけ評価します（実測や定期実行はありません）。
 
 
@@ -384,19 +386,19 @@ HPAは`autoscale`またはautoscaling/v2の仮想YAML/JSONで作成し、`get/de
 | `kubectl label` | ConfigMap/Secretのgetとupdate | `container.googleapis.com` | `--overwrite` `--namespace`（1リソースのKEY=VALUE / KEY-） |
 | `kubectl set env` | 更新: `container.deployments.update`、一覧: `container.deployments.get`、取込元のgetも必要 | `container.googleapis.com` | `--from` `--keys` `--prefix` `--list` `--namespace` |
 | `kubectl exec` | `container.pods.exec` | `container.googleapis.com` | `--namespace`（printenv/envのみ） |
-| `kubectl get` | Deployment/Service/ConfigMap/Secret/HPA/NetworkPolicy/Ingress: 対象のget/list、その他: `container.pods.list` | `container.googleapis.com` | `--output` `--selector` (`-l`) `--namespace` |
+| `kubectl get` | Deployment/StatefulSet/Service/ConfigMap/Secret/HPA/NetworkPolicy/Ingress: 対象のget/list、その他: `container.pods.list` | `container.googleapis.com` | `--output` `--selector` (`-l`) `--namespace` |
 | `kubectl apply` | 仮想ファイル: 対象のgetとcreate/update、固定教材: `container.deployments.update` | `container.googleapis.com` | `--filename` `--namespace` |
 | `kubectl create` | 仮想ファイル: 対象のcreate、Deployment/固定教材: `container.deployments.create` | `container.googleapis.com` | `--filename` `--image` `--replicas` `--namespace` |
-| `kubectl delete` | Deployment/Service/ConfigMap/Secret/HPA/NetworkPolicy/Ingress: 対象のdelete、その他・固定教材: `container.deployments.delete` | `container.googleapis.com` | `--filename` `--namespace` |
-| `kubectl describe` | Deployment/Service/ConfigMap/Secret/HPA/NetworkPolicy/Ingress: 対象のget/list、その他: `container.pods.get` | `container.googleapis.com` | `--namespace` |
+| `kubectl delete` | Deployment/StatefulSet/Service/ConfigMap/Secret/HPA/NetworkPolicy/Ingress: 対象のdelete、その他・固定教材: `container.deployments.delete` | `container.googleapis.com` | `--filename` `--namespace` |
+| `kubectl describe` | Deployment/StatefulSet/Service/ConfigMap/Secret/HPA/NetworkPolicy/Ingress: 対象のget/list、その他: `container.pods.get` | `container.googleapis.com` | `--namespace` |
 | `kubectl expose` | `container.services.create` | `container.googleapis.com` | `--type` `--port` `--target-port` `--name` `--namespace` |
 | `kubectl autoscale` | `container.horizontalPodAutoscalers.create`、`container.deployments.get` | `container.googleapis.com` | `--min` `--max` `--cpu-percent` `--name` `--namespace` |
 | `sim kubernetes probe` | `container.deployments.update` | `container.googleapis.com` | `--status-code`（必須）、`--pod`（省略時は対象Deploymentの全Pod）、`--kind=readiness|liveness|startup`（既定readiness） |
-| `sim kubernetes write-file` | `container.deployments.get` + `container.pods.exec` | `container.googleapis.com` | `--namespace/-n`, `--path`, `--content` |
+| `sim kubernetes write-file` | 対象の`container.deployments.get` / `container.statefulSets.get` + `container.pods.exec` | `container.googleapis.com` | `--namespace/-n`, `--path`, `--content` |
 | `sim kubernetes connect` | `container.deployments.get` + `container.pods.exec` + `container.networkPolicies.list` | `container.googleapis.com` | `--to`, `--port`（両方必須）、`--namespace/-n`（送信元）、`--to-namespace`（省略時は送信元と同じ） |
 | `sim kubernetes request` | `container.ingresses.get` + `container.services.get` + `container.deployments.list` + `container.pods.list` | `container.googleapis.com` | `--host`（必須）、`--path`（既定/）、`--namespace/-n` |
 | `sim kubernetes reconcile` | `container.horizontalPodAutoscalers.update`、`container.deployments.update` | `container.googleapis.com` | `--cpu`（1 Podあたりの教材用使用量） |
-| `kubectl scale` | `container.deployments.update` | `container.googleapis.com` | `--replicas` `--namespace` |
+| `kubectl scale` | 対象の`container.deployments.update` / `container.statefulSets.update` | `container.googleapis.com` | `--replicas` `--namespace` |
 | `kubectl set resources` | `container.deployments.update` | `container.googleapis.com` | `--requests` `--limits` `--containers` (`-c`) `--namespace` |
 | `kubectl set image` | `container.deployments.update` | `container.googleapis.com` | `--namespace` |
 | `kubectl rollout status` | `container.deployments.get` | `container.googleapis.com` | `--namespace` |

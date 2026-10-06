@@ -61,6 +61,13 @@ export type TreeSelection =
     }>
   | Readonly<{ kind: "kube-namespace"; projectId: string; cluster: string; name: string }>
   | Readonly<{
+      kind: "kube-statefulset";
+      projectId: string;
+      cluster: string;
+      namespace?: string;
+      name: string;
+    }>
+  | Readonly<{
       kind: "kube-deployment";
       projectId: string;
       cluster: string;
@@ -198,6 +205,8 @@ export const TreeSelection = {
         return `kube-storage:${selection.projectId}/${selection.cluster}/${selection.resourceKind}/${selection.namespace ?? ""}/${selection.name}`;
       case "kube-namespace":
         return `namespace:${selection.projectId}/${selection.cluster}/${selection.name}`;
+      case "kube-statefulset":
+        return `sts:${selection.projectId}/${selection.cluster}/${selection.namespace ?? "default"}/${selection.name}`;
       case "kube-deployment":
         return `deploy:${selection.projectId}/${selection.cluster}/${selection.namespace && selection.namespace !== "default" ? `${selection.namespace}/` : ""}${selection.name}`;
       case "kube-config":
@@ -341,6 +350,10 @@ export const TreeSelection = {
         );
       case "kube-namespace":
         return Option.some(`kubectl describe namespace ${selection.name}`);
+      case "kube-statefulset":
+        return Option.some(
+          `kubectl describe statefulset ${selection.name} --namespace=${selection.namespace ?? "default"}`,
+        );
       case "kube-deployment":
         return Option.some(
           `kubectl describe deployment ${selection.name} --namespace=${selection.namespace ?? "default"}`,

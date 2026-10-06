@@ -43,7 +43,12 @@ export type KubePv = Readonly<{
 }>;
 export type KubeStorageState = Pick<
   World,
-  "kubeStorageClasses" | "kubePvcs" | "kubePvs" | "kubeDeployments" | "sequence"
+  | "kubeStorageClasses"
+  | "kubePvcs"
+  | "kubePvs"
+  | "kubeDeployments"
+  | "kubeStatefulSets"
+  | "sequence"
 >;
 const name = (s: string) => KubeNamespace.valid(s);
 const sameCluster = (
@@ -83,13 +88,26 @@ export const KubeStorage = {
       ),
     ];
   },
-  consumers(world: Pick<World, "kubeDeployments">, c: KubePvc): readonly KubeDeployment[] {
-    return world.kubeDeployments.filter(
+  consumers(
+    world: Pick<World, "kubeDeployments" | "kubeStatefulSets">,
+    c: KubePvc,
+  ): readonly KubeDeployment[] {
+    return [...world.kubeDeployments, ...world.kubeStatefulSets].filter(
       (d) =>
         sameCluster(d, c) &&
         d.namespace === c.namespace &&
         d.replicas > 0 &&
-        d.volumes.some((v) => v.source === "persistentvolumeclaim" && v.resource === c.name),
+        d.volumes.some((v) => {
+          if (v.source !== "persistentvolumeclaim") return false;
+          if (!d.statefulSet) return v.resource === c.name;
+          const ordinal = c.name.slice(c.name.lastIndexOf("-") + 1);
+          return (
+            /^(0|[1-9][0-9]*)$/.test(ordinal) &&
+            Number(ordinal) < d.replicas &&
+            d.statefulSet.volumeClaimTemplates.some((t) => t.name === v.name) &&
+            c.name === `${v.name}-${d.name}-${ordinal}`
+          );
+        }),
     );
   },
   volume(
@@ -104,7 +122,10 @@ export const KubeStorage = {
       c && world.kubePvs.find((p) => sameCluster(p, c) && p.name === c.volumeName && !p.released)
     );
   },
-  reason(world: Pick<World, "kubeStorageClasses" | "kubeDeployments">, c: KubePvc): string {
+  reason(
+    world: Pick<World, "kubeStorageClasses" | "kubeDeployments" | "kubeStatefulSets">,
+    c: KubePvc,
+  ): string {
     if (c.deleting) return "PVC deletion requested; waiting for consuming Pods to be removed.";
     if (c.volumeName) return "Bound";
     if (!c.storageClassName)
@@ -172,7 +193,7 @@ export const KubeStorage = {
     };
   },
   claimRecord(
-    world: Pick<World, "kubeStorageClasses" | "kubeDeployments" | "kubePvs">,
+    world: Pick<World, "kubeStorageClasses" | "kubeDeployments" | "kubeStatefulSets" | "kubePvs">,
     c: KubePvc,
   ): JsonRecord {
     const pv = world.kubePvs.find((p) => sameCluster(p, c) && p.name === c.volumeName);

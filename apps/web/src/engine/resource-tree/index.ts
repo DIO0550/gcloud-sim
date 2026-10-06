@@ -192,6 +192,18 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
     ),
   );
   const resources = (namespace: string): readonly TreeNode[] => {
+    const statefulSets = World.kubeStatefulSetsOf(world, cluster, namespace).map((s) =>
+      leaf(
+        {
+          kind: "kube-statefulset",
+          projectId: id,
+          cluster: cluster.name,
+          ...(namespace !== "default" ? { namespace } : {}),
+          name: s.name,
+        },
+        `sts: ${s.name}`,
+      ),
+    );
     const deployments = World.kubeDeploymentsOf(world, cluster, namespace).map((d) =>
       leaf(
         {
@@ -288,7 +300,16 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
           `netpol: ${p.name}`,
         ),
       );
-    return [...deployments, ...services, ...configs, ...hpas, ...claims, ...policies, ...ingresses];
+    return [
+      ...deployments,
+      ...statefulSets,
+      ...services,
+      ...configs,
+      ...hpas,
+      ...claims,
+      ...policies,
+      ...ingresses,
+    ];
   };
   const namespaces = world.kubeNamespaces
     .filter((n) => n.projectId === id && n.cluster === cluster.name)

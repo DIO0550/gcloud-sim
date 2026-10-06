@@ -51,6 +51,7 @@ export const applyNamespace = (
         ...ctx.world,
         kubeNamespaces: ctx.world.kubeNamespaces.filter((n) => !sameCluster(n) || n.name !== name),
         kubeDeployments: ctx.world.kubeDeployments.filter(keep),
+        kubeStatefulSets: ctx.world.kubeStatefulSets.filter(keep),
         kubeServices: ctx.world.kubeServices.filter(keep),
         kubeIngresses: ctx.world.kubeIngresses.filter(keep),
         kubeNetworkPolicies: ctx.world.kubeNetworkPolicies.filter(keep),

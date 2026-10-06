@@ -131,15 +131,13 @@ export const KubeNetworkPolicy = {
   },
 
   selectedPods(world: World, p: KubeNetworkPolicy): readonly KubePod[] {
-    return world.kubeDeployments
+    return [...world.kubeDeployments, ...world.kubeStatefulSets]
       .filter(
         (d) =>
-          d.projectId === p.projectId &&
-          d.cluster === p.cluster &&
-          d.namespace === p.namespace &&
-          matches(p.podSelector, d.podLabels),
+          d.projectId === p.projectId && d.cluster === p.cluster && d.namespace === p.namespace,
       )
-      .flatMap(KubePod.fromDeployment);
+      .flatMap(KubePod.fromDeployment)
+      .filter((pod) => matches(p.podSelector, pod.labels));
   },
 
   direction(

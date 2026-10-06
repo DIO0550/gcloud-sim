@@ -9,6 +9,8 @@ import { type IngressManifest, parseIngress } from "./ingress";
 import { KubeIngressExamples } from "./ingress-examples";
 import { KubeNetworkExamples } from "./network-examples";
 import { type NetworkPolicyManifest, parseNetworkPolicy } from "./network-policy";
+import { StatefulExamples } from "./stateful-examples";
+import { parseStatefulSet, type StatefulManifest } from "./statefulsets";
 import { parseStorage, type StorageManifest } from "./storage";
 import { KubeStorageExamples } from "./storage-examples";
 import { fail, fields, namespace, record } from "./validation";
@@ -29,6 +31,7 @@ export type KubeManifest =
   | NamespaceManifest
   | ConfigManifest
   | WorkloadManifest
+  | StatefulManifest
   | HpaManifest
   | StorageManifest
   | NetworkPolicyManifest
@@ -60,6 +63,7 @@ const parseResource = (value: unknown): KubeManifest => {
     return { kind: "namespace", name: meta.name, namespace: undefined };
   }
   if (r.kind === "Ingress") return parseIngress(r);
+  if (r.kind === "StatefulSet") return parseStatefulSet(r);
   if (r.kind === "NetworkPolicy") return parseNetworkPolicy(r);
   if (r.kind === "StorageClass" || r.kind === "PersistentVolumeClaim") return parseStorage(r);
   if (r.kind === "HorizontalPodAutoscaler") return parseHpa(r);
@@ -204,6 +208,7 @@ spec:
 `;
 
 export const KubeManifestExamples: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  ...StatefulExamples,
   ...KubeVolumeExamples,
   ...KubeStorageExamples,
   ...KubeNetworkExamples,

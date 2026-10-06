@@ -32,6 +32,7 @@ import { ConfigProperty, GcloudConfig } from "@/engine/domains/gcloud-config";
 import { IamMember, IamPolicy, RoleName } from "@/engine/domains/iam-policy";
 import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { KubeStorage } from "@/engine/domains/kube-storage";
+import { KubePod } from "@/engine/domains/kubernetes";
 import { Operation, type OperationType } from "@/engine/domains/operation";
 import type { Principal } from "@/engine/domains/principal";
 import { PolicyTarget } from "@/engine/domains/resource-hierarchy";
@@ -148,6 +149,33 @@ export const Candidates = {
       World.findCluster(world, projectId, name),
     );
     return Option.isSome(cluster) ? KubeNamespace.of(world, cluster.value).map((n) => n.name) : [];
+  }),
+  kubeStatefulSets: inProject((world, projectId) => {
+    const name = GcloudConfig.get(world.config, "container/cluster");
+    return Option.isSome(name)
+      ? world.kubeStatefulSets
+          .filter((s) => s.projectId === projectId && s.cluster === name.value)
+          .map((s) => s.name)
+      : [];
+  }),
+  kubePods: inProject((world, projectId) => {
+    const name = GcloudConfig.get(world.config, "container/cluster");
+    return Option.isSome(name)
+      ? [...world.kubeDeployments, ...world.kubeStatefulSets]
+          .filter((s) => s.projectId === projectId && s.cluster === name.value)
+          .flatMap((s) => KubePod.fromDeployment(s).map((p) => p.name))
+      : [];
+  }),
+  kubeWorkloads: inProject((world, projectId) => {
+    const name = GcloudConfig.get(world.config, "container/cluster");
+    return Option.isSome(name)
+      ? [...world.kubeDeployments, ...world.kubeStatefulSets]
+          .filter((s) => s.projectId === projectId && s.cluster === name.value)
+          .flatMap((s) => [
+            s.statefulSet ? `statefulset/${s.name}` : s.name,
+            ...KubePod.fromDeployment(s).map((p) => `pod/${p.name}`),
+          ])
+      : [];
   }),
   kubeDeployments: inProject((world, projectId) => {
     const cluster = Option.flatMap(GcloudConfig.get(world.config, "container/cluster"), (name) =>
