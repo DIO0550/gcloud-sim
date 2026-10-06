@@ -21,7 +21,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（311）
+## 実装済み（316）
 
 ConfigMap/SecretのYAML/JSONは`immutable: true`に対応します。保護後はデータ更新とfalseへの変更を拒否し、ラベル更新・削除/再作成は可能です。get/describe・プロパティにもフラグを表示します。詳細と教材は[KUBERNETES.md](KUBERNETES.md)に記載しています。
 
@@ -34,6 +34,8 @@ PVC/StorageClassの仮想create/apply/deleteと、PVC/PV/StorageClassのget/desc
 Ingressはnetworking.k8s.io/v1の仮想YAML/JSONによるcreate/apply/deleteとget/describe/delete（ingress/ingresses/ing）に対応します。権限は`container.ingresses.create/get/list/update/delete`、`-n`、`-A`、`-l`とJSON/YAML出力も使えます。`sim kubernetes request INGRESS --host=example.test --path=/`はHTTPの振り分けを確認します。`container.ingresses.get`、`container.services.get`、`container.deployments.list`、`container.pods.list`を要求します。ホスト・最長パス・Exact/PrefixとReadyなNodePort Service接続先を判定し、実LB・IP・DNS・TLS・ヘルスチェック・外部クライアントのNetworkPolicyは作成/判定しません。`get all`にはIngressを含めません。2ミッションの手順は[KUBERNETES.md](KUBERNETES.md)を参照してください。
 
 NetworkPolicyはnetworking.k8s.io/v1の仮想YAML/JSONによるcreate/apply/deleteと、get/describe/delete（networkpolicy/networkpolicies/netpol別名）に対応します。操作ごとに`container.networkPolicies.create/get/list/update/delete`を要求し、`get -A`、`-l`、JSON/YAML出力を使えます。Autopilotは強制有効、Standardは作成時の`--enable-network-policy`で有効にします。`sim kubernetes connect SOURCE --to=DESTINATION --port=N`は両Deploymentの先頭Pod間の新規TCP通信を判定します。実通信や待受ポートの確認は行いません。既定遮断・許可の合算・両方向の許可と2ミッションは[KUBERNETES.md](KUBERNETES.md)に記載しています。`get all`にはNetworkPolicyを含めません。
+
+Deploymentは1〜10個の名前付きコンテナに対応し、exec/logs/probeで対象を選べます。ServiceAccount（sa）・VerticalPodAutoscaler（vpa）のmanifest、get/describe/delete、namespace/-A・権限・保存/表示に対応します。VPAのOff/Initial/Recreate、GKE Workload Identity、Autopilotの単一コンテナのリソース補正、regionalのzone別ノード数は明示教材モデルです。手順と制限は[KUBERNETES.md](KUBERNETES.md)を参照してください。
 
 ### Cloud Build
 
@@ -355,19 +357,19 @@ GCS backend使用時、stateを読むshow/output/state list/showにもstorage.ob
 
 | コマンド | 必要な権限 | 必要な API | フラグ |
 |---|---|---|---|
-| `gcloud container clusters create` | `container.clusters.create` | `container.googleapis.com` | `--zone` `--region` `--num-nodes` `--machine-type` `--release-channel` `--enable-network-policy` `--enable-private-nodes` `--enable-private-endpoint` `--master-ipv4-cidr` `--network` `--subnetwork` `--enable-master-authorized-networks` `--master-authorized-networks` `--enable-authorized-networks-on-private-endpoint` `--enable-ip-alias` |
-| `gcloud container clusters create-auto` | `container.clusters.create` | `container.googleapis.com` | `--zone` `--region` `--release-channel` `--enable-private-nodes` `--enable-private-endpoint` `--master-ipv4-cidr` `--network` `--subnetwork` `--enable-master-authorized-networks` `--master-authorized-networks` `--enable-authorized-networks-on-private-endpoint` |
+| `gcloud container clusters create` | `container.clusters.create` | `container.googleapis.com` | `--zone` `--region` `--num-nodes` `--machine-type` `--release-channel` `--enable-network-policy` `--enable-private-nodes` `--enable-private-endpoint` `--master-ipv4-cidr` `--network` `--subnetwork` `--enable-master-authorized-networks` `--master-authorized-networks` `--enable-authorized-networks-on-private-endpoint` `--enable-ip-alias`  `--node-locations` `--workload-pool` `--enable-vertical-pod-autoscaling` |
+| `gcloud container clusters create-auto` | `container.clusters.create` | `container.googleapis.com` | `--region` `--release-channel` `--enable-private-nodes` `--enable-private-endpoint` `--master-ipv4-cidr` `--network` `--subnetwork` `--enable-master-authorized-networks` `--master-authorized-networks` `--enable-authorized-networks-on-private-endpoint` |
 | `gcloud container clusters list` | `container.clusters.list` | `container.googleapis.com` | — |
 | `gcloud container clusters describe` | `container.clusters.get` | `container.googleapis.com` | `--zone` `--region` |
-| `gcloud container clusters update` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--enable-private-endpoint` `--enable-master-authorized-networks` `--master-authorized-networks` `--enable-authorized-networks-on-private-endpoint` |
+| `gcloud container clusters update` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--enable-private-endpoint` `--enable-master-authorized-networks` `--master-authorized-networks` `--enable-authorized-networks-on-private-endpoint`  `--workload-pool` `--enable-vertical-pod-autoscaling` |
 | `gcloud container clusters delete` | `container.clusters.delete` | `container.googleapis.com` | `--zone` `--region` `--async` |
 | `gcloud container clusters get-credentials` | `container.clusters.get` `container.clusters.getCredentials` | `container.googleapis.com` | `--zone` `--region` `--internal-ip` |
 | `gcloud container clusters resize` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--num-nodes` `--node-pool` |
 | `gcloud container clusters upgrade` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--master` `--node-pool` `--cluster-version` |
-| `gcloud container node-pools create` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--cluster` `--machine-type` `--num-nodes` `--disk-size` `--enable-autoscaling` `--min-nodes` `--max-nodes` `--enable-autorepair` `--enable-autoupgrade` |
+| `gcloud container node-pools create` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--cluster` `--machine-type` `--num-nodes` `--disk-size` `--enable-autoscaling` `--min-nodes` `--max-nodes` `--enable-autorepair` `--enable-autoupgrade`  `--workload-metadata=GCE_METADATA\|GKE_METADATA` |
 | `gcloud container node-pools list` | `container.clusters.get` | `container.googleapis.com` | `--zone` `--region` `--cluster` |
 | `gcloud container node-pools describe` | `container.clusters.get` | `container.googleapis.com` | `--zone` `--region` `--cluster` |
-| `gcloud container node-pools update` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--cluster` `--enable-autoscaling` `--min-nodes` `--max-nodes` `--enable-autorepair` `--enable-autoupgrade` |
+| `gcloud container node-pools update` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--cluster` `--enable-autoscaling` `--min-nodes` `--max-nodes` `--enable-autorepair` `--enable-autoupgrade`  `--workload-metadata=GCE_METADATA\|GKE_METADATA` |
 | `gcloud container node-pools delete` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--cluster` |
 | `sim gke autoscale-nodes` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--cluster` `--required-nodes` |
 | `sim gke check-control-plane` | `container.clusters.get` | `container.googleapis.com` | `--zone` `--region` `--endpoint` `--source-ip` `--source-network` |
@@ -384,8 +386,8 @@ HPAは`autoscale`またはautoscaling/v2の仮想YAML/JSONで作成し、`get/de
 | `kubectl create configmap` | `container.configMaps.create` | `container.googleapis.com` | `--from-literal`（繰り返し可） `--namespace` |
 | `kubectl create secret generic` | `container.secrets.create` | `container.googleapis.com` | `--from-literal`（繰り返し可） `--namespace` |
 | `kubectl label` | ConfigMap/Secretのgetとupdate | `container.googleapis.com` | `--overwrite` `--namespace`（1リソースのKEY=VALUE / KEY-） |
-| `kubectl set env` | 更新: `container.deployments.update`、一覧: `container.deployments.get`、取込元のgetも必要 | `container.googleapis.com` | `--from` `--keys` `--prefix` `--list` `--namespace` |
-| `kubectl exec` | `container.pods.exec` | `container.googleapis.com` | `--namespace`（printenv/envのみ） |
+| `kubectl set env` | 更新: `container.deployments.update`、一覧: `container.deployments.get`、取込元のgetも必要 | `container.googleapis.com` | `--from` `--keys` `--prefix` `--list` `--namespace`  `--containers` |
+| `kubectl exec` | `container.pods.exec` | `container.googleapis.com` | `--namespace`（printenv/envのみ）  `--container/-c` |
 | `kubectl get` | Deployment/StatefulSet/Service/ConfigMap/Secret/HPA/NetworkPolicy/Ingress: 対象のget/list、その他: `container.pods.list` | `container.googleapis.com` | `--output` `--selector` (`-l`) `--namespace` |
 | `kubectl apply` | 仮想ファイル: 対象のgetとcreate/update、固定教材: `container.deployments.update` | `container.googleapis.com` | `--filename` `--namespace` |
 | `kubectl create` | 仮想ファイル: 対象のcreate、Deployment/固定教材: `container.deployments.create` | `container.googleapis.com` | `--filename` `--image` `--replicas` `--namespace` |
@@ -393,7 +395,12 @@ HPAは`autoscale`またはautoscaling/v2の仮想YAML/JSONで作成し、`get/de
 | `kubectl describe` | Deployment/StatefulSet/Service/ConfigMap/Secret/HPA/NetworkPolicy/Ingress: 対象のget/list、その他: `container.pods.get` | `container.googleapis.com` | `--namespace` |
 | `kubectl expose` | `container.services.create` | `container.googleapis.com` | `--type` `--port` `--target-port` `--name` `--namespace` |
 | `kubectl autoscale` | `container.horizontalPodAutoscalers.create`、`container.deployments.get` | `container.googleapis.com` | `--min` `--max` `--cpu-percent` `--name` `--namespace` |
-| `sim kubernetes probe` | `container.deployments.update` | `container.googleapis.com` | `--status-code`（必須）、`--pod`（省略時は対象Deploymentの全Pod）、`--kind=readiness|liveness|startup`（既定readiness） |
+| `kubectl create serviceaccount` | `container.serviceAccounts.create` | `container.googleapis.com` | `--namespace/-n` |
+| `kubectl annotate` | `container.serviceAccounts.update` + `container.serviceAccounts.get` | `container.googleapis.com` | `--namespace/-n`, `--overwrite`（Workload Identity annotationのみ） |
+| `sim kubernetes check-access` | `container.deployments.get` | `container.googleapis.com`（連携先はIAM Credentials APIも有効化） | `--bucket`, `--permission`（必須）, `--node-pool`, `--namespace/-n` |
+| `sim kubernetes recommend-vpa` | `container.thirdPartyObjects.update` + `container.deployments.get` | `container.googleapis.com` | `--cpu`, `--memory`（必須）, `--namespace/-n` |
+| `sim kubernetes admit-autopilot` | `container.deployments.update` | `container.googleapis.com` | `--namespace/-n`（単一コンテナの明示教材評価） |
+| `sim kubernetes probe` | `container.deployments.update` | `container.googleapis.com` | `--status-code`（必須）、`--pod`（省略時は対象Deploymentの全Pod）、`--kind=readiness|liveness|startup`（既定readiness）  `--container/-c` |
 | `sim kubernetes write-file` | 対象の`container.deployments.get` / `container.statefulSets.get` + `container.pods.exec` | `container.googleapis.com` | `--namespace/-n`, `--path`, `--content` |
 | `sim kubernetes connect` | `container.deployments.get` + `container.pods.exec` + `container.networkPolicies.list` | `container.googleapis.com` | `--to`, `--port`（両方必須）、`--namespace/-n`（送信元）、`--to-namespace`（省略時は送信元と同じ） |
 | `sim kubernetes request` | `container.ingresses.get` + `container.services.get` + `container.deployments.list` + `container.pods.list` | `container.googleapis.com` | `--host`（必須）、`--path`（既定/）、`--namespace/-n` |
@@ -405,7 +412,7 @@ HPAは`autoscale`またはautoscaling/v2の仮想YAML/JSONで作成し、`get/de
 | `kubectl rollout history` | `container.deployments.get` | `container.googleapis.com` | `--revision` `--namespace` |
 | `kubectl rollout restart` | `container.deployments.update` | `container.googleapis.com` | `--namespace` |
 | `kubectl rollout undo` | `container.deployments.update` | `container.googleapis.com` | `--to-revision` `--namespace` |
-| `kubectl logs` | `container.pods.get` | `container.googleapis.com` | `--follow` `--namespace` |
+| `kubectl logs` | `container.pods.get` | `container.googleapis.com` | `--follow` `--namespace`  `--container/-c` |
 | `kubectl config` | `container.clusters.get` | `container.googleapis.com` | `--current` `--namespace`（set-contextのみ） |
 
 ### `gcloud run`

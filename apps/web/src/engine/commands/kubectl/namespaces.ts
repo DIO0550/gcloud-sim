@@ -57,6 +57,8 @@ export const applyNamespace = (
         kubeNetworkPolicies: ctx.world.kubeNetworkPolicies.filter(keep),
         kubeConfigs: ctx.world.kubeConfigs.filter(keep),
         kubeHpas: ctx.world.kubeHpas.filter(keep),
+        kubeVpas: ctx.world.kubeVpas.filter(keep),
+        kubeServiceAccounts: ctx.world.kubeServiceAccounts.filter(keep),
         kubePvcs: ctx.world.kubePvcs.map((c) => (keep(c) ? c : { ...c, deleting: ctx.now })),
       }),
       "deleted",

@@ -37,7 +37,7 @@ export const autoscalingArgs = (
 
 export const updatePool = (pool: NodePool, args: ParsedArgs): Result<NodePool, CommandFailure> => {
   const scaleKeys = ["enable-autoscaling", "min-nodes", "max-nodes"];
-  const managementKeys = ["enable-autorepair", "enable-autoupgrade"];
+  const managementKeys = ["enable-autorepair", "enable-autoupgrade", "workload-metadata"];
   const scaling = scaleKeys.some((k) => args.flags[k] !== undefined);
   const management = managementKeys.some((k) => args.flags[k] !== undefined);
   if (scaling && management)
@@ -50,6 +50,10 @@ export const updatePool = (pool: NodePool, args: ParsedArgs): Result<NodePool, C
     );
   return Result.map(autoscalingArgs(args, pool.autoscaling), (autoscaling) => ({
     ...pool,
+    workloadMetadata: Option.unwrapOr(
+      Args.string(args, "workload-metadata"),
+      pool.workloadMetadata ?? "GCE_METADATA",
+    ) as "GCE_METADATA" | "GKE_METADATA",
     autoRepair: Option.unwrapOr(Args.booleanChoice(args, "enable-autorepair"), pool.autoRepair),
     autoUpgrade: Option.unwrapOr(Args.booleanChoice(args, "enable-autoupgrade"), pool.autoUpgrade),
     autoscaling,

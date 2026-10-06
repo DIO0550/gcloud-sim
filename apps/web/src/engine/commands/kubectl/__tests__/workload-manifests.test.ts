@@ -358,12 +358,12 @@ test("workload mission requires initial image history, applied update and matchi
 });
 
 test.each([
-  { containers: [{ name: "other", image: "nginx:1" }] },
+  { containers: [{ name: "INVALID", image: "nginx:1" }] },
   { containers: [{ name: "web", image: "nginx:1", ports: [{ containerPort: 80 }] }] },
   {
     containers: [
       { name: "web", image: "nginx:1" },
-      { name: "sidecar", image: "nginx:1" },
+      { name: "web", image: "nginx:1" },
     ],
   },
   {

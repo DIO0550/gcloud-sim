@@ -1,5 +1,6 @@
 import { CommandFailure } from "@/engine/cli/command-failure";
 import { CommandOutput, type CommandResult, OutputMessage } from "@/engine/cli/command-spec";
+import { applyGkeLesson } from "@/engine/commands/gke-lessons";
 import { KubeConfig } from "@/engine/domains/kube-config";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeManifest } from "@/engine/domains/kube-manifest";
@@ -61,6 +62,15 @@ export const applyManifest = (
     const scoped = { ...ctx, world, namespace: manifest.namespace ?? ctx.namespace };
     const checked = requireNamespace(scoped, cluster);
     if (!Result.isOk(checked)) return checked;
+    if (manifest.kind === "serviceaccount" || manifest.kind === "vpa") {
+      const applied = applyGkeLesson(scoped, cluster, manifest, action);
+      if (!Result.isOk(applied)) {
+        return applied;
+      }
+      world = applied.value.world;
+      messages.push(...applied.value.output.messages);
+      continue;
+    }
     if (manifest.kind === "ingress") {
       const applied = applyIngress(scoped, cluster, manifest, action);
       if (!Result.isOk(applied)) return applied;

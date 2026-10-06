@@ -6,6 +6,14 @@ import { Option } from "@/utils/Option";
 /** ツリーで選べるもの。プロパティパネルはこれを見て World から中身を引く。 */
 export type TreeSelection =
   | Readonly<{
+      kind: "kube-lesson";
+      resourceKind: "serviceaccount" | "vpa";
+      projectId: string;
+      cluster: string;
+      namespace?: string;
+      name: string;
+    }>
+  | Readonly<{
       kind: "container-lab";
       collection: "repositories" | "images" | "containers" | "builds";
       id: string;
@@ -211,6 +219,8 @@ export const TreeSelection = {
         return `deploy:${selection.projectId}/${selection.cluster}/${selection.namespace && selection.namespace !== "default" ? `${selection.namespace}/` : ""}${selection.name}`;
       case "kube-config":
         return `kube-config:${selection.projectId}/${selection.cluster}/${selection.namespace && selection.namespace !== "default" ? `${selection.namespace}/` : ""}${selection.resourceKind}/${selection.name}`;
+      case "kube-lesson":
+        return `kube-lesson:${selection.resourceKind}/${selection.projectId}/${selection.cluster}/${selection.namespace ?? "default"}/${selection.name}`;
       case "kube-hpa":
         return `hpa:${selection.projectId}/${selection.cluster}/${selection.namespace && selection.namespace !== "default" ? `${selection.namespace}/` : ""}${selection.name}`;
       case "kube-service":
@@ -359,6 +369,10 @@ export const TreeSelection = {
           `kubectl describe deployment ${selection.name} --namespace=${selection.namespace ?? "default"}`,
         );
       case "kube-config":
+        return Option.some(
+          `kubectl describe ${selection.resourceKind} ${selection.name} --namespace=${selection.namespace ?? "default"}`,
+        );
+      case "kube-lesson":
         return Option.some(
           `kubectl describe ${selection.resourceKind} ${selection.name} --namespace=${selection.namespace ?? "default"}`,
         );

@@ -243,6 +243,24 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
           `${c.kind}: ${c.name}`,
         ),
       );
+    const lessonResources = [
+      ...world.kubeServiceAccounts.map((s) => ({ ...s, resourceKind: "serviceaccount" as const })),
+      ...world.kubeVpas.map((v) => ({ ...v, resourceKind: "vpa" as const })),
+    ]
+      .filter((s) => s.projectId === id && s.cluster === cluster.name && s.namespace === namespace)
+      .map((s) =>
+        leaf(
+          {
+            kind: "kube-lesson",
+            resourceKind: s.resourceKind,
+            projectId: id,
+            cluster: cluster.name,
+            namespace,
+            name: s.name,
+          },
+          `${s.resourceKind}: ${s.name}`,
+        ),
+      );
     const hpas = world.kubeHpas
       .filter((h) => h.projectId === id && h.cluster === cluster.name && h.namespace === namespace)
       .map((h) =>
@@ -306,6 +324,7 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
       ...services,
       ...configs,
       ...hpas,
+      ...lessonResources,
       ...claims,
       ...policies,
       ...ingresses,

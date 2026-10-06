@@ -90,6 +90,9 @@ export const KubeResources = {
     if (text === undefined) return 0;
     return Number(Result.unwrap(cpuAmount(text)));
   },
+  memoryBytes(text: string): number {
+    return Number(Result.unwrap(memoryAmount(text)));
+  },
   empty(): KubeResources {
     return { requests: {}, limits: {} };
   },

@@ -200,6 +200,13 @@ const BillingPermissions = [
   "billing.budgets.get",
 ] as const;
 
+const KubeLessonPermissions = ["serviceAccounts", "thirdPartyObjects"].flatMap((kind) =>
+  ["create", "get", "list", "update", "delete"].map((verb) => `container.${kind}.${verb}`),
+);
+const KubeLessonReadPermissions = ["serviceAccounts", "thirdPartyObjects"].flatMap((kind) =>
+  ["get", "list"].map((verb) => `container.${kind}.${verb}`),
+);
+
 const HpaPermissions = [
   "container.horizontalPodAutoscalers.create",
   "container.horizontalPodAutoscalers.update",
@@ -250,6 +257,7 @@ const ContainerPermissions = [
   ...NamespacePermissions,
   ...KubeConfigPermissions,
   ...HpaPermissions,
+  ...KubeLessonPermissions,
   "container.clusters.create",
   "container.clusters.delete",
   "container.clusters.get",
@@ -282,6 +290,7 @@ const ContainerDeveloperPermissions = [
   ...NamespacePermissions,
   ...KubeConfigPermissions,
   ...HpaPermissions,
+  ...KubeLessonPermissions,
   "container.clusters.get",
   "container.clusters.list",
   "container.clusters.getCredentials",
@@ -678,6 +687,10 @@ const Roles: readonly Role[] = [
     "iam.serviceAccounts.get",
     "iam.serviceAccounts.list",
   ]),
+  role("roles/iam.workloadIdentityUser", "Workload Identity User", [
+    "iam.serviceAccounts.getAccessToken",
+    "iam.serviceAccounts.getOpenIdToken",
+  ]),
   role("roles/iam.serviceAccountTokenCreator", "Service Account Token Creator", [
     "iam.serviceAccounts.getAccessToken",
     "iam.serviceAccounts.signBlob",
@@ -700,6 +713,7 @@ const Roles: readonly Role[] = [
   role("roles/container.admin", "Kubernetes Engine Admin", ContainerPermissions),
   role("roles/container.developer", "Kubernetes Engine Developer", ContainerDeveloperPermissions),
   role("roles/container.viewer", "Kubernetes Engine Viewer", [
+    ...KubeLessonReadPermissions,
     ...KubeStoragePermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
     ...KubeIngressPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
     ...KubeNetworkPolicyPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),

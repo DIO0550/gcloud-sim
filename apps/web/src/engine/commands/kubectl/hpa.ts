@@ -6,9 +6,8 @@ import {
   ParsedArgs,
 } from "@/engine/cli/command-spec";
 import { ImagePull } from "@/engine/domains/image-pull";
-import { KubeRuntime } from "@/engine/domains/kube-config";
 import { KubeHpa } from "@/engine/domains/kube-hpa";
-import { KubeReadiness } from "@/engine/domains/kube-readiness";
+import { KubeMulti } from "@/engine/domains/kube-multi";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeDeployment, KubePod } from "@/engine/domains/kubernetes";
 import type { GkeCluster } from "@/engine/domains/managed-services";
@@ -29,6 +28,18 @@ export const createHpa = (
   d: KubeDeployment,
   args: ParsedArgs,
 ): CommandResult => {
+  if (
+    ctx.world.kubeVpas.some(
+      (v) =>
+        v.projectId === d.projectId &&
+        v.cluster === d.cluster &&
+        v.namespace === d.namespace &&
+        v.target === d.name &&
+        v.mode !== "Off",
+    )
+  ) {
+    return invalid("CPU HPA conflicts with automatic CPU VPA.");
+  }
   const max = ParsedArgs.integer(args, "max");
   if (!Option.isSome(max)) return invalid("--max is required.");
   const h = KubeHpa.validate({
@@ -87,7 +98,7 @@ export const reconcileHpa = (
     d !== undefined &&
     !ImagePull.error(ctx.world, cluster, d.image) &&
     KubePod.fromDeployment(d).every(
-      (p) => !KubeRuntime.error(ctx.world, d, p.name) && KubeReadiness.ready(d, p.name),
+      (p) => !KubeMulti.error(ctx.world, cluster, d, p.name) && KubeMulti.ready(d, p.name),
     );
   const evaluation = KubeHpa.evaluate(h, d, ready, cpuMilli, ctx.now);
   let world = ctx.world;

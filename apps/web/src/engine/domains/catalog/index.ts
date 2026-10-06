@@ -190,6 +190,11 @@ export const BucketLocation = {
 } as const;
 
 const ApiServices = [
+  {
+    name: "iamcredentials.googleapis.com",
+    title: "IAM Service Account Credentials API",
+    billingRequired: false,
+  },
   { name: "cloudbuild.googleapis.com", title: "Cloud Build API", billingRequired: true },
   {
     name: "artifactregistry.googleapis.com",

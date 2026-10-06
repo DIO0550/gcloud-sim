@@ -21,22 +21,25 @@ import type {
 import type { DmDeployment } from "@/engine/domains/deployment-manager";
 import type { DnsManagedZone } from "@/engine/domains/dns";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
+import {
+  GkePlacement,
+  KubeIdentity,
+  type KubeServiceAccount,
+  KubeVpa,
+} from "@/engine/domains/gke-completion";
 import { GkeControlPlane } from "@/engine/domains/gke-control-plane";
 import { IamPolicy, type RoleName } from "@/engine/domains/iam-policy";
 import type { InstanceTemplate, ManagedInstanceGroup } from "@/engine/domains/instance-groups";
 import type { KmsKeyRing } from "@/engine/domains/kms";
-import { KubeConfig, KubeRuntime } from "@/engine/domains/kube-config";
-import { KubeContainer } from "@/engine/domains/kube-container";
+import { KubeConfig } from "@/engine/domains/kube-config";
 import { KubeContext } from "@/engine/domains/kube-context";
 import { KubeHpa } from "@/engine/domains/kube-hpa";
 import { KubeIngress } from "@/engine/domains/kube-ingress";
 import { KubeLabels } from "@/engine/domains/kube-labels";
-import { KubeLiveness } from "@/engine/domains/kube-liveness";
 import { KubeManifest } from "@/engine/domains/kube-manifest";
+import { KubeMulti } from "@/engine/domains/kube-multi";
 import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { KubeNetworkPolicy } from "@/engine/domains/kube-network-policy";
-import { KubeReadiness } from "@/engine/domains/kube-readiness";
-import { KubeStartup } from "@/engine/domains/kube-startup";
 import { KubeStatefulSet } from "@/engine/domains/kube-statefulset";
 import {
   type KubePv,
@@ -129,6 +132,8 @@ export type World = Readonly<{
   kubeStatefulSets: readonly KubeStatefulSet[];
   kubeServices: readonly KubeService[];
   kubeHpas: readonly KubeHpa[];
+  kubeVpas: readonly KubeVpa[];
+  kubeServiceAccounts: readonly KubeServiceAccount[];
   kubeConfigs: readonly KubeConfig[];
   kubeStorageClasses: readonly KubeStorageClass[];
   kubePvcs: readonly KubePvc[];
@@ -307,6 +312,8 @@ const NamedCollectionKeys = [
   "kubeStatefulSets",
   "kubeServices",
   "kubeHpas",
+  "kubeVpas",
+  "kubeServiceAccounts",
   "kubeConfigs",
   "kubeStorageClasses",
   "kubePvcs",
@@ -1098,6 +1105,8 @@ export const World = {
       kubeStatefulSets: world.kubeStatefulSets.filter((d) => !belongs(d)),
       kubeServices: world.kubeServices.filter((s) => !belongs(s)),
       kubeHpas: world.kubeHpas.filter((h) => !belongs(h)),
+      kubeVpas: world.kubeVpas.filter((v) => !belongs(v)),
+      kubeServiceAccounts: world.kubeServiceAccounts.filter((s) => !belongs(s)),
       kubeConfigs: world.kubeConfigs.filter((s) => !belongs(s)),
       kubeStorageClasses: world.kubeStorageClasses.filter((s) => !belongs(s)),
       kubePvcs: world.kubePvcs.filter((s) => !belongs(s)),
@@ -1244,18 +1253,7 @@ export const World = {
       () =>
         World.reconcileKubeStorage({
           ...world,
-          kubeDeployments: [
-            ...world.kubeDeployments,
-            KubeReadiness.reconcile(
-              KubeLiveness.reconcile(
-                KubeStartup.reconcile(
-                  KubeContainer.reconcile(
-                    KubeRuntime.reconcile(world, { ...deployment, podNetwork }),
-                  ),
-                ),
-              ),
-            ),
-          ],
+          kubeDeployments: [...world.kubeDeployments, { ...deployment, podNetwork }],
         }),
     );
   },
@@ -1263,17 +1261,7 @@ export const World = {
   replaceKubeDeployment(world: World, deployment: KubeDeployment): World {
     return World.reconcileKubeStorage({
       ...world,
-      kubeDeployments: replaceBy(
-        world.kubeDeployments,
-        sameKubeResource(deployment),
-        KubeReadiness.reconcile(
-          KubeLiveness.reconcile(
-            KubeStartup.reconcile(
-              KubeContainer.reconcile(KubeRuntime.reconcile(world, deployment)),
-            ),
-          ),
-        ),
-      ),
+      kubeDeployments: replaceBy(world.kubeDeployments, sameKubeResource(deployment), deployment),
     });
   },
 
@@ -1296,8 +1284,10 @@ export const World = {
     const next = KubeStorage.reconcile({ ...world, kubePvcs: [...world.kubePvcs, ...claims] });
     return {
       ...next,
-      kubeDeployments: next.kubeDeployments.map((d) => KubeRuntime.reconcile(next, d)),
-      kubeStatefulSets: next.kubeStatefulSets.map((d) => KubeRuntime.reconcile(next, d)),
+      kubeDeployments: next.kubeDeployments.map((d) =>
+        KubeMulti.reconcile(next, KubeVpa.admit(next, d)),
+      ),
+      kubeStatefulSets: next.kubeStatefulSets.map((d) => KubeMulti.reconcile(next, d)),
     };
   },
 
@@ -1571,6 +1561,8 @@ export const World = {
       ...world.kubeServices,
       ...world.kubeConfigs,
       ...world.kubeHpas,
+      ...world.kubeVpas,
+      ...world.kubeServiceAccounts,
       ...world.kubePvcs,
       ...world.kubeNetworkPolicies,
       ...world.kubeIngresses,
@@ -1593,6 +1585,12 @@ export const World = {
       return Result.err("Invalid Kubernetes Ingress.");
     if (world.kubeNetworkPolicies.some((p) => !KubeNetworkPolicy.valid(p)))
       return Result.err("Invalid Kubernetes NetworkPolicy.");
+    if (
+      world.kubeServiceAccounts.some((s) => !KubeIdentity.valid(s)) ||
+      world.kubeVpas.some((v) => !KubeVpa.valid(v))
+    ) {
+      return Result.err("Invalid Kubernetes service account or VPA.");
+    }
     for (const deployment of world.kubeDeployments) {
       const checked = KubeDeployment.validate(deployment);
       if (!Result.isOk(checked)) return Result.err(checked.error);
@@ -1613,6 +1611,17 @@ export const World = {
     );
     if (new Set(hpaTargets).size !== hpaTargets.length)
       return Result.err("Only one HPA per Deployment is supported.");
+    const vpaTargets = world.kubeVpas.map(
+      (v) => `${v.projectId}/${v.cluster}/${v.namespace}/${v.target}`,
+    );
+    if (new Set(vpaTargets).size !== vpaTargets.length) {
+      return Result.err("Only one VPA per Deployment is supported.");
+    }
+    if (
+      world.kubeVpas.some((v, i) => v.mode !== "Off" && hpaTargets.includes(vpaTargets[i] ?? ""))
+    ) {
+      return Result.err("CPU HPA and automatic CPU VPA cannot share a target.");
+    }
     for (const h of world.kubeHpas) {
       const checked = KubeHpa.validate(h);
       if (!Result.isOk(checked)) return Result.err(checked.error);
@@ -1742,6 +1751,8 @@ const validateReferences = (world: World): Result<World, string> => {
     ...world.kubeStatefulSets,
     ...world.kubeServices,
     ...world.kubeHpas,
+    ...world.kubeVpas,
+    ...world.kubeServiceAccounts,
     ...world.kubeConfigs,
     ...world.kubeStorageClasses,
     ...world.kubePvcs,
@@ -1757,6 +1768,17 @@ const validateReferences = (world: World): Result<World, string> => {
   const invalidPool = world.nodePools.find((p) => !NodePool.valid(p));
   if (invalidPool) return Result.err(`node pool [${invalidPool.name}] has invalid settings`);
   for (const c of world.clusters) {
+    const placement = GkePlacement.parse(c.location, c.nodeLocations?.join(","));
+    if (!Result.isOk(placement)) {
+      return Result.err(placement.error);
+    }
+    if (
+      c.workloadPool !== undefined &&
+      c.workloadPool !== "" &&
+      c.workloadPool !== `${c.projectId}.svc.id.goog`
+    ) {
+      return Result.err("Invalid GKE workload pool.");
+    }
     const pools = World.nodePoolsOf(world, c);
     if (c.autopilot && pools.length > 0)
       return Result.err(`Autopilot cluster [${c.name}] cannot have managed node pools`);

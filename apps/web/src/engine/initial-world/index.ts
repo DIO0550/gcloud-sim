@@ -113,6 +113,8 @@ export const EmptyCollections = {
   kubeStatefulSets: [],
   kubeServices: [],
   kubeHpas: [],
+  kubeVpas: [],
+  kubeServiceAccounts: [],
   kubeConfigs: [],
   kubeStorageClasses: [],
   kubePvcs: [],

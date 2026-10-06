@@ -180,8 +180,8 @@ export const SCENARIOS = [
     label: `ミッション: ${title}`,
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
-      { click: "運用の維持0/39 クリア" },
+      { click: "ミッション 0/79" },
+      { click: "運用の維持0/46 クリア" },
       { click: `${title}未着手` },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -197,8 +197,8 @@ export const SCENARIOS = [
     label: `ミッション: ${title}`,
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
-      { click: "アクセスとセキュリティ0/9 クリア" },
+      { click: "ミッション 0/79" },
+      { click: "アクセスとセキュリティ0/11 クリア" },
       { click: `${title}未着手` },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -263,8 +263,8 @@ export const SCENARIOS = [
     label: `ミッション: ${title}`,
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
-      { click: "運用の維持0/39 クリア" },
+      { click: "ミッション 0/79" },
+      { click: "運用の維持0/46 クリア" },
       { click: `${title}未着手` },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -319,13 +319,13 @@ export const SCENARIOS = [
 
   ...[
     ["routes", "Ingressでホストとパスを振り分ける", "デプロイと実装0/16 クリア"],
-    ["recovery", "IngressからReadyなService接続先を復旧する", "運用の維持0/39 クリア"],
+    ["recovery", "IngressからReadyなService接続先を復旧する", "運用の維持0/46 クリア"],
   ].map(([name, title, category]) => ({
     name: `mission-gke-ingress-${name}`,
     label: `ミッション: ${title}`,
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
+      { click: "ミッション 0/79" },
       { click: category },
       { click: `${title}未着手` },
       { click: "開始" },
@@ -411,8 +411,8 @@ export const SCENARIOS = [
     label: `ミッション: ${title}`,
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
-      { click: "アクセスとセキュリティ0/9 クリア" },
+      { click: "ミッション 0/79" },
+      { click: "アクセスとセキュリティ0/11 クリア" },
       { click: `${title}未着手` },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -497,8 +497,8 @@ export const SCENARIOS = [
     label: `ミッション: ${title}`,
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
-      { click: "運用の維持0/39 クリア" },
+      { click: "ミッション 0/79" },
+      { click: "運用の維持0/46 クリア" },
       { click: `${title}未着手` },
       { click: "開始" },
       { click: `ヒント（0/${hints}）` },
@@ -589,8 +589,8 @@ export const SCENARIOS = [
     label: `ミッション: ${title}`,
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
-      { click: "運用の維持0/39 クリア" },
+      { click: "ミッション 0/79" },
+      { click: "運用の維持0/46 クリア" },
       { click: `${title}未着手` },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -645,8 +645,8 @@ export const SCENARIOS = [
     label: "ミッション: バイナリ設定と環境変数の分離",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
-      { click: "運用の維持0/39 クリア" },
+      { click: "ミッション 0/79" },
+      { click: "運用の維持0/46 クリア" },
       { click: "バイナリ設定と環境変数の参照を分ける未着手" },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -676,8 +676,8 @@ export const SCENARIOS = [
     label: "ミッション: 変更不可の設定を再作成して反映",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
-      { click: "運用の維持0/39 クリア" },
+      { click: "ミッション 0/79" },
+      { click: "運用の維持0/46 クリア" },
       { click: "変更できない設定を作り直してPodへ反映する未着手" },
       { click: "開始" },
       { click: "ヒント（0/6）" },
@@ -709,8 +709,8 @@ export const SCENARIOS = [
     label: "ミッション: ConfigMap・Secretのラベル分類",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
-      { click: "運用の維持0/39 クリア" },
+      { click: "ミッション 0/79" },
+      { click: "運用の維持0/46 クリア" },
       { click: "ラベルでConfigMap・Secretを分類する未着手" },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -742,8 +742,8 @@ export const SCENARIOS = [
     label: "ミッション: コンテキストの既定namespace切り替え",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
-      { click: "運用の維持0/39 クリア" },
+      { click: "ミッション 0/79" },
+      { click: "運用の維持0/46 クリア" },
       { click: "コンテキストの既定namespaceを切り替える未着手" },
       { click: "開始" },
       { click: "ヒント（0/6）" },
@@ -777,8 +777,8 @@ export const SCENARIOS = [
     label: "ミッション: namespaceで検証と本番を分離",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
-      { click: "運用の維持0/39 クリア" },
+      { click: "ミッション 0/79" },
+      { click: "運用の維持0/46 クリア" },
       { click: "namespaceで検証環境と本番環境を分ける未着手" },
       { click: "開始" },
       { click: "ヒント（0/6）" },
@@ -810,8 +810,8 @@ export const SCENARIOS = [
     label: "ミッション: startupでコンテナ再起動",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
-      { click: "運用の維持0/39 クリア" },
+      { click: "ミッション 0/79" },
+      { click: "運用の維持0/46 クリア" },
       { click: "起動確認が済んだPodだけをServiceへ接続する未着手" },
       { click: "開始" },
       { click: "ヒント（0/6）" },
@@ -841,8 +841,8 @@ export const SCENARIOS = [
     label: "ミッション: livenessでコンテナ再起動",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
-      { click: "運用の維持0/39 クリア" },
+      { click: "ミッション 0/79" },
+      { click: "運用の維持0/46 クリア" },
       { click: "liveness失敗でコンテナを再起動して復旧する未着手" },
       { click: "開始" },
       { click: "ヒント（0/6）" },
@@ -873,8 +873,8 @@ export const SCENARIOS = [
     label: "ミッション: 未準備PodをServiceから外す",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
-      { click: "運用の維持0/39 クリア" },
+      { click: "ミッション 0/79" },
+      { click: "運用の維持0/46 クリア" },
       { click: "未準備のPodをServiceの接続先から外す未着手" },
       { click: "開始" },
       { click: "ヒント（0/6）" },
@@ -906,8 +906,8 @@ export const SCENARIOS = [
     label: "ミッション: PodのQoSを比較する",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
-      { click: "運用の維持0/39 クリア" },
+      { click: "ミッション 0/79" },
+      { click: "運用の維持0/46 クリア" },
       { click: "requestsとlimitsからPodのQoSを比較する未着手" },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -934,8 +934,8 @@ export const SCENARIOS = [
     label: "ミッション: HPA設定ファイルの変更と再評価",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
-      { click: "運用の維持0/39 クリア" },
+      { click: "ミッション 0/79" },
+      { click: "運用の維持0/46 クリア" },
       { click: "HPAの設定ファイルを変更して再評価する未着手" },
       { click: "開始" },
       { click: "ヒント（0/6）" },
@@ -970,8 +970,8 @@ export const SCENARIOS = [
     label: "ミッション: CPU使用率によるPodの増加",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
-      { click: "運用の維持0/39 クリア" },
+      { click: "ミッション 0/79" },
+      { click: "運用の維持0/46 クリア" },
       { click: "CPU使用率に合わせてPodを増やす未着手" },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -999,8 +999,8 @@ export const SCENARIOS = [
     label: "ミッション: CPU・メモリの必要量と上限",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
-      { click: "運用の維持0/39 クリア" },
+      { click: "ミッション 0/79" },
+      { click: "運用の維持0/46 クリア" },
       { click: "CPU・メモリの必要量と上限を設定する未着手" },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -1029,8 +1029,8 @@ export const SCENARIOS = [
     label: "ミッション: 複数ラベルで公開先を切り替え",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
-      { click: "運用の維持0/39 クリア" },
+      { click: "ミッション 0/79" },
+      { click: "運用の維持0/46 クリア" },
       { click: "ラベルでServiceの公開先を切り替える未着手" },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -1061,8 +1061,8 @@ export const SCENARIOS = [
     label: "ミッション: マニフェスト更新とService接続先",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
-      { click: "運用の維持0/39 クリア" },
+      { click: "ミッション 0/79" },
+      { click: "運用の維持0/46 クリア" },
       { click: "マニフェストでアプリを更新しServiceの接続先を直す未着手" },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -1090,8 +1090,8 @@ export const SCENARIOS = [
     label: "ミッション: 設定ファイルをapplyして反映",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
-      { click: "運用の維持0/39 クリア" },
+      { click: "ミッション 0/79" },
+      { click: "運用の維持0/46 クリア" },
       { click: "設定ファイルをapplyしてPodへ反映する未着手" },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -1118,8 +1118,8 @@ export const SCENARIOS = [
     label: "ミッション: ConfigMap変更を再起動で反映",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
-      { click: "運用の維持0/39 クリア" },
+      { click: "ミッション 0/79" },
+      { click: "運用の維持0/46 クリア" },
       { click: "ConfigMapの変更をPodの再起動で反映する未着手" },
       { click: "開始" },
       { click: "ヒント（0/5）" },
@@ -1131,8 +1131,8 @@ export const SCENARIOS = [
     label: "ミッション: GKE更新失敗からの復旧",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
-      { click: "運用の維持0/39 クリア" },
+      { click: "ミッション 0/79" },
+      { click: "運用の維持0/46 クリア" },
       { click: "失敗したGKEの更新をロールバックする未着手" },
       { click: "開始" },
       { click: "ヒント（0/7）" },
@@ -1144,8 +1144,8 @@ export const SCENARIOS = [
     label: "ミッション: コンテナ教材の片付け",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
-      { click: "運用の維持0/39 クリア" },
+      { click: "ミッション 0/79" },
+      { click: "運用の維持0/46 クリア" },
       { click: "残すイメージを守りながらコンテナ教材を片付ける未着手" },
       { click: "開始" },
       { click: "ヒント（0/4）" },
@@ -1155,14 +1155,14 @@ export const SCENARIOS = [
   {
     name: "mission-categories",
     label: "ミッション: カテゴリ選択",
-    steps: [{ wait: 800 }, { click: "ミッション 0/70" }, { wait: 300 }],
+    steps: [{ wait: 800 }, { click: "ミッション 0/79" }, { wait: 300 }],
   },
   {
     name: "mission-list",
     label: "ミッション: カテゴリ内の一覧",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
+      { click: "ミッション 0/79" },
       { click: "環境セットアップ0/3 クリア" },
       { wait: 300 },
     ],
@@ -1172,7 +1172,7 @@ export const SCENARIOS = [
     label: "ミッション: 選んだ1件の手順",
     steps: [
       { wait: 800 },
-      { click: "ミッション 0/70" },
+      { click: "ミッション 0/79" },
       { click: "環境セットアップ0/3 クリア" },
       { click: "本番用の configuration を用意する未着手" },
       { click: "開始" },
@@ -1232,6 +1232,645 @@ export const SCENARIOS = [
       { click: "IAM" },
       { click: "＋ アクセス権を付与" },
       { wait: 300 },
+    ],
+  },
+  {
+    name: "mission-gke-final-multi-ready",
+    label: "ミッション: 複数コンテナのReadyと接続先を確認する",
+    steps: [
+      {
+        wait: 800,
+      },
+      {
+        click: "ミッション 0/79",
+      },
+      {
+        click: "運用の維持0/46 クリア",
+      },
+      {
+        click: "複数コンテナのReadyと接続先を確認する未着手",
+      },
+      {
+        click: "開始",
+      },
+      {
+        click: "ヒント（0/4）",
+      },
+      {
+        wait: 300,
+      },
+    ],
+  },
+  {
+    name: "mission-gke-final-multi-restart",
+    label: "ミッション: 補助コンテナだけを再起動して復旧する",
+    steps: [
+      {
+        wait: 800,
+      },
+      {
+        click: "ミッション 0/79",
+      },
+      {
+        click: "運用の維持0/46 クリア",
+      },
+      {
+        click: "補助コンテナだけを再起動して復旧する未着手",
+      },
+      {
+        click: "開始",
+      },
+      {
+        click: "ヒント（0/5）",
+      },
+      {
+        wait: 300,
+      },
+    ],
+  },
+  {
+    name: "mission-gke-final-workload-identity",
+    label: "ミッション: Workload Identityで鍵なしの閲覧権限を設定する",
+    steps: [
+      {
+        wait: 800,
+      },
+      {
+        click: "ミッション 0/79",
+      },
+      {
+        click: "アクセスとセキュリティ0/11 クリア",
+      },
+      {
+        click: "Workload Identityで鍵なしの閲覧権限を設定する未着手",
+      },
+      {
+        click: "開始",
+      },
+      {
+        click: "ヒント（0/6）",
+      },
+      {
+        wait: 300,
+      },
+    ],
+  },
+  {
+    name: "mission-gke-final-metadata",
+    label: "ミッション: Standardのメタデータ設定を復旧してID連携する",
+    steps: [
+      {
+        wait: 800,
+      },
+      {
+        click: "ミッション 0/79",
+      },
+      {
+        click: "アクセスとセキュリティ0/11 クリア",
+      },
+      {
+        click: "Standardのメタデータ設定を復旧してID連携する未着手",
+      },
+      {
+        click: "開始",
+      },
+      {
+        click: "ヒント（0/6）",
+      },
+      {
+        wait: 300,
+      },
+    ],
+  },
+  {
+    name: "mission-gke-final-vpa-off",
+    label: "ミッション: VPAの推奨値を確認してrequestsを調整する",
+    steps: [
+      {
+        wait: 800,
+      },
+      {
+        click: "ミッション 0/79",
+      },
+      {
+        click: "運用の維持0/46 クリア",
+      },
+      {
+        click: "VPAの推奨値を確認してrequestsを調整する未着手",
+      },
+      {
+        click: "開始",
+      },
+      {
+        click: "ヒント（0/4）",
+      },
+      {
+        wait: 300,
+      },
+    ],
+  },
+  {
+    name: "mission-gke-final-autopilot-admission",
+    label: "ミッション: Autopilotの既定値と最小リソース補正を確認する",
+    steps: [
+      {
+        wait: 800,
+      },
+      {
+        click: "ミッション 0/79",
+      },
+      {
+        click: "運用の維持0/46 クリア",
+      },
+      {
+        click: "Autopilotの既定値と最小リソース補正を確認する未着手",
+      },
+      {
+        click: "開始",
+      },
+      {
+        click: "ヒント（0/4）",
+      },
+      {
+        wait: 300,
+      },
+    ],
+  },
+  {
+    name: "mission-gke-final-regional",
+    label: "ミッション: regionalクラスタの配置とレプリカ数を確認する",
+    steps: [
+      {
+        wait: 800,
+      },
+      {
+        click: "ミッション 0/79",
+      },
+      {
+        click: "運用の維持0/46 クリア",
+      },
+      {
+        click: "regionalクラスタの配置とレプリカ数を確認する未着手",
+      },
+      {
+        click: "開始",
+      },
+      {
+        click: "ヒント（0/4）",
+      },
+      {
+        wait: 300,
+      },
+    ],
+  },
+  {
+    name: "mission-gke-final-vpa-initial",
+    label: "ミッション: VPA Initialを新しいPodだけに適用する",
+    steps: [
+      {
+        wait: 800,
+      },
+      {
+        click: "ミッション 0/79",
+      },
+      {
+        click: "運用の維持0/46 クリア",
+      },
+      {
+        click: "VPA Initialを新しいPodだけに適用する未着手",
+      },
+      {
+        click: "開始",
+      },
+      {
+        click: "ヒント（0/4）",
+      },
+      {
+        wait: 300,
+      },
+    ],
+  },
+  {
+    name: "mission-gke-final-vpa-recreate",
+    label: "ミッション: VPA Recreateで垂直スケールする",
+    steps: [
+      {
+        wait: 800,
+      },
+      {
+        click: "ミッション 0/79",
+      },
+      {
+        click: "運用の維持0/46 クリア",
+      },
+      {
+        click: "VPA Recreateで垂直スケールする未着手",
+      },
+      {
+        click: "開始",
+      },
+      {
+        click: "ヒント（0/4）",
+      },
+      {
+        wait: 300,
+      },
+    ],
+  },
+  {
+    name: "gke-final-multi-partial",
+    label: "GKE: 複数コンテナの部分Ready",
+    steps: [
+      {
+        wait: 800,
+      },
+      {
+        type: "gcloud services enable container.googleapis.com",
+      },
+      {
+        type: "gcloud container clusters create final-gke --zone=us-central1-a --enable-vertical-pod-autoscaling",
+      },
+      {
+        type: "sim files load kubernetes-gke-final",
+      },
+      {
+        type: "kubectl apply -f multi-app.json",
+      },
+      {
+        type: "kubectl apply -f multi-service.json",
+      },
+      {
+        type: "sim kubernetes probe multi-app -c app --status-code=200",
+      },
+      {
+        click: "final-gke を展開する",
+      },
+      {
+        click: "deploy: multi-app",
+      },
+      {
+        wait: 300,
+      },
+    ],
+  },
+  {
+    name: "gke-final-multi-ready",
+    label: "GKE: 全コンテナReadyと独立した環境",
+    steps: [
+      {
+        wait: 800,
+      },
+      {
+        type: "gcloud services enable container.googleapis.com",
+      },
+      {
+        type: "gcloud container clusters create final-gke --zone=us-central1-a --enable-vertical-pod-autoscaling",
+      },
+      {
+        type: "sim files load kubernetes-gke-final",
+      },
+      {
+        type: "kubectl apply -f multi-app.json",
+      },
+      {
+        type: "kubectl apply -f multi-service.json",
+      },
+      {
+        type: "sim kubernetes probe multi-app -c app --status-code=200",
+      },
+      {
+        type: "sim kubernetes probe multi-app -c agent --status-code=200",
+      },
+      {
+        click: "final-gke を展開する",
+      },
+      {
+        click: "deploy: multi-app",
+      },
+      {
+        wait: 300,
+      },
+    ],
+  },
+  {
+    name: "gke-final-multi-restarted",
+    label: "GKE: 補助コンテナだけ再起動",
+    steps: [
+      {
+        wait: 800,
+      },
+      {
+        type: "gcloud services enable container.googleapis.com",
+      },
+      {
+        type: "gcloud container clusters create final-gke --zone=us-central1-a --enable-vertical-pod-autoscaling",
+      },
+      {
+        type: "sim files load kubernetes-gke-final",
+      },
+      {
+        type: "kubectl apply -f multi-app.json",
+      },
+      {
+        type: "kubectl apply -f multi-service.json",
+      },
+      {
+        type: "sim kubernetes probe multi-app -c app --status-code=200",
+      },
+      {
+        type: "sim kubernetes probe multi-app -c agent --status-code=200",
+      },
+      {
+        type: "sim kubernetes probe multi-app -c agent --kind=liveness --status-code=500",
+      },
+      {
+        click: "final-gke を展開する",
+      },
+      {
+        click: "deploy: multi-app",
+      },
+      {
+        wait: 300,
+      },
+    ],
+  },
+  {
+    name: "gke-final-vpa-off",
+    label: "GKE: VPA offのtemplate・Pod・推奨値",
+    steps: [
+      {
+        wait: 800,
+      },
+      {
+        type: "gcloud services enable container.googleapis.com",
+      },
+      {
+        type: "gcloud container clusters create final-gke --zone=us-central1-a --enable-vertical-pod-autoscaling",
+      },
+      {
+        type: "sim files load kubernetes-gke-final",
+      },
+      {
+        type: "kubectl apply -f rightsize-app.json",
+      },
+      {
+        type: "kubectl apply -f rightsize-vpa.json",
+      },
+      {
+        type: "sim kubernetes recommend-vpa rightsize --cpu=250m --memory=100Mi",
+      },
+      {
+        click: "final-gke を展開する",
+      },
+      {
+        click: "vpa: rightsize",
+      },
+      {
+        wait: 300,
+      },
+    ],
+  },
+  {
+    name: "gke-final-vpa-initial",
+    label: "GKE: VPA initialのtemplate・Pod・推奨値",
+    steps: [
+      {
+        wait: 800,
+      },
+      {
+        type: "gcloud services enable container.googleapis.com",
+      },
+      {
+        type: "gcloud container clusters create final-gke --zone=us-central1-a --enable-vertical-pod-autoscaling",
+      },
+      {
+        type: "sim files load kubernetes-gke-final",
+      },
+      {
+        type: "kubectl apply -f rightsize-app.json",
+      },
+      {
+        type: "kubectl apply -f rightsize-initial.json",
+      },
+      {
+        type: "sim kubernetes recommend-vpa rightsize --cpu=250m --memory=100Mi",
+      },
+      {
+        type: "kubectl scale deployment/rightsize-app --replicas=3",
+      },
+      {
+        click: "final-gke を展開する",
+      },
+      {
+        click: "vpa: rightsize",
+      },
+      {
+        wait: 300,
+      },
+    ],
+  },
+  {
+    name: "gke-final-vpa-recreate",
+    label: "GKE: VPA recreateのtemplate・Pod・推奨値",
+    steps: [
+      {
+        wait: 800,
+      },
+      {
+        type: "gcloud services enable container.googleapis.com",
+      },
+      {
+        type: "gcloud container clusters create final-gke --zone=us-central1-a --enable-vertical-pod-autoscaling",
+      },
+      {
+        type: "sim files load kubernetes-gke-final",
+      },
+      {
+        type: "kubectl apply -f rightsize-app.json",
+      },
+      {
+        type: "kubectl apply -f rightsize-recreate.json",
+      },
+      {
+        type: "sim kubernetes recommend-vpa rightsize --cpu=250m --memory=100Mi",
+      },
+      {
+        click: "final-gke を展開する",
+      },
+      {
+        click: "vpa: rightsize",
+      },
+      {
+        wait: 300,
+      },
+    ],
+  },
+  {
+    name: "gke-final-identity",
+    label: "GKE: KSA/IAM連携と閲覧のみ許可",
+    steps: [
+      {
+        wait: 800,
+      },
+      {
+        type: "gcloud services enable container.googleapis.com",
+      },
+      {
+        type: "gcloud container clusters create final-gke --zone=us-central1-a --enable-vertical-pod-autoscaling",
+      },
+      {
+        type: "sim files load kubernetes-gke-final",
+      },
+      {
+        type: "gcloud container clusters update final-gke --zone=us-central1-a --workload-pool=ace-dev-01.svc.id.goog",
+      },
+      {
+        type: "gcloud container node-pools update default-pool --cluster=final-gke --zone=us-central1-a --workload-metadata=GKE_METADATA",
+      },
+      {
+        type: "gcloud services enable iamcredentials.googleapis.com",
+      },
+      {
+        type: "gcloud iam service-accounts create lesson-reader",
+      },
+      {
+        type: "gcloud storage buckets create gs://ace-workload-data --location=us-central1",
+      },
+      {
+        type: "kubectl apply -f identity-account.json",
+      },
+      {
+        type: "kubectl apply -f identity-app.json",
+      },
+      {
+        type: "gcloud iam service-accounts add-iam-policy-binding lesson-reader@ace-dev-01.iam.gserviceaccount.com --role=roles/iam.workloadIdentityUser --member='serviceAccount:ace-dev-01.svc.id.goog[default/bucket-reader]'",
+      },
+      {
+        type: "kubectl annotate sa bucket-reader iam.gke.io/gcp-service-account=lesson-reader@ace-dev-01.iam.gserviceaccount.com",
+      },
+      {
+        type: "gcloud storage buckets add-iam-policy-binding gs://ace-workload-data --member=serviceAccount:lesson-reader@ace-dev-01.iam.gserviceaccount.com --role=roles/storage.objectViewer",
+      },
+      {
+        type: "sim kubernetes check-access identity-app --bucket=ace-workload-data --permission=storage.objects.list",
+      },
+      {
+        type: "sim kubernetes check-access identity-app --bucket=ace-workload-data --permission=storage.objects.delete",
+      },
+      {
+        click: "final-gke を展開する",
+      },
+      {
+        click: "serviceaccount: bucket-reader",
+      },
+      {
+        wait: 300,
+      },
+    ],
+  },
+  {
+    name: "gke-final-metadata",
+    label: "GKE: Standard poolのGKE_METADATA",
+    steps: [
+      {
+        wait: 800,
+      },
+      {
+        type: "gcloud services enable container.googleapis.com",
+      },
+      {
+        type: "gcloud container clusters create final-gke --zone=us-central1-a --enable-vertical-pod-autoscaling",
+      },
+      {
+        type: "sim files load kubernetes-gke-final",
+      },
+      {
+        type: "gcloud container clusters update final-gke --zone=us-central1-a --workload-pool=ace-dev-01.svc.id.goog",
+      },
+      {
+        type: "gcloud container node-pools update default-pool --cluster=final-gke --zone=us-central1-a --workload-metadata=GKE_METADATA",
+      },
+      {
+        click: "final-gke を展開する",
+      },
+      {
+        click: "pool: default-pool",
+      },
+      {
+        wait: 300,
+      },
+    ],
+  },
+  {
+    name: "gke-final-regional",
+    label: "GKE: regionalのzoneと総ノード数",
+    steps: [
+      {
+        wait: 800,
+      },
+      {
+        type: "gcloud services enable container.googleapis.com",
+      },
+      {
+        type: "gcloud container clusters create final-gke --region=us-central1 --num-nodes=1",
+      },
+      {
+        type: "sim files load kubernetes-gke-final",
+      },
+      {
+        type: "kubectl apply -f regional-app.json",
+      },
+      {
+        type: "kubectl apply -f regional-service.json",
+      },
+      {
+        type: "kubectl get nodes",
+      },
+      {
+        click: "final-gke を展開する",
+      },
+      {
+        click: "final-gke",
+      },
+      {
+        wait: 300,
+      },
+    ],
+  },
+  {
+    name: "gke-final-autopilot",
+    label: "GKE: Autopilotの最小requests/limits補正",
+    steps: [
+      {
+        wait: 800,
+      },
+      {
+        type: "gcloud services enable container.googleapis.com",
+      },
+      {
+        type: "gcloud container clusters create-auto final-gke --region=us-central1",
+      },
+      {
+        type: "sim files load kubernetes-gke-final",
+      },
+      {
+        type: "kubectl apply -f autopilot-small.json",
+      },
+      {
+        type: "sim kubernetes admit-autopilot small-app",
+      },
+      {
+        type: "kubectl get deployment small-app -o json",
+      },
+      {
+        click: "final-gke を展開する",
+      },
+      {
+        click: "deploy: small-app",
+      },
+      {
+        wait: 300,
+      },
     ],
   },
 ];

@@ -50,6 +50,7 @@ import {
   type ConfigValues,
   type GcloudConfig,
 } from "@/engine/domains/gcloud-config";
+import { type KubeServiceAccount, KubeVpa } from "@/engine/domains/gke-completion";
 import {
   type ControlPlaneCheck,
   GkeControlPlane,
@@ -66,6 +67,7 @@ import type { KubeConfig, KubeEnv } from "@/engine/domains/kube-config";
 import { type HpaEvaluation, HpaReasons, type KubeHpa } from "@/engine/domains/kube-hpa";
 import type { IngressBackend, IngressPath, KubeIngress } from "@/engine/domains/kube-ingress";
 import { KubeLiveness, type LivenessProbe } from "@/engine/domains/kube-liveness";
+import type { ContainerSpec, ExtraContainer } from "@/engine/domains/kube-multi";
 import type { KubeNamespace } from "@/engine/domains/kube-namespace";
 import type {
   KubeNetworkPolicy,
@@ -153,13 +155,14 @@ import { Result } from "@/utils/Result";
  * v27 は既定ノードプールを保存し、プールの管理・自動スケール設定と評価を持つ。
  * v28 はprivate制御プレーン・許可CIDR・前回接続判定とコンテキスト別endpointを持つ。
  * v29 はStatefulSet・Podの固定連番・volumeClaimTemplatesとスケール時のPVC再利用を持つ。
+ * v30 は複数コンテナ・KSA/WI・VPAとPod admission・クラスタのworker zoneを持つ。
  */
-export const SchemaVersion = 29;
+export const SchemaVersion = 30;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
 const MigratableVersions = [
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-  28,
+  28, 29,
 ] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
@@ -402,7 +405,20 @@ const controlPlane = D.object<GkeControlPlane>({
   enforcePrivateEndpoint: D.boolean,
   lastCheck: D.option(controlPlaneCheck),
 });
+const optional =
+  <T>(decoder: Decoder<T>): Decoder<T | undefined> =>
+  (value, path) => {
+    if (value === undefined) {
+      return Result.ok(undefined);
+    }
+
+    return decoder(value, path);
+  };
 const cluster = D.object<GkeCluster>({
+  nodeLocations: optional(D.array(zone)),
+  workloadPool: optional(string),
+  gkeMetadataServer: optional(D.boolean),
+  verticalPodAutoscaling: optional(D.boolean),
   projectId: string,
   name: string,
   location,
@@ -585,6 +601,7 @@ const instanceGroup = D.object<ManagedInstanceGroup>({
 });
 
 const nodePool = D.object<NodePool>({
+  workloadMetadata: optional(D.literal(["GCE_METADATA", "GKE_METADATA"] as const)),
   projectId: string,
   cluster: string,
   name: string,
@@ -732,7 +749,88 @@ const kubeVolumeMount = D.object({
 const podFiles = D.array(
   D.object({ podName: string, files: D.array(D.object({ path: string, value: string })) }),
 );
+const containerSpecFields = {
+  name: string,
+  image: string,
+  env: D.array(kubeEnv),
+  volumeMounts: D.array(kubeVolumeMount),
+  resources: kubeResources,
+  readinessProbe: D.option(readinessProbe),
+  livenessProbe: D.option(livenessProbe),
+  startupProbe: D.option(startupProbe),
+};
+const containerSpec = D.object<ContainerSpec>(containerSpecFields);
+const extraContainer = D.object<ExtraContainer>({
+  ...containerSpecFields,
+  podFiles,
+  podRestarts: D.array(D.object({ podName: string, restarts: D.number })),
+  podStartup: D.array(
+    D.object({
+      podName: string,
+      statusCode: D.number,
+      failures: D.number,
+      restarts: D.number,
+      restarted: D.boolean,
+      started: D.boolean,
+    }),
+  ),
+  podLiveness: D.array(
+    D.object({
+      podName: string,
+      statusCode: D.number,
+      failures: D.number,
+      restarts: D.number,
+      restarted: D.boolean,
+    }),
+  ),
+  podReadiness: D.array(
+    D.object({
+      podName: string,
+      ready: D.boolean,
+      successes: D.number,
+      failures: D.number,
+      statusCode: D.number,
+    }),
+  ),
+  podEnvironments: D.array(
+    D.object({ podName: string, values: D.array(D.object({ name: string, value: string })) }),
+  ),
+});
+const kubeServiceAccount = D.object<KubeServiceAccount>({
+  projectId: string,
+  cluster: string,
+  namespace: string,
+  name: string,
+  gcpServiceAccount: string,
+  createdAt: string,
+});
+const kubeVpa = D.object<KubeVpa>({
+  projectId: string,
+  cluster: string,
+  namespace: string,
+  name: string,
+  target: string,
+  container: string,
+  mode: D.literal(["Off", "Initial", "Recreate"] as const),
+  createdAt: string,
+  recommendation: D.option(
+    D.object({ cpuMilli: D.number, memoryBytes: D.number, evaluatedAt: string }),
+  ),
+});
 const kubeDeployment = D.object<Omit<KubeDeployment, "statefulSet">>({
+  podResources: optional(
+    D.array(
+      D.object({
+        podName: string,
+        containerName: string,
+        resources: kubeResources,
+        admissionError: optional(string),
+      }),
+    ),
+  ),
+  extraContainers: optional(D.array(extraContainer)),
+  containerName: optional(string),
+  serviceAccountName: optional(string),
   volumes: D.array(kubeVolume),
   volumeMounts: D.array(kubeVolumeMount),
   podFiles,
@@ -754,6 +852,9 @@ const kubeDeployment = D.object<Omit<KubeDeployment, "statefulSet">>({
   revision: D.number,
   revisions: D.array(
     D.object({
+      extraContainers: optional(D.array(containerSpec)),
+      containerName: optional(string),
+      serviceAccountName: optional(string),
       revision: D.number,
       templateId: D.number,
       image: string,
@@ -767,6 +868,8 @@ const kubeDeployment = D.object<Omit<KubeDeployment, "statefulSet">>({
         "liveness",
         "startup",
         "labels",
+        "containers",
+        "identity",
         "restart",
         "undo",
         "migrated",
@@ -842,6 +945,7 @@ const kubeStatefulSet: Decoder<KubeStatefulSet> = (value, path) =>
   );
 
 const hpaEvaluation = D.object<HpaEvaluation>({
+  totalRequestMilli: optional(D.number),
   evaluatedAt: string,
   cpuMilli: D.number,
   requestMilli: D.number,
@@ -1080,6 +1184,8 @@ const world = D.object<World>({
   kubeStatefulSets: D.array(kubeStatefulSet),
   kubeServices: D.array(kubeService),
   kubeHpas: D.array(kubeHpa),
+  kubeVpas: D.array(kubeVpa),
+  kubeServiceAccounts: D.array(kubeServiceAccount),
   kubeConfigs: D.array(kubeConfig),
   kubeStorageClasses: D.array(kubeStorageClass),
   kubePvcs: D.array(kubePvc),
@@ -1527,8 +1633,13 @@ const migrateV28 = (version: number, value: unknown): unknown => {
 
 const migrate = (version: number, value: unknown): unknown => {
   const previous = migrateV28(version, value);
-  if (version >= 29 || !isRecord(previous)) return previous;
-  return { ...previous, kubeStatefulSets: [] };
+  if (!isRecord(previous)) return previous;
+  const stateful = version < 29 ? { ...previous, kubeStatefulSets: [] } : previous;
+  if (version >= 30) {
+    return stateful;
+  }
+
+  return { ...stateful, kubeVpas: [], kubeServiceAccounts: [] };
 };
 
 export const Snapshot = {
@@ -1574,7 +1685,21 @@ export const Snapshot = {
       world(migrate(version, head.value.world), "world"),
       (reason): ImportFailure => ({ kind: "malformed", reason }),
     );
-    const validated = Result.flatMap(decoded, (w) =>
+    const hydrated = Result.map(decoded, (w) => {
+      if (version >= 30) {
+        return w;
+      }
+
+      return {
+        ...w,
+        nodePools: w.nodePools.map((p) => ({
+          ...p,
+          workloadMetadata: p.workloadMetadata ?? "GCE_METADATA",
+        })),
+        kubeDeployments: w.kubeDeployments.map((d) => KubeVpa.admit(w, { ...d, podResources: [] })),
+      };
+    });
+    const validated = Result.flatMap(hydrated, (w) =>
       Result.mapErr(World.validate(w), (reason): ImportFailure => ({ kind: "invariant", reason })),
     );
     return Result.map(validated, Mission.syncProgress);

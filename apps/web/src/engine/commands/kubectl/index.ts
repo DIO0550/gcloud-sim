@@ -13,16 +13,19 @@ import {
   type PositionalSpec,
   type ProjectContext,
 } from "@/engine/cli/command-spec";
+import { applyGkeLesson, lessonRows } from "@/engine/commands/gke-lessons";
 import { Candidates, projectCommand } from "@/engine/commands/shared";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
-import { ImagePull } from "@/engine/domains/image-pull";
-import { KubeConfig, KubeEnv, KubeRuntime } from "@/engine/domains/kube-config";
+import { GkePlacement } from "@/engine/domains/gke-completion";
+import { KubeConfig, KubeRuntime } from "@/engine/domains/kube-config";
+import { KubeContainer } from "@/engine/domains/kube-container";
 import { KubeContext } from "@/engine/domains/kube-context";
 import { KubeHpa } from "@/engine/domains/kube-hpa";
 import { KubeIngress } from "@/engine/domains/kube-ingress";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeLiveness } from "@/engine/domains/kube-liveness";
 import { KubeManifest } from "@/engine/domains/kube-manifest";
+import { KubeMulti } from "@/engine/domains/kube-multi";
 import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { KubeNetworkPolicy } from "@/engine/domains/kube-network-policy";
 import { KubeReadiness } from "@/engine/domains/kube-readiness";
@@ -91,6 +94,8 @@ const usage = (message: string): CommandFailure => CommandFailure.invalidArgumen
 /** `deployment`, `deploy`, `deployments`, `deployment/web` の綴りを種別と名前に分ける。 */
 type ResourceRef = Readonly<{
   kind:
+    | "serviceaccount"
+    | "vpa"
     | "statefulset"
     | "ingress"
     | "networkpolicy"
@@ -111,6 +116,13 @@ type ResourceRef = Readonly<{
 }>;
 
 const ResourceAliases: Readonly<Record<string, ResourceRef["kind"]>> = {
+  serviceaccount: "serviceaccount",
+  serviceaccounts: "serviceaccount",
+  sa: "serviceaccount",
+  vpa: "vpa",
+  verticalpodautoscaler: "vpa",
+  verticalpodautoscalers: "vpa",
+  "verticalpodautoscalers.autoscaling.k8s.io": "vpa",
   statefulset: "statefulset",
   statefulsets: "statefulset",
   sts: "statefulset",
@@ -265,8 +277,15 @@ const probeSampleFields = (d: KubeDeployment, podName: string): JsonRecord => {
   };
 };
 
-const podRow = (pod: KubePod, source: KubeDeployment, now: string, error: string): JsonRecord => {
-  const deployment = KubeVolumes.forPod(source, pod.name);
+const podRow = (
+  pod: KubePod,
+  source: KubeDeployment,
+  now: string,
+  error: string,
+  world: World,
+  cluster: GkeCluster,
+): JsonRecord => {
+  const deployment = KubeMulti.forPod(KubeVolumes.forPod(source, pod.name), pod.name);
   return {
     ...KubePod.toRecord(pod),
     metadata: {
@@ -286,53 +305,66 @@ const podRow = (pod: KubePod, source: KubeDeployment, now: string, error: string
         ? { hostname: pod.name, subdomain: deployment.statefulSet.serviceName }
         : {}),
       ...KubeVolumes.fields(deployment.volumes),
-      containers: [
-        {
-          name: deployment.name,
-          image: pod.image,
-          env: deployment.env.map(KubeEnv.toRecord),
-          ...KubeVolumes.mountFields(deployment.volumeMounts),
-          ...KubeResources.toContainerFields(deployment.resources),
-          ...KubeReadiness.fields(deployment.readinessProbe),
-          ...KubeLiveness.fields(deployment.livenessProbe),
-          ...KubeStartup.fields(deployment.startupProbe),
-        },
-      ],
+      serviceAccountName: deployment.serviceAccountName ?? "default",
+      containers: KubeMulti.spec(deployment).map(KubeMulti.record),
     },
     name: pod.name,
-    ready: !error && pod.ready ? "1/1" : "0/1",
+    ready: `${KubeMulti.readyCount(world, cluster, deployment, pod.name)}/${KubeMulti.spec(deployment).length}`,
     status: {
       phase: error ? "Pending" : pod.status,
       podIP: pod.ip,
-      qosClass: KubeResources.qosClass(pod.resources),
-      ...KubePod.containerStatus(pod, error),
+      qosClass: KubeMulti.qos(deployment),
+      ...(deployment.extraContainers?.length ||
+      deployment.containerName ||
+      Option.isSome(deployment.livenessProbe) ||
+      Option.isSome(deployment.startupProbe)
+        ? {
+            containerStatuses: KubeMulti.runtimes(deployment).map((c) => {
+              const waiting = KubeMulti.containerError(world, cluster, c.runtime, pod.name, c.name);
+              return {
+                name: c.name,
+                ready: !waiting && KubeReadiness.ready(c.runtime, pod.name),
+                restartCount: KubeContainer.restarts(c.runtime, pod.name),
+                ...(Option.isSome(c.runtime.startupProbe)
+                  ? { started: !waiting && KubeContainer.started(c.runtime, pod.name) }
+                  : {}),
+                state: waiting
+                  ? { waiting: { reason: waiting.split(":")[0], message: waiting } }
+                  : { running: {} },
+              };
+            }),
+          }
+        : {}),
       conditions: [
         {
           type: "Ready",
-          status: !error && pod.ready ? "True" : "False",
-          message: error || KubeReadiness.reason(deployment, pod.name) || "Ready",
+          status: !error && KubeMulti.ready(deployment, pod.name) ? "True" : "False",
+          message: error || KubeMulti.reason(deployment, pod.name) || "Ready",
         },
       ],
     },
     displayStatus: error ? (error.split(":")[0] ?? "Pending") : pod.status,
     imagePullError: error.startsWith("ImagePull") ? error : "",
     containerError: error,
-    readiness: KubeReadiness.reason(deployment, pod.name),
+    readiness: KubeMulti.reason(deployment, pod.name),
     ...probeSampleFields(deployment, pod.name),
-    restarts: pod.restarts,
+    restarts: KubeMulti.runtimes(deployment).reduce(
+      (n, c) => n + KubeContainer.restarts(c.runtime, pod.name),
+      0,
+    ),
     age: age(deployment.createdAt, now),
   };
 };
 
 const podError = (world: World, cluster: GkeCluster, d: KubeDeployment, name: string): string =>
-  ImagePull.error(world, cluster, d.image) || KubeRuntime.error(world, d, name);
+  KubeMulti.error(world, cluster, d, name);
 const deploymentErrors = (
   world: World,
   cluster: GkeCluster,
   d: KubeDeployment,
 ): readonly string[] =>
   KubePod.fromDeployment(d).map(
-    (p) => podError(world, cluster, d, p.name) || KubeReadiness.reason(d, p.name),
+    (p) => podError(world, cluster, d, p.name) || KubeMulti.reason(d, p.name),
   );
 const deploymentListing = (
   ctx: KubectlContext,
@@ -388,14 +420,37 @@ const serviceRow = (s: KubeService, now: string): JsonRecord => ({
   age: age(s.createdAt, now),
 });
 
-const nodeRows = (cluster: GkeCluster, now: string): readonly JsonRecord[] =>
-  Array.from({ length: cluster.autopilot ? 1 : cluster.nodeCount }, (_, i) => ({
-    name: `gke-${cluster.name}-default-pool-${(0x3a1f + i).toString(16)}-${["k2xq", "m8pd", "v4rt"][i % 3]}`,
-    status: "Ready",
-    roles: "<none>",
-    age: age(now, now),
-    version: `v${cluster.currentMasterVersion.replace(/-gke\.\d+$/, "")}`,
-  }));
+const nodeRows = (world: World, cluster: GkeCluster, now: string): readonly JsonRecord[] => {
+  if (cluster.autopilot) {
+    return [
+      {
+        name: `gke-${cluster.name}-managed`,
+        status: "Ready",
+        roles: "<none>",
+        age: age(now, now),
+        version: `v${cluster.currentMasterVersion.replace(/-gke\.\d+$/, "")}`,
+      },
+    ];
+  }
+
+  return World.nodePoolsOf(world, cluster).flatMap((pool) =>
+    GkePlacement.zones(cluster).flatMap((zone) =>
+      Array.from({ length: pool.nodeCount }, (_, i) => ({
+        name: `gke-${cluster.name}-${pool.name}-${zone}-${i}`,
+        metadata: {
+          labels: {
+            "topology.kubernetes.io/zone": zone,
+            "cloud.google.com/gke-nodepool": pool.name,
+          },
+        },
+        status: "Ready",
+        roles: "<none>",
+        age: age(now, now),
+        version: `v${pool.version.replace(/-gke\.\d+$/, "")}`,
+      })),
+    ),
+  );
+};
 
 type Listing = Readonly<{ rows: readonly JsonRecord[]; columns: readonly Column[] }>;
 
@@ -428,11 +483,20 @@ const collect = (
   const pods = World.kubeWorkloadsOf(ctx.world, cluster, ctx.namespace).flatMap((d) =>
     KubePod.fromDeployment(d).map((pod) => ({
       name: pod.name,
-      row: podRow(pod, d, ctx.now, podError(ctx.world, cluster, d, pod.name)),
+      row: podRow(pod, d, ctx.now, podError(ctx.world, cluster, d, pod.name), ctx.world, cluster),
     })),
   );
   const services = World.kubeServicesOf(ctx.world, cluster, ctx.namespace);
   switch (ref.kind) {
+    case "serviceaccount":
+    case "vpa":
+      return Result.map(
+        pick(lessonRows(ctx.world, cluster, ctx.namespace, ref.kind), ref.kind, ref.name),
+        (rows) => ({
+          rows,
+          columns: [Column.create("NAME", "name"), Column.create("NAMESPACE", "namespace")],
+        }),
+      );
     case "statefulset":
       return Result.map(
         pick(
@@ -619,18 +683,8 @@ const collect = (
                 metadata: { labels: r.podLabels },
                 spec: {
                   ...KubeVolumes.fields(r.volumes),
-                  containers: [
-                    {
-                      name: d.name,
-                      image: r.image,
-                      env: r.env.map(KubeEnv.toRecord),
-                      ...KubeVolumes.mountFields(r.volumeMounts),
-                      ...KubeResources.toContainerFields(r.resources),
-                      ...KubeReadiness.fields(r.readinessProbe),
-                      ...KubeLiveness.fields(r.livenessProbe),
-                      ...KubeStartup.fields(r.startupProbe),
-                    },
-                  ],
+                  serviceAccountName: r.serviceAccountName ?? "default",
+                  containers: KubeMulti.revisionSpec(d, r).map(KubeMulti.record),
                 },
               },
             },
@@ -675,7 +729,10 @@ const collect = (
         columns: PodColumns,
       }));
     case "node": {
-      const nodes = nodeRows(cluster, ctx.now).map((n) => ({ ...n, name: String(n.name) }));
+      const nodes = nodeRows(ctx.world, cluster, ctx.now).map((n) => ({
+        ...n,
+        name: String(n.name),
+      }));
       return Result.map(pick(nodes, "nodes", ref.name), (rows) => ({ rows, columns: NodeColumns }));
     }
     case "all": {
@@ -1069,6 +1126,32 @@ const remove = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
   if (!Option.isSome(name))
     return Result.err(usage("resource(s) were provided, but no name was specified"));
   switch (ref.value.kind) {
+    case "serviceaccount": {
+      const account = ctx.world.kubeServiceAccounts.find(
+        (s) =>
+          s.projectId === cluster.value.projectId &&
+          s.cluster === cluster.value.name &&
+          s.namespace === ctx.namespace &&
+          s.name === name.value,
+      );
+      if (!account) {
+        return Result.err(notFound("serviceaccounts", name.value));
+      }
+      return applyGkeLesson(ctx, cluster.value, { ...account, kind: "serviceaccount" }, "delete");
+    }
+    case "vpa": {
+      const v = ctx.world.kubeVpas.find(
+        (v) =>
+          v.projectId === cluster.value.projectId &&
+          v.cluster === cluster.value.name &&
+          v.namespace === ctx.namespace &&
+          v.name === name.value,
+      );
+      if (!v) {
+        return Result.err(notFound("verticalpodautoscalers", name.value));
+      }
+      return applyGkeLesson(ctx, cluster.value, { ...v, kind: "vpa" }, "delete");
+    }
     case "statefulset": {
       const set = World.kubeStatefulSetsOf(ctx.world, cluster.value, ctx.namespace).find(
         (s) => s.name === name.value,
@@ -1277,14 +1360,19 @@ const setImage = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
   const deployment = requireDeployment(ctx, cluster.value, args);
   if (!Result.isOk(deployment)) return deployment;
   const assignment = /^([^=]+)=([^=\s]+)$/.exec(assignments[0] ?? "");
-  if (!assignment || (assignment[1] !== deployment.value.name && assignment[1] !== "*"))
-    return Result.err(
-      usage(`Container must be ${deployment.value.name} or * and image must be non-empty.`),
-    );
-  const next = KubeDeployment.withSpec(
+  if (!assignment) {
+    return Result.err(usage("Specify CONTAINER=IMAGE."));
+  }
+  const target = assignment[1] ?? "";
+  const containers = KubeMulti.spec(deployment.value);
+  if (target !== "*" && !containers.some((c) => c.name === target)) {
+    return Result.err(usage(`Container ${target} not found.`));
+  }
+  const next = KubeMulti.update(
     deployment.value,
-    assignment[2] ?? "",
-    deployment.value.replicas,
+    containers.map((c) =>
+      target === "*" || c.name === target ? { ...c, image: assignment[2] ?? "" } : c,
+    ),
   );
   return Result.ok({
     world: World.replaceKubeDeployment(ctx.world, next),
@@ -1303,27 +1391,34 @@ const setResources = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
   if (!Result.isOk(deployment)) return deployment;
   const d = deployment.value;
   const containers = Option.unwrapOr(ParsedArgs.string(args, "containers"), "*");
-  if (containers !== "*" && containers !== d.name)
-    return Result.err(usage(`Container must be ${d.name} or *.`));
   const requests = ParsedArgs.string(args, "requests");
   const limits = ParsedArgs.string(args, "limits");
-  if (!Option.isSome(requests) && !Option.isSome(limits))
+  if (!Option.isSome(requests) && !Option.isSome(limits)) {
     return Result.err(usage("Specify --requests or --limits."));
-  const resources = KubeResources.patch(
-    d.resources,
-    Option.isSome(requests) ? requests.value : undefined,
-    Option.isSome(limits) ? limits.value : undefined,
+  }
+  const specs = KubeMulti.spec(d);
+  if (containers !== "*" && !specs.some((c) => c.name === containers)) {
+    return Result.err(usage(`Container ${containers} not found.`));
+  }
+  const patched = Result.all(
+    specs.map((c) => {
+      if (containers !== "*" && c.name !== containers) {
+        return Result.ok(c);
+      }
+      return Result.map(
+        KubeResources.patch(
+          c.resources,
+          Option.unwrapOr(requests, undefined),
+          Option.unwrapOr(limits, undefined),
+        ),
+        (resources) => ({ ...c, resources }),
+      );
+    }),
   );
-  if (!Result.isOk(resources)) return Result.err(usage(resources.error));
-  const next = KubeDeployment.withManifest(
-    d,
-    d.image,
-    d.replicas,
-    d.env,
-    d.podLabels,
-    d.labels,
-    resources.value,
-  );
+  if (!Result.isOk(patched)) {
+    return Result.err(usage(patched.error));
+  }
+  const next = KubeMulti.update(d, patched.value);
   return Result.ok({
     world: World.replaceKubeDeployment(ctx.world, next),
     output: CommandOutput.messages(
@@ -1391,18 +1486,8 @@ const rollout = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
               metadata: { labels: record.podLabels },
               spec: {
                 ...KubeVolumes.fields(record.volumes),
-                containers: [
-                  {
-                    name: d.name,
-                    image: record.image,
-                    env: record.env.map(KubeEnv.toRecord),
-                    ...KubeVolumes.mountFields(record.volumeMounts),
-                    ...KubeResources.toContainerFields(record.resources),
-                    ...KubeReadiness.fields(record.readinessProbe),
-                    ...KubeLiveness.fields(record.livenessProbe),
-                    ...KubeStartup.fields(record.startupProbe),
-                  },
-                ],
+                serviceAccountName: record.serviceAccountName ?? "default",
+                containers: KubeMulti.revisionSpec(d, record).map(KubeMulti.record),
               },
             }),
           });
@@ -1436,12 +1521,26 @@ const logs = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
     KubePod.fromDeployment(d).some((p) => p.name === name),
   );
   if (owner === undefined) return Result.err(notFound("pods", name));
-  const error = podError(ctx.world, cluster.value, owner, name);
+  const selected = KubeMulti.select(
+    owner,
+    Option.unwrapOr(ParsedArgs.string(args, "container"), undefined),
+  );
+  if (!Result.isOk(selected)) {
+    return Result.err(usage(selected.error));
+  }
+  const container = selected.value;
+  const error = KubeMulti.containerError(
+    ctx.world,
+    cluster.value,
+    container,
+    name,
+    container.containerName ?? container.name,
+  );
   if (error) return Result.err(CommandFailure.invalidState(`Container is waiting: ${error}`));
   return Result.ok({
     world: ctx.world,
     output: CommandOutput.messages(
-      OutputMessage.plain(`${ctx.now} [${owner.image}] Listening on port 8080`),
+      OutputMessage.plain(`${ctx.now} [${container.image}] Listening on port 8080`),
       OutputMessage.hint(
         "gcloud-sim: コンテナのログは持たないので、起動の 1 行だけを出しています。",
       ),
@@ -1598,6 +1697,17 @@ const NamePositional = Positional.optional(
   (world, projectId, positionals = []) => {
     const type = ResourceAliases[(positionals[0] ?? "").split("/")[0]?.toLowerCase() ?? ""];
     if (type === "statefulset") return Candidates.kubeStatefulSets(world, projectId);
+    if (type === "serviceaccount")
+      return [
+        "default",
+        ...world.kubeServiceAccounts
+          .filter((s) => s.projectId === Option.unwrapOr(projectId, ""))
+          .map((s) => s.name),
+      ];
+    if (type === "vpa")
+      return world.kubeVpas
+        .filter((v) => v.projectId === Option.unwrapOr(projectId, ""))
+        .map((v) => v.name);
     if (type === "pod") return Candidates.kubePods(world, projectId);
     if (type === "ingress") return Candidates.kubeIngresses(world, projectId);
     if (type === "networkpolicy") return Candidates.kubeNetworkPolicies(world, projectId);
@@ -1673,6 +1783,8 @@ const resourcePermission =
     if (ref.value.kind === "ingress") return `container.ingresses.${verb}`;
     if (ref.value.kind === "networkpolicy") return `container.networkPolicies.${verb}`;
     if (ref.value.kind === "namespace") return `container.namespaces.${verb}`;
+    if (ref.value.kind === "serviceaccount") return `container.serviceAccounts.${verb}`;
+    if (ref.value.kind === "vpa") return `container.thirdPartyObjects.${verb}`;
     if (ref.value.kind === "hpa") return `container.horizontalPodAutoscalers.${verb}`;
     if (ref.value.kind === "service") return `container.services.${verb}`;
     if (ref.value.kind === "deployment") return `container.deployments.${verb}`;
@@ -1696,12 +1808,20 @@ const execEnvironment = (ctx: KubectlContext, args: ParsedArgs): CommandResult =
         "Only exec POD -- printenv [KEY], env, cat PATH or base64 PATH is simulated; no shell is executed.",
       ),
     );
-  const d = World.kubeWorkloadsOf(ctx.world, cluster.value, ctx.namespace).find(
+  const owner = World.kubeWorkloadsOf(ctx.world, cluster.value, ctx.namespace).find(
     (d) =>
       resource === `${d.statefulSet ? "statefulset" : "deployment"}/${d.name}` ||
       KubePod.fromDeployment(d).some((p) => p.name === resource || `pod/${p.name}` === resource),
   );
-  if (!d) return Result.err(notFound("pods", resource ?? ""));
+  if (!owner) return Result.err(notFound("pods", resource ?? ""));
+  const selected = KubeMulti.select(
+    owner,
+    Option.unwrapOr(ParsedArgs.string(args, "container"), undefined),
+  );
+  if (!Result.isOk(selected)) {
+    return Result.err(usage(selected.error));
+  }
+  const d = selected.value;
   const name =
     resource?.startsWith("deployment/") || resource?.startsWith("statefulset/")
       ? KubePod.fromDeployment(d)[0]?.name
@@ -1822,6 +1942,7 @@ export const KubectlCommands: readonly CommandSpec[] = [
     positionals: [Positional.required("NAME", "Deployment name.", Candidates.kubeDeployments)],
     flags: [
       NamespaceFlag,
+      Flag.string("container", "Container to probe (defaults to the first).", { aliases: ["-c"] }),
       Flag.string("kind", "readiness (default), liveness or startup.", { singleUse: true }),
       Flag.integer("status-code", "HTTP response code 100..599, required.", { singleUse: true }),
       Flag.string("pod", "Probe only this Pod; omitted selects all Deployment Pods.", {
@@ -1948,6 +2069,7 @@ export const KubectlCommands: readonly CommandSpec[] = [
       },
     ],
     flags: [
+      Flag.string("containers", "Container name or * (default)."),
       Flag.string("from", "configmap/NAME or secret/NAME.", {
         singleUse: true,
         candidates: Candidates.kubeConfigs,
@@ -1973,7 +2095,9 @@ export const KubectlCommands: readonly CommandSpec[] = [
       Positional.required("POD", "Pod name or deployment/NAME."),
       Positional.variadic("COMMAND", "-- printenv [KEY], -- env, -- cat PATH or -- base64 PATH."),
     ],
-    flags: [],
+    flags: [
+      Flag.string("container", "Container name (defaults to the first).", { aliases: ["-c"] }),
+    ],
     permission: "container.pods.exec",
     run: execEnvironment,
   }),
@@ -2124,6 +2248,7 @@ export const KubectlCommands: readonly CommandSpec[] = [
     summary: "Print the logs for a container in a pod.",
     positionals: [Positional.required("POD", "Pod name.")],
     flags: [
+      Flag.string("container", "Container name (defaults to the first).", { aliases: ["-c"] }),
       Flag.boolean("follow", "Specify if the logs should be streamed (ignored).", {
         aliases: ["-f"],
       }),

@@ -2,6 +2,7 @@ import { KubeEnv, type PodEnvironment } from "@/engine/domains/kube-config";
 import { KubeContainer, type PodRestart } from "@/engine/domains/kube-container";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeLiveness, type LivenessProbe, type PodLiveness } from "@/engine/domains/kube-liveness";
+import { type ContainerSpec, type ExtraContainer, KubeMulti } from "@/engine/domains/kube-multi";
 import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import {
   KubeReadiness,
@@ -39,6 +40,9 @@ export const KubeName = {
 } as const;
 
 export type KubeRevision = Readonly<{
+  extraContainers?: readonly ContainerSpec[];
+  containerName?: string;
+  serviceAccountName?: string;
   revision: number;
   templateId: number;
   image: string;
@@ -52,6 +56,8 @@ export type KubeRevision = Readonly<{
     | "liveness"
     | "startup"
     | "labels"
+    | "containers"
+    | "identity"
     | "restart"
     | "undo"
     | "migrated";
@@ -65,6 +71,15 @@ export type KubeRevision = Readonly<{
   podLabels: KubeLabels;
 }>;
 export type KubeDeployment = Readonly<{
+  podResources?: readonly Readonly<{
+    podName: string;
+    containerName: string;
+    resources: KubeResources;
+    admissionError?: string;
+  }>[];
+  extraContainers?: readonly ExtraContainer[];
+  containerName?: string;
+  serviceAccountName?: string;
   /** Shared single-container runtime; StatefulSets are stored in their own collection. */
   statefulSet?: Readonly<{
     serviceName: string;
@@ -126,11 +141,18 @@ const newRevision = (
   startupProbe = d.startupProbe,
   volumes = d.volumes,
   volumeMounts = d.volumeMounts,
+  extraContainers: readonly ContainerSpec[] = KubeMulti.spec(d).slice(1),
+  containerName = d.containerName ?? d.name,
+  serviceAccountName = d.serviceAccountName ?? "default",
 ): KubeDeployment => {
   const revision = d.revision + 1;
   return {
     ...d,
     image,
+    podResources: [],
+    extraContainers: extraContainers.map(KubeMulti.fresh),
+    containerName,
+    serviceAccountName,
     env,
     volumes,
     volumeMounts,
@@ -149,6 +171,9 @@ const newRevision = (
       ...d.revisions.filter((r) => r.templateId !== templateId),
       {
         revision,
+        extraContainers,
+        containerName,
+        serviceAccountName,
         image,
         templateId,
         reason,
@@ -319,12 +344,18 @@ export const KubeDeployment = {
     startupProbe = deployment.startupProbe,
     volumes = deployment.volumes,
     volumeMounts = deployment.volumeMounts,
+    extraContainers: readonly ContainerSpec[] = KubeMulti.spec(deployment).slice(1),
+    containerName = deployment.containerName ?? deployment.name,
+    serviceAccountName = deployment.serviceAccountName ?? "default",
   ): KubeDeployment {
     const metadata = KubeLabels.equal(labels, deployment.labels)
       ? deployment
       : { ...deployment, labels };
     const scaled = Result.unwrap(KubeDeployment.withReplicas(metadata, replicas));
     if (
+      containerName === (deployment.containerName ?? deployment.name) &&
+      serviceAccountName === (deployment.serviceAccountName ?? "default") &&
+      JSON.stringify(extraContainers) === JSON.stringify(KubeMulti.spec(deployment).slice(1)) &&
       image === deployment.image &&
       JSON.stringify(env) === JSON.stringify(deployment.env) &&
       KubeLabels.equal(podLabels, deployment.podLabels) &&
@@ -335,17 +366,27 @@ export const KubeDeployment = {
       KubeVolumes.equal({ volumes, volumeMounts }, deployment)
     )
       return scaled;
-    const reason = !KubeVolumes.equal({ volumes, volumeMounts }, deployment)
-      ? "volumes"
-      : templateChangeReason(
-          deployment,
-          image,
-          env,
-          resources,
-          readinessProbe,
-          livenessProbe,
-          startupProbe,
-        );
+    let reason = templateChangeReason(
+      deployment,
+      image,
+      env,
+      resources,
+      readinessProbe,
+      livenessProbe,
+      startupProbe,
+    );
+    if (
+      JSON.stringify(extraContainers) !== JSON.stringify(KubeMulti.spec(deployment).slice(1)) ||
+      containerName !== (deployment.containerName ?? deployment.name)
+    ) {
+      reason = "containers";
+    }
+    if (serviceAccountName !== (deployment.serviceAccountName ?? "default")) {
+      reason = "identity";
+    }
+    if (!KubeVolumes.equal({ volumes, volumeMounts }, deployment)) {
+      reason = "volumes";
+    }
     return {
       ...newRevision(
         scaled,
@@ -360,6 +401,9 @@ export const KubeDeployment = {
         startupProbe,
         volumes,
         volumeMounts,
+        extraContainers,
+        containerName,
+        serviceAccountName,
       ),
       generation: deployment.generation + 1,
     };
@@ -397,6 +441,9 @@ export const KubeDeployment = {
         previous.startupProbe,
         previous.volumes,
         previous.volumeMounts,
+        previous.extraContainers ?? [],
+        previous.containerName ?? deployment.name,
+        previous.serviceAccountName ?? "default",
       ),
     );
   },
@@ -412,7 +459,29 @@ export const KubeDeployment = {
   },
 
   validate(d: KubeDeployment): Result<KubeDeployment, string> {
+    const multiError = KubeMulti.validate(d);
+    if (multiError.length > 0) {
+      return Result.err(multiError);
+    }
     const currentRevision = d.revisions.at(-1);
+    if (
+      currentRevision &&
+      (JSON.stringify(KubeMulti.spec(d).slice(1)) !==
+        JSON.stringify(currentRevision.extraContainers ?? []) ||
+        (d.containerName ?? d.name) !== (currentRevision.containerName ?? d.name) ||
+        (d.serviceAccountName ?? "default") !== (currentRevision.serviceAccountName ?? "default"))
+    ) {
+      return Result.err("Container specs or ServiceAccount differ from current revision.");
+    }
+    for (const revision of d.revisions) {
+      const error = KubeMulti.validateSpecs(KubeMulti.revisionSpec(d, revision), revision.volumes);
+      if (error.length > 0) {
+        return Result.err(error);
+      }
+      if (!Result.isOk(KubeName.parse(revision.serviceAccountName ?? "default"))) {
+        return Result.err("Invalid retained ServiceAccount name.");
+      }
+    }
     if (
       [d, ...d.revisions].some((r) => !KubeVolumes.validate(r.volumes, r.volumeMounts)) ||
       !currentRevision ||
@@ -543,18 +612,8 @@ export const KubeDeployment = {
           metadata: { labels: deployment.podLabels },
           spec: {
             ...KubeVolumes.fields(deployment.volumes),
-            containers: [
-              {
-                name: deployment.name,
-                image: deployment.image,
-                env: deployment.env.map(KubeEnv.toRecord),
-                ...KubeVolumes.mountFields(deployment.volumeMounts),
-                ...KubeResources.toContainerFields(deployment.resources),
-                ...KubeReadiness.fields(deployment.readinessProbe),
-                ...KubeLiveness.fields(deployment.livenessProbe),
-                ...KubeStartup.fields(deployment.startupProbe),
-              },
-            ],
+            serviceAccountName: deployment.serviceAccountName ?? "default",
+            containers: KubeMulti.spec(deployment).map(KubeMulti.record),
           },
         },
       },
@@ -620,12 +679,17 @@ export const KubePod = {
               "apps.kubernetes.io/pod-index": String(i),
             }
           : deployment.podLabels,
-        resources: deployment.resources,
+        resources:
+          deployment.podResources?.find(
+            (s) =>
+              s.podName === name &&
+              s.containerName === (deployment.containerName ?? deployment.name),
+          )?.resources ?? deployment.resources,
         readinessProbe: deployment.readinessProbe,
         livenessProbe: deployment.livenessProbe,
         startupProbe: deployment.startupProbe,
         started: KubeContainer.started(deployment, name),
-        ready: KubeReadiness.ready(deployment, name),
+        ready: KubeMulti.ready(deployment, name),
         image: deployment.image,
         status: "Running",
         restarts: KubeContainer.restarts(deployment, name),

@@ -15,6 +15,7 @@ import { alreadyExists, Candidates, CommonFlags, projectCommand } from "@/engine
 import { DefaultMachineType, MachineType, type Region, type Zone } from "@/engine/domains/catalog";
 import { EffectivePermissions } from "@/engine/domains/effective-permissions";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
+import { GkePlacement } from "@/engine/domains/gke-completion";
 import { GkeControlPlane, Ipv4 } from "@/engine/domains/gke-control-plane";
 import { KubeContext } from "@/engine/domains/kube-context";
 import {
@@ -80,7 +81,15 @@ const createCluster = (
   args: ParsedArgs,
   nodes: GkeClusterSeed["nodes"],
 ): CommandResult => {
-  const location = resolveLocation(ctx, args);
+  if (nodes.kind === "autopilot" && ParsedArgs.has(args, "zone")) {
+    return Result.err(
+      CommandFailure.invalidArgumentWith("Autopilot clusters are regional; use --region."),
+    );
+  }
+  const location =
+    nodes.kind === "autopilot"
+      ? CommandContext.resolveRegion(ctx, ParsedArgs.string(args, "region"))
+      : resolveLocation(ctx, args);
   if (!Result.isOk(location)) return location;
   const machineTypeName = Option.unwrapOr(
     ParsedArgs.string(args, "machine-type"),
@@ -129,7 +138,27 @@ const createCluster = (
   if (!Result.isOk(cluster)) return cluster;
   const references = GkeControlPlane.validate(ctx.world, cluster.value);
   if (!Result.isOk(references)) return Result.err(CommandFailure.invalidState(references.error));
-  const created = cluster.value;
+  const placements = GkePlacement.parse(
+    location.value,
+    Option.unwrapOr(ParsedArgs.string(args, "node-locations"), undefined),
+  );
+  if (!Result.isOk(placements)) {
+    return Result.err(CommandFailure.invalidArgumentWith(placements.error));
+  }
+  const workloadPool = Option.unwrapOr(ParsedArgs.string(args, "workload-pool"), "");
+  if (workloadPool !== "" && workloadPool !== `${ctx.project.projectId}.svc.id.goog`) {
+    return Result.err(
+      CommandFailure.invalidArgumentWith("workload-pool must be PROJECT_ID.svc.id.goog."),
+    );
+  }
+  const created = {
+    ...cluster.value,
+    nodeLocations: placements.value,
+    workloadPool,
+    gkeMetadataServer: nodes.kind === "autopilot" || workloadPool !== "",
+    verticalPodAutoscaling:
+      nodes.kind === "autopilot" || ParsedArgs.boolean(args, "enable-vertical-pod-autoscaling"),
+  };
   return Result.map(
     Result.mapErr(World.withCluster(ctx.world, created), alreadyExists),
     (world) => ({
@@ -174,6 +203,10 @@ const PoolAutoscalingFlags = [
   Flag.integer("max-nodes", "Maximum nodes per zone (1..1000; requires --enable-autoscaling)."),
 ];
 const PoolManagementFlags = [
+  Flag.enum("workload-metadata", "Node pool metadata server mode.", [
+    "GCE_METADATA",
+    "GKE_METADATA",
+  ]),
   Flag.boolean(
     "enable-autorepair",
     "Save node auto-repair setting (no periodic repair is simulated).",
@@ -229,6 +262,12 @@ export const ContainerCommands: readonly CommandSpec[] = [
     flags: [
       ...LocationFlags,
       ...PrivateNetworkFlags,
+      Flag.string(
+        "node-locations",
+        "Comma-separated zones in the cluster region (simulated placement).",
+      ),
+      Flag.string("workload-pool", "Workload Identity pool, PROJECT_ID.svc.id.goog."),
+      Flag.boolean("enable-vertical-pod-autoscaling", "Enable simulated VPA recommendations."),
       Flag.boolean(
         "enable-ip-alias",
         "Required for private Standard cluster creation here; secondary range allocation is not simulated.",
@@ -376,25 +415,65 @@ export const ContainerCommands: readonly CommandSpec[] = [
   }),
   projectCommand({
     path: ["gcloud", "container", "clusters", "update"],
-    summary: "Update simulated private endpoint and authorized network settings.",
+    summary: "Update simulated endpoint, Workload Identity and VPA settings.",
     positionals: [Positional.required("NAME", "Cluster name.", Candidates.clusters)],
-    flags: [...LocationFlags, ...ControlPlaneFlags],
+    flags: [
+      ...LocationFlags,
+      ...ControlPlaneFlags,
+      Flag.string("workload-pool", "Workload Identity pool, PROJECT_ID.svc.id.goog."),
+      Flag.boolean("enable-vertical-pod-autoscaling", "Enable/disable VPA recommendations."),
+    ],
     permission: "container.clusters.update",
     requiredApis: [ContainerApi],
     run: (ctx, args) => {
       const found = clusterArg(ctx, args);
       if (!Result.isOk(found)) return found;
-      if (!ControlPlaneFlags.some((f) => ParsedArgs.has(args, f.name)))
+      const changesControlPlane = ControlPlaneFlags.some((f) => ParsedArgs.has(args, f.name));
+      if (
+        !changesControlPlane &&
+        !ParsedArgs.has(args, "workload-pool") &&
+        !ParsedArgs.has(args, "enable-vertical-pod-autoscaling")
+      ) {
         return Result.err(
-          CommandFailure.invalidState("Specify a control plane setting to update."),
-        );
-      return Result.map(controlPlaneArgs(args, found.value.controlPlane), (controlPlane) => ({
-        world: World.replaceCluster(ctx.world, { ...found.value, controlPlane }),
-        output: CommandOutput.messages(
-          OutputMessage.plain(
-            `Updated control plane settings for ${found.value.name}. Previous check cleared; evaluate access again.`,
+          CommandFailure.invalidState(
+            "Specify a control plane, workload pool or VPA setting to update.",
           ),
-        ),
+        );
+      }
+      const pool = Option.unwrapOr(
+        ParsedArgs.string(args, "workload-pool"),
+        found.value.workloadPool ?? "",
+      );
+      if (pool !== "" && pool !== `${ctx.project.projectId}.svc.id.goog`) {
+        return Result.err(
+          CommandFailure.invalidArgumentWith("workload-pool must be PROJECT_ID.svc.id.goog."),
+        );
+      }
+      const verticalPodAutoscaling = Option.unwrapOr(
+        ParsedArgs.booleanChoice(args, "enable-vertical-pod-autoscaling"),
+        found.value.autopilot || found.value.verticalPodAutoscaling === true,
+      );
+      if (found.value.autopilot && (!verticalPodAutoscaling || pool !== "")) {
+        return Result.err(
+          CommandFailure.invalidArgumentWith(
+            "Autopilot manages Workload Identity and VPA; do not override them.",
+          ),
+        );
+      }
+      const updatedControlPlane = changesControlPlane
+        ? controlPlaneArgs(args, found.value.controlPlane)
+        : Result.ok(found.value.controlPlane);
+      const message = changesControlPlane
+        ? `Updated control plane settings for ${found.value.name}. Previous check cleared; evaluate access again.`
+        : `Updated Workload Identity/VPA settings for ${found.value.name}.`;
+      return Result.map(updatedControlPlane, (controlPlane) => ({
+        world: World.replaceCluster(ctx.world, {
+          ...found.value,
+          controlPlane,
+          workloadPool: pool,
+          verticalPodAutoscaling,
+        }),
+        output: CommandOutput.messages(OutputMessage.plain(message)),
       }));
     },
   }),
@@ -626,6 +705,17 @@ export const ContainerCommands: readonly CommandSpec[] = [
       if (!Result.isOk(machineType)) return machineType;
       const autoscaling = autoscalingArgs(args, Option.none);
       if (!Result.isOk(autoscaling)) return autoscaling;
+      if (
+        ParsedArgs.string(args, "workload-metadata").some &&
+        ParsedArgs.requiredString(args, "workload-metadata") === "GKE_METADATA" &&
+        !cluster.value.workloadPool
+      ) {
+        return Result.err(
+          CommandFailure.invalidArgumentWith(
+            "Enable the cluster workload pool before GKE_METADATA.",
+          ),
+        );
+      }
       const pool = Result.mapErr(
         NodePool.create({
           projectId: ctx.project.projectId,
@@ -635,6 +725,10 @@ export const ContainerCommands: readonly CommandSpec[] = [
           nodeCount: ParsedArgs.integer(args, "num-nodes"),
           diskSizeGb: ParsedArgs.integer(args, "disk-size"),
           version: cluster.value.currentMasterVersion,
+          workloadMetadata: Option.unwrapOr(
+            ParsedArgs.string(args, "workload-metadata"),
+            cluster.value.workloadPool ? "GKE_METADATA" : "GCE_METADATA",
+          ) as "GCE_METADATA" | "GKE_METADATA",
           autoscaling: autoscaling.value,
           autoRepair: Option.unwrapOr(ParsedArgs.booleanChoice(args, "enable-autorepair"), true),
           autoUpgrade: Option.unwrapOr(ParsedArgs.booleanChoice(args, "enable-autoupgrade"), true),
@@ -728,10 +822,19 @@ export const ContainerCommands: readonly CommandSpec[] = [
     run: (ctx, args) =>
       Result.flatMap(poolClusterArg(ctx, args), (cluster) =>
         Result.flatMap(poolArg(ctx, cluster, ParsedArgs.requiredPositional(args, 0)), (pool) =>
-          Result.map(updatePool(pool, args), (next) => ({
-            world: World.replaceNodePool(ctx.world, next),
-            output: CommandOutput.yaml(NodePool.toRecord(next)),
-          })),
+          Result.flatMap(updatePool(pool, args), (next) => {
+            if (next.workloadMetadata === "GKE_METADATA" && !cluster.workloadPool) {
+              return Result.err(
+                CommandFailure.invalidArgumentWith(
+                  "Enable the cluster workload pool before GKE_METADATA.",
+                ),
+              );
+            }
+            return Result.ok({
+              world: World.replaceNodePool(ctx.world, next),
+              output: CommandOutput.yaml(NodePool.toRecord(next)),
+            });
+          }),
         ),
       ),
   }),

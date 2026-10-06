@@ -10,6 +10,7 @@ import { ComputeCommands } from "@/engine/commands/compute";
 import { AuthCommands, ConfigCommands, SdkCommands } from "@/engine/commands/config";
 import { ContainerCommands, RunCommands } from "@/engine/commands/container-run";
 import { PubsubCommands, SqlCommands } from "@/engine/commands/data";
+import { GkeLessonCommands } from "@/engine/commands/gke-lessons";
 import { IamCommands } from "@/engine/commands/iam";
 import {
   DeploymentManagerCommands,
@@ -55,6 +56,7 @@ const implemented: readonly CommandSpec[] = [
   ...GsutilExtraCommands,
   ...IamCommands,
   ...ContainerCommands,
+  ...GkeLessonCommands,
   ...KubectlCommands,
   ...RunCommands,
   ...FunctionsCommands,
