@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { expect, test } from "vitest";
 import { run, session } from "@/engine/__tests__/setup";
+import { KubeStorageProperties } from "@/features/simulator/components/ServiceProperties";
 import { StatefulSetProperties } from "@/features/simulator/components/StatefulSetProperties";
 
 const selection = {
@@ -50,4 +51,43 @@ test("governing Service diagnostic is independent of successful storage and Pod 
   expect(screen.getByText("Governing Service not found")).toBeInTheDocument();
   expect(screen.getByText("2 / 2")).toBeInTheDocument();
   expect(screen.getByText("note.txt (11 bytes)")).toBeInTheDocument();
+});
+
+test("PVC properties distinguish same-name Deployment and StatefulSet consumers", () => {
+  const manifest = {
+    apiVersion: "apps/v1",
+    kind: "Deployment",
+    metadata: { name: "notes" },
+    spec: {
+      replicas: 1,
+      selector: { matchLabels: { app: "notes" } },
+      template: {
+        metadata: { labels: { app: "notes" } },
+        spec: {
+          volumes: [{ name: "data", persistentVolumeClaim: { claimName: "data-notes-0" } }],
+          containers: [
+            {
+              name: "notes",
+              image: "nginx:1",
+              volumeMounts: [{ name: "data", mountPath: "/data" }],
+            },
+          ],
+        },
+      },
+    },
+  };
+  const s = run(
+    base(),
+    `sim files write shared.json --content='${JSON.stringify(manifest)}'`,
+    "kubectl apply -f shared.json",
+  );
+  expect(s.world.kubeDeployments).toHaveLength(1);
+  render(
+    <KubeStorageProperties
+      world={s.world}
+      selection={{ ...selection, kind: "kube-storage", resourceKind: "pvc", name: "data-notes-0" }}
+    />,
+  );
+  expect(screen.getByText("Deployment notes, StatefulSet notes")).toBeInTheDocument();
+  expect(screen.queryByText("first-note")).not.toBeInTheDocument();
 });

@@ -152,6 +152,11 @@ export const SCENARIOS = [
     ],
   },
   {
+    name: "gke-statefulset-active-pvc",
+    label: "GKE: 連番PVCのStatefulSet利用元",
+    steps: [...statefulSteps, ...statefulDataSteps, { click: "pvc: data-notes-0" }, { wait: 300 }],
+  },
+  {
     name: "gke-statefulset-retained-pvc",
     label: "GKE: Podを減らした後の保持PVC",
     steps: [
