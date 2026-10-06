@@ -32,7 +32,7 @@ sim load-balancing probe web-front --global --host=example.test --path=/ --port=
 sim load-balancing probe internal-front --region=us-central1 --source-network=internal-net --source-region=us-central1 --source-ip=10.20.0.10 --min-healthy=2
 ```
 
-`get-health`にはHC由来のhealthState/healthReasonsと、named port・アプリ由来のtrafficReady/trafficReasonsを別々に表示します。例えば固定80番のHCが成功してもnamed portが8080なら通信できません。TCP HCが成功してもHTTPアプリの500応答は成功扱いしません。probeは接続chain、healthy数、アプリ応答可能数、選択先、CDN構成を返します。複数台の応答条件は`--min-healthy`で指定します。probeはread-onlyでWorldを変更しません。
+`get-health`にはHC由来のhealthState/healthReasonsと、named port・アプリ由来のtrafficReady/trafficReasonsを別々に表示します。例えば固定80番のHCが成功してもnamed portが8080なら通信できません。TCP HCが成功してもApplication LBではHTTPアプリの500応答を成功扱いしません。passthroughはTCP listenerと転送の可否を評価し、HTTP本文は解析しません。probeは接続chain、healthy数、疎通可能数、選択先、CDN構成を返します。複数台の応答条件は`--min-healthy`で指定します。HCだけでなく、アプリ応答とデータ通信FWも指定台数分そろうことを検証します。probeはread-onlyでWorldを変更しません。
 
 ## CLI・IAM・参照
 

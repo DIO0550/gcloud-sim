@@ -253,3 +253,43 @@ test("read-only diagnostic command leaves World untouched and reports the actual
   expect(output.text).toContain("success: true");
   expect(output.text).toContain("web-proxy");
 });
+
+test("internal two-response lesson rejects proxy traffic allowed to only one healthy VM", () => {
+  const full = executeLb(session(), ...internalLesson);
+  const firstIp = full.world.instances[0]?.networkInterfaces[0]?.networkIP;
+  const partial = session({
+    ...full.world,
+    firewallRules: full.world.firewallRules.map((f) =>
+      f.name === "internal-traffic" ? { ...f, destinationRanges: [`${firstIp}/32`] } : f,
+    ),
+  });
+  const client = { network: "internal-net", region: "us-central1", sourceIp: "10.20.0.10" };
+  expect(health(partial).every((h) => h.healthState === "HEALTHY")).toBe(true);
+  expect(probe(partial, client)).toMatchObject({
+    success: false,
+    reason: "BACKEND_TRAFFIC_FIREWALL_OR_PORT_BLOCKED",
+    healthy: 2,
+    serving: 1,
+  });
+  expect(probe(partial, { ...client, minHealthy: 1 }).success).toBe(true);
+  expect(lbSatisfied(partial.world, "internal")).toBe(false);
+});
+test("passthrough two-response lesson rejects client traffic allowed to only one healthy VM", () => {
+  const full = executeLb(session(), ...passthroughLesson);
+  const firstIp = full.world.instances[0]?.networkInterfaces[0]?.networkIP;
+  const partial = session({
+    ...full.world,
+    firewallRules: full.world.firewallRules.map((f) =>
+      f.name === "nlb-clients" ? { ...f, destinationRanges: [`${firstIp}/32`] } : f,
+    ),
+  });
+  expect(health(partial).every((h) => h.healthState === "HEALTHY")).toBe(true);
+  expect(probe(partial)).toMatchObject({
+    success: false,
+    reason: "BACKEND_TRAFFIC_FIREWALL_OR_PORT_BLOCKED",
+    healthy: 2,
+    serving: 1,
+  });
+  expect(probe(partial, { minHealthy: 1 }).success).toBe(true);
+  expect(lbSatisfied(partial.world, "passthrough")).toBe(false);
+});

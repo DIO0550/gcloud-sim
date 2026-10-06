@@ -418,7 +418,7 @@ export const lbProbe = (world: World, rule: ForwardingRule, request: LbRequest):
             s.role === "ACTIVE",
         )?.ipCidrRange ?? "")
       : `${request.sourceIp}/32`;
-  const usable = responding.find((h) => {
+  const usable = responding.filter((h) => {
     const vm = world.instances.find(
       (v) =>
         v.projectId === backend.projectId &&
@@ -444,16 +444,16 @@ export const lbProbe = (world: World, rule: ForwardingRule, request: LbRequest):
       (backend.loadBalancingScheme !== "EXTERNAL" || h.port === request.port)
     );
   });
-  if (usable === undefined) {
-    return fail("BACKEND_TRAFFIC_FIREWALL_OR_PORT_BLOCKED", healthy.length, responding.length);
+  if (usable.length < request.minHealthy) {
+    return fail("BACKEND_TRAFFIC_FIREWALL_OR_PORT_BLOCKED", healthy.length, usable.length);
   }
   return {
     success: true,
     reason: "SIMULATED_RESPONSE",
     chain,
     healthy: healthy.length,
-    serving: responding.length,
-    selected: usable.instance,
+    serving: usable.length,
+    selected: usable[0]?.instance ?? "",
     cdn: backend.enableCdn ?? false,
   };
 };
