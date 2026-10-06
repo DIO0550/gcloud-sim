@@ -110,6 +110,7 @@ export const EmptyCollections = {
   kubeContextNamespaces: {},
   kubeContextEndpoints: {},
   kubeDeployments: [],
+  kubeStatefulSets: [],
   kubeServices: [],
   kubeHpas: [],
   kubeConfigs: [],

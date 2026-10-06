@@ -110,10 +110,10 @@ export const applyWorkload = (
   if (Option.isSome(current)) {
     const service = current.value;
     if (action === "delete") return finish(World.withoutKubeService(ctx.world, service), "deleted");
-    if (service.type !== manifest.type)
+    if (service.type !== manifest.type || (service.clusterIp === "None") !== manifest.headless)
       return Result.err(
         CommandFailure.invalidArgumentWith(
-          "Changing Service type via apply is not supported on gcloud-sim; recreate it explicitly.",
+          "Changing Service type or headless clusterIP via apply is not supported on gcloud-sim; recreate it explicitly.",
         ),
       );
     const next = {
@@ -142,7 +142,9 @@ export const applyWorkload = (
     cluster: cluster.name,
     namespace: ctx.namespace,
     targetPort: Option.some(manifest.targetPort),
-    clusterIp: `10.20.${(numbered.number >> 8) % 256}.${numbered.number % 256}`,
+    clusterIp: manifest.headless
+      ? "None"
+      : `10.20.${(numbered.number >> 8) % 256}.${numbered.number % 256}`,
     externalIp: `34.85.${(numbered.number >> 8) % 256}.${numbered.number % 256}`,
     createdAt: ctx.now,
   });

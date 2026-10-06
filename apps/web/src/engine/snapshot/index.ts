@@ -75,6 +75,7 @@ import type {
 import { KubeReadiness, type ReadinessProbe } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeStartup, type StartupProbe } from "@/engine/domains/kube-startup";
+import type { KubeStatefulSet } from "@/engine/domains/kube-statefulset";
 import type { KubePv, KubePvc, KubeStorageClass } from "@/engine/domains/kube-storage";
 import type { KubeVolume } from "@/engine/domains/kube-volume";
 import {
@@ -151,12 +152,14 @@ import { Result } from "@/utils/Result";
  * v26 はIngressのホスト・パスとServiceバックエンドを持つ。
  * v27 は既定ノードプールを保存し、プールの管理・自動スケール設定と評価を持つ。
  * v28 はprivate制御プレーン・許可CIDR・前回接続判定とコンテキスト別endpointを持つ。
+ * v29 はStatefulSet・Podの固定連番・volumeClaimTemplatesとスケール時のPVC再利用を持つ。
  */
-export const SchemaVersion = 28;
+export const SchemaVersion = 29;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
 const MigratableVersions = [
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
+  28,
 ] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
@@ -729,7 +732,7 @@ const kubeVolumeMount = D.object({
 const podFiles = D.array(
   D.object({ podName: string, files: D.array(D.object({ path: string, value: string })) }),
 );
-const kubeDeployment = D.object<KubeDeployment>({
+const kubeDeployment = D.object<Omit<KubeDeployment, "statefulSet">>({
   volumes: D.array(kubeVolume),
   volumeMounts: D.array(kubeVolumeMount),
   podFiles,
@@ -815,6 +818,28 @@ const kubeDeployment = D.object<KubeDeployment>({
   podSequence: D.number,
   createdAt: string,
 });
+
+const kubeStatefulMetadata = D.object<NonNullable<KubeDeployment["statefulSet"]>>({
+  serviceName: string,
+  volumeClaimTemplates: D.array(
+    D.object({ name: string, storageClassName: string, storageGi: D.number }),
+  ),
+  lastScale: (value, path) =>
+    value === undefined
+      ? Result.ok(undefined)
+      : D.object({
+          from: D.number,
+          to: D.number,
+          reusedClaims: D.array(D.object({ name: string, volumeName: string })),
+        })(value, path),
+});
+const kubeStatefulSet: Decoder<KubeStatefulSet> = (value, path) =>
+  Result.flatMap(kubeDeployment(value, path), (d) =>
+    Result.map(
+      kubeStatefulMetadata((value as Record<string, unknown>).statefulSet, `${path}.statefulSet`),
+      (statefulSet) => ({ ...d, statefulSet }),
+    ),
+  );
 
 const hpaEvaluation = D.object<HpaEvaluation>({
   evaluatedAt: string,
@@ -1052,6 +1077,7 @@ const world = D.object<World>({
     }),
   ),
   kubeDeployments: D.array(kubeDeployment),
+  kubeStatefulSets: D.array(kubeStatefulSet),
   kubeServices: D.array(kubeService),
   kubeHpas: D.array(kubeHpa),
   kubeConfigs: D.array(kubeConfig),
@@ -1485,7 +1511,7 @@ const migrateV27 = (version: number, value: unknown): unknown => {
   };
 };
 
-const migrate = (version: number, value: unknown): unknown => {
+const migrateV28 = (version: number, value: unknown): unknown => {
   const previous = migrateV27(version, value);
   if (version >= 28 || !isRecord(previous)) return previous;
   return {
@@ -1497,6 +1523,12 @@ const migrate = (version: number, value: unknown): unknown => {
         )
       : previous.clusters,
   };
+};
+
+const migrate = (version: number, value: unknown): unknown => {
+  const previous = migrateV28(version, value);
+  if (version >= 29 || !isRecord(previous)) return previous;
+  return { ...previous, kubeStatefulSets: [] };
 };
 
 export const Snapshot = {

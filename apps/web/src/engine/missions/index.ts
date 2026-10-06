@@ -146,6 +146,7 @@ import {
   KubeStartupMissions,
   kubeStartupSatisfied,
 } from "./kube-startup";
+import { type StatefulAssertion, StatefulMissions, statefulSatisfied } from "./kube-statefulsets";
 import {
   type KubeStorageAssertion,
   KubeStorageMissions,
@@ -169,6 +170,7 @@ export type MissionDomain = ValueOf<typeof MissionDomains>;
 
 /** World に対する述語（DJ-010: コマンド文字列ではなく状態で判定する）。値の語彙はドメインの型で閉じる。 */
 export type MissionAssertion =
+  | StatefulAssertion
   | GkeNodePoolAssertion
   | GkePrivateAssertion
   | BuildAssertion
@@ -345,6 +347,7 @@ const Missions: readonly Mission[] = [
   ...KubeImmutableMissions,
   ...KubeVolumesMissions,
   ...KubeStorageMissions,
+  ...StatefulMissions,
   ...KubeNetworkMissions,
   ...KubeIngressMissions,
   ...GkeNodePoolMissions,
@@ -809,6 +812,10 @@ const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: 
 
 const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
+    case "kubeStatefulPodRecovered":
+      return statefulSatisfied(world, false);
+    case "kubeStatefulScaleRecovered":
+      return statefulSatisfied(world, true);
     case "gkePrivateAccessSecured":
       return gkePrivateSatisfied(world, true);
     case "gkeAuthorizedSourceRecovered":

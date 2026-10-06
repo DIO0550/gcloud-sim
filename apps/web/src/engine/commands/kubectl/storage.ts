@@ -243,19 +243,30 @@ export const writePersistentFile = (
   args: ParsedArgs,
 ): CommandResult => {
   const name = ParsedArgs.requiredPositional(args, 0);
-  const d = World.kubeDeploymentsOf(ctx.world, cluster, ctx.namespace).find((d) => d.name === name);
-  if (!d) return missing("deployment", name);
+  const d = World.kubeWorkloadsOf(ctx.world, cluster, ctx.namespace).find(
+    (d) =>
+      (!d.statefulSet && (d.name === name || `deployment/${d.name}` === name)) ||
+      (d.statefulSet && `statefulset/${d.name}` === name) ||
+      KubePod.fromDeployment(d).some((p) => p.name === name || `pod/${p.name}` === name),
+  );
+  if (!d) return missing("workload or Pod", name);
+  const allowed = kubePermission(
+    ctx,
+    d.statefulSet ? "container.statefulSets.get" : "container.deployments.get",
+  );
+  if (!Result.isOk(allowed)) return allowed;
   const path = ParsedArgs.string(args, "path");
   const content = ParsedArgs.string(args, "content");
   if (!Option.isSome(path) || !Option.isSome(content))
     return invalid("--path and --content are required.");
-  const pod = KubePod.fromDeployment(d)[0];
+  const pods = KubePod.fromDeployment(d);
+  const pod = pods.find((p) => p.name === name || `pod/${p.name}` === name) ?? pods[0];
   if (!pod) return invalid("Deployment has no consuming Pods.");
   const error =
     ImagePull.error(ctx.world, cluster, d.image) || KubeRuntime.error(ctx.world, d, pod.name);
   if (error) return Result.err(CommandFailure.invalidState(error));
   const mount = d.volumeMounts.find((m) => !m.subPath && path.value.startsWith(`${m.mountPath}/`));
-  const volume = d.volumes.find(
+  const volume = KubeVolumes.forPod(d, pod.name).volumes.find(
     (v) => v.name === mount?.name && v.source === "persistentvolumeclaim",
   );
   if (!mount || !volume) return invalid("Path must be inside a mounted PVC directory.");

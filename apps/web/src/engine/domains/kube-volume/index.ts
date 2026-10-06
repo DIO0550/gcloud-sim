@@ -51,6 +51,17 @@ const canonical = (value: string): boolean => {
 };
 
 export const KubeVolumes = {
+  forPod(d: KubeDeployment, podName: string): KubeDeployment {
+    if (!d.statefulSet) return d;
+    return {
+      ...d,
+      volumes: d.volumes.map((v) =>
+        d.statefulSet?.volumeClaimTemplates.some((t) => t.name === v.name)
+          ? { ...v, resource: `${v.name}-${podName}` }
+          : v,
+      ),
+    };
+  },
   relativePath,
   validate(volumes: readonly KubeVolume[], mounts: readonly KubeVolumeMount[]): boolean {
     if (
@@ -135,10 +146,11 @@ export const KubeVolumes = {
   /** Resolve a simulated projection. Existing mounts survive failed source refreshes. */
   resolve(
     configs: readonly KubeConfig[],
-    d: KubeDeployment,
+    source: KubeDeployment,
     podName: string,
     storage?: Pick<World, "kubePvcs" | "kubePvs">,
   ): Result<PodFiles, string> {
+    const d = KubeVolumes.forPod(source, podName);
     const cached = d.podFiles.find((p) => p.podName === podName);
     const projected = new Map<string, readonly { path: string; value: string }[]>();
     // Persistent data must stay live even when configuration projection refresh fails.

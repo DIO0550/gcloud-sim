@@ -135,7 +135,7 @@ jobs:
           --expected visual-baseline
           --actual visual-actual
           --out visual-report
-          --max-images 144
+          --max-images 160
           --report-version ${{ github.event.pull_request.head.sha }}
           --pr ${{ github.event.pull_request.number }}
 

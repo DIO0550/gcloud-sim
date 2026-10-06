@@ -29,6 +29,7 @@ import { KubeReadiness } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
 import { KubeStartup } from "@/engine/domains/kube-startup";
+import { KubeStatefulSet } from "@/engine/domains/kube-statefulset";
 import { KubeVolumes } from "@/engine/domains/kube-volume";
 import {
   KubeDeployment,
@@ -90,6 +91,7 @@ const usage = (message: string): CommandFailure => CommandFailure.invalidArgumen
 /** `deployment`, `deploy`, `deployments`, `deployment/web` の綴りを種別と名前に分ける。 */
 type ResourceRef = Readonly<{
   kind:
+    | "statefulset"
     | "ingress"
     | "networkpolicy"
     | "storageclass"
@@ -109,6 +111,11 @@ type ResourceRef = Readonly<{
 }>;
 
 const ResourceAliases: Readonly<Record<string, ResourceRef["kind"]>> = {
+  statefulset: "statefulset",
+  statefulsets: "statefulset",
+  sts: "statefulset",
+  "statefulset.apps": "statefulset",
+  "statefulsets.apps": "statefulset",
   ingress: "ingress",
   ingresses: "ingress",
   ing: "ingress",
@@ -168,7 +175,7 @@ const parseResource = (type: string, name: Option<string>): Result<ResourceRef, 
     return Result.err(
       CommandFailure.invalidValue(
         "",
-        `error: the server doesn't have a resource type "${kindText}"\ngcloud-sim: 対応しているのは namespaces / deployments / services / pods / nodes / replicasets / configmaps / secrets / hpa / pvc / pv / storageclasses / networkpolicies / ingresses です。`,
+        `error: the server doesn't have a resource type "${kindText}"\ngcloud-sim: 対応しているのは namespaces / deployments / statefulsets / services / pods / nodes / replicasets / configmaps / secrets / hpa / pvc / pv / storageclasses / networkpolicies / ingresses です。`,
       ),
     );
   }
@@ -258,51 +265,64 @@ const probeSampleFields = (d: KubeDeployment, podName: string): JsonRecord => {
   };
 };
 
-const podRow = (
-  pod: KubePod,
-  deployment: KubeDeployment,
-  now: string,
-  error: string,
-): JsonRecord => ({
-  ...KubePod.toRecord(pod),
-  spec: {
-    ...KubeVolumes.fields(deployment.volumes),
-    containers: [
-      {
-        name: deployment.name,
-        image: pod.image,
-        env: deployment.env.map(KubeEnv.toRecord),
-        ...KubeVolumes.mountFields(deployment.volumeMounts),
-        ...KubeResources.toContainerFields(deployment.resources),
-        ...KubeReadiness.fields(deployment.readinessProbe),
-        ...KubeLiveness.fields(deployment.livenessProbe),
-        ...KubeStartup.fields(deployment.startupProbe),
-      },
-    ],
-  },
-  name: pod.name,
-  ready: !error && pod.ready ? "1/1" : "0/1",
-  status: {
-    phase: error ? "Pending" : pod.status,
-    podIP: pod.ip,
-    qosClass: KubeResources.qosClass(pod.resources),
-    ...KubePod.containerStatus(pod, error),
-    conditions: [
-      {
-        type: "Ready",
-        status: !error && pod.ready ? "True" : "False",
-        message: error || KubeReadiness.reason(deployment, pod.name) || "Ready",
-      },
-    ],
-  },
-  displayStatus: error ? (error.split(":")[0] ?? "Pending") : pod.status,
-  imagePullError: error.startsWith("ImagePull") ? error : "",
-  containerError: error,
-  readiness: KubeReadiness.reason(deployment, pod.name),
-  ...probeSampleFields(deployment, pod.name),
-  restarts: pod.restarts,
-  age: age(deployment.createdAt, now),
-});
+const podRow = (pod: KubePod, source: KubeDeployment, now: string, error: string): JsonRecord => {
+  const deployment = KubeVolumes.forPod(source, pod.name);
+  return {
+    ...KubePod.toRecord(pod),
+    metadata: {
+      name: pod.name,
+      namespace: pod.namespace,
+      labels: pod.labels,
+      ...(deployment.statefulSet
+        ? {
+            ownerReferences: [
+              { apiVersion: "apps/v1", kind: "StatefulSet", name: deployment.name },
+            ],
+          }
+        : {}),
+    },
+    spec: {
+      ...(deployment.statefulSet
+        ? { hostname: pod.name, subdomain: deployment.statefulSet.serviceName }
+        : {}),
+      ...KubeVolumes.fields(deployment.volumes),
+      containers: [
+        {
+          name: deployment.name,
+          image: pod.image,
+          env: deployment.env.map(KubeEnv.toRecord),
+          ...KubeVolumes.mountFields(deployment.volumeMounts),
+          ...KubeResources.toContainerFields(deployment.resources),
+          ...KubeReadiness.fields(deployment.readinessProbe),
+          ...KubeLiveness.fields(deployment.livenessProbe),
+          ...KubeStartup.fields(deployment.startupProbe),
+        },
+      ],
+    },
+    name: pod.name,
+    ready: !error && pod.ready ? "1/1" : "0/1",
+    status: {
+      phase: error ? "Pending" : pod.status,
+      podIP: pod.ip,
+      qosClass: KubeResources.qosClass(pod.resources),
+      ...KubePod.containerStatus(pod, error),
+      conditions: [
+        {
+          type: "Ready",
+          status: !error && pod.ready ? "True" : "False",
+          message: error || KubeReadiness.reason(deployment, pod.name) || "Ready",
+        },
+      ],
+    },
+    displayStatus: error ? (error.split(":")[0] ?? "Pending") : pod.status,
+    imagePullError: error.startsWith("ImagePull") ? error : "",
+    containerError: error,
+    readiness: KubeReadiness.reason(deployment, pod.name),
+    ...probeSampleFields(deployment, pod.name),
+    restarts: pod.restarts,
+    age: age(deployment.createdAt, now),
+  };
+};
 
 const podError = (world: World, cluster: GkeCluster, d: KubeDeployment, name: string): string =>
   ImagePull.error(world, cluster, d.image) || KubeRuntime.error(world, d, name);
@@ -325,6 +345,34 @@ const deploymentListing = (
       .map((p) => podError(ctx.world, cluster, d, p.name))
       .find(Boolean) ?? "";
   return deploymentRow(d, ctx.now, startupError, errors.filter((e) => !e).length);
+};
+
+const statefulListing = (
+  ctx: KubectlContext,
+  cluster: GkeCluster,
+  set: KubeStatefulSet,
+  describe = false,
+): JsonRecord => {
+  const ready = deploymentErrors(ctx.world, cluster, set).filter((e) => !e).length;
+  const record = KubeStatefulSet.toRecord(set);
+  return {
+    ...record,
+    name: set.name,
+    ready: `${ready}/${set.replicas}`,
+    age: age(set.createdAt, ctx.now),
+    status: { ...(record.status as JsonRecord), readyReplicas: ready },
+    ...(describe
+      ? {
+          simulator: {
+            ...((record.simulator as JsonRecord) ?? {}),
+            governingService: KubeStatefulSet.networkReason(ctx.world, set),
+            podClaims: KubeStatefulSet.claims(set).map((c) => c.name),
+            model:
+              "Parallel Pods, stable names and retained per-Pod PVCs; immediate template replacement, no ordered waits or real DNS.",
+          },
+        }
+      : {}),
+  };
 };
 
 const serviceRow = (s: KubeService, now: string): JsonRecord => ({
@@ -377,7 +425,7 @@ const collect = (
   describe = false,
 ): Result<Listing, CommandFailure> => {
   const deployments = World.kubeDeploymentsOf(ctx.world, cluster, ctx.namespace);
-  const pods = deployments.flatMap((d) =>
+  const pods = World.kubeWorkloadsOf(ctx.world, cluster, ctx.namespace).flatMap((d) =>
     KubePod.fromDeployment(d).map((pod) => ({
       name: pod.name,
       row: podRow(pod, d, ctx.now, podError(ctx.world, cluster, d, pod.name)),
@@ -385,6 +433,22 @@ const collect = (
   );
   const services = World.kubeServicesOf(ctx.world, cluster, ctx.namespace);
   switch (ref.kind) {
+    case "statefulset":
+      return Result.map(
+        pick(
+          World.kubeStatefulSetsOf(ctx.world, cluster, ctx.namespace),
+          "statefulsets.apps",
+          ref.name,
+        ),
+        (entries) => ({
+          rows: entries.map((set) => statefulListing(ctx, cluster, set, describe)),
+          columns: [
+            Column.create("NAME", "name"),
+            Column.create("READY", "ready"),
+            Column.create("AGE", "age"),
+          ],
+        }),
+      );
     case "ingress":
       return Result.map(
         pick(
@@ -615,6 +679,8 @@ const collect = (
       return Result.map(pick(nodes, "nodes", ref.name), (rows) => ({ rows, columns: NodeColumns }));
     }
     case "all": {
+      const statefulAllowed = kubePermission(ctx, "container.statefulSets.list");
+      if (!Result.isOk(statefulAllowed)) return statefulAllowed;
       const allowed = kubePermission(ctx, "container.horizontalPodAutoscalers.list");
       if (!Result.isOk(allowed)) return allowed;
       return Result.ok({
@@ -624,6 +690,10 @@ const collect = (
             name: `horizontalpodautoscaler.autoscaling/${h.name}`,
             targets: KubeHpa.targets(h),
             age: age(h.createdAt, ctx.now),
+          })),
+          ...World.kubeStatefulSetsOf(ctx.world, cluster, ctx.namespace).map((set) => ({
+            ...statefulListing(ctx, cluster, set),
+            name: `statefulset.apps/${set.name}`,
           })),
           ...pods.map((p) => ({ ...p.row, name: `pod/${p.name}` })),
           ...services.map((s) => ({ ...serviceRow(s, ctx.now), name: `service/${s.name}` })),
@@ -999,6 +1069,21 @@ const remove = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
   if (!Option.isSome(name))
     return Result.err(usage("resource(s) were provided, but no name was specified"));
   switch (ref.value.kind) {
+    case "statefulset": {
+      const set = World.kubeStatefulSetsOf(ctx.world, cluster.value, ctx.namespace).find(
+        (s) => s.name === name.value,
+      );
+      if (!set) return Result.err(notFound("statefulsets.apps", name.value));
+      return Result.ok({
+        world: World.withoutKubeStatefulSet(ctx.world, set),
+        output: CommandOutput.messages(
+          OutputMessage.plain(`statefulset.apps/${set.name} deleted`),
+          OutputMessage.hint(
+            "gcloud-sim: PVCは保持しました。再作成すると同じ連番のPVCを再利用します。",
+          ),
+        ),
+      });
+    }
     case "ingress":
       return removeIngress(ctx, cluster.value, name.value);
     case "networkpolicy":
@@ -1064,22 +1149,27 @@ const remove = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
       });
     }
     case "pod": {
-      const owner = World.kubeDeploymentsOf(ctx.world, cluster.value, ctx.namespace).find((d) =>
+      const owner = World.kubeWorkloadsOf(ctx.world, cluster.value, ctx.namespace).find((d) =>
         KubePod.fromDeployment(d).some((p) => p.name === name.value),
       );
       if (owner === undefined) return Result.err(notFound("pods", name.value));
       return Result.ok({
-        world: World.replaceKubeDeployment(
+        world: World.replaceKubeWorkload(
           ctx.world,
-          KubeDeployment.replacePod(
-            owner,
-            KubePod.fromDeployment(owner).findIndex((p) => p.name === name.value),
-          ),
+          owner.statefulSet
+            ? KubeStatefulSet.replacePod(
+                { ...owner, statefulSet: owner.statefulSet },
+                KubePod.fromDeployment(owner).findIndex((p) => p.name === name.value),
+              )
+            : KubeDeployment.replacePod(
+                owner,
+                KubePod.fromDeployment(owner).findIndex((p) => p.name === name.value),
+              ),
         ),
         output: CommandOutput.messages(
           OutputMessage.plain(`pod "${name.value}" deleted`),
           OutputMessage.hint(
-            `gcloud-sim: Deployment ${owner.name} が新しい Pod を作り直しました（kubectl get pods で確認できます）。`,
+            `gcloud-sim: ${owner.statefulSet ? "StatefulSet" : "Deployment"} ${owner.name} がPodを作り直しました${owner.statefulSet ? "（同じ名前・PVCを再利用）" : "（kubectl get pods で確認できます）"}。`,
           ),
         ),
       });
@@ -1140,6 +1230,29 @@ const requireDeployment = (
 const scale = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
   const cluster = currentCluster(ctx);
   if (!Result.isOk(cluster)) return cluster;
+  const ref = parseResource(ParsedArgs.requiredPositional(args, 0), ParsedArgs.positional(args, 1));
+  if (Result.isOk(ref) && ref.value.kind === "statefulset" && Option.isSome(ref.value.name)) {
+    const set = World.kubeStatefulSetsOf(ctx.world, cluster.value, ctx.namespace).find(
+      (s) => s.name === Option.unwrapOr(ref.value.name, ""),
+    );
+    if (!set) return Result.err(notFound("statefulsets.apps", Option.unwrapOr(ref.value.name, "")));
+    const count = ParsedArgs.integer(args, "replicas");
+    if (!Option.isSome(count)) return Result.err(usage('required flag(s) "replicas" not set'));
+    const scaled = KubeDeployment.withReplicas(set, count.value);
+    if (!Result.isOk(scaled)) return Result.err(usage(scaled.error));
+    const next = KubeStatefulSet.recordScale(ctx.world, set, {
+      ...scaled.value,
+      statefulSet: set.statefulSet,
+    });
+    const conflict = KubeStatefulSet.claimConflict(ctx.world, next);
+    if (conflict) return Result.err(usage(conflict));
+    return Result.ok({
+      world: World.replaceKubeWorkload(ctx.world, next),
+      output: CommandOutput.messages(
+        OutputMessage.plain(`statefulset.apps/${set.name} scaled (PVCs retained)`),
+      ),
+    });
+  }
   const deployment = requireDeployment(ctx, cluster.value, args);
   if (!Result.isOk(deployment)) return deployment;
   const replicas = ParsedArgs.integer(args, "replicas");
@@ -1319,7 +1432,7 @@ const logs = (ctx: KubectlContext, args: ParsedArgs): CommandResult => {
   const cluster = currentCluster(ctx);
   if (!Result.isOk(cluster)) return cluster;
   const name = ParsedArgs.requiredPositional(args, 0);
-  const owner = World.kubeDeploymentsOf(ctx.world, cluster.value, ctx.namespace).find((d) =>
+  const owner = World.kubeWorkloadsOf(ctx.world, cluster.value, ctx.namespace).find((d) =>
     KubePod.fromDeployment(d).some((p) => p.name === name),
   );
   if (owner === undefined) return Result.err(notFound("pods", name));
@@ -1484,6 +1597,8 @@ const NamePositional = Positional.optional(
   "Resource name.",
   (world, projectId, positionals = []) => {
     const type = ResourceAliases[(positionals[0] ?? "").split("/")[0]?.toLowerCase() ?? ""];
+    if (type === "statefulset") return Candidates.kubeStatefulSets(world, projectId);
+    if (type === "pod") return Candidates.kubePods(world, projectId);
     if (type === "ingress") return Candidates.kubeIngresses(world, projectId);
     if (type === "networkpolicy") return Candidates.kubeNetworkPolicies(world, projectId);
     if (type === "pvc" || type === "pv" || type === "storageclass")
@@ -1561,6 +1676,7 @@ const resourcePermission =
     if (ref.value.kind === "hpa") return `container.horizontalPodAutoscalers.${verb}`;
     if (ref.value.kind === "service") return `container.services.${verb}`;
     if (ref.value.kind === "deployment") return `container.deployments.${verb}`;
+    if (ref.value.kind === "statefulset") return `container.statefulSets.${verb}`;
     if (ref.value.kind === "secret") return `container.secrets.${verb}`;
     if (ref.value.kind === "configmap") return `container.configMaps.${verb}`;
     return fallback;
@@ -1580,15 +1696,16 @@ const execEnvironment = (ctx: KubectlContext, args: ParsedArgs): CommandResult =
         "Only exec POD -- printenv [KEY], env, cat PATH or base64 PATH is simulated; no shell is executed.",
       ),
     );
-  const d = World.kubeDeploymentsOf(ctx.world, cluster.value, ctx.namespace).find(
+  const d = World.kubeWorkloadsOf(ctx.world, cluster.value, ctx.namespace).find(
     (d) =>
-      resource === `deployment/${d.name}` ||
+      resource === `${d.statefulSet ? "statefulset" : "deployment"}/${d.name}` ||
       KubePod.fromDeployment(d).some((p) => p.name === resource || `pod/${p.name}` === resource),
   );
   if (!d) return Result.err(notFound("pods", resource ?? ""));
-  const name = resource?.startsWith("deployment/")
-    ? KubePod.fromDeployment(d)[0]?.name
-    : resource?.replace(/^pod\//, "");
+  const name =
+    resource?.startsWith("deployment/") || resource?.startsWith("statefulset/")
+      ? KubePod.fromDeployment(d)[0]?.name
+      : resource?.replace(/^pod\//, "");
   if (!name) return Result.err(usage("Deployment has no Pods."));
   const error = podError(ctx.world, cluster.value, d, name);
   if (error) return Result.err(CommandFailure.invalidState(`Container is waiting: ${error}`));
@@ -1727,13 +1844,19 @@ export const KubectlCommands: readonly CommandSpec[] = [
     path: ["sim", "kubernetes", "write-file"],
     summary:
       "Simulate an application writing a UTF-8 file to a mounted PVC (no shell or host files).",
-    positionals: [Positional.required("NAME", "Deployment name.", Candidates.kubeDeployments)],
+    positionals: [
+      Positional.required(
+        "NAME",
+        "Deployment name, statefulset/NAME or pod/NAME.",
+        Candidates.kubeWorkloads,
+      ),
+    ],
     flags: [
       NamespaceFlag,
       Flag.string("path", "Absolute mounted PVC file path.", { singleUse: true }),
       Flag.string("content", "Simulated UTF-8 application content.", { singleUse: true }),
     ],
-    permissions: ["container.deployments.get", "container.pods.exec"],
+    permissions: ["container.pods.exec"],
     requiredApis: [ContainerApi],
     run: (ctx, args) => {
       const cluster = currentCluster(ctx);
@@ -1928,10 +2051,18 @@ export const KubectlCommands: readonly CommandSpec[] = [
   }),
   kubectl({
     verb: "scale",
-    summary: "Set a new size for a deployment.",
+    summary: "Set replicas for a Deployment or StatefulSet (StatefulSet PVCs are retained).",
     positionals: [TypePositional, NamePositional],
     flags: [Flag.integer("replicas", "The new desired number of replicas.")],
-    permission: "container.deployments.update",
+    permission: (args) => {
+      const ref = parseResource(
+        ParsedArgs.requiredPositional(args, 0),
+        ParsedArgs.positional(args, 1),
+      );
+      return Result.isOk(ref) && ref.value.kind === "statefulset"
+        ? "container.statefulSets.update"
+        : "container.deployments.update";
+    },
     run: scale,
   }),
   kubectl({

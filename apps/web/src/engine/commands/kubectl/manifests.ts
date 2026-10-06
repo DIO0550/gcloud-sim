@@ -12,6 +12,7 @@ import { applyHpa } from "./hpa-manifests";
 import { applyIngress } from "./ingress";
 import { applyNamespace } from "./namespaces";
 import { applyNetworkPolicy } from "./network-policy";
+import { applyStatefulSet } from "./statefulsets";
 import { applyStorage } from "./storage";
 import { applyWorkload } from "./workload-manifests";
 
@@ -62,6 +63,13 @@ export const applyManifest = (
     if (!Result.isOk(checked)) return checked;
     if (manifest.kind === "ingress") {
       const applied = applyIngress(scoped, cluster, manifest, action);
+      if (!Result.isOk(applied)) return applied;
+      world = applied.value.world;
+      messages.push(...applied.value.output.messages);
+      continue;
+    }
+    if (manifest.kind === "statefulset") {
+      const applied = applyStatefulSet(scoped, cluster, manifest, action);
       if (!Result.isOk(applied)) return applied;
       world = applied.value.world;
       messages.push(...applied.value.output.messages);

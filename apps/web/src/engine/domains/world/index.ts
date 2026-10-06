@@ -37,6 +37,7 @@ import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { KubeNetworkPolicy } from "@/engine/domains/kube-network-policy";
 import { KubeReadiness } from "@/engine/domains/kube-readiness";
 import { KubeStartup } from "@/engine/domains/kube-startup";
+import { KubeStatefulSet } from "@/engine/domains/kube-statefulset";
 import {
   type KubePv,
   type KubePvc,
@@ -125,6 +126,7 @@ export type World = Readonly<{
   kubeContextNamespaces: Readonly<Record<string, string>>;
   kubeContextEndpoints: Readonly<Record<string, "public" | "private">>;
   kubeDeployments: readonly KubeDeployment[];
+  kubeStatefulSets: readonly KubeStatefulSet[];
   kubeServices: readonly KubeService[];
   kubeHpas: readonly KubeHpa[];
   kubeConfigs: readonly KubeConfig[];
@@ -302,6 +304,7 @@ const NamedCollectionKeys = [
   "nodePools",
   "kubeNamespaces",
   "kubeDeployments",
+  "kubeStatefulSets",
   "kubeServices",
   "kubeHpas",
   "kubeConfigs",
@@ -1092,6 +1095,7 @@ export const World = {
         ),
       ),
       kubeDeployments: world.kubeDeployments.filter((d) => !belongs(d)),
+      kubeStatefulSets: world.kubeStatefulSets.filter((d) => !belongs(d)),
       kubeServices: world.kubeServices.filter((s) => !belongs(s)),
       kubeHpas: world.kubeHpas.filter((h) => !belongs(h)),
       kubeConfigs: world.kubeConfigs.filter((s) => !belongs(s)),
@@ -1143,7 +1147,66 @@ export const World = {
     );
   },
 
-  /** クラスタの Kubernetes リソース（Deployment）。名前順。 */
+  /** クラスタの StatefulSet。名前順。 */
+  kubeStatefulSetsOf(
+    world: World,
+    cluster: GkeCluster,
+    namespace = "default",
+  ): readonly KubeStatefulSet[] {
+    return world.kubeStatefulSets
+      .filter((r) => inCluster(cluster)(r) && r.namespace === namespace)
+      .toSorted((a, b) => a.name.localeCompare(b.name));
+  },
+
+  kubeWorkloadsOf(
+    world: World,
+    cluster: GkeCluster,
+    namespace = "default",
+  ): readonly KubeDeployment[] {
+    return [
+      ...World.kubeDeploymentsOf(world, cluster, namespace),
+      ...World.kubeStatefulSetsOf(world, cluster, namespace),
+    ];
+  },
+
+  withKubeStatefulSet(world: World, set: KubeStatefulSet): Result<World, AlreadyExists> {
+    if (world.kubeStatefulSets.some(sameKubeResource(set)))
+      return Result.err({ resource: `statefulsets.apps "${set.name}"` });
+    const used = new Set(
+      [...world.kubeDeployments, ...world.kubeStatefulSets]
+        .filter((d) => d.projectId === set.projectId && d.cluster === set.cluster)
+        .map((d) => d.podNetwork),
+    );
+    let podNetwork = 0;
+    while (used.has(podNetwork)) podNetwork += 1;
+    if (podNetwork >= 16384)
+      return Result.err({ resource: "all simulated Pod networks (16384 per cluster)" });
+    return Result.ok(
+      World.reconcileKubeStorage({
+        ...world,
+        kubeStatefulSets: [...world.kubeStatefulSets, { ...set, podNetwork }],
+      }),
+    );
+  },
+
+  replaceKubeWorkload(world: World, d: KubeDeployment): World {
+    const meta = d.statefulSet;
+    if (!meta) return World.replaceKubeDeployment(world, d);
+    return World.reconcileKubeStorage({
+      ...world,
+      kubeStatefulSets: world.kubeStatefulSets.map((s) =>
+        sameKubeResource(d)(s) ? { ...d, statefulSet: meta } : s,
+      ),
+    });
+  },
+
+  withoutKubeStatefulSet(world: World, set: KubeStatefulSet): World {
+    return World.reconcileKubeStorage({
+      ...world,
+      kubeStatefulSets: world.kubeStatefulSets.filter((s) => !sameKubeResource(set)(s)),
+    });
+  },
+
   kubeDeploymentsOf(
     world: World,
     cluster: GkeCluster,
@@ -1167,7 +1230,7 @@ export const World = {
 
   withKubeDeployment(world: World, deployment: KubeDeployment): Result<World, AlreadyExists> {
     const used = new Set(
-      world.kubeDeployments
+      [...world.kubeDeployments, ...world.kubeStatefulSets]
         .filter((d) => d.projectId === deployment.projectId && d.cluster === deployment.cluster)
         .map((d) => d.podNetwork),
     );
@@ -1227,10 +1290,14 @@ export const World = {
   },
 
   reconcileKubeStorage(world: World): World {
-    const next = KubeStorage.reconcile(world);
+    const claims = world.kubeStatefulSets
+      .flatMap(KubeStatefulSet.claims)
+      .filter((c) => !world.kubePvcs.some((p) => sameKubeResource(c)(p)));
+    const next = KubeStorage.reconcile({ ...world, kubePvcs: [...world.kubePvcs, ...claims] });
     return {
       ...next,
       kubeDeployments: next.kubeDeployments.map((d) => KubeRuntime.reconcile(next, d)),
+      kubeStatefulSets: next.kubeStatefulSets.map((d) => KubeRuntime.reconcile(next, d)),
     };
   },
 
@@ -1500,6 +1567,7 @@ export const World = {
     }
     for (const r of [
       ...world.kubeDeployments,
+      ...world.kubeStatefulSets,
       ...world.kubeServices,
       ...world.kubeConfigs,
       ...world.kubeHpas,
@@ -1529,7 +1597,13 @@ export const World = {
       const checked = KubeDeployment.validate(deployment);
       if (!Result.isOk(checked)) return Result.err(checked.error);
     }
-    const networks = world.kubeDeployments.map(
+    for (const set of world.kubeStatefulSets) {
+      const checked = KubeStatefulSet.validate(set);
+      if (!Result.isOk(checked)) return Result.err(checked.error);
+    }
+    if (world.kubeDeployments.some((d) => d.statefulSet))
+      return Result.err("StatefulSets must be stored separately from Deployments.");
+    const networks = [...world.kubeDeployments, ...world.kubeStatefulSets].map(
       (d) => `${d.projectId}/${d.cluster}/${d.podNetwork}`,
     );
     if (new Set(networks).size !== networks.length)
@@ -1545,6 +1619,7 @@ export const World = {
     }
     for (const service of world.kubeServices) {
       if (
+        (service.clusterIp === "None" && service.type !== "ClusterIP") ||
         !Result.isOk(KubeLabels.parse(service.labels)) ||
         !Result.isOk(KubeLabels.parse(service.selector, true))
       )
@@ -1664,6 +1739,7 @@ const validateReferences = (world: World): Result<World, string> => {
     ...world.nodePools,
     ...world.kubeNamespaces,
     ...world.kubeDeployments,
+    ...world.kubeStatefulSets,
     ...world.kubeServices,
     ...world.kubeHpas,
     ...world.kubeConfigs,

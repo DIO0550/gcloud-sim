@@ -97,7 +97,7 @@ kubectl rollout restart deployment/web
 kubectl exec deployment/web -- printenv APP_MODE
 ```
 
-`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全68件、GKE拡充分は31件です。
+`sim files`は実際のkubectlコマンドではなく、ブラウザ内の学習用ファイル操作です。上の手順は前節のクラスタとDeploymentを使います。新ミッション「設定ファイルをapplyしてPodへ反映する」は初期Worldからも実施できます。ミッションは全70件、GKE拡充分は33件です。
 
 `sim files write FILE --content='…'`で独自のYAML/JSONを書き、`read`で読み、`replace --search=… --replacement=…`で1か所を編集できます。ファイルは `.yaml` / `.yml` / `.json` の相対パスで、32ファイル・1ファイル64,000文字まで。Terraformとは別に保存し、Terraformのplanに影響しません。`sim files delete FILE`はファイルだけを消します。クラスタ上の設定を消す操作は `kubectl delete -f FILE` です。教材の上書きは `sim files load kubernetes-config --force` で明示します。
 
@@ -258,7 +258,7 @@ ConfigMap/Secretの操作はそれぞれ`container.configMaps.*`/`container.secr
 - ReplicaSetは読み取り専用の導出状態です。templateの識別子/Pod名は疑似値で、実際のハッシュ・annotationsは再現しません。イメージ変更/restartごとに新しいtemplateを作り、undoでは保存したtemplateを再利用します。
 - `.pkg.dev`以外のイメージは従来の簡略な成功モデルです。実在タグ/コンテナの起動可否の確認はしません。異常系ミッションでは存在確認できる教材レジストリを使います。
 
-複数コンテナを含むmanifest、readiness/liveness/startupの定期実行、VPA・HPAの定期評価/実測/安定化、StatefulSet、Ingress/NetworkPolicyの未対応設定、ノードプール設定やWorkload Identity等は残作業です。Issue #15は閉じません。
+複数コンテナを含むmanifest、readiness/liveness/startupの定期実行、VPA・HPAの定期評価/実測/安定化、StatefulSetのOrderedReady等、Ingress/NetworkPolicyの未対応設定、ノードプール設定やWorkload Identity等は残作業です。Issue #15は閉じません。
 
 参照: [ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/)、[Secret](https://kubernetes.io/docs/concepts/configuration/secret/)、[kubectl set env](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_set/kubectl_set_env/)、[Deploymentの更新とロールバック](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)、[kubectl set image](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_set/kubectl_set_image/)、[kubectl rollout undo](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_rollout/kubectl_rollout_undo/)、[GKEのロールと権限](https://docs.cloud.google.com/iam/docs/roles-permissions/container)。
 
@@ -738,7 +738,7 @@ Snapshot v24で独自StorageClass・PVCの容量/割り当て/削除要求・PV�
 
 ミッション「PVCを割り当てて再起動後もデータを保つ」と「PVC削除後にRetainでデータを残す」は初期Worldから実施できます。前者はマニフェストとライブ設定・2Giへの拡張・全PodのReady・データとrestart履歴、後者はRetain設定・0レプリカ・PVC削除完了・Released PV内の保持内容を確認します。設定の編集だけやTerminating途中では達成しません。
 
-StatefulSet/volumeClaimTemplates、静的PV・volumeNameによる手動バインド、Released PV再利用、PVC/SCのラベル・annotation/既定クラス切替、RWX/ROX/RWOP・Block・Filestore/Hyperdisk・topology/allowedTopologies、PVC subPath、実I/O・ノード配置・ディスク接続/回収・容量不足/拡張待ち・finalizer手動操作は対象外です。
+StatefulSetの作成/更新順序待ち・自動PVC削除、静的PV・volumeNameによる手動バインド、Released PV再利用、PVC/SCのラベル・annotation/既定クラス切替、RWX/ROX/RWOP・Block・Filestore/Hyperdisk・topology/allowedTopologies、PVC subPath、実I/O・ノード配置・ディスク接続/回収・容量不足/拡張待ち・finalizer手動操作は対象外です。
 
 仕様の参照元: [GKE persistent volumes](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/persistent-volumes)、[Storage Classes](https://kubernetes.io/docs/concepts/storage/storage-classes/)、[Persistent Volumes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)、[GKE IAM権限](https://docs.cloud.google.com/iam/docs/roles-permissions/container)。
 
@@ -918,3 +918,46 @@ Snapshot v28に接続設定・前回評価・コンテキスト別endpointを保
 - https://docs.cloud.google.com/sdk/gcloud/reference/container/clusters/update
 - https://docs.cloud.google.com/sdk/gcloud/reference/container/clusters/get-credentials
 - https://docs.cloud.google.com/kubernetes-engine/docs/how-to/latest/network-isolation
+
+
+## StatefulSetの固定Pod名とPodごとのPVC
+
+```sh
+gcloud services enable container.googleapis.com
+gcloud container clusters create-auto stateful-gke --region=us-central1
+sim files load kubernetes-statefulset
+kubectl apply -f stateful-service.yaml
+kubectl apply -f stateful-notes.yaml
+kubectl get sts
+kubectl get pods
+kubectl get pvc
+sim kubernetes write-file pod/notes-0 --path=/data/note.txt --content=first-note
+sim kubernetes write-file pod/notes-1 --path=/data/note.txt --content=second-note
+kubectl delete pod notes-0
+kubectl exec notes-0 -- cat /data/note.txt
+kubectl scale sts/notes --replicas=1
+kubectl get pvc
+kubectl scale sts/notes --replicas=2
+kubectl exec notes-1 -- cat /data/note.txt
+kubectl describe sts notes
+```
+
+`apps/v1 StatefulSet`をDeploymentとは別に保存します。`sts/statefulset/statefulsets/statefulsets.apps`のget/describe/delete、仮想YAML/JSONのcreate/apply/delete、scale、namespace・`-A`・ラベル検索・JSON/YAML・権限・補完・ツリー/プロパティに対応します。Pod名は`notes-0`・`notes-1`のように固定し、再作成では教材上のPod世代だけを変えます。ReplicaSetとしては表示しません。identityラベル・hostname/subdomainと各Podが参照する実際のPVC名をPodレコードへ反映します。
+
+volumeClaimTemplatesから`data-notes-0`・`data-notes-1`を作り、Podごとに異なるPVを割り当てます。既存のCSI動的割り当て・WaitForFirstConsumer・FailedMount・PVC保護と永続ファイルを使用します。存在しないStorageClassはPendingとなり、クラス追加後に復旧します。0レプリカで新規作成するとPVCも作らず、稼働する連番の分だけ作成します。テンプレートは10個まで、生成したPod/PVC名は63文字以内です。
+
+スケールダウンでは末尾のPodを取り除き、PVC/PVは残します。再スケールで同じ連番のPVC/PVとデータへ戻ります。StatefulSetの削除もPVCを保持し、同じ設定で再作成すれば再利用します。これはStorageClass/PVのreclaimPolicyとは別で、PVがDeleteでもPVCを削除しない限りデータは残ります。利用PodのないPVCを明示的に削除した場合は、従来どおりPVのDelete/Retainに従います。再利用時のTerminating・StorageClass不一致・要求容量不足は拒否します。拡張済みPVCは同じクラスで要求以上なら再利用できます。
+
+`sim kubernetes write-file`は従来のDeployment名に加えて、`pod/notes-1`のように書き込むPodを指定できます。`statefulset/notes`は先頭Podを選びます。PVCマウント内のUTF-8文字列だけを保存し、実際のshellやホストファイルを実行しません。プロパティにはファイル名とバイト数を表示し、内容はcat/base64で確認します。
+
+Serviceの`clusterIP: None`をheadless ClusterIP Serviceとして扱い、IPを割り当てずReadyなPodの接続先を列挙します。serviceNameの参照切れ・通常のService・selector不一致は別の診断とし、Service不足だけでPodをFailedMountにはしません。headlessへの変更と通常ClusterIPへの変更はapplyでは拒否し、Serviceの再作成を要求します。実DNS・EndpointSlice・経路・負荷分散は再現しません。
+
+今回の教材は`podManagementPolicy: Parallel`の明示指定と単一コンテナのimage/PVCマウントに限定します。省略時のOrderedReady、OnDelete/Recreate、partition/maxUnavailable、ordinals.start、minReadySeconds、環境変数/設定volume/probe/resources・複数コンテナ、StatefulSetのHPA・set image/set resources/rollout・ControllerRevision/rollback・自動PVC削除は未対応として拒否します。RollingUpdateのtemplate再適用は全Podを即時置換する簡略モデルで、実際の順序・readiness待ち・新旧Podの共存を再現しません。selector・serviceName・volumeClaimTemplatesは不変です。
+
+Snapshot v29はStatefulSet・Pod世代・前回スケールの再利用PVC/PVを保存します。v1〜v28には空StatefulSet集合を補完し、v28のprivate接続設定/評価・コンテキスト接続先・既定プール削除/管理/自動スケール評価、Ingress/NetworkPolicy・PVC/PVデータと従来の状態を保持します。namespace/クラスタの削除はその配下のStatefulSetも削除します。
+
+独立した2ミッションは、1 Podだけの再作成と1→2レプリカでの元のPVC/PV再利用を判定します。設定だけ・別のPodの削除・新しいPVCへ同じ内容を書き直しただけではクリアしません。headless Service、保存したmanifest、2つの独立したファイルと起動状態も照合します。
+
+公式参照: [StatefulSets](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/)、[Headless Services](https://kubernetes.io/docs/concepts/services-networking/service/#headless-services)。固定identity・安定ストレージ・保持方針に基づく教材ですが、実DNS・ノード配置/ディスク接続・アプリの複製/整合性・順序保証は再現しません。
+
+StatefulSetへの `sim kubernetes connect`、HPA、`kubectl set image/resources`、`kubectl rollout` は未対応です。テンプレートのimageは `kubectl apply` で更新します。PodのIPは教材内で決定的に割り当て、再作成時の実際のIP変更は再現しません。
