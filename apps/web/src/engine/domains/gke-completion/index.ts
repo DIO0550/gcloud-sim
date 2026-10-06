@@ -45,10 +45,8 @@ export const GkePlacement = {
   parse(location: string, value: string | undefined): Result<readonly Zone[], string> {
     const regional = Option.isSome(Region.parse(location));
     const region = regional ? location : location.slice(0, -2);
-    const input =
-      value === undefined
-        ? Zone.all().filter((z) => (regional ? Zone.region(z) === region : z === location))
-        : value.split(",");
+    const defaults = regional ? Zone.all().filter((z) => Zone.region(z) === region) : [location];
+    const input = value === undefined ? defaults : value.split(",");
     if (input.length < 1 || input.length > 3 || new Set(input).size !== input.length) {
       return Result.err("node-locations requires one to three unique zones.");
     }

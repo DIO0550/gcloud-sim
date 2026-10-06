@@ -56,7 +56,8 @@ export const applyGkeLesson = (
     ? ctx.world.kubeServiceAccounts.some(match)
     : ctx.world.kubeVpas.some(match);
   const permission = isAccount ? "container.serviceAccounts" : "container.thirdPartyObjects";
-  const verbs = action === "apply" ? ["get", exists ? "update" : "create"] : [action];
+  const applyVerb = exists ? "update" : "create";
+  const verbs = action === "apply" ? ["get", applyVerb] : [action];
   for (const verb of verbs) {
     const checked = kubePermission(ctx, `${permission}.${verb}`);
     if (!Result.isOk(checked)) {
