@@ -9,7 +9,8 @@ import {
 import { EffectivePermissions } from "@/engine/domains/effective-permissions";
 import { KubeConfig, KubeEnv } from "@/engine/domains/kube-config";
 import { KubeLabels } from "@/engine/domains/kube-labels";
-import { KubeDeployment } from "@/engine/domains/kubernetes";
+import { KubeMulti } from "@/engine/domains/kube-multi";
+import type { KubeDeployment } from "@/engine/domains/kubernetes";
 import type { GkeCluster } from "@/engine/domains/managed-services";
 import { Principal } from "@/engine/domains/principal";
 import { World } from "@/engine/domains/world";
@@ -153,6 +154,12 @@ export const setEnv = (
   const changes = args.positionals.slice(offset);
   const from = ParsedArgs.string(args, "from");
   const list = ParsedArgs.boolean(args, "list");
+  const container = Option.unwrapOr(ParsedArgs.string(args, "containers"), "*");
+  const specs = KubeMulti.spec(d);
+  const targets = specs.filter((c) => container === "*" || c.name === container);
+  if (targets.length === 0) {
+    return invalid("Container not found.");
+  }
   if (list) {
     if (
       changes.length ||
@@ -164,7 +171,9 @@ export const setEnv = (
     return Result.ok({
       world: ctx.world,
       output: CommandOutput.messages(
-        ...d.env.map((e) => OutputMessage.plain(`${e.name}=${KubeEnv.display(e)}`)),
+        ...targets.flatMap((c) =>
+          c.env.map((e) => OutputMessage.plain(`${c.name}: ${e.name}=${KubeEnv.display(e)}`)),
+        ),
       ),
     });
   }
@@ -225,12 +234,23 @@ export const setEnv = (
   const names = [...updates.map((e) => e.name), ...removals];
   if (new Set(names).size !== names.length)
     return invalid("Duplicate environment name after conversion.");
-  const env = [...d.env.filter((e) => !names.includes(e.name)), ...updates].toSorted((a, b) =>
-    a.name.localeCompare(b.name),
-  );
-  if (!KubeEnv.validate(env))
-    return invalid("Environment names must use [A-Za-z_][A-Za-z0-9_]* (maximum 100).");
-  const next = KubeDeployment.withEnv(d, env);
+  const updated = specs.map((c) => {
+    if (!targets.some((t) => t.name === c.name)) {
+      return c;
+    }
+    return {
+      ...c,
+      env: [...c.env.filter((e) => !names.includes(e.name)), ...updates].toSorted((a, b) =>
+        a.name.localeCompare(b.name),
+      ),
+    };
+  });
+  if (updated.some((c) => !KubeEnv.validate(c.env))) {
+    return invalid(
+      "Environment names must use [A-Za-z_][A-Za-z0-9_]* (maximum 100 per container).",
+    );
+  }
+  const next = KubeMulti.update(d, updated);
   return Result.ok({
     world: World.replaceKubeDeployment(ctx.world, next),
     output: CommandOutput.messages(

@@ -104,6 +104,11 @@ import type { ValueOf } from "@/types/ValueOf";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 import {
+  type GkeCompletionAssertion,
+  GkeCompletionMissions,
+  gkeCompletionSatisfied,
+} from "./gke-completion";
+import {
   type GkeNodePoolAssertion,
   GkeNodePoolMissions,
   gkeNodePoolSatisfied,
@@ -170,6 +175,7 @@ export type MissionDomain = ValueOf<typeof MissionDomains>;
 
 /** World に対する述語（DJ-010: コマンド文字列ではなく状態で判定する）。値の語彙はドメインの型で閉じる。 */
 export type MissionAssertion =
+  | GkeCompletionAssertion
   | StatefulAssertion
   | GkeNodePoolAssertion
   | GkePrivateAssertion
@@ -348,6 +354,7 @@ const Missions: readonly Mission[] = [
   ...KubeVolumesMissions,
   ...KubeStorageMissions,
   ...StatefulMissions,
+  ...GkeCompletionMissions,
   ...KubeNetworkMissions,
   ...KubeIngressMissions,
   ...GkeNodePoolMissions,
@@ -812,6 +819,8 @@ const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: 
 
 const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
+    case "gkeCompletion":
+      return gkeCompletionSatisfied(world, assertion.lesson);
     case "kubeStatefulPodRecovered":
       return statefulSatisfied(world, false);
     case "kubeStatefulScaleRecovered":

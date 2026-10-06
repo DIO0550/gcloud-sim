@@ -128,7 +128,7 @@ test("Autopilot and zonal private clusters validate references and preserve node
 });
 
 test.each([
-  ["", "Specify a control plane setting"],
+  ["", "Specify a control plane, workload pool or VPA setting"],
   ["--enable-private-nodes", "unrecognized"],
   ["--master-ipv4-cidr=172.16.2.0/28", "unrecognized"],
   ["--master-authorized-networks=203.0.113.0/24", "requires --enable"],
@@ -367,7 +367,7 @@ test("v27 restores all pool management/evaluation/deleted default and Kubernetes
   expect(next.kubeNetworkPolicies).toEqual(s.world.kubeNetworkPolicies);
   expect(next.clusters[0]?.controlPlane).toEqual(GkeControlPlane.public());
   expect(next.kubeContextEndpoints).toEqual({});
-  expect(Snapshot.create(next, Now).schemaVersion).toBe(29);
+  expect(Snapshot.create(next, Now).schemaVersion).toBe(30);
 });
 
 test.each(["cidr", "network", "overlap", "enforcement", "stale", "source", "context", "subnet"])(

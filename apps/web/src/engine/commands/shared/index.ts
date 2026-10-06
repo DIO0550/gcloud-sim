@@ -30,6 +30,7 @@ import {
 import { Instance } from "@/engine/domains/compute";
 import { ConfigProperty, GcloudConfig } from "@/engine/domains/gcloud-config";
 import { IamMember, IamPolicy, RoleName } from "@/engine/domains/iam-policy";
+import { KubeContext } from "@/engine/domains/kube-context";
 import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { KubeStorage } from "@/engine/domains/kube-storage";
 import { KubePod } from "@/engine/domains/kubernetes";
@@ -190,6 +191,26 @@ export const Candidates = {
           ),
         )
       : [];
+  }),
+  kubeVpas: inProject((world, projectId) => {
+    const cluster = KubeContext.current(world, projectId);
+    if (!Option.isSome(cluster)) {
+      return [];
+    }
+
+    return world.kubeVpas
+      .filter((v) => v.projectId === projectId && v.cluster === cluster.value.name)
+      .map((v) => v.name);
+  }),
+  kubeServiceAccounts: inProject((world, projectId) => {
+    const cluster = KubeContext.current(world, projectId);
+    if (!Option.isSome(cluster)) {
+      return [];
+    }
+
+    return world.kubeServiceAccounts
+      .filter((s) => s.projectId === projectId && s.cluster === cluster.value.name)
+      .map((s) => s.name);
   }),
   kubeStorage: ((world, projectId, positionals = []) => {
     if (!Option.isSome(projectId)) return [];

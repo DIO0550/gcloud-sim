@@ -1,5 +1,6 @@
-import type { MachineTypeName, Region, Zone } from "@/engine/domains/catalog";
+import { type MachineTypeName, type Region, Zone } from "@/engine/domains/catalog";
 import { ResourceName } from "@/engine/domains/compute";
+import { GkePlacement } from "@/engine/domains/gke-completion";
 import { GkeControlPlane } from "@/engine/domains/gke-control-plane";
 import type { JsonRecord } from "@/types/Json";
 import { Option } from "@/utils/Option";
@@ -11,6 +12,10 @@ export type GkeCluster = Readonly<{
   name: string;
   location: Zone | Region;
   nodeCount: number;
+  nodeLocations?: readonly Zone[];
+  workloadPool?: string;
+  gkeMetadataServer?: boolean;
+  verticalPodAutoscaling?: boolean;
   autopilot: boolean;
   networkPolicyEnabled: boolean;
   controlPlane: GkeControlPlane;
@@ -87,7 +92,19 @@ export const GkeCluster = {
       location: cluster.location,
       status: cluster.status,
       currentMasterVersion: cluster.currentMasterVersion,
-      currentNodeCount: cluster.nodeCount,
+      currentNodeCount: cluster.autopilot
+        ? 0
+        : cluster.nodeCount * GkePlacement.zones(cluster).length,
+      locations: GkePlacement.zones(cluster),
+      controlPlaneReplicas: Option.isSome(Zone.parse(cluster.location)) ? 1 : 3,
+      workloadIdentityConfig: {
+        workloadPool: cluster.autopilot
+          ? `${cluster.projectId}.svc.id.goog`
+          : (cluster.workloadPool ?? ""),
+      },
+      verticalPodAutoscaling: {
+        enabled: cluster.autopilot || cluster.verticalPodAutoscaling === true,
+      },
       autopilot: { enabled: cluster.autopilot },
       networkPolicy: { enabled: cluster.networkPolicyEnabled },
       nodeConfig: {
@@ -175,6 +192,7 @@ export const CloudRunService = {
 
 /** GKE Standard クラスタのノードプール（`gcloud container node-pools`）。 */
 export type NodePool = Readonly<{
+  workloadMetadata?: "GCE_METADATA" | "GKE_METADATA";
   projectId: string;
   cluster: string;
   name: string;
@@ -211,6 +229,7 @@ export const NodePool = {
       nodeCount: Option<number>;
       diskSizeGb: Option<number>;
       version: string;
+      workloadMetadata?: "GCE_METADATA" | "GKE_METADATA";
       autoRepair?: boolean;
       autoUpgrade?: boolean;
       autoscaling?: Option<NodePoolAutoscaling>;
@@ -235,6 +254,7 @@ export const NodePool = {
       nodeCount,
       diskSizeGb,
       version: seed.version,
+      workloadMetadata: seed.workloadMetadata ?? "GCE_METADATA",
       autoRepair: seed.autoRepair ?? true,
       autoUpgrade: seed.autoUpgrade ?? true,
       autoscaling,
@@ -248,6 +268,7 @@ export const NodePool = {
       projectId: cluster.projectId,
       cluster: cluster.name,
       name: "default-pool",
+      workloadMetadata: cluster.gkeMetadataServer ? "GKE_METADATA" : "GCE_METADATA",
       machineType: cluster.machineType,
       nodeCount: cluster.nodeCount,
       diskSizeGb: 100,
@@ -273,6 +294,12 @@ export const NodePool = {
   },
 
   valid(pool: NodePool): boolean {
+    if (
+      pool.workloadMetadata !== undefined &&
+      !["GCE_METADATA", "GKE_METADATA"].includes(pool.workloadMetadata)
+    ) {
+      return false;
+    }
     if (
       !NodePool.validCount(pool.nodeCount) ||
       !Number.isSafeInteger(pool.diskSizeGb) ||
@@ -340,6 +367,7 @@ export const NodePool = {
 
   toRecord(pool: NodePool): JsonRecord {
     return {
+      workloadMetadataConfig: { mode: pool.workloadMetadata ?? "GCE_METADATA" },
       name: pool.name,
       initialNodeCount: pool.nodeCount,
       management: { autoRepair: pool.autoRepair, autoUpgrade: pool.autoUpgrade },

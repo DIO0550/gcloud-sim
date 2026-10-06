@@ -57,6 +57,7 @@ import {
 } from "@/features/simulator/components/ServiceProperties";
 import { type ConsoleScreen, ConsoleScreens } from "@/features/simulator/features/console";
 import { Option } from "@/utils/Option";
+import { GkeLessonProperties } from "./GkeLessonProperties";
 import { IngressProperties } from "./IngressProperties";
 import { StatefulSetProperties } from "./StatefulSetProperties";
 
@@ -127,6 +128,8 @@ const Body = ({
       return <StatefulSetProperties world={world} selection={selection} />;
     case "kube-deployment":
       return <KubeDeploymentProperties world={world} selection={selection} />;
+    case "kube-lesson":
+      return <GkeLessonProperties world={world} selection={selection} />;
     case "kube-hpa":
       return <KubeHpaProperties world={world} selection={selection} />;
     case "kube-config":
@@ -208,6 +211,7 @@ const titleOf = (selection: TreeSelection): string => {
     case "kube-service":
     case "kube-config":
     case "kube-hpa":
+    case "kube-lesson":
     case "run-service":
     case "function":
     case "sql-instance":
@@ -287,6 +291,8 @@ const kindLabel = (selection: TreeSelection): string => {
       return `apps/v1 StatefulSet · clusters/${selection.cluster}`;
     case "kube-deployment":
       return `apps/v1 Deployment · clusters/${selection.cluster}`;
+    case "kube-lesson":
+      return `${selection.resourceKind === "vpa" ? "autoscaling.k8s.io/v1 VPA" : "v1 ServiceAccount"} · clusters/${selection.cluster}`;
     case "kube-hpa":
       return `autoscaling/v2 HPA · clusters/${selection.cluster}`;
     case "kube-config":

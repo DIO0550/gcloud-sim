@@ -1,7 +1,9 @@
 import { CommandFailure } from "@/engine/cli/command-failure";
 import { CommandOutput, type CommandResult, OutputMessage } from "@/engine/cli/command-spec";
+import { KubeIdentity } from "@/engine/domains/gke-completion";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import type { WorkloadManifest } from "@/engine/domains/kube-manifest/workloads";
+import { KubeMulti } from "@/engine/domains/kube-multi";
 import { KubeDeployment, KubeService } from "@/engine/domains/kubernetes";
 import type { GkeCluster } from "@/engine/domains/managed-services";
 import { World } from "@/engine/domains/world";
@@ -42,6 +44,18 @@ export const applyWorkload = (
       ),
     });
   if (manifest.kind === "deployment") {
+    if (
+      action !== "delete" &&
+      !KubeIdentity.accounts(ctx.world, cluster, ctx.namespace).some(
+        (s) => s.name === manifest.serviceAccountName,
+      )
+    ) {
+      return Result.err(
+        CommandFailure.invalidArgumentWith(
+          "Pod serviceAccountName refers to a missing ServiceAccount in this namespace.",
+        ),
+      );
+    }
     const current = World.findKubeDeployment(ctx.world, cluster, manifest.name, ctx.namespace);
     if (Option.isSome(current)) {
       if (action === "delete")
@@ -65,6 +79,9 @@ export const applyWorkload = (
         manifest.startupProbe,
         manifest.volumes,
         manifest.volumeMounts,
+        manifest.extraContainers,
+        manifest.containerName,
+        manifest.serviceAccountName,
       );
       if (next === current.value) return finish(ctx.world, "unchanged");
       return finish(World.replaceKubeDeployment(ctx.world, next), "configured");
@@ -84,6 +101,9 @@ export const applyWorkload = (
     if (!Result.isOk(created)) return Result.err(CommandFailure.invalidArgumentWith(created.error));
     const deployment = {
       ...created.value,
+      extraContainers: manifest.extraContainers.map(KubeMulti.fresh),
+      containerName: manifest.containerName,
+      serviceAccountName: manifest.serviceAccountName,
       env: manifest.env,
       volumes: manifest.volumes,
       volumeMounts: manifest.volumeMounts,
@@ -93,6 +113,9 @@ export const applyWorkload = (
       startupProbe: manifest.startupProbe,
       revisions: created.value.revisions.map((r) => ({
         ...r,
+        extraContainers: manifest.extraContainers,
+        containerName: manifest.containerName,
+        serviceAccountName: manifest.serviceAccountName,
         env: manifest.env,
         volumes: manifest.volumes,
         volumeMounts: manifest.volumeMounts,

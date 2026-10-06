@@ -5,10 +5,9 @@ import {
   OutputMessage,
   ParsedArgs,
 } from "@/engine/cli/command-spec";
-import { ImagePull } from "@/engine/domains/image-pull";
-import { KubeRuntime } from "@/engine/domains/kube-config";
 import { KubeContainer } from "@/engine/domains/kube-container";
 import { KubeLiveness } from "@/engine/domains/kube-liveness";
+import { KubeMulti } from "@/engine/domains/kube-multi";
 import { KubeReadiness } from "@/engine/domains/kube-readiness";
 import { KubeStartup } from "@/engine/domains/kube-startup";
 import { KubePod } from "@/engine/domains/kubernetes";
@@ -31,7 +30,15 @@ export const probeContainers = (
   const found = World.findKubeDeployment(ctx.world, cluster, name, ctx.namespace);
   if (!Option.isSome(found))
     return Result.err(CommandFailure.notFoundWith(`deployment "${name}" not found`));
-  const d = found.value;
+  const owner = found.value;
+  const selectedContainer = KubeMulti.select(
+    owner,
+    Option.unwrapOr(ParsedArgs.string(args, "container"), undefined),
+  );
+  if (!Result.isOk(selectedContainer)) {
+    return invalid(selectedContainer.error);
+  }
+  const d = selectedContainer.value;
   const configured = {
     readiness: d.readinessProbe,
     liveness: d.livenessProbe,
@@ -50,8 +57,13 @@ export const probeContainers = (
   if (!pods.length)
     return invalid("No matching Pod; check the Deployment replicas and --pod name.");
   for (const pod of pods) {
-    const error =
-      ImagePull.error(ctx.world, cluster, d.image) || KubeRuntime.error(ctx.world, d, pod.name);
+    const error = KubeMulti.containerError(
+      ctx.world,
+      cluster,
+      d,
+      pod.name,
+      d.containerName ?? d.name,
+    );
     if (error) return Result.err(CommandFailure.invalidState(`Cannot probe ${pod.name}: ${error}`));
     if (kind !== "startup" && !KubeContainer.started(d, pod.name))
       return Result.err(
@@ -79,7 +91,10 @@ export const probeContainers = (
     if (samples.some((s) => !Number.isSafeInteger(s.restarts)))
       return invalid("Container restart count limit reached.");
     return Result.ok({
-      world: World.replaceKubeDeployment(ctx.world, KubeStartup.withSamples(d, samples)),
+      world: World.replaceKubeDeployment(
+        ctx.world,
+        KubeMulti.withRuntime(owner, KubeStartup.withSamples(d, samples)),
+      ),
       output: CommandOutput.messages(
         ...samples.map((s) =>
           OutputMessage.plain(
@@ -104,7 +119,10 @@ export const probeContainers = (
     );
     if (samples.some((s) => !Number.isSafeInteger(s.restarts)))
       return invalid("Container restart count limit reached.");
-    const world = World.replaceKubeDeployment(ctx.world, KubeLiveness.withSamples(d, samples));
+    const world = World.replaceKubeDeployment(
+      ctx.world,
+      KubeMulti.withRuntime(owner, KubeLiveness.withSamples(d, samples)),
+    );
     return Result.ok({
       world,
       output: CommandOutput.messages(
@@ -133,7 +151,7 @@ export const probeContainers = (
     podReadiness: [...d.podReadiness.filter((s) => !names.has(s.podName)), ...samples],
   };
   return Result.ok({
-    world: World.replaceKubeDeployment(ctx.world, next),
+    world: World.replaceKubeDeployment(ctx.world, KubeMulti.withRuntime(owner, next)),
     output: CommandOutput.messages(
       ...samples.map((s) =>
         OutputMessage.plain(

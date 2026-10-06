@@ -44,6 +44,8 @@ const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElem
 
 const assertionLabel = (assertion: Mission["assertions"][number]): string => {
   switch (assertion.kind) {
+    case "gkeCompletion":
+      return "構成・コンテナ状態・権限・教材の評価結果をそろえる";
     case "kubeStatefulPodRecovered":
       return "同じPod名・PVC・データで復旧し、もう1つのPodを保持";
     case "kubeStatefulScaleRecovered":

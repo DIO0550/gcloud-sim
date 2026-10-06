@@ -1,6 +1,7 @@
 import { KubeEnv } from "@/engine/domains/kube-config";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeLiveness, type LivenessProbe } from "@/engine/domains/kube-liveness";
+import { type ContainerSpec, KubeMulti } from "@/engine/domains/kube-multi";
 import { KubeReadiness, type ReadinessProbe } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeStartup, type StartupProbe } from "@/engine/domains/kube-startup";
@@ -14,6 +15,9 @@ import { parseVolumes } from "./volumes";
 export type WorkloadManifest =
   | Readonly<{
       kind: "deployment";
+      extraContainers: readonly ContainerSpec[];
+      containerName: string;
+      serviceAccountName: string;
       name: string;
       namespace: string | undefined;
       image: string;
@@ -134,9 +138,9 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
   if (!KubeLabels.matches(matchLabels, podLabels))
     return fail("Deployment selector must match template labels.");
   const pod = record(template.spec, "template.spec");
-  fields(pod, ["containers", "volumes"], "template.spec");
-  if (!Array.isArray(pod.containers) || pod.containers.length !== 1)
-    return fail("Use exactly one container.");
+  fields(pod, ["containers", "volumes", "serviceAccountName"], "template.spec");
+  if (!Array.isArray(pod.containers) || pod.containers.length < 1 || pod.containers.length > 10)
+    return fail("Use one to ten uniquely named containers.");
   const container = record(pod.containers[0], "container");
   fields(
     container,
@@ -152,8 +156,27 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
     ],
     "container",
   );
-  if (container.name !== meta.name)
-    return fail("Container name must equal Deployment name on gcloud-sim.");
+  if (typeof container.name !== "string" || !Result.isOk(KubeName.parse(container.name))) {
+    return fail("Invalid container name.");
+  }
+  const serviceAccountName = pod.serviceAccountName ?? "default";
+  if (typeof serviceAccountName !== "string" || !Result.isOk(KubeName.parse(serviceAccountName))) {
+    return fail("Invalid serviceAccountName.");
+  }
+  const extraContainers = pod.containers.slice(1).map((entry): ContainerSpec => {
+    const parsed = parseWorkload({
+      ...r,
+      spec: { ...spec, template: { ...template, spec: { ...pod, containers: [entry] } } },
+    });
+    if (parsed.kind !== "deployment") {
+      return fail("Invalid Deployment container.");
+    }
+    return KubeMulti.containerSpec({ ...parsed, name: parsed.containerName });
+  });
+  const names = [container.name, ...extraContainers.map((c) => c.name)];
+  if (new Set(names).size !== names.length) {
+    return fail("Container names must be unique.");
+  }
   if (typeof container.image !== "string") return fail("Container image must be a string.");
   if (spec.replicas !== undefined && typeof spec.replicas !== "number")
     return fail("replicas must be an integer.");
@@ -186,6 +209,9 @@ export const parseWorkload = (r: Record<string, unknown>): WorkloadManifest => {
   if (!Result.isOk(valid)) return fail(valid.error);
   return {
     kind: "deployment",
+    extraContainers,
+    containerName: container.name,
+    serviceAccountName,
     name: meta.name,
     namespace: ns,
     image: container.image,

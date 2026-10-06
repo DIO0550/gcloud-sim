@@ -55,6 +55,20 @@ export const applyHpa = (
     return Result.err(
       CommandFailure.invalidArgumentWith("Only one HPA per Deployment is supported on gcloud-sim."),
     );
+  if (
+    ctx.world.kubeVpas.some(
+      (v) =>
+        v.projectId === cluster.projectId &&
+        v.cluster === cluster.name &&
+        v.namespace === ctx.namespace &&
+        v.target === manifest.target &&
+        v.mode !== "Off",
+    )
+  ) {
+    return Result.err(
+      CommandFailure.invalidArgumentWith("CPU HPA conflicts with automatic CPU VPA."),
+    );
+  }
   if (existing && KubeHpa.sameSpec(existing, manifest)) return finish(ctx.world, "unchanged");
   // A new spec invalidates the teaching sample; only an explicit reconcile evaluates it again.
   const next: KubeHpa = {

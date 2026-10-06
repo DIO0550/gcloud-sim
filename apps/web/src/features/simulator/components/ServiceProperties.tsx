@@ -1,12 +1,15 @@
 import type { ReactElement } from "react";
+import { Zone } from "@/engine/domains/catalog";
+import { GkePlacement } from "@/engine/domains/gke-completion";
 import { GkeControlPlane } from "@/engine/domains/gke-control-plane";
-import { ImagePull } from "@/engine/domains/image-pull";
-import { KubeEnv, KubeRuntime } from "@/engine/domains/kube-config";
+import { KubeEnv } from "@/engine/domains/kube-config";
 import { KubeBinary } from "@/engine/domains/kube-config/binary";
+import { KubeContainer } from "@/engine/domains/kube-container";
 import { KubeContext } from "@/engine/domains/kube-context";
 import { KubeHpa } from "@/engine/domains/kube-hpa";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeLiveness } from "@/engine/domains/kube-liveness";
+import { KubeMulti } from "@/engine/domains/kube-multi";
 import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { KubeReadiness } from "@/engine/domains/kube-readiness";
 import { KubeResources } from "@/engine/domains/kube-resources";
@@ -69,7 +72,24 @@ export const ClusterProperties = ({
           { label: "location", value: c.location },
           { label: "mode", value: c.autopilot ? "Autopilot" : "Standard" },
           { label: "NetworkPolicy", value: c.networkPolicyEnabled ? "有効" : "無効" },
-          { label: "nodeCount", value: String(c.nodeCount) },
+          { label: "ノード数 / zone", value: String(c.nodeCount) },
+          {
+            label: "node zones",
+            value: c.autopilot ? "GKEが管理" : GkePlacement.zones(c).join(", "),
+          },
+          {
+            label: "総ノード数",
+            value: c.autopilot ? "GKEが管理" : String(c.nodeCount * GkePlacement.zones(c).length),
+          },
+          {
+            label: "制御プレーン",
+            value: Option.isSome(Zone.parse(c.location)) ? "zonal" : "regional（複数zoneの設定）",
+          },
+          {
+            label: "Workload Identity",
+            value: c.autopilot ? `${c.projectId}.svc.id.goog` : c.workloadPool || "無効",
+          },
+          { label: "VPA", value: c.autopilot || c.verticalPodAutoscaling ? "有効" : "無効" },
           { label: "machineType", value: c.machineType },
           { label: "nodeServiceAccount", value: c.nodeServiceAccount || "default" },
           { label: "masterVersion", value: c.currentMasterVersion },
@@ -152,6 +172,7 @@ export const NodePoolProperties = ({
         { label: "nodeCount", value: String(pool.value.nodeCount) },
         { label: "diskSizeGb", value: String(pool.value.diskSizeGb) },
         { label: "version", value: pool.value.version },
+        { label: "metadata server", value: pool.value.workloadMetadata ?? "GCE_METADATA" },
         { label: "autoRepair", value: String(pool.value.autoRepair) },
         { label: "autoUpgrade", value: String(pool.value.autoUpgrade) },
         {
@@ -199,7 +220,7 @@ export const KubeDeploymentProperties = ({
           { label: "labels", value: KubeLabels.text(d.labels) },
           { label: "selector", value: KubeLabels.text(d.selector) },
           { label: "Pod labels", value: KubeLabels.text(d.podLabels) },
-          { label: "Pod QoS", value: KubeResources.qosClass(d.resources) },
+          { label: "Pod QoS", value: KubeMulti.qos(d) },
           { label: "replicas", value: String(d.replicas) },
           { label: "generation", value: String(d.generation) },
           { label: "revision", value: String(d.revision) },
@@ -208,7 +229,9 @@ export const KubeDeploymentProperties = ({
       />
       {!KubeResources.equal(d.resources, KubeResources.empty()) && (
         <Section
-          title="CPU・メモリ（1 Podあたり）"
+          title={
+            d.extraContainers?.length ? "CPU・メモリ（先頭コンテナ）" : "CPU・メモリ（1 Podあたり）"
+          }
           rows={[
             { label: "requests", value: KubeResources.text(d.resources.requests) },
             { label: "limits", value: KubeResources.text(d.resources.limits) },
@@ -314,25 +337,70 @@ export const KubeDeploymentProperties = ({
           />
         </>
       )}
+      {d.extraContainers?.length ||
+      (d.serviceAccountName && d.serviceAccountName !== "default") ||
+      world.kubeVpas.some(
+        (v) =>
+          v.projectId === d.projectId &&
+          v.cluster === d.cluster &&
+          v.namespace === d.namespace &&
+          v.target === d.name,
+      ) ? (
+        <Section
+          title="コンテナとID"
+          rows={[
+            { label: "ServiceAccount", value: d.serviceAccountName ?? "default" },
+            ...KubeMulti.spec(d).map((c) => ({ label: `${c.name} · image`, value: c.image })),
+            ...KubeMulti.spec(d).map((c) => ({
+              label: `${c.name} · requests`,
+              value: KubeResources.text(c.resources.requests),
+            })),
+            ...KubeMulti.spec(d).map((c) => ({
+              label: `${c.name} · limits`,
+              value: KubeResources.text(c.resources.limits),
+            })),
+            ...KubePod.fromDeployment(d).flatMap((p) =>
+              KubeMulti.runtimes(KubeMulti.forPod(d, p.name)).map((c) => ({
+                label: `${p.name} · ${c.name}`,
+                value: `${Option.isSome(cluster) && !KubeMulti.containerError(world, cluster.value, c.runtime, p.name, c.name) && KubeReadiness.ready(c.runtime, p.name) ? "Ready" : "NotReady"} / RESTARTS=${KubeContainer.restarts(c.runtime, p.name)} / ${KubeResources.text(c.runtime.resources.requests)}`,
+              })),
+            ),
+          ]}
+        />
+      ) : null}
       <Section
         title="更新履歴（最大11件）"
         rows={d.revisions.map((r) => ({
           label: `revision ${r.revision} (${r.reason})`,
-          value: r.image,
+          value: d.extraContainers?.length
+            ? KubeMulti.revisionSpec(d, r)
+                .map((c) => `${c.name}: ${c.image}`)
+                .join(" · ")
+            : r.image,
         }))}
       />
       <Section
         title="環境変数（Pod template）"
-        rows={d.env.map((e) => ({ label: e.name, value: KubeEnv.display(e) }))}
+        rows={KubeMulti.spec(d).flatMap((c) =>
+          c.env.map((e) => ({
+            label: d.extraContainers?.length ? `${c.name} · ${e.name}` : e.name,
+            value: KubeEnv.display(e),
+          })),
+        )}
       />
       <Section
         title="Pod"
         rows={KubePod.fromDeployment(d).map((p) => {
-          if (!Option.isSome(cluster)) return { label: p.name, value: "Unknown" };
-          const error =
-            ImagePull.error(world, cluster.value, d.image) || KubeRuntime.error(world, d, p.name);
-          if (error) return { label: p.name, value: error };
-          if (!p.ready) return { label: p.name, value: `${p.status} (NotReady) ${p.ip}` };
+          if (!Option.isSome(cluster)) {
+            return { label: p.name, value: "Unknown" };
+          }
+          const error = KubeMulti.error(world, cluster.value, d, p.name);
+          if (error) {
+            return { label: p.name, value: error };
+          }
+          if (!KubeMulti.ready(d, p.name)) {
+            return { label: p.name, value: `${p.status} (NotReady) ${p.ip}` };
+          }
           return { label: p.name, value: `${p.status} ${p.ip}` };
         })}
       />

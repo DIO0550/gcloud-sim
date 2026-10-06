@@ -1,7 +1,5 @@
-import { ImagePull } from "@/engine/domains/image-pull";
-import { KubeRuntime } from "@/engine/domains/kube-config";
 import { KubeLabels } from "@/engine/domains/kube-labels";
-import { KubeReadiness } from "@/engine/domains/kube-readiness";
+import { KubeMulti } from "@/engine/domains/kube-multi";
 import { KubePod, type KubeService } from "@/engine/domains/kubernetes";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
@@ -15,13 +13,12 @@ export const KubeServiceRouting = {
     const cluster = World.findCluster(world, service.projectId, service.cluster);
     if (!Option.isSome(cluster)) return [];
     return World.kubeWorkloadsOf(world, cluster.value, service.namespace).flatMap((d) => {
-      if (ImagePull.error(world, cluster.value, d.image)) return [];
       return KubePod.fromDeployment(d)
         .filter(
           (p) =>
             KubeLabels.matches(service.selector, p.labels) &&
-            !KubeRuntime.error(world, d, p.name) &&
-            KubeReadiness.ready(d, p.name),
+            !KubeMulti.error(world, cluster.value, d, p.name) &&
+            KubeMulti.ready(d, p.name),
         )
         .map((p) => ({
           deployment: d.name,

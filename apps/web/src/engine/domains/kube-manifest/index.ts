@@ -4,6 +4,8 @@ import { KubeBinary } from "@/engine/domains/kube-config/binary";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { Result } from "@/utils/Result";
+import { GkeFinalExamples } from "./gke-final-examples";
+import { type GkeLessonManifest, parseGkeLesson } from "./gke-lessons";
 import { type HpaManifest, parseHpa } from "./hpa";
 import { type IngressManifest, parseIngress } from "./ingress";
 import { KubeIngressExamples } from "./ingress-examples";
@@ -28,6 +30,7 @@ export type ConfigManifest = Readonly<{
 }>;
 export type NamespaceManifest = Readonly<{ kind: "namespace"; name: string; namespace: undefined }>;
 export type KubeManifest =
+  | GkeLessonManifest
   | NamespaceManifest
   | ConfigManifest
   | WorkloadManifest
@@ -62,6 +65,7 @@ const parseResource = (value: unknown): KubeManifest => {
       return fail("Invalid v1 Namespace name.");
     return { kind: "namespace", name: meta.name, namespace: undefined };
   }
+  if (r.kind === "ServiceAccount" || r.kind === "VerticalPodAutoscaler") return parseGkeLesson(r);
   if (r.kind === "Ingress") return parseIngress(r);
   if (r.kind === "StatefulSet") return parseStatefulSet(r);
   if (r.kind === "NetworkPolicy") return parseNetworkPolicy(r);
@@ -209,6 +213,7 @@ spec:
 
 export const KubeManifestExamples: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   ...StatefulExamples,
+  ...GkeFinalExamples,
   ...KubeVolumeExamples,
   ...KubeStorageExamples,
   ...KubeNetworkExamples,
