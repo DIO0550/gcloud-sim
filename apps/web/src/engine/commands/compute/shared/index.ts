@@ -132,6 +132,11 @@ export const resolveNetworkInterface = (
           ),
         );
   }
+  if (subnet.value.purpose === "REGIONAL_MANAGED_PROXY" || subnet.value.network !== networkName) {
+    return Result.err(
+      CommandFailure.invalidArgumentWith("VMs require a regular subnet in the selected VPC."),
+    );
+  }
   const inSubnet = World.instancesOf(ctx.world, projectId).filter((i) =>
     i.networkInterfaces.some(
       (nic) => nic.subnetwork === subnetName && Zone.region(i.zone) === region,

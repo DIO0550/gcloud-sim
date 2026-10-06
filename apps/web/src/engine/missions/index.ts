@@ -162,6 +162,7 @@ import {
   KubeWorkloadMissions,
   kubeWorkloadSatisfied,
 } from "./kube-workloads";
+import { type LbAssertion, LoadBalancingMissions, lbSatisfied } from "./load-balancing";
 
 /** ACE の 5 ドメイン（設計書 6.2 Mission.domain）。 */
 export const MissionDomains = {
@@ -175,6 +176,7 @@ export type MissionDomain = ValueOf<typeof MissionDomains>;
 
 /** World に対する述語（DJ-010: コマンド文字列ではなく状態で判定する）。値の語彙はドメインの型で閉じる。 */
 export type MissionAssertion =
+  | LbAssertion
   | GkeCompletionAssertion
   | StatefulAssertion
   | GkeNodePoolAssertion
@@ -355,6 +357,7 @@ const Missions: readonly Mission[] = [
   ...KubeStorageMissions,
   ...StatefulMissions,
   ...GkeCompletionMissions,
+  ...LoadBalancingMissions,
   ...KubeNetworkMissions,
   ...KubeIngressMissions,
   ...GkeNodePoolMissions,
@@ -819,6 +822,8 @@ const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: 
 
 const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
+    case "lbLesson":
+      return lbSatisfied(world, assertion.lesson);
     case "gkeCompletion":
       return gkeCompletionSatisfied(world, assertion.lesson);
     case "kubeStatefulPodRecovered":

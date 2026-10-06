@@ -1,5 +1,6 @@
 import { type Region, Zone } from "@/engine/domains/catalog";
 import { LbScope } from "@/engine/domains/load-balancing";
+import type { LbResource } from "@/engine/domains/load-balancing/graph";
 import type { PolicyTarget } from "@/engine/domains/resource-hierarchy";
 import { Option } from "@/utils/Option";
 
@@ -39,7 +40,14 @@ export type TreeSelection =
   | Readonly<{ kind: "firewall"; projectId: string; name: string }>
   | Readonly<{ kind: "address"; projectId: string; region: Option<Region>; name: string }>
   | Readonly<{ kind: "router"; projectId: string; region: Region; name: string }>
-  | Readonly<{ kind: "health-check"; projectId: string; name: string }>
+  | Readonly<{ kind: "health-check"; projectId: string; name: string; scope?: LbScope }>
+  | Readonly<{
+      kind: "lb-resource";
+      projectId: string;
+      name: string;
+      location: string;
+      resourceKind: LbResource["kind"];
+    }>
   | Readonly<{ kind: "backend-service"; projectId: string; scope: LbScope; name: string }>
   | Readonly<{ kind: "forwarding-rule"; projectId: string; scope: LbScope; name: string }>
   | Readonly<{ kind: "bucket"; name: string }>
@@ -193,8 +201,10 @@ export const TreeSelection = {
         return `address:${selection.projectId}/${Option.unwrapOr(selection.region, "global")}/${selection.name}`;
       case "router":
         return `router:${selection.projectId}/${selection.region}/${selection.name}`;
+      case "lb-resource":
+        return `lb:${selection.projectId}/${selection.location}/${selection.resourceKind}/${selection.name}`;
       case "health-check":
-        return `hc:${selection.projectId}/${selection.name}`;
+        return `hc:${selection.projectId}/${LbScope.toPath(selection.scope ?? LbScope.Global)}/${selection.name}`;
       case "backend-service":
         return `bes:${selection.projectId}/${LbScope.toPath(selection.scope)}/${selection.name}`;
       case "forwarding-rule":
@@ -328,8 +338,27 @@ export const TreeSelection = {
         return Option.some(
           `gcloud compute routers describe ${selection.name} --region=${selection.region}`,
         );
+      case "lb-resource": {
+        const paths = {
+          urlMaps: "url-maps",
+          targetHttpProxies: "target-http-proxies",
+          targetHttpsProxies: "target-https-proxies",
+          sslCertificates: "ssl-certificates",
+          networkEndpointGroups: "network-endpoint-groups",
+          backendBuckets: "backend-buckets",
+        };
+        const location =
+          selection.location === "global"
+            ? "--global"
+            : `--${selection.location.startsWith("zones/") ? "zone" : "region"}=${selection.location.split("/")[1]}`;
+        return Option.some(
+          `gcloud compute ${paths[selection.resourceKind]} describe ${selection.name} ${location}`,
+        );
+      }
       case "health-check":
-        return Option.some(`gcloud compute health-checks describe ${selection.name}`);
+        return Option.some(
+          `gcloud compute health-checks describe ${selection.name} ${scopeFlag(selection.scope ?? LbScope.Global)}`,
+        );
       case "backend-service":
         return Option.some(
           `gcloud compute backend-services describe ${selection.name} ${scopeFlag(selection.scope)}`,

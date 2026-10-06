@@ -42,6 +42,8 @@ export type HealthCheck = Readonly<{
   port: number;
   checkIntervalSec: number;
   timeoutSec: number;
+  scope?: LbScope;
+  requestPath?: string;
 }>;
 
 /** プロトコルごとの既定ポート（本物と同じ）。 */
@@ -77,7 +79,7 @@ export const HealthCheck = {
   },
 
   selfLink(check: HealthCheck): string {
-    return `${projectBase(check.projectId)}/global/healthChecks/${check.name}`;
+    return `${projectBase(check.projectId)}/${LbScope.toPath(check.scope ?? LbScope.Global)}/healthChecks/${check.name}`;
   },
 
   toRecord(check: HealthCheck): JsonRecord {
@@ -85,7 +87,10 @@ export const HealthCheck = {
     return {
       name: check.name,
       type: check.protocol,
-      [key]: { port: check.port },
+      [key]:
+        check.protocol === "TCP"
+          ? { port: check.port }
+          : { port: check.port, requestPath: check.requestPath ?? "/" },
       checkIntervalSec: check.checkIntervalSec,
       timeoutSec: check.timeoutSec,
       healthyThreshold: 2,
@@ -122,6 +127,14 @@ export type BackendService = Readonly<{
   /** バックエンドのインスタンスグループの名前 */
   backends: readonly string[];
   timeoutSec: number;
+  backendOptions?: readonly Readonly<{
+    group: string;
+    balancingMode: "UTILIZATION" | "CONNECTION" | "RATE";
+    maxRatePerEndpoint?: number;
+  }>[];
+  portName?: string;
+  enableCdn?: boolean;
+  cacheMode?: "CACHE_ALL_STATIC" | "USE_ORIGIN_HEADERS" | "FORCE_CACHE_ALL";
 }>;
 
 export const BackendService = {
@@ -163,9 +176,17 @@ export const BackendService = {
       name: service.name,
       protocol: service.protocol,
       loadBalancingScheme: service.loadBalancingScheme,
-      healthChecks: service.healthChecks.map((h) => `${base}/global/healthChecks/${h}`),
-      backends: service.backends.map((group) => ({ group })),
+      healthChecks: service.healthChecks.map((h) =>
+        h.startsWith("https://") ? h : `${base}/global/healthChecks/${h}`,
+      ),
+      backends: service.backends.map((group) => ({
+        group,
+        ...(service.backendOptions ?? []).find((o) => o.group === group),
+      })),
       timeoutSec: service.timeoutSec,
+      portName: service.portName ?? "http",
+      enableCDN: service.enableCdn ?? false,
+      cdnPolicy: { cacheMode: service.cacheMode ?? "CACHE_ALL_STATIC" },
       region:
         service.scope.kind === "region" ? `${base}/regions/${service.scope.region}` : undefined,
       selfLink: BackendService.selfLink(service),
@@ -184,6 +205,11 @@ export type ForwardingRule = Readonly<{
   /** 転送先のバックエンドサービスの名前 */
   backendService: string;
   creationTimestamp: string;
+  target?: string;
+  network?: string;
+  subnet?: string;
+  networkTier?: "PREMIUM" | "STANDARD";
+  addressName?: string;
 }>;
 
 export type ForwardingRuleSeed = Readonly<{
@@ -222,7 +248,16 @@ export const ForwardingRule = {
       IPProtocol: rule.ipProtocol,
       portRange: rule.portRange,
       loadBalancingScheme: rule.loadBalancingScheme,
-      target: `${base}/${LbScope.toPath(rule.scope)}/backendServices/${rule.backendService}`,
+      target:
+        rule.target ??
+        `${base}/${LbScope.toPath(rule.scope)}/backendServices/${rule.backendService}`,
+      backendService:
+        rule.backendService === ""
+          ? undefined
+          : `${base}/${LbScope.toPath(rule.scope)}/backendServices/${rule.backendService}`,
+      network: rule.network,
+      subnetwork: rule.subnet,
+      networkTier: rule.networkTier ?? "PREMIUM",
       region: rule.scope.kind === "region" ? `${base}/regions/${rule.scope.region}` : undefined,
       creationTimestamp: rule.creationTimestamp,
       selfLink: ForwardingRule.selfLink(rule),

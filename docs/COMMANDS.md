@@ -21,7 +21,9 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（316）
+## 実装済み（364）
+
+ロードバランサは3種類の接続構成・HC/アプリ/FWの独立診断・NEG・Google-managed HTTPS・CDN設定・backend bucket・依存順の削除に対応します。[LOAD_BALANCING.md](LOAD_BALANCING.md)にミッション、スコープ別権限、旧保存とモデルの範囲を記載しています。
 
 ConfigMap/SecretのYAML/JSONは`immutable: true`に対応します。保護後はデータ更新とfalseへの変更を拒否し、ラベル更新・削除/再作成は可能です。get/describe・プロパティにもフラグを表示します。詳細と教材は[KUBERNETES.md](KUBERNETES.md)に記載しています。
 
@@ -270,7 +272,7 @@ GCS backend使用時、stateを読むshow/output/state list/showにもstorage.ob
 | `gcloud compute networks list` | `compute.networks.list` | `compute.googleapis.com` | — |
 | `gcloud compute networks describe` | `compute.networks.get` | `compute.googleapis.com` | — |
 | `gcloud compute networks delete` | `compute.networks.delete` | `compute.googleapis.com` | — |
-| `gcloud compute networks subnets create` | `compute.subnetworks.create` | `compute.googleapis.com` | `--network` `--range` `--region` `--enable-private-ip-google-access` |
+| `gcloud compute networks subnets create` | `compute.subnetworks.create` | `compute.googleapis.com` | `--network` `--range` `--region` `--purpose` `--role` `--enable-private-ip-google-access` |
 | `gcloud compute networks subnets list` | `compute.subnetworks.list` | `compute.googleapis.com` | — |
 | `gcloud compute networks subnets describe` | `compute.subnetworks.get` | `compute.googleapis.com` | `--region` |
 | `gcloud compute networks peerings create` | `compute.networks.addPeering` | `compute.googleapis.com` | `--network` `--peer-network` `--peer-project` `--export-custom-routes` `--import-custom-routes` |
@@ -278,21 +280,21 @@ GCS backend使用時、stateを読むshow/output/state list/showにもstorage.ob
 | `gcloud compute firewall-rules list` | `compute.firewalls.list` | `compute.googleapis.com` | — |
 | `gcloud compute firewall-rules describe` | `compute.firewalls.get` | `compute.googleapis.com` | — |
 | `gcloud compute firewall-rules delete` | `compute.firewalls.delete` | `compute.googleapis.com` | — |
-| `gcloud compute addresses create` | `compute.addresses.create` | `compute.googleapis.com` | `--region` `--global` `--address-type` `--addresses` `--network-tier` |
-| `gcloud compute addresses list` | `compute.addresses.list` | `compute.googleapis.com` | — |
-| `gcloud compute addresses describe` | `compute.addresses.get` | `compute.googleapis.com` | `--region` `--global` |
+| `gcloud compute addresses create` | スコープ・参照先で検証 | `compute.googleapis.com` | `--region` `--global` `--address-type` `--addresses` `--network-tier` `--ip-version` `--subnet` |
+| `gcloud compute addresses list` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--regions` |
+| `gcloud compute addresses describe` | スコープ・参照先で検証 | `compute.googleapis.com` | `--region` `--global` |
 | `gcloud compute routers create` | `compute.routers.create` | `compute.googleapis.com` | `--network` `--region` `--asn` |
 | `gcloud compute routers list` | `compute.routers.list` | `compute.googleapis.com` | — |
 | `gcloud compute routers describe` | `compute.routers.get` | `compute.googleapis.com` | `--region` |
-| `gcloud compute health-checks create` | `compute.healthChecks.create` | `compute.googleapis.com` | `--tcp` `--http` `--https` `--port` `--global` |
-| `gcloud compute health-checks list` | `compute.healthChecks.list` | `compute.googleapis.com` | — |
-| `gcloud compute health-checks describe` | `compute.healthChecks.get` | `compute.googleapis.com` | `--global` |
-| `gcloud compute backend-services create` | `compute.backendServices.create` | `compute.googleapis.com` | `--global` `--region` `--protocol` `--health-checks` `--load-balancing-scheme` `--timeout` |
-| `gcloud compute backend-services list` | `compute.backendServices.list` | `compute.googleapis.com` | — |
-| `gcloud compute backend-services describe` | `compute.backendServices.get` | `compute.googleapis.com` | `--global` `--region` |
-| `gcloud compute forwarding-rules create` | `compute.forwardingRules.create` | `compute.googleapis.com` | `--global` `--region` `--backend-service` `--address` `--ports` `--load-balancing-scheme` |
-| `gcloud compute forwarding-rules list` | `compute.forwardingRules.list` | `compute.googleapis.com` | — |
-| `gcloud compute forwarding-rules describe` | `compute.forwardingRules.get` | `compute.googleapis.com` | `--global` `--region` |
+| `gcloud compute health-checks create` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--port` `--request-path` `--check-interval` `--timeout` `--http` `--https` `--tcp` |
+| `gcloud compute health-checks list` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--regions` |
+| `gcloud compute health-checks describe` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
+| `gcloud compute backend-services create` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--protocol` `--health-checks` `--health-checks-region` `--load-balancing-scheme` `--port-name` `--timeout` `--enable-cdn` `--cache-mode` |
+| `gcloud compute backend-services list` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--regions` |
+| `gcloud compute backend-services describe` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
+| `gcloud compute forwarding-rules create` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--backend-service` `--target-http-proxy` `--target-https-proxy` `--target-http-proxy-region` `--target-https-proxy-region` `--address` `--ports` `--ip-protocol` `--load-balancing-scheme` `--network-tier` `--network` `--subnet` |
+| `gcloud compute forwarding-rules list` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--regions` |
+| `gcloud compute forwarding-rules describe` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
 | `gcloud compute instance-templates create` | `compute.instanceTemplates.create` | `compute.googleapis.com` | `--machine-type` `--image-family` `--image-project` `--network` `--subnet` `--tags` `--service-account` `--scopes` `--preemptible` `--provisioning-model` `--metadata` `--boot-disk-size` `--boot-disk-type` `--address` |
 | `gcloud compute instance-templates list` | `compute.instanceTemplates.list` | `compute.googleapis.com` | — |
 | `gcloud compute instance-templates describe` | `compute.instanceTemplates.get` | `compute.googleapis.com` | — |
@@ -523,6 +525,55 @@ HPAは`autoscale`またはautoscaling/v2の仮想YAML/JSONで作成し、`get/de
 | `gcloud deployment-manager deployments create` | `deploymentmanager.deployments.create` | `deploymentmanager.googleapis.com` | `--config` `--preview` |
 | `gcloud deployment-manager deployments list` | `deploymentmanager.deployments.list` | `deploymentmanager.googleapis.com` | — |
 | `gcloud deployment-manager deployments describe` | `deploymentmanager.deployments.get` | `deploymentmanager.googleapis.com` | — |
+
+| `gcloud compute health-checks create tcp` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--port` `--request-path` `--check-interval` `--timeout` |
+| `gcloud compute health-checks create http` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--port` `--request-path` `--check-interval` `--timeout` |
+| `gcloud compute health-checks create https` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--port` `--request-path` `--check-interval` `--timeout` |
+| `gcloud compute backend-services update` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--protocol` `--health-checks` `--health-checks-region` `--load-balancing-scheme` `--port-name` `--timeout` `--enable-cdn` `--cache-mode` |
+| `gcloud compute backend-services add-backend` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--instance-group` `--instance-group-zone` `--instance-group-region` `--network-endpoint-group` `--network-endpoint-group-zone` `--balancing-mode` `--max-rate-per-endpoint` |
+| `gcloud compute backend-services remove-backend` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--instance-group` `--instance-group-zone` `--instance-group-region` `--network-endpoint-group` `--network-endpoint-group-zone` |
+| `gcloud compute backend-services get-health` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
+| `gcloud compute url-maps create` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--default-service` `--default-backend-bucket` |
+| `gcloud compute url-maps describe` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
+| `gcloud compute url-maps list` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--regions` |
+| `gcloud compute target-http-proxies create` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--url-map` `--url-map-region` `--ssl-certificates` |
+| `gcloud compute target-http-proxies describe` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
+| `gcloud compute target-http-proxies list` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--regions` |
+| `gcloud compute target-https-proxies create` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--url-map` `--url-map-region` `--ssl-certificates` |
+| `gcloud compute target-https-proxies describe` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
+| `gcloud compute target-https-proxies list` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--regions` |
+| `gcloud compute ssl-certificates create` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--domains` |
+| `gcloud compute ssl-certificates describe` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
+| `gcloud compute ssl-certificates list` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--regions` |
+| `gcloud compute network-endpoint-groups create` | スコープ・参照先で検証 | `compute.googleapis.com` | `--zone` `--network-endpoint-type` `--network` `--subnet` `--default-port` |
+| `gcloud compute network-endpoint-groups describe` | スコープ・参照先で検証 | `compute.googleapis.com` | `--zone` |
+| `gcloud compute network-endpoint-groups list` | スコープ・参照先で検証 | `compute.googleapis.com` | - |
+| `gcloud compute backend-buckets create` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--gcs-bucket-name` `--enable-cdn` `--cache-mode` |
+| `gcloud compute backend-buckets describe` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
+| `gcloud compute backend-buckets list` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--regions` |
+| `gcloud compute url-maps add-path-matcher` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--path-matcher-name` `--default-service` `--new-hosts` `--path-rules` |
+| `gcloud compute network-endpoint-groups update` | スコープ・参照先で検証 | `compute.googleapis.com` | `--zone` `--add-endpoint` `--remove-endpoint` |
+| `gcloud compute instance-groups managed list-instances` | `compute.instanceGroupManagers.get` | `compute.googleapis.com` | `--zone` `--region` |
+| `gcloud compute instance-groups managed set-named-ports` | `compute.instanceGroups.setNamedPorts` | `compute.googleapis.com` | `--zone` `--region` `--named-ports` |
+| `gcloud compute instance-groups set-named-ports` | `compute.instanceGroups.setNamedPorts` | `compute.googleapis.com` | `--zone` `--region` `--named-ports` |
+| `gcloud compute instance-groups get-named-ports` | `compute.instanceGroups.get` | `compute.googleapis.com` | `--zone` `--region` |
+| `gcloud compute url-maps delete` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
+| `gcloud compute target-http-proxies delete` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
+| `gcloud compute target-https-proxies delete` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
+| `gcloud compute ssl-certificates delete` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
+| `gcloud compute network-endpoint-groups delete` | スコープ・参照先で検証 | `compute.googleapis.com` | `--zone` |
+| `gcloud compute backend-buckets delete` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
+| `gcloud compute health-checks delete` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
+| `gcloud compute backend-services delete` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
+| `gcloud compute forwarding-rules delete` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
+| `gcloud compute addresses delete` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
+| `gcloud compute instance-groups managed delete` | `compute.instanceGroupManagers.delete` | `compute.googleapis.com` | `--zone` `--region` |
+| `gcloud compute instance-templates delete` | `compute.instanceTemplates.delete` | `compute.googleapis.com` | - |
+| `gcloud compute networks subnets delete` | `compute.subnetworks.delete` | `compute.googleapis.com` | `--region` |
+| `sim load-balancing serve` | `compute.instances.setMetadata` | `compute.googleapis.com` | `--zone` `--region` `--instance` `--port` `--protocol` `--path` `--status-code` |
+| `sim load-balancing probe` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--port` `--host` `--path` `--source-ip` `--source-network` `--source-region` `--min-healthy` |
+| `sim load-balancing activate-certificate` | `compute.sslCertificates.get` / `compute.targetHttpsProxies.setSslCertificates` | `compute.googleapis.com` | `--global` `--region` |
+| `sim load-balancing checkpoint` | `compute.projects.setCommonInstanceMetadata` | `compute.googleapis.com` | `--global` `--region` |
 
 ## 解決はできるが未実装（0）
 

@@ -67,15 +67,17 @@ test("ロードバランサの部品はそれぞれ describe できる", () => {
   const s = run(
     session(),
     "gcloud compute health-checks create hc --http --port=80",
-    "gcloud compute backend-services create web-bes --global --health-checks=hc",
-    "gcloud compute forwarding-rules create web-fr --global --backend-service=web-bes",
+    "gcloud compute backend-services create web-bes --global --load-balancing-scheme=EXTERNAL_MANAGED --health-checks=hc",
+    "gcloud compute url-maps create web-map --global --default-service=web-bes",
+    "gcloud compute target-http-proxies create web-proxy --global --url-map=web-map",
+    "gcloud compute forwarding-rules create web-fr --global --load-balancing-scheme=EXTERNAL_MANAGED --target-http-proxy=web-proxy",
   );
   expect(run(s, "gcloud compute health-checks describe hc").text).toContain("type: HTTP");
   expect(run(s, "gcloud compute backend-services describe web-bes --global").text).toContain(
     "healthChecks/hc",
   );
   expect(run(s, "gcloud compute forwarding-rules describe web-fr --global").text).toContain(
-    "backendServices/web-bes",
+    "targetHttpProxies/web-proxy",
   );
   expect(run(s, "gcloud compute health-checks describe nope").text).toContain(
     "healthChecks/nope' was not found",

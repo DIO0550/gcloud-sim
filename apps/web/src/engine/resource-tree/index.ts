@@ -139,8 +139,22 @@ const instanceGroupNodes = (world: World, id: string): readonly TreeNode[] => [
 ];
 
 const loadBalancingNodes = (world: World, id: string): readonly TreeNode[] => [
+  ...world.lbResources
+    .filter((r) => r.projectId === id)
+    .map((r) =>
+      leaf(
+        {
+          kind: "lb-resource",
+          projectId: id,
+          name: r.name,
+          location: r.location,
+          resourceKind: r.kind,
+        },
+        `${r.kind}: ${r.name}`,
+      ),
+    ),
   ...World.namedOf(world, "healthChecks", id).map((h) =>
-    leaf({ kind: "health-check", projectId: id, name: h.name }, `hc: ${h.name}`),
+    leaf({ kind: "health-check", projectId: id, name: h.name, scope: h.scope }, `hc: ${h.name}`),
   ),
   ...World.namedOf(world, "backendServices", id).map((b) =>
     leaf(
