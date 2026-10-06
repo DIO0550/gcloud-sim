@@ -54,6 +54,8 @@ import {
   type HealthCheck,
   LbScope,
 } from "@/engine/domains/load-balancing";
+import { type LbResource, lbLocation } from "@/engine/domains/load-balancing/graph";
+import { validateLbGraph } from "@/engine/domains/load-balancing/validation";
 import {
   type CloudRunService,
   type GkeCluster,
@@ -120,6 +122,7 @@ export type World = Readonly<{
   routers: readonly Router[];
   peerings: readonly NetworkPeering[];
   healthChecks: readonly HealthCheck[];
+  lbResources: readonly LbResource[];
   backendServices: readonly BackendService[];
   forwardingRules: readonly ForwardingRule[];
   instanceTemplates: readonly InstanceTemplate[];
@@ -246,6 +249,8 @@ export type LocatedCollection =
   | "subnets"
   | "addresses"
   | "routers"
+  | "healthChecks"
+  | "lbResources"
   | "backendServices"
   | "forwardingRules"
   | "instanceGroups"
@@ -258,6 +263,8 @@ const LocationOf: { readonly [K in LocatedCollection]: (item: NamedItem<K>) => s
   subnets: (s) => s.region,
   addresses: (a) => Option.unwrapOr(a.region, "global"),
   routers: (r) => r.region,
+  healthChecks: (h) => LbScope.toPath(h.scope ?? LbScope.Global),
+  lbResources: lbLocation,
   backendServices: (b) => LbScope.toPath(b.scope),
   forwardingRules: (r) => LbScope.toPath(r.scope),
   instanceGroups: (g) => g.location,
@@ -302,6 +309,7 @@ const NamedCollectionKeys = [
   "routers",
   "peerings",
   "healthChecks",
+  "lbResources",
   "backendServices",
   "forwardingRules",
   "instanceTemplates",
@@ -1711,6 +1719,10 @@ export const World = {
     );
     if (danglingUser !== undefined) {
       return Result.err(`disk [${danglingUser.name}] is attached to a missing instance`);
+    }
+    const lbError = validateLbGraph(world);
+    if (lbError !== undefined) {
+      return Result.err(lbError);
     }
     return validateReferences(world);
   },

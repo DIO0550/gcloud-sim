@@ -35,6 +35,8 @@ export type Address = Readonly<{
   addressType: AddressType;
   status: "RESERVED" | "IN_USE";
   creationTimestamp: string;
+  subnet?: string;
+  networkTier?: "PREMIUM" | "STANDARD";
 }>;
 
 export type AddressSeed = Readonly<{
@@ -80,7 +82,8 @@ export const Address = {
         ? `${projectBase(address.projectId)}/regions/${address.region.value}`
         : undefined,
       status: address.status,
-      networkTier: "PREMIUM",
+      networkTier: address.networkTier ?? "PREMIUM",
+      subnetwork: address.subnet,
       creationTimestamp: address.creationTimestamp,
       selfLink: Address.selfLink(address),
     };

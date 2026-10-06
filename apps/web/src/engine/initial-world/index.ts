@@ -101,6 +101,7 @@ export const EmptyCollections = {
   routers: [],
   peerings: [],
   healthChecks: [],
+  lbResources: [],
   backendServices: [],
   forwardingRules: [],
   instanceTemplates: [],

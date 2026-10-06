@@ -59,6 +59,7 @@ import { type ConsoleScreen, ConsoleScreens } from "@/features/simulator/feature
 import { Option } from "@/utils/Option";
 import { GkeLessonProperties } from "./GkeLessonProperties";
 import { IngressProperties } from "./IngressProperties";
+import { LbResourceProperties } from "./LbResourceProperties";
 import { StatefulSetProperties } from "./StatefulSetProperties";
 
 type PropertiesPanelProps = Readonly<{
@@ -104,6 +105,8 @@ const Body = ({
       return <AddressProperties world={world} selection={selection} />;
     case "router":
       return <RouterProperties world={world} selection={selection} />;
+    case "lb-resource":
+      return <LbResourceProperties world={world} selection={selection} />;
     case "health-check":
       return <HealthCheckProperties world={world} selection={selection} />;
     case "backend-service":
@@ -197,6 +200,7 @@ const titleOf = (selection: TreeSelection): string => {
     case "firewall":
     case "address":
     case "router":
+    case "lb-resource":
     case "health-check":
     case "backend-service":
     case "forwarding-rule":
@@ -267,6 +271,8 @@ const kindLabel = (selection: TreeSelection): string => {
       return `compute#address · ${Option.isSome(selection.region) ? `regions/${selection.region.value}` : "global"}`;
     case "router":
       return `compute#router · regions/${selection.region}`;
+    case "lb-resource":
+      return `compute#${selection.resourceKind} · ${selection.location}`;
     case "health-check":
       return "compute#healthCheck";
     case "backend-service":

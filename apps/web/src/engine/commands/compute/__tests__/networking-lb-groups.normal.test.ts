@@ -71,15 +71,19 @@ test("peerings create は自分自身や無いネットワークとは組めな�
 
 const lb = [
   "gcloud compute health-checks create hc-http --http --port=8080",
-  "gcloud compute backend-services create web-bs --global --protocol=HTTP --health-checks=hc-http",
-  "gcloud compute forwarding-rules create web-fr --global --backend-service=web-bs --ports=80",
+  "gcloud compute backend-services create web-bs --global --protocol=HTTP --load-balancing-scheme=EXTERNAL_MANAGED --health-checks=hc-http",
+  "gcloud compute url-maps create web-map --global --default-service=web-bs",
+  "gcloud compute target-http-proxies create web-proxy --global --url-map=web-map",
+  "gcloud compute forwarding-rules create web-fr --global --load-balancing-scheme=EXTERNAL_MANAGED --target-http-proxy=web-proxy --ports=80",
 ];
 
 test("health-checks → backend-services → forwarding-rules の順で組むと、転送ルールがバックエンドを指す", () => {
   const s = run(session(), ...lb, "gcloud compute forwarding-rules list");
-  expect(s.text).toMatch(/web-fr\s+34\.110\.\d+\.\d+\s+TCP\s+web-bs/);
+  expect(s.text).toMatch(/web-fr\s+34\.110\.\d+\.\d+\s+TCP\s+web-proxy/);
   expect(s.world.healthChecks[0]?.port).toBe(8080);
-  expect(s.world.backendServices[0]?.healthChecks).toEqual(["hc-http"]);
+  expect(s.world.backendServices[0]?.healthChecks).toEqual([
+    "https://www.googleapis.com/compute/v1/projects/ace-dev-01/global/healthChecks/hc-http",
+  ]);
 });
 
 test("health-checks create の既定は TCP:80、HTTPS は 443", () => {
@@ -97,7 +101,7 @@ test("health-checks create の既定は TCP:80、HTTPS は 443", () => {
 test("backend-services create は無いヘルスチェックを E-005 にする", () => {
   const s = run(
     session(),
-    "gcloud compute backend-services create web-bs --global --health-checks=ghost",
+    "gcloud compute backend-services create web-bs --global --load-balancing-scheme=EXTERNAL_MANAGED --health-checks=ghost",
   );
   expect(s.text).toContain("healthChecks/ghost' was not found");
 });
@@ -106,15 +110,15 @@ test("forwarding-rules create はスコープの違うバックエンドを見�
   const regional = run(
     session(),
     "gcloud compute health-checks create hc --tcp",
-    "gcloud compute backend-services create web-bs --global --health-checks=hc",
+    "gcloud compute backend-services create web-bs --global --load-balancing-scheme=EXTERNAL_MANAGED --health-checks=hc",
     "gcloud compute forwarding-rules create web-fr --region=asia-northeast1 --backend-service=web-bs",
   );
   expect(regional.text).toContain("regions/asia-northeast1/backendServices/web-bs' was not found");
   const reserved = run(
     session(),
     "gcloud compute addresses create lb-ip --global",
-    ...lb.slice(0, 2),
-    "gcloud compute forwarding-rules create web-fr --global --backend-service=web-bs --address=lb-ip",
+    ...lb.slice(0, 4),
+    "gcloud compute forwarding-rules create web-fr --global --load-balancing-scheme=EXTERNAL_MANAGED --target-http-proxy=web-proxy --address=lb-ip",
   );
   expect(reserved.world.forwardingRules[0]?.ipAddress).toBe(reserved.world.addresses[0]?.address);
   expect(reserved.world.addresses[0]?.status).toBe("IN_USE");

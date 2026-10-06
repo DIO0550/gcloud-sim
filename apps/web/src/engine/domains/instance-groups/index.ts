@@ -189,6 +189,7 @@ export type ManagedInstanceGroup = Readonly<{
   baseInstanceName: string;
   /** グループが作った VM の名前。ゾーンは `location`（リージョンならそのゾーンに分散） */
   instanceNames: readonly string[];
+  namedPorts?: readonly Readonly<{ name: string; port: number }>[];
   autoscaling: Option<Autoscaling>;
   creationTimestamp: string;
 }>;
@@ -272,6 +273,7 @@ export const ManagedInstanceGroup = {
       baseInstanceName: group.baseInstanceName,
       instanceTemplate: `${base}/global/instanceTemplates/${group.template}`,
       targetSize: group.targetSize,
+      namedPorts: group.namedPorts ?? [],
       zone: zoned ? `${base}/zones/${group.location}` : undefined,
       region: zoned ? undefined : `${base}/regions/${group.location}`,
       instanceGroup: `${base}/${zoned ? "zones" : "regions"}/${group.location}/instanceGroups/${group.name}`,

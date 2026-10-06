@@ -549,6 +549,19 @@ export const InstanceCommands: readonly CommandSpec[] = [
     run: (ctx, args) => {
       const instance = instanceArg(ctx, args);
       if (!Result.isOk(instance)) return instance;
+      if (
+        ctx.world.lbResources.some(
+          (r) =>
+            r.kind === "networkEndpointGroups" &&
+            r.projectId === instance.value.projectId &&
+            r.location === `zones/${instance.value.zone}` &&
+            r.endpoints.some((e) => e.instance === instance.value.name),
+        )
+      ) {
+        return Result.err(
+          CommandFailure.invalidState("VM is still a NEG endpoint. Remove the endpoint first."),
+        );
+      }
       const detached = World.disksOf(ctx.world, ctx.project.projectId)
         .filter((d) => d.zone === instance.value.zone && d.users.includes(instance.value.name))
         .reduce(

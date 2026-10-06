@@ -466,6 +466,8 @@ export type Subnet = Readonly<{
   network: string;
   ipCidrRange: string;
   privateIpGoogleAccess: boolean;
+  purpose?: "PRIVATE" | "REGIONAL_MANAGED_PROXY";
+  role?: "ACTIVE" | "BACKUP";
 }>;
 
 /** auto モードのネットワークがリージョンごとに持つ範囲（本物の `default` ネットワークと同じ）。 */
@@ -575,6 +577,8 @@ export const Subnet = {
       network: `${base}/global/networks/${subnet.network}`,
       ipCidrRange: subnet.ipCidrRange,
       privateIpGoogleAccess: subnet.privateIpGoogleAccess,
+      purpose: subnet.purpose ?? "PRIVATE",
+      role: subnet.role,
       gatewayAddress: Subnet.hostAddress(subnet, -1),
     };
   },

@@ -207,6 +207,20 @@ const remove = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   const recursive = ParsedArgs.boolean(args, "recursive");
   const wantsBucket = url.value.object === "";
   if (wantsBucket) {
+    if (
+      ctx.world.lbResources.some(
+        (r) =>
+          r.kind === "backendBuckets" &&
+          r.projectId === bucket.value.projectId &&
+          r.bucketName === bucket.value.name,
+      )
+    ) {
+      return Result.err(
+        CommandFailure.invalidState(
+          "Bucket is still referenced by a backend bucket. Delete the backend bucket first.",
+        ),
+      );
+    }
     if (!recursive && bucket.value.objects.length > 0) {
       return Result.err(
         CommandFailure.invalidState(

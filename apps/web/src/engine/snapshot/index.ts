@@ -94,6 +94,13 @@ import {
   type LbScope,
   LoadBalancingSchemes,
 } from "@/engine/domains/load-balancing";
+import {
+  CacheModes,
+  type LbEndpoint,
+  LbKinds,
+  type LbResource,
+  type LbRoute,
+} from "@/engine/domains/load-balancing/graph";
 import type { CloudRunService, GkeCluster, NodePool } from "@/engine/domains/managed-services";
 import { type MissionProgress, MissionStatuses } from "@/engine/domains/mission-progress";
 import { AlertPolicy, Dashboard, LogMetric, UptimeCheck } from "@/engine/domains/monitoring";
@@ -157,12 +164,12 @@ import { Result } from "@/utils/Result";
  * v29 はStatefulSet・Podの固定連番・volumeClaimTemplatesとスケール時のPVC再利用を持つ。
  * v30 は複数コンテナ・KSA/WI・VPAとPod admission・クラスタのworker zoneを持つ。
  */
-export const SchemaVersion = 30;
+export const SchemaVersion = 31;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
 const MigratableVersions = [
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-  28, 29,
+  28, 29, 30,
 ] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
@@ -305,7 +312,18 @@ const network = D.object<Network>({
   subnetMode: D.literal(Object.values(SubnetModes)),
 });
 
+const optional =
+  <T>(decoder: Decoder<T>): Decoder<T | undefined> =>
+  (value, path) => {
+    if (value === undefined) {
+      return Result.ok(undefined);
+    }
+
+    return decoder(value, path);
+  };
 const subnet = D.object<Subnet>({
+  purpose: optional(D.literal(["PRIVATE", "REGIONAL_MANAGED_PROXY"])),
+  role: optional(D.literal(["ACTIVE", "BACKUP"])),
   projectId: string,
   name: string,
   region,
@@ -405,15 +423,6 @@ const controlPlane = D.object<GkeControlPlane>({
   enforcePrivateEndpoint: D.boolean,
   lastCheck: D.option(controlPlaneCheck),
 });
-const optional =
-  <T>(decoder: Decoder<T>): Decoder<T | undefined> =>
-  (value, path) => {
-    if (value === undefined) {
-      return Result.ok(undefined);
-    }
-
-    return decoder(value, path);
-  };
 const cluster = D.object<GkeCluster>({
   nodeLocations: optional(D.array(zone)),
   workloadPool: optional(string),
@@ -491,6 +500,8 @@ const disk = D.object<Disk>({
 const projectMetadata = D.object<ProjectMetadata>({ projectId: string, items: stringMap });
 
 const address = D.object<Address>({
+  subnet: optional(string),
+  networkTier: optional(D.literal(["PREMIUM", "STANDARD"])),
   projectId: string,
   name: string,
   region: D.option(region),
@@ -532,6 +543,8 @@ const lbScope: Decoder<LbScope> = (value, path) =>
   );
 
 const healthCheck = D.object<HealthCheck>({
+  scope: optional(lbScope),
+  requestPath: optional(string),
   projectId: string,
   name: string,
   protocol: D.literal(Object.values(HealthCheckProtocols)),
@@ -540,7 +553,99 @@ const healthCheck = D.object<HealthCheck>({
   timeoutSec: D.number,
 });
 
+const lbResource: Decoder<LbResource> = (value, path) =>
+  Result.flatMap(
+    D.object<{ projectId: string; name: string; location: string; kind: LbResource["kind"] }>({
+      projectId: string,
+      name: string,
+      location: string,
+      kind: D.literal(LbKinds),
+    })(value, path),
+    (head): Result<LbResource, string> => {
+      if (head.kind === "urlMaps") {
+        return Result.map(
+          D.object<{ defaultService: string; routes: readonly LbRoute[] }>({
+            defaultService: string,
+            routes: D.array(
+              D.object<LbRoute>({
+                hosts: strings,
+                paths: strings,
+                service: string,
+                matcher: string,
+              }),
+            ),
+          })(value, path),
+          (body) => ({ ...head, kind: "urlMaps", ...body }),
+        );
+      }
+      if (head.kind === "targetHttpProxies" || head.kind === "targetHttpsProxies") {
+        const kind = head.kind;
+        return Result.map(
+          D.object<{ urlMap: string; sslCertificates: readonly string[] }>({
+            urlMap: string,
+            sslCertificates: strings,
+          })(value, path),
+          (body) => ({ ...head, kind, ...body }),
+        );
+      }
+      if (head.kind === "sslCertificates") {
+        return Result.map(
+          D.object<{ domains: readonly string[]; status: "PROVISIONING" | "ACTIVE" }>({
+            domains: strings,
+            status: D.literal(["PROVISIONING", "ACTIVE"]),
+          })(value, path),
+          (body) => ({ ...head, kind: "sslCertificates", ...body }),
+        );
+      }
+      if (head.kind === "networkEndpointGroups") {
+        return Result.map(
+          D.object<{
+            network: string;
+            subnet: string;
+            defaultPort: number;
+            endpoints: readonly LbEndpoint[];
+          }>({
+            network: string,
+            subnet: string,
+            defaultPort: D.number,
+            endpoints: D.array(
+              D.object<LbEndpoint>({ instance: string, ipAddress: string, port: D.number }),
+            ),
+          })(value, path),
+          (body) => ({ ...head, kind: "networkEndpointGroups", ...body }),
+        );
+      }
+      return Result.map(
+        D.object<{
+          bucketName: string;
+          enableCdn: boolean;
+          cacheMode: "CACHE_ALL_STATIC" | "USE_ORIGIN_HEADERS" | "FORCE_CACHE_ALL";
+        }>({ bucketName: string, enableCdn: D.boolean, cacheMode: D.literal(CacheModes) })(
+          value,
+          path,
+        ),
+        (body) => ({ ...head, kind: "backendBuckets", ...body }),
+      );
+    },
+  );
+
 const backendService = D.object<BackendService>({
+  backendOptions: optional(
+    D.array(
+      D.object<{
+        group: string;
+        balancingMode: "UTILIZATION" | "CONNECTION" | "RATE";
+        maxRatePerEndpoint?: number;
+      }>({
+        group: string,
+        balancingMode: D.literal(["UTILIZATION", "CONNECTION", "RATE"]),
+        maxRatePerEndpoint: optional(D.number),
+      }),
+    ),
+  ),
+  portName: optional(string),
+  enableCdn: optional(D.boolean),
+  cacheMode: optional(D.literal(CacheModes)),
   projectId: string,
   name: string,
   scope: lbScope,
@@ -552,6 +657,11 @@ const backendService = D.object<BackendService>({
 });
 
 const forwardingRule = D.object<ForwardingRule>({
+  target: optional(string),
+  network: optional(string),
+  subnet: optional(string),
+  networkTier: optional(D.literal(["PREMIUM", "STANDARD"])),
+  addressName: optional(string),
   projectId: string,
   name: string,
   scope: lbScope,
@@ -589,6 +699,9 @@ const autoscaling = D.object<Autoscaling>({
 });
 
 const instanceGroup = D.object<ManagedInstanceGroup>({
+  namedPorts: optional(
+    D.array(D.object<{ name: string; port: number }>({ name: string, port: D.number })),
+  ),
   projectId: string,
   name: string,
   location,
@@ -1167,6 +1280,7 @@ const world = D.object<World>({
   routers: D.array(router),
   peerings: D.array(peering),
   healthChecks: D.array(healthCheck),
+  lbResources: D.array(lbResource),
   backendServices: D.array(backendService),
   forwardingRules: D.array(forwardingRule),
   instanceTemplates: D.array(instanceTemplate),
@@ -1635,11 +1749,11 @@ const migrate = (version: number, value: unknown): unknown => {
   const previous = migrateV28(version, value);
   if (!isRecord(previous)) return previous;
   const stateful = version < 29 ? { ...previous, kubeStatefulSets: [] } : previous;
-  if (version >= 30) {
-    return stateful;
+  const v30 = version >= 30 ? stateful : { ...stateful, kubeVpas: [], kubeServiceAccounts: [] };
+  if (version >= 31) {
+    return v30;
   }
-
-  return { ...stateful, kubeVpas: [], kubeServiceAccounts: [] };
+  return { ...v30, lbResources: [] };
 };
 
 export const Snapshot = {

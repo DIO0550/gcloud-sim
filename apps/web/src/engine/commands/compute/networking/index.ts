@@ -13,6 +13,11 @@ import {
   type ProjectContext,
 } from "@/engine/cli/command-spec";
 import {
+  ListScopeFlags,
+  listScopeAccess,
+  scopePermission,
+} from "@/engine/commands/compute/load-balancing/shared";
+import {
   ComputeApi,
   createdTable,
   invalidName,
@@ -213,6 +218,58 @@ const createSubnet = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
     (m) => CommandFailure.invalidValue(m.includes("ipCidrRange") ? "--range" : "NAME", m),
   );
   if (!Result.isOk(subnet)) return subnet;
+  const purpose = Option.unwrapOr(ParsedArgs.string(args, "purpose"), "PRIVATE") as NonNullable<
+    Subnet["purpose"]
+  >;
+  const role = ParsedArgs.string(args, "role");
+  const range = Ipv4.range(subnet.value.ipCidrRange);
+  const proxy = purpose === "REGIONAL_MANAGED_PROXY";
+  if (
+    !Option.isSome(range) ||
+    (proxy && (range.value.prefix > 26 || !Option.isSome(role))) ||
+    (!proxy && Option.isSome(role))
+  ) {
+    return Result.err(
+      CommandFailure.invalidArgumentWith(
+        "Use a canonical IPv4 CIDR; proxy-only subnet needs /26 or larger and --role. Regular subnets cannot set --role.",
+      ),
+    );
+  }
+  if (
+    ctx.world.subnets.some(
+      (s) =>
+        s.projectId === ctx.project.projectId &&
+        s.network === networkName &&
+        Ipv4.overlaps(s.ipCidrRange, subnet.value.ipCidrRange),
+    )
+  ) {
+    return Result.err(
+      CommandFailure.invalidState("Subnet range overlaps an existing subnet in the VPC."),
+    );
+  }
+  if (
+    proxy &&
+    ctx.world.subnets.some(
+      (s) =>
+        s.projectId === ctx.project.projectId &&
+        s.network === networkName &&
+        s.region === region.value &&
+        s.purpose === purpose &&
+        s.role === (Option.isSome(role) ? role.value : undefined),
+    )
+  ) {
+    return Result.err(
+      CommandFailure.invalidState(
+        "Only one ACTIVE and one BACKUP proxy subnet per VPC/region are modeled.",
+      ),
+    );
+  }
+  const configured = {
+    ...subnet.value,
+    purpose,
+    role: Option.isSome(role) ? (role.value as "ACTIVE" | "BACKUP") : undefined,
+  };
+
   if (
     ctx.world.clusters.some(
       (c) =>
@@ -226,12 +283,12 @@ const createSubnet = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
       CommandFailure.invalidState("Subnet overlaps an existing GKE master-ipv4-cidr."),
     );
   return Result.map(
-    Result.mapErr(World.withSubnet(ctx.world, subnet.value), alreadyExists),
+    Result.mapErr(World.withSubnet(ctx.world, configured), alreadyExists),
     (world) => ({
       world,
       output: createdTable(
         Subnet.selfLink(subnet.value),
-        Subnet.toRecord(subnet.value),
+        Subnet.toRecord(configured),
         SubnetColumns,
       ),
     }),
@@ -265,17 +322,49 @@ const reservedAddress = (sequence: number, type: string, global: boolean): strin
 
 const createAddress = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   const global = ParsedArgs.boolean(args, "global");
+  if (global && Option.isSome(ParsedArgs.string(args, "region"))) {
+    return Result.err(CommandFailure.invalidArgumentWith("Choose --global or --region."));
+  }
   const region: Result<Option<Region>, CommandFailure> = global
     ? Result.ok(Option.none)
     : Result.map(CommandContext.resolveRegion(ctx, ParsedArgs.string(args, "region")), (r) =>
         Option.some(r),
       );
   if (!Result.isOk(region)) return region;
-  const rawType = Option.unwrapOr(ParsedArgs.string(args, "address-type"), AddressTypes.External);
+  const rawType = Option.unwrapOr(
+    ParsedArgs.string(args, "address-type"),
+    Option.isSome(ParsedArgs.string(args, "subnet"))
+      ? AddressTypes.Internal
+      : AddressTypes.External,
+  );
   const addressType = Option.toResult(AddressType.parse(rawType), () =>
     CommandFailure.invalidChoice("--address-type", rawType, Object.values(AddressTypes)),
   );
   if (!Result.isOk(addressType)) return addressType;
+  const subnetName = ParsedArgs.string(args, "subnet");
+  const addressRegion = Option.unwrapOr(region.value, "global");
+  const subnet =
+    Option.isSome(subnetName) && Option.isSome(region.value)
+      ? ctx.world.subnets.find(
+          (s) =>
+            s.projectId === ctx.project.projectId &&
+            s.name === subnetName.value &&
+            s.region === addressRegion &&
+            s.purpose !== "REGIONAL_MANAGED_PROXY",
+        )
+      : undefined;
+  const tier = Option.unwrapOr(ParsedArgs.string(args, "network-tier"), "PREMIUM") as
+    | "PREMIUM"
+    | "STANDARD";
+  if (
+    (global && (addressType.value === "INTERNAL" || tier === "STANDARD")) ||
+    (Option.isSome(subnetName) && (subnet === undefined || addressType.value !== "INTERNAL")) ||
+    (addressType.value === "INTERNAL" && tier !== "PREMIUM")
+  ) {
+    return Result.err(
+      CommandFailure.invalidArgumentWith("Address scope/type/tier/subnet combination is invalid."),
+    );
+  }
   const explicit = ParsedArgs.string(args, "addresses");
   const address = Result.mapErr(
     Address.create({
@@ -285,24 +374,45 @@ const createAddress = (ctx: ProjectContext, args: ParsedArgs): CommandResult => 
       addressType: addressType.value,
       address: Option.unwrapOr(
         explicit,
-        reservedAddress(ctx.world.sequence, addressType.value, global),
+        subnet === undefined
+          ? reservedAddress(ctx.world.sequence, addressType.value, global)
+          : Subnet.hostAddress(subnet, 100 + ctx.world.sequence),
       ),
       creationTimestamp: ctx.now,
     }),
     invalidName,
   );
   if (!Result.isOk(address)) return address;
+  if (
+    !Option.isSome(Ipv4.address(address.value.address)) ||
+    (subnet !== undefined && !Ipv4.contains(subnet.ipCidrRange, address.value.address)) ||
+    ctx.world.addresses.some(
+      (a) => a.projectId === ctx.project.projectId && a.address === address.value.address,
+    )
+  ) {
+    return Result.err(
+      CommandFailure.invalidArgumentWith(
+        "Reserved IPv4 is invalid, outside subnet or already reserved.",
+      ),
+    );
+  }
+  const configured = {
+    ...address.value,
+    networkTier: tier,
+    subnet: Option.isSome(subnetName) ? subnetName.value : undefined,
+  };
+
   const numbered = World.nextNumber(ctx.world);
   return Result.map(
     Result.mapErr(
-      World.withNamed(numbered.world, "addresses", address.value, Address.selfLink(address.value)),
+      World.withNamed(numbered.world, "addresses", configured, Address.selfLink(configured)),
       alreadyExists,
     ),
     (world) => ({
       world,
       output: createdTable(
         Address.selfLink(address.value),
-        Address.toRecord(address.value),
+        Address.toRecord(configured),
         AddressColumns,
       ),
     }),
@@ -406,7 +516,7 @@ const peeringRecord = (peering: NetworkPeering): JsonRecord => ({
   peerProject: peering.peerProjectId,
 });
 
-export const NetworkingCommands: readonly CommandSpec[] = [
+const NetworkSpecs: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "compute", "networks", "subnets", "update"],
     summary: "Update Private Google Access on a subnetwork.",
@@ -516,6 +626,8 @@ export const NetworkingCommands: readonly CommandSpec[] = [
         required: true,
       }),
       CommonFlags.region,
+      Flag.enum("purpose", "Subnet purpose.", ["PRIVATE", "REGIONAL_MANAGED_PROXY"]),
+      Flag.enum("role", "Proxy-only subnet role.", ["ACTIVE", "BACKUP"]),
       Flag.boolean(
         "enable-private-ip-google-access",
         "Enable/disable access to Google Cloud APIs from this subnet for instances without a public ip address.",
@@ -662,6 +774,8 @@ export const NetworkingCommands: readonly CommandSpec[] = [
         "Ephemeral IP address to promote to a static one (accepted as the reserved value).",
       ),
       Flag.enum("network-tier", "The network tier to assign.", ["PREMIUM", "STANDARD"]),
+      Flag.enum("ip-version", "IPv4-only teaching model.", ["IPV4"]),
+      Flag.string("subnet", "Internal reserved address subnet."),
     ],
     permission: "compute.addresses.create",
     requiredApis: [ComputeApi],
@@ -735,3 +849,36 @@ export const NetworkingCommands: readonly CommandSpec[] = [
     record: Router.toRecord,
   }),
 ];
+
+export const NetworkingCommands: readonly CommandSpec[] = NetworkSpecs.map((spec) => {
+  if (spec.kind !== "project" || spec.path[2] !== "addresses") {
+    return spec;
+  }
+  if (spec.path[3] === "list") {
+    return {
+      ...spec,
+      requiredPermissions: [],
+      flags: [...spec.flags, ...ListScopeFlags],
+      run: (ctx: ProjectContext, args: ParsedArgs) =>
+        Result.flatMap(
+          listScopeAccess(ctx, args, "compute.globalAddresses.list", "compute.addresses.list"),
+          (includes) =>
+            Result.ok({
+              world: ctx.world,
+              output: CommandOutput.table(
+                ctx.world.addresses
+                  .filter(
+                    (a) =>
+                      a.projectId === ctx.project.projectId &&
+                      includes(Option.isSome(a.region) ? `regions/${a.region.value}` : "global"),
+                  )
+                  .map(Address.toRecord),
+                AddressColumns,
+              ),
+            }),
+        ),
+    };
+  }
+  const verb = spec.path[3] === "describe" ? "get" : (spec.path[3] ?? "");
+  return { ...spec, requiredPermissions: [], run: scopePermission("addresses", verb, spec.run) };
+});

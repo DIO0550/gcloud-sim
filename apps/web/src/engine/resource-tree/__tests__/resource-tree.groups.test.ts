@@ -41,12 +41,21 @@ test("ロードバランサの部品と予約アドレスは 1 つのグルー�
   const s = run(
     session(),
     "gcloud compute health-checks create hc --http --port=80",
-    "gcloud compute backend-services create web-bes --global --health-checks=hc",
-    "gcloud compute forwarding-rules create web-fr --global --backend-service=web-bes",
+    "gcloud compute backend-services create web-bes --global --load-balancing-scheme=EXTERNAL_MANAGED --health-checks=hc",
+    "gcloud compute url-maps create web-map --global --default-service=web-bes",
+    "gcloud compute target-http-proxies create web-proxy --global --url-map=web-map",
+    "gcloud compute forwarding-rules create web-fr --global --load-balancing-scheme=EXTERNAL_MANAGED --target-http-proxy=web-proxy",
     "gcloud compute addresses create lb-ip --global",
   );
   const lb = find(TreeNode.fromWorld(s.world), groupKey(ResourceGroups.LoadBalancing));
-  expect(labels(lb?.children ?? [])).toEqual(["hc: hc", "bes: web-bes", "fr: web-fr", "ip: lb-ip"]);
+  expect(labels(lb?.children ?? [])).toEqual([
+    "urlMaps: web-map",
+    "targetHttpProxies: web-proxy",
+    "hc: hc",
+    "bes: web-bes",
+    "fr: web-fr",
+    "ip: lb-ip",
+  ]);
 });
 
 test("ネットワークの下にはファイアウォール・サブネット・ルータがその順で出る（UI 案 2a）", () => {

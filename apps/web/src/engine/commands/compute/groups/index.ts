@@ -153,6 +153,16 @@ const addMember = (
       ),
     );
   }
+  if (
+    subnet.value.purpose === "REGIONAL_MANAGED_PROXY" ||
+    subnet.value.network !== template.network
+  ) {
+    return Result.err(
+      CommandFailure.invalidArgumentWith(
+        "MIG members require a regular subnet in their template VPC.",
+      ),
+    );
+  }
   const inSubnet = World.instancesOf(world, ctx.project.projectId).filter((i) =>
     i.networkInterfaces.some(
       (nic) => nic.subnetwork === subnetName && Zone.region(i.zone) === region,
@@ -283,10 +293,11 @@ const setAutoscaling = (ctx: ProjectContext, args: ParsedArgs): CommandResult =>
   const location = resolveLocation(ctx, args);
   if (!Result.isOk(location)) return location;
   const name = ParsedArgs.requiredPositional(args, 0);
-  const group = Option.filter(
-    World.findNamed(ctx.world, "instanceGroups", { projectId: ctx.project.projectId, name }),
-    (g) => g.location === location.value,
-  );
+  const group = World.findLocated(ctx.world, "instanceGroups", {
+    projectId: ctx.project.projectId,
+    name,
+    location: location.value,
+  });
   if (!Option.isSome(group)) {
     return Result.err(
       CommandFailure.notFound(

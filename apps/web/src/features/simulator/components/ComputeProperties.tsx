@@ -9,6 +9,7 @@ import {
   type ProtocolRule as ProtocolRuleType,
 } from "@/engine/domains/compute";
 import { LbScope } from "@/engine/domains/load-balancing";
+import { lbHealth } from "@/engine/domains/load-balancing/graph";
 import { World } from "@/engine/domains/world";
 import {
   Absent,
@@ -249,7 +250,7 @@ export const InstanceGroupProperties = ({
   selection,
 }: SelectionProps<"instance-group">): ReactElement => {
   const group = Option.filter(
-    World.findNamed(world, "instanceGroups", selection),
+    World.findLocated(world, "instanceGroups", selection),
     (g) => g.location === selection.location,
   );
   if (!Option.isSome(group)) return <NotFound what="マネージドインスタンスグループ" />;
@@ -269,6 +270,10 @@ export const InstanceGroupProperties = ({
         { label: "location", value: g.location },
         { label: "template", value: g.template },
         { label: "targetSize", value: String(g.targetSize) },
+        {
+          label: "namedPorts",
+          value: joined((g.namedPorts ?? []).map((p) => `${p.name}:${p.port}`)),
+        },
         { label: "baseInstanceName", value: g.baseInstanceName },
         { label: "instances", value: joined(g.instanceNames) },
         ...autoscaling,
@@ -329,6 +334,7 @@ export const SubnetProperties = ({ world, selection }: SelectionProps<"subnet">)
         { label: "network", value: s.network },
         { label: "ipCidrRange", value: s.ipCidrRange },
         { label: "privateIpGoogleAccess", value: String(s.privateIpGoogleAccess) },
+        { label: "purpose / role", value: `${s.purpose ?? "PRIVATE"} ${s.role ?? ""}` },
         { label: "instances", value: joined(instances.map((i) => i.name)) },
       ]}
     />
@@ -363,7 +369,10 @@ export const AddressProperties = ({
   world,
   selection,
 }: SelectionProps<"address">): ReactElement => {
-  const address = World.findNamed(world, "addresses", selection);
+  const address = World.findLocated(world, "addresses", {
+    ...selection,
+    location: Option.unwrapOr(selection.region, "global"),
+  });
   if (!Option.isSome(address)) return <NotFound what="アドレス" />;
   const a = address.value;
   return (
@@ -372,6 +381,8 @@ export const AddressProperties = ({
       rows={[
         { label: "address", value: a.address },
         { label: "addressType", value: a.addressType },
+        { label: "networkTier", value: a.networkTier ?? "PREMIUM" },
+        { label: "subnet", value: a.subnet ?? "-" },
         { label: "scope", value: Option.unwrapOr(a.region, "global") },
         { label: "status", value: a.status },
         { label: "creationTimestamp", value: a.creationTimestamp },
@@ -399,13 +410,18 @@ export const HealthCheckProperties = ({
   world,
   selection,
 }: SelectionProps<"health-check">): ReactElement => {
-  const check = World.findNamed(world, "healthChecks", selection);
+  const check = World.findLocated(world, "healthChecks", {
+    ...selection,
+    location: LbScope.toPath(selection.scope ?? LbScope.Global),
+  });
   if (!Option.isSome(check)) return <NotFound what="ヘルスチェック" />;
   const c = check.value;
   return (
     <Section
       title="基本"
       rows={[
+        { label: "scope", value: scopeText(c.scope ?? LbScope.Global) },
+        { label: "requestPath", value: c.requestPath ?? "/" },
         { label: "protocol", value: c.protocol },
         { label: "port", value: String(c.port) },
         { label: "checkIntervalSec", value: String(c.checkIntervalSec) },
@@ -419,7 +435,10 @@ export const BackendServiceProperties = ({
   world,
   selection,
 }: SelectionProps<"backend-service">): ReactElement => {
-  const service = World.findNamed(world, "backendServices", selection);
+  const service = World.findLocated(world, "backendServices", {
+    ...selection,
+    location: LbScope.toPath(selection.scope),
+  });
   if (!Option.isSome(service)) return <NotFound what="バックエンドサービス" />;
   const b = service.value;
   return (
@@ -430,6 +449,15 @@ export const BackendServiceProperties = ({
         { label: "protocol", value: b.protocol },
         { label: "loadBalancingScheme", value: b.loadBalancingScheme },
         { label: "healthChecks", value: joined(b.healthChecks) },
+        { label: "portName", value: b.portName ?? "http" },
+        {
+          label: "CDN / cacheMode",
+          value: `${b.enableCdn ?? false} / ${b.cacheMode ?? "CACHE_ALL_STATIC"}`,
+        },
+        ...lbHealth(world, b).map((h) => ({
+          label: `${h.instance}:${h.port}`,
+          value: `${h.healthState} · app ready: ${h.trafficReady} · ${h.reasons.join(", ")}`,
+        })),
         { label: "backends", value: joined(b.backends) },
         { label: "timeoutSec", value: String(b.timeoutSec) },
       ]}
@@ -441,7 +469,10 @@ export const ForwardingRuleProperties = ({
   world,
   selection,
 }: SelectionProps<"forwarding-rule">): ReactElement => {
-  const rule = World.findNamed(world, "forwardingRules", selection);
+  const rule = World.findLocated(world, "forwardingRules", {
+    ...selection,
+    location: LbScope.toPath(selection.scope),
+  });
   if (!Option.isSome(rule)) return <NotFound what="転送ルール" />;
   const r = rule.value;
   return (
@@ -452,7 +483,9 @@ export const ForwardingRuleProperties = ({
         { label: "IPAddress", value: r.ipAddress },
         { label: "IPProtocol / ports", value: `${r.ipProtocol} ${r.portRange}` },
         { label: "loadBalancingScheme", value: r.loadBalancingScheme },
-        { label: "backendService", value: r.backendService || Empty },
+        { label: "target", value: r.target ?? r.backendService },
+        { label: "network / subnet", value: `${r.network ?? "-"} / ${r.subnet ?? "-"}` },
+        { label: "networkTier", value: r.networkTier ?? "PREMIUM" },
         { label: "creationTimestamp", value: r.creationTimestamp },
       ]}
     />
