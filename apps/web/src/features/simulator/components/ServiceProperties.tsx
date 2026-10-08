@@ -16,7 +16,6 @@ import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
 import { KubeStartup } from "@/engine/domains/kube-startup";
 import { KubeStorage } from "@/engine/domains/kube-storage";
-
 import { KubePod, KubeService } from "@/engine/domains/kubernetes";
 import { CloudRunService, GkeCluster } from "@/engine/domains/managed-services";
 import { AppEngineApp, CloudFunction } from "@/engine/domains/serverless";
@@ -31,6 +30,7 @@ import {
   type SelectionProps,
 } from "@/features/simulator/components/PropertyParts";
 import { Option } from "@/utils/Option";
+import { ServerlessProperties } from "./ServerlessProperties";
 
 /** Cloud Storage・GKE・Cloud Run・サーバーレス・データ・運用系サービスのプロパティ（UC-007）。 */
 
@@ -449,9 +449,37 @@ export const RunServiceProperties = ({
   world,
   selection,
 }: SelectionProps<"run-service">): ReactElement => {
-  const service = World.findRunService(world, selection.projectId, selection.name);
+  const service = World.findRunService(
+    world,
+    selection.projectId,
+    selection.name,
+    selection.region,
+  );
   if (!Option.isSome(service)) return <NotFound what="サービス" />;
   const s = service.value;
+  if (
+    world.serverlessLab.deployments.some(
+      (d) =>
+        d.kind === "run" &&
+        d.projectId === s.projectId &&
+        d.region === s.region &&
+        d.name === s.name,
+    )
+  ) {
+    return (
+      <ServerlessProperties
+        world={world}
+        selection={{
+          kind: "serverless-lab",
+          collection: "deployments",
+          subtype: "run",
+          projectId: s.projectId,
+          region: s.region,
+          name: s.name,
+        }}
+      />
+    );
+  }
   return (
     <Section
       title="基本"
@@ -471,9 +499,32 @@ export const FunctionProperties = ({
   world,
   selection,
 }: SelectionProps<"function">): ReactElement => {
-  const fn = World.findNamed(world, "functions", selection);
+  const fn = World.findLocated(world, "functions", { ...selection, location: selection.region });
   if (!Option.isSome(fn)) return <NotFound what="関数" />;
   const f = fn.value;
+  if (
+    world.serverlessLab.deployments.some(
+      (d) =>
+        d.kind === "function" &&
+        d.projectId === f.projectId &&
+        d.region === f.region &&
+        d.name === f.name,
+    )
+  ) {
+    return (
+      <ServerlessProperties
+        world={world}
+        selection={{
+          kind: "serverless-lab",
+          collection: "deployments",
+          subtype: "function",
+          projectId: f.projectId,
+          region: f.region,
+          name: f.name,
+        }}
+      />
+    );
+  }
   return (
     <Section
       title="基本"

@@ -21,7 +21,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（364）
+## 実装済み（432）
 
 ロードバランサは3種類の接続構成・HC/アプリ/FWの独立診断・NEG・Google-managed HTTPS・CDN設定・backend bucket・依存順の削除に対応します。[LOAD_BALANCING.md](LOAD_BALANCING.md)にミッション、スコープ別権限、旧保存とモデルの範囲を記載しています。
 
@@ -638,3 +638,78 @@ gcloud-simはホストのファイルを読みません。TerraformとConfigMap/
 PodのQoSは`kubectl get pods -o json` / `-o yaml` / `kubectl describe pods`の`status.qosClass`で確認できます。CPU・メモリのrequests/limitsから導出する読み取り専用の分類です。`status`はオブジェクト、一覧表示用の状態文字列は`displayStatus`です（詳細は[KUBERNETES.md](KUBERNETES.md)）。
 
 `sim kubernetes probe NAME --status-code=200`はHTTP readiness応答を1回評価します。設定はDeployment manifestのreadinessProbeで管理し、READY・Service接続先・rollout status・HPA評価に反映します。`--kind=liveness`はliveness応答を評価し、連続失敗が閾値に達したPodのコンテナだけを即時再起動します。Pod名/IP/revisionは維持し、RESTARTSが増加、startup/readinessは未評価へ戻ります。`--kind=startup`は起動を1回確認し、成功するまでreadiness/livenessを待機させます。成功済みのstartupは再起動まで評価を拒否します。実通信・定期実行・経過時間・backoffは再現しません。
+
+## Cloud Run・Functions・Eventarcの学習用拡充
+
+設定・権限・実行履歴・再試行・冪等性・DB/Secret/CMEKの連携は[SERVERLESS.md](SERVERLESS.md)を参照してください。`sim`は教材専用操作です。
+
+| コマンド | 再現する操作 |
+| --- | --- |
+| `gcloud run services update` | Update runtime configuration by creating a new revision. |
+| `gcloud run services get-iam-policy` | Read or change resource IAM bindings. |
+| `gcloud run services add-iam-policy-binding` | Read or change resource IAM bindings. |
+| `gcloud run services remove-iam-policy-binding` | Read or change resource IAM bindings. |
+| `sim run invoke` | Evaluate authentication, ingress and runtime dependencies using the fixed lesson handler. |
+| `gcloud run services update-traffic` | Route percentages to existing revisions. |
+| `gcloud functions get-iam-policy` | Read or change resource IAM bindings. |
+| `gcloud functions add-iam-policy-binding` | Read or change resource IAM bindings. |
+| `gcloud functions remove-iam-policy-binding` | Read or change resource IAM bindings. |
+| `gcloud run jobs create` | Configure a fixed job lesson (no arbitrary container execution). |
+| `gcloud run jobs update` | Configure a fixed job lesson (no arbitrary container execution). |
+| `gcloud run jobs list` | List regional lesson resources. |
+| `gcloud run jobs describe` | describe a lesson resource. |
+| `gcloud run jobs delete` | delete a lesson resource. |
+| `gcloud run jobs get-iam-policy` | Read or change resource IAM bindings. |
+| `gcloud run jobs add-iam-policy-binding` | Read or change resource IAM bindings. |
+| `gcloud run jobs remove-iam-policy-binding` | Read or change resource IAM bindings. |
+| `gcloud run jobs execute` | Run fixed lesson tasks and save execution history. |
+| `gcloud run revisions list` | List immutable revision configurations. |
+| `gcloud eventarc triggers create` | Connect a supported source event to a Cloud Run lesson. |
+| `gcloud eventarc triggers list` | list Eventarc lesson triggers. |
+| `gcloud eventarc triggers describe` | describe Eventarc lesson triggers. |
+| `gcloud eventarc triggers delete` | delete Eventarc lesson triggers. |
+| `gcloud pubsub topics publish` | Publish a lesson message and deliver matching function/Eventarc events. |
+| `sim events list` | Inspect retained lesson events and delivery attempts. |
+| `sim events retry` | Retry pending deliveries after repairing their cause. |
+| `sim events replay` | Redeliver a retained event ID to inspect idempotency. |
+| `sim serverless handler` | Choose whether the fixed lesson handler deduplicates repeated event IDs. |
+| `gcloud compute networks vpc-access connectors create` | create connectors in the fixed serverless lesson. |
+| `gcloud compute networks vpc-access connectors list` | list connectors in the fixed serverless lesson. |
+| `gcloud compute networks vpc-access connectors describe` | describe connectors in the fixed serverless lesson. |
+| `gcloud compute networks vpc-access connectors delete` | delete connectors in the fixed serverless lesson. |
+| `gcloud redis instances create` | create redis in the fixed serverless lesson. |
+| `gcloud redis instances list` | list redis in the fixed serverless lesson. |
+| `gcloud redis instances describe` | describe redis in the fixed serverless lesson. |
+| `gcloud redis instances delete` | delete redis in the fixed serverless lesson. |
+| `gcloud firestore databases create` | create databases in the fixed serverless lesson. |
+| `gcloud firestore databases list` | list databases in the fixed serverless lesson. |
+| `gcloud firestore databases describe` | describe databases in the fixed serverless lesson. |
+| `gcloud firestore databases delete` | delete databases in the fixed serverless lesson. |
+| `gcloud secrets create` | create secrets in the fixed serverless lesson. |
+| `gcloud secrets list` | list secrets in the fixed serverless lesson. |
+| `gcloud secrets describe` | describe secrets in the fixed serverless lesson. |
+| `gcloud secrets delete` | delete secrets in the fixed serverless lesson. |
+| `gcloud kms keys create` | create keys in the fixed serverless lesson. |
+| `gcloud kms keys list` | list keys in the fixed serverless lesson. |
+| `gcloud kms keys describe` | describe keys in the fixed serverless lesson. |
+| `gcloud kms keys delete` | delete keys in the fixed serverless lesson. |
+| `sim secrets versions add` | Add a small lesson secret value without reading host files. |
+| `gcloud secrets versions access` | Evaluate access or change the state of a lesson secret version. |
+| `gcloud secrets versions enable` | Evaluate access or change the state of a lesson secret version. |
+| `gcloud secrets versions disable` | Evaluate access or change the state of a lesson secret version. |
+| `gcloud secrets versions destroy` | Evaluate access or change the state of a lesson secret version. |
+| `gcloud kms keys versions update` | Enable or disable the lesson key's primary version (version 1). |
+| `sim firestore documents write` | Read/change a lesson document; emits Firestore events without SDK execution. |
+| `sim firestore documents delete` | Read/change a lesson document; emits Firestore events without SDK execution. |
+| `sim firestore documents read` | Read/change a lesson document; emits Firestore events without SDK execution. |
+| `gcloud secrets get-iam-policy` | Read or change the resource IAM policy. |
+| `gcloud secrets add-iam-policy-binding` | Read or change the resource IAM policy. |
+| `gcloud secrets remove-iam-policy-binding` | Read or change the resource IAM policy. |
+| `gcloud kms keys get-iam-policy` | Read or change the resource IAM policy. |
+| `gcloud kms keys add-iam-policy-binding` | Read or change the resource IAM policy. |
+| `gcloud kms keys remove-iam-policy-binding` | Read or change the resource IAM policy. |
+| `gcloud workflows deploy` | Deploy the built-in workflow.yaml (run:workflow-api → function:workflow-function). |
+| `gcloud workflows list` | list a fixed workflow lesson. |
+| `gcloud workflows describe` | describe a fixed workflow lesson. |
+| `gcloud workflows delete` | delete a fixed workflow lesson. |
+| `gcloud workflows run` | run a fixed workflow lesson. |

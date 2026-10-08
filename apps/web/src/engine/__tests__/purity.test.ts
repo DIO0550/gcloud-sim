@@ -21,7 +21,6 @@ const Forbidden = [
   /from "react/,
   /from "next\//,
   /\bwindow\b/,
-  /\bdocument\b/,
   /localStorage/,
   /console\./,
   /\bfetch\(/,
@@ -32,9 +31,20 @@ const Forbidden = [
 test("engine のソースは React・DOM・I/O・現在時刻に触れない", () => {
   const violations = sourceFiles(engineRoot).flatMap((file) => {
     const text = readFileSync(file, "utf8");
-    return Forbidden.filter((pattern) => pattern.test(text)).map(
-      (pattern) => `${file.replace(engineRoot, "engine")}: ${pattern}`,
+    // Ignore Firestore's literal type/filter and property name, while rejecting the DOM global.
+    const code = text.replace(
+      /\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/g,
+      "",
     );
+    const domReferences = /(?<![\w.])document\b(?!\s*:)/.test(code)
+      ? [`${file.replace(engineRoot, "engine")}: global document reference`]
+      : [];
+    return [
+      ...domReferences,
+      ...Forbidden.filter((pattern) => pattern.test(text)).map(
+        (pattern) => `${file.replace(engineRoot, "engine")}: ${pattern}`,
+      ),
+    ];
   });
   expect(violations).toEqual([]);
 });

@@ -190,6 +190,12 @@ export const BucketLocation = {
 } as const;
 
 const ApiServices = [
+  { name: "eventarc.googleapis.com", title: "Eventarc API", billingRequired: true },
+  { name: "vpcaccess.googleapis.com", title: "Serverless VPC Access API", billingRequired: true },
+  { name: "redis.googleapis.com", title: "Memorystore Redis API", billingRequired: true },
+  { name: "firestore.googleapis.com", title: "Firestore API", billingRequired: false },
+  { name: "workflows.googleapis.com", title: "Workflows API", billingRequired: true },
+  { name: "secretmanager.googleapis.com", title: "Secret Manager API", billingRequired: false },
   {
     name: "iamcredentials.googleapis.com",
     title: "IAM Service Account Credentials API",

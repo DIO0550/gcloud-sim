@@ -122,6 +122,8 @@ import type {
   CloudFunction,
   FunctionTrigger,
 } from "@/engine/domains/serverless";
+import { labDecoder } from "@/engine/domains/serverless-lab/model";
+import { migrateServerless } from "@/engine/domains/serverless-lab/runtime";
 import type { ServiceAccount } from "@/engine/domains/service-account";
 import type { AclEntry, Bucket, LifecycleRule, StorageObject } from "@/engine/domains/storage";
 import { type Session, World } from "@/engine/domains/world";
@@ -163,13 +165,15 @@ import { Result } from "@/utils/Result";
  * v28 はprivate制御プレーン・許可CIDR・前回接続判定とコンテキスト別endpointを持つ。
  * v29 はStatefulSet・Podの固定連番・volumeClaimTemplatesとスケール時のPVC再利用を持つ。
  * v30 は複数コンテナ・KSA/WI・VPAとPod admission・クラスタのworker zoneを持つ。
+ * v31 は拡張ロードバランサの構成と診断状態を持つ。
+ * v32 はサーバーレスのリビジョン・依存リソース・イベント配送と実行履歴を持つ。
  */
-export const SchemaVersion = 31;
+export const SchemaVersion = 32;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
 const MigratableVersions = [
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-  28, 29, 30,
+  28, 29, 30, 31,
 ] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
@@ -1265,6 +1269,7 @@ const world = D.object<World>({
   billingAccounts: D.array(billingAccount),
   serviceAccounts: D.array(serviceAccount),
   instances: D.array(instance),
+  serverlessLab: labDecoder,
   containerLab: D.map(ContainerLab.decoder, ContainerLab.validate),
   terraform: D.map(TerraformState.decoder, TerraformState.validate),
   networks: D.array(network),
@@ -1745,7 +1750,7 @@ const migrateV28 = (version: number, value: unknown): unknown => {
   };
 };
 
-const migrate = (version: number, value: unknown): unknown => {
+const migrateV31 = (version: number, value: unknown): unknown => {
   const previous = migrateV28(version, value);
   if (!isRecord(previous)) return previous;
   const stateful = version < 29 ? { ...previous, kubeStatefulSets: [] } : previous;
@@ -1754,6 +1759,14 @@ const migrate = (version: number, value: unknown): unknown => {
     return v30;
   }
   return { ...v30, lbResources: [] };
+};
+
+const migrate = (version: number, value: unknown): unknown => {
+  const previous = migrateV31(version, value);
+  if (version >= 32 || !isRecord(previous)) {
+    return previous;
+  }
+  return migrateServerless(previous);
 };
 
 export const Snapshot = {

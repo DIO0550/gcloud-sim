@@ -3,6 +3,7 @@ import { CommandRegistry } from "@/engine/cli/registry";
 import { type ExecutionOutcome, type OutputLine, Shell, type ShellState } from "@/engine/cli/shell";
 import { Tokenizer } from "@/engine/cli/tokenizer";
 import { AllCommands } from "@/engine/commands";
+import { storageEvents } from "@/engine/domains/serverless-lab/runtime";
 import type { World } from "@/engine/domains/world";
 import { InitialWorld } from "@/engine/initial-world";
 import { Mission, type MissionSetupFailure } from "@/engine/missions";
@@ -42,7 +43,7 @@ export const Engine = {
    */
   execute(input: ExecuteInput): ExecuteResult {
     const submitted = Shell.submit({ ...input, state: input.shell, registry });
-    const evaluated = Mission.evaluate(submitted.world);
+    const evaluated = Mission.evaluate(storageEvents(input.world, submitted.world, input.line));
     const celebration = evaluated.completed.flatMap((m): readonly OutputLine[] => [
       { text: "", tone: "plain" },
       { text: `gcloud-sim: ✓ ミッションクリア「${m.title}」`, tone: "success" },

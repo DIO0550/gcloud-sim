@@ -333,8 +333,12 @@ const execute = (
   return result(
     outcome.value.world,
     Ready,
-    [...trackWarning, ...outputLines(outcome.value.output, options.value)],
-    Succeeded,
+    [
+      ...trackWarning,
+      ...outputLines(outcome.value.output, options.value),
+      ...(outcome.value.failure ? failureLines(Option.some(spec), outcome.value.failure) : []),
+    ],
+    outcome.value.failure ? failed(outcome.value.failure) : Succeeded,
   );
 };
 

@@ -68,6 +68,8 @@ const groupText = (group: ResourceGroup): string => {
       return "Cloud Storage";
     case "gke":
       return "Kubernetes Engine";
+    case "serverless":
+      return "サーバーレス設定・連携";
     case "run":
       return "Cloud Run";
     case "functions":

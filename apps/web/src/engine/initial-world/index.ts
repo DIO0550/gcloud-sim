@@ -14,6 +14,7 @@ import { MissionProgress } from "@/engine/domains/mission-progress";
 import type { Principal } from "@/engine/domains/principal";
 import { type Folder, type Project, ProjectStates } from "@/engine/domains/resource-hierarchy";
 import { SampleKeyAccount } from "@/engine/domains/sample-files";
+import { emptyLab } from "@/engine/domains/serverless-lab/model";
 import type { ServiceAccount } from "@/engine/domains/service-account";
 import type { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
@@ -95,6 +96,7 @@ const defaultNetwork = (
  * 同じ値で埋める（`engine/snapshot`）。
  */
 export const EmptyCollections = {
+  serverlessLab: emptyLab(),
   disks: [],
   projectMetadata: [],
   addresses: [],
