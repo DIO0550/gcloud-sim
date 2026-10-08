@@ -379,7 +379,49 @@ const ContainerDeveloperPermissions = [
   "container.pods.list",
 ] as const;
 
+const ServerlessPermissions = [
+  ...[
+    "vpcaccess.connectors",
+    "redis.instances",
+    "datastore.databases",
+    "eventarc.triggers",
+    "workflows.workflows",
+    "secretmanager.secrets",
+    "cloudkms.cryptoKeys",
+    "run.jobs",
+  ].flatMap((kind) =>
+    ["create", "get", "list", "update", "delete", "setIamPolicy", "getIamPolicy"].map(
+      (verb) => `${kind}.${verb}`,
+    ),
+  ),
+  "pubsub.topics.publish",
+  "run.routes.invoke",
+  "run.services.getIamPolicy",
+  "run.jobs.run",
+  "run.executions.get",
+  "run.executions.list",
+  "run.executions.cancel",
+  "secretmanager.versions.add",
+  "secretmanager.versions.access",
+  "secretmanager.versions.enable",
+  "secretmanager.versions.disable",
+  "secretmanager.versions.destroy",
+  "cloudkms.cryptoKeyVersions.update",
+  "cloudkms.cryptoKeyVersions.useToDecrypt",
+  "cloudkms.cryptoKeyVersions.useToEncrypt",
+  "datastore.entities.get",
+  "datastore.entities.create",
+  "datastore.entities.update",
+  "datastore.entities.delete",
+  "eventarc.events.receiveEvent",
+  "workflows.executions.create",
+  "workflows.executions.get",
+  "cloudfunctions.functions.setIamPolicy",
+  "cloudfunctions.functions.getIamPolicy",
+] as const;
+
 const RunPermissions = [
+  ...ServerlessPermissions.filter((p) => p.startsWith("run.")),
   "run.services.create",
   "run.services.delete",
   "run.services.get",
@@ -389,6 +431,8 @@ const RunPermissions = [
 ] as const;
 
 const FunctionsPermissions = [
+  "cloudfunctions.functions.setIamPolicy",
+  "cloudfunctions.functions.getIamPolicy",
   "cloudfunctions.functions.create",
   "cloudfunctions.functions.update",
   "cloudfunctions.functions.delete",
@@ -414,6 +458,7 @@ const CloudSqlPermissions = [
 ] as const;
 
 const PubsubPermissions = [
+  "pubsub.topics.publish",
   "pubsub.topics.create",
   "pubsub.topics.list",
   "pubsub.topics.get",
@@ -589,6 +634,7 @@ const ViewerPermissions = [
 ] as const;
 
 const EditorPermissions = [
+  ...ServerlessPermissions,
   ...BuildWritePermissions,
   ...ArtifactRepoAdminPermissions,
   "artifactregistry.repositories.create",
@@ -637,6 +683,53 @@ const role = (name: RoleName, title: string, permissions: readonly string[]): Ro
 
 /** ACE 頻出の事前定義ロール（TBD-006: 約 30 個から開始）。 */
 const Roles: readonly Role[] = [
+  role(
+    "roles/secretmanager.admin",
+    "Secret Manager Admin",
+    ServerlessPermissions.filter((p) => p.startsWith("secretmanager.")),
+  ),
+  role("roles/secretmanager.secretAccessor", "Secret Accessor", ["secretmanager.versions.access"]),
+  role("roles/cloudkms.cryptoKeyEncrypterDecrypter", "CryptoKey Encrypter/Decrypter", [
+    "cloudkms.cryptoKeyVersions.useToEncrypt",
+    "cloudkms.cryptoKeyVersions.useToDecrypt",
+  ]),
+  role("roles/datastore.user", "Firestore Data User", [
+    "datastore.entities.get",
+    "datastore.entities.create",
+    "datastore.entities.update",
+    "datastore.entities.delete",
+  ]),
+  role(
+    "roles/datastore.owner",
+    "Firestore Owner",
+    ServerlessPermissions.filter((p) => p.startsWith("datastore.")),
+  ),
+  role(
+    "roles/vpcaccess.admin",
+    "VPC Access Admin",
+    ServerlessPermissions.filter((p) => p.startsWith("vpcaccess.")),
+  ),
+  role(
+    "roles/redis.admin",
+    "Redis Admin",
+    ServerlessPermissions.filter((p) => p.startsWith("redis.")),
+  ),
+  role(
+    "roles/eventarc.admin",
+    "Eventarc Admin",
+    ServerlessPermissions.filter((p) => p.startsWith("eventarc.")),
+  ),
+  role("roles/eventarc.eventReceiver", "Eventarc Event Receiver", ["eventarc.events.receiveEvent"]),
+  role(
+    "roles/workflows.admin",
+    "Workflows Admin",
+    ServerlessPermissions.filter((p) => p.startsWith("workflows.")),
+  ),
+  role("roles/workflows.invoker", "Workflows Invoker", [
+    "workflows.executions.create",
+    "workflows.executions.get",
+  ]),
+
   role("roles/cloudbuild.builds.viewer", "Cloud Build Viewer", BuildReadPermissions),
   role("roles/cloudbuild.builds.editor", "Cloud Build Editor", BuildWritePermissions),
   role("roles/artifactregistry.reader", "Artifact Registry Reader", ArtifactReadPermissions),
@@ -850,6 +943,7 @@ const Roles: readonly Role[] = [
     "cloudsql.instances.get",
     "cloudsql.instances.list",
   ]),
+  role("roles/pubsub.publisher", "Pub/Sub Publisher", ["pubsub.topics.publish"]),
   role("roles/pubsub.admin", "Pub/Sub Admin", PubsubPermissions),
   role("roles/pubsub.editor", "Pub/Sub Editor", PubsubPermissions),
   role("roles/pubsub.viewer", "Pub/Sub Viewer", [
@@ -857,7 +951,10 @@ const Roles: readonly Role[] = [
     "pubsub.topics.get",
     "pubsub.subscriptions.get",
   ]),
-  role("roles/cloudkms.admin", "Cloud KMS Admin", KmsPermissions),
+  role("roles/cloudkms.admin", "Cloud KMS Admin", [
+    ...KmsPermissions,
+    ...ServerlessPermissions.filter((p) => p.startsWith("cloudkms.") && !p.includes("useTo")),
+  ]),
   role("roles/dns.admin", "DNS Administrator", DnsPermissions),
   role("roles/deploymentmanager.editor", "Deployment Manager Editor", DeploymentManagerPermissions),
   role("roles/billing.costsManager", "Billing Account Costs Manager", [

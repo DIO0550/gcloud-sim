@@ -60,6 +60,7 @@ import { Option } from "@/utils/Option";
 import { GkeLessonProperties } from "./GkeLessonProperties";
 import { IngressProperties } from "./IngressProperties";
 import { LbResourceProperties } from "./LbResourceProperties";
+import { ServerlessProperties } from "./ServerlessProperties";
 import { StatefulSetProperties } from "./StatefulSetProperties";
 
 type PropertiesPanelProps = Readonly<{
@@ -139,6 +140,8 @@ const Body = ({
       return <KubeConfigProperties world={world} selection={selection} />;
     case "kube-service":
       return <KubeServiceProperties world={world} selection={selection} />;
+    case "serverless-lab":
+      return <ServerlessProperties world={world} selection={selection} />;
     case "run-service":
       return <RunServiceProperties world={world} selection={selection} />;
     case "function":
@@ -177,6 +180,8 @@ const Body = ({
 /** 見出し。名前を持つものは名前、持たないものは種別の綴り。 */
 const titleOf = (selection: TreeSelection): string => {
   switch (selection.kind) {
+    case "serverless-lab":
+      return selection.name;
     case "container-lab":
       return selection.id;
     case "organization":
@@ -319,6 +324,8 @@ const kindLabel = (selection: TreeSelection): string => {
       return "pubsub#topic";
     case "subscription":
       return "pubsub#subscription";
+    case "serverless-lab":
+      return `${selection.collection} · ${selection.region}`;
     case "container-lab":
       return `container-lab#${selection.collection}`;
     case "observability":

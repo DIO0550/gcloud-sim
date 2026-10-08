@@ -23,11 +23,11 @@ import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
 test.each([passthroughLesson, internalLesson, negLesson, tlsLesson, bucketLesson, cleanupLesson])(
-  "v31 roundtrip preserves a complete LB lesson graph",
+  "current Snapshot roundtrip preserves a complete LB lesson graph",
   (commands) => {
     const built = executeLb(session(), ...commands);
     const snapshot = Snapshot.create(built.world, Now);
-    expect(snapshot.schemaVersion).toBe(31);
+    expect(snapshot.schemaVersion).toBe(32);
     const imported = Result.unwrap(Snapshot.fromUnknown(JSON.parse(JSON.stringify(snapshot))));
     expect(imported).toEqual(built.world);
   },

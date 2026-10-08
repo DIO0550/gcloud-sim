@@ -7,6 +7,22 @@ import { Option } from "@/utils/Option";
 /** ツリーで選べるもの。プロパティパネルはこれを見て World から中身を引く。 */
 export type TreeSelection =
   | Readonly<{
+      kind: "serverless-lab";
+      collection:
+        | "deployments"
+        | "connectors"
+        | "redis"
+        | "databases"
+        | "secrets"
+        | "keys"
+        | "triggers"
+        | "workflows";
+      projectId: string;
+      region: string;
+      name: string;
+      subtype: string;
+    }>
+  | Readonly<{
       kind: "kube-lesson";
       resourceKind: "serviceaccount" | "vpa";
       projectId: string;
@@ -112,7 +128,7 @@ export type TreeSelection =
       namespace?: string;
       name: string;
     }>
-  | Readonly<{ kind: "run-service"; projectId: string; name: string }>
+  | Readonly<{ kind: "run-service"; projectId: string; region?: string; name: string }>
   | Readonly<{ kind: "function"; projectId: string; region: Region; name: string }>
   | Readonly<{ kind: "app-engine"; projectId: string }>
   | Readonly<{ kind: "app-version"; projectId: string; service: string; id: string }>
@@ -167,6 +183,8 @@ export const TreeSelection = {
   /** ツリーのノード id にもなる一意なキー。 */
   key(selection: TreeSelection): string {
     switch (selection.kind) {
+      case "serverless-lab":
+        return `serverless:${selection.collection}/${selection.projectId}/${selection.region}/${selection.subtype}/${selection.name}`;
       case "container-lab":
         return `container-lab:${selection.collection}:${selection.id}`;
       case "observability":
@@ -236,7 +254,7 @@ export const TreeSelection = {
       case "kube-service":
         return `svc:${selection.projectId}/${selection.cluster}/${selection.namespace && selection.namespace !== "default" ? `${selection.namespace}/` : ""}${selection.name}`;
       case "run-service":
-        return `run:${selection.projectId}/${selection.name}`;
+        return `run:${selection.projectId}/${selection.region ?? ""}/${selection.name}`;
       case "function":
         return `function:${selection.projectId}/${selection.region}/${selection.name}`;
       case "app-engine":
@@ -275,6 +293,38 @@ export const TreeSelection = {
    */
   describeCommand(selection: TreeSelection): Option<string> {
     switch (selection.kind) {
+      case "serverless-lab": {
+        const { collection, subtype, name, region, projectId } = selection;
+        const prefix = `--project=${projectId}`;
+        if (collection === "deployments") {
+          const group = { run: "run services", function: "functions", job: "run jobs" };
+          return Option.some(
+            `gcloud ${group[subtype as keyof typeof group]} describe ${name} --region=${region} ${prefix}`,
+          );
+        }
+        if (collection === "keys") {
+          return Option.some(
+            `gcloud kms keys describe ${name} --keyring=${subtype} --location=${region} ${prefix}`,
+          );
+        }
+        if (collection === "secrets") {
+          return Option.some(`gcloud secrets describe ${name} ${prefix}`);
+        }
+        const groups = {
+          connectors: "compute networks vpc-access connectors",
+          redis: "redis instances",
+          databases: "firestore databases",
+          triggers: "eventarc triggers",
+          workflows: "workflows",
+        };
+        const location =
+          collection === "triggers" || collection === "workflows" || collection === "databases"
+            ? "location"
+            : "region";
+        return Option.some(
+          `gcloud ${groups[collection]} describe '${name}' --${location}=${region} ${prefix}`,
+        );
+      }
       case "container-lab":
         if (selection.collection === "builds") return Option.none;
         if (selection.collection === "repositories")
@@ -414,7 +464,9 @@ export const TreeSelection = {
           `kubectl describe service ${selection.name} --namespace=${selection.namespace ?? "default"}`,
         );
       case "run-service":
-        return Option.some(`gcloud run services describe ${selection.name}`);
+        return Option.some(
+          `gcloud run services describe ${selection.name}${selection.region ? ` --region=${selection.region}` : ""}`,
+        );
       case "function":
         return Option.some(
           `gcloud functions describe ${selection.name} --region=${selection.region}`,

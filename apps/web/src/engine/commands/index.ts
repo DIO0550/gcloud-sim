@@ -8,7 +8,7 @@ import {
 import { BuildCommands } from "@/engine/commands/builds";
 import { ComputeCommands } from "@/engine/commands/compute";
 import { AuthCommands, ConfigCommands, SdkCommands } from "@/engine/commands/config";
-import { ContainerCommands, RunCommands } from "@/engine/commands/container-run";
+import { ContainerCommands } from "@/engine/commands/container-run";
 import { PubsubCommands, SqlCommands } from "@/engine/commands/data";
 import { GkeLessonCommands } from "@/engine/commands/gke-lessons";
 import { IamCommands } from "@/engine/commands/iam";
@@ -26,7 +26,15 @@ import {
   OrganizationCommands,
   ProjectCommands,
 } from "@/engine/commands/resource-manager";
-import { AppCommands, FunctionsCommands } from "@/engine/commands/serverless";
+import { AppCommands } from "@/engine/commands/serverless";
+import {
+  EventCommands,
+  ExtendedFunctionCommands,
+  ExtendedRunCommands,
+  JobCommands,
+  ServerlessResourceCommands,
+  WorkflowCommands,
+} from "@/engine/commands/serverless-lab";
 import {
   GsutilCommands,
   GsutilExtraCommands,
@@ -58,8 +66,12 @@ const implemented: readonly CommandSpec[] = [
   ...ContainerCommands,
   ...GkeLessonCommands,
   ...KubectlCommands,
-  ...RunCommands,
-  ...FunctionsCommands,
+  ...ExtendedRunCommands,
+  ...ExtendedFunctionCommands,
+  ...JobCommands,
+  ...EventCommands,
+  ...ServerlessResourceCommands,
+  ...WorkflowCommands,
   ...AppCommands,
   ...SqlCommands,
   ...PubsubCommands,

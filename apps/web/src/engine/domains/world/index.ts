@@ -78,6 +78,7 @@ import {
 } from "@/engine/domains/resource-hierarchy";
 import { CustomRole, RoleCatalog } from "@/engine/domains/role-catalog";
 import type { AppEngineApp, AppVersion, CloudFunction } from "@/engine/domains/serverless";
+import { type ServerlessLab, validateLab } from "@/engine/domains/serverless-lab/model";
 import { ServiceAccount } from "@/engine/domains/service-account";
 import { Bucket } from "@/engine/domains/storage";
 import type { TerraformState } from "@/engine/domains/terraform";
@@ -101,6 +102,7 @@ export type Session = Readonly<{
  * スキーマのバージョンは World ではなく Snapshot（`engine/snapshot`）が持つ。
  */
 export type World = Readonly<{
+  serverlessLab: ServerlessLab;
   terraform: TerraformState;
   containerLab: ContainerLab;
   organization: Organization;
@@ -254,6 +256,7 @@ export type LocatedCollection =
   | "backendServices"
   | "forwardingRules"
   | "instanceGroups"
+  | "runServices"
   | "functions"
   | "kmsKeyRings";
 
@@ -268,6 +271,7 @@ const LocationOf: { readonly [K in LocatedCollection]: (item: NamedItem<K>) => s
   backendServices: (b) => LbScope.toPath(b.scope),
   forwardingRules: (r) => LbScope.toPath(r.scope),
   instanceGroups: (g) => g.location,
+  runServices: (s) => s.region,
   functions: (f) => f.region,
   kmsKeyRings: (r) => r.location,
 };
@@ -1333,14 +1337,31 @@ export const World = {
     return World.namedOf(world, "runServices", projectId);
   },
 
-  findRunService(world: World, projectId: string, name: string): Option<CloudRunService> {
-    return World.findNamed(world, "runServices", { projectId, name });
+  findRunService(
+    world: World,
+    projectId: string,
+    name: string,
+    region?: string,
+  ): Option<CloudRunService> {
+    return Option.fromNullable(
+      world.runServices.find(
+        (s) =>
+          s.projectId === projectId &&
+          s.name === name &&
+          (region === undefined || s.region === region),
+      ),
+    );
   },
 
   /** `run deploy` は同名なら新しいリビジョンとして置き換えるので、重複を弾かず上書きする。 */
   withRunServiceReplaced(world: World, service: CloudRunService): World {
     const others = world.runServices.filter(
-      (s) => !sameInProject(service.projectId, service.name)(s),
+      (s) =>
+        !(
+          s.projectId === service.projectId &&
+          s.name === service.name &&
+          s.region === service.region
+        ),
     );
     return { ...world, runServices: [...others, service] };
   },
@@ -1531,6 +1552,10 @@ export const World = {
    * @returns 満たしていれば同じ World。満たさなければ最初に見つけた違反
    */
   validate(world: World): Result<World, string> {
+    const serverless = validateLab(world);
+    if (!Result.isOk(serverless)) {
+      return serverless;
+    }
     for (const [name, namespace] of Object.entries(world.kubeContextNamespaces)) {
       if (
         !KubeNamespace.valid(namespace) ||

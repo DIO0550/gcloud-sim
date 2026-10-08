@@ -34,6 +34,7 @@ export const ResourceGroups = {
   Storage: "storage",
   Gke: "gke",
   Run: "run",
+  Serverless: "serverless",
   Functions: "functions",
   AppEngine: "app-engine",
   Sql: "sql",
@@ -446,7 +447,45 @@ const projectNode = (world: World, project: Project): TreeNode => {
     leaf({ kind: "bucket", name: b.name }, b.name),
   );
   const runServices = World.runServicesOf(world, id).map((s) =>
-    leaf({ kind: "run-service", projectId: id, name: s.name }, s.name),
+    leaf(
+      { kind: "run-service", projectId: id, region: s.region, name: s.name },
+      `${s.name} (${s.region})`,
+    ),
+  );
+  const serverless = (
+    [
+      "deployments",
+      "connectors",
+      "redis",
+      "databases",
+      "secrets",
+      "keys",
+      "triggers",
+      "workflows",
+    ] as const
+  ).flatMap((collection) =>
+    world.serverlessLab[collection]
+      .filter((r) => r.projectId === id)
+      .map((r) => {
+        let subtype = "";
+        if ("kind" in r) {
+          subtype = r.kind;
+        }
+        if ("ring" in r) {
+          subtype = r.ring;
+        }
+        return leaf(
+          {
+            kind: "serverless-lab",
+            collection,
+            projectId: id,
+            region: r.region,
+            name: r.name,
+            subtype,
+          },
+          `${collection}: ${r.name} (${r.region})`,
+        );
+      }),
   );
   const functions = World.namedOf(world, "functions", id).map((f) =>
     leaf({ kind: "function", projectId: id, region: f.region, name: f.name }, f.name),
@@ -540,6 +579,7 @@ const projectNode = (world: World, project: Project): TreeNode => {
       ...group(id, ResourceGroups.Storage, buckets),
       ...group(id, ResourceGroups.Gke, gkeNodes(world, id)),
       ...group(id, ResourceGroups.Run, runServices),
+      ...group(id, ResourceGroups.Serverless, serverless),
       ...group(id, ResourceGroups.Functions, functions),
       ...group(id, ResourceGroups.AppEngine, appEngineNodes(world, id)),
       ...group(id, ResourceGroups.Sql, sqlInstances),

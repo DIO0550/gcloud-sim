@@ -294,7 +294,12 @@ export const CommandOutput = {
   },
 } as const;
 
-export type CommandOutcome = Readonly<{ world: World; output: CommandOutput }>;
+export type CommandOutcome = Readonly<{
+  /** Failure with retained diagnostic state (e.g. a failed job execution). */
+  failure?: CommandFailure;
+  world: World;
+  output: CommandOutput;
+}>;
 export type CommandResult = Result<CommandOutcome, CommandFailure>;
 
 /**
