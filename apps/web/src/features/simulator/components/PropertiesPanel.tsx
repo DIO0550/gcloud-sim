@@ -60,6 +60,7 @@ import { Option } from "@/utils/Option";
 import { GkeLessonProperties } from "./GkeLessonProperties";
 import { IngressProperties } from "./IngressProperties";
 import { LbResourceProperties } from "./LbResourceProperties";
+import { RelationalProperties } from "./RelationalProperties";
 import { ServerlessProperties } from "./ServerlessProperties";
 import { StatefulSetProperties } from "./StatefulSetProperties";
 
@@ -140,6 +141,8 @@ const Body = ({
       return <KubeConfigProperties world={world} selection={selection} />;
     case "kube-service":
       return <KubeServiceProperties world={world} selection={selection} />;
+    case "relational":
+      return <RelationalProperties world={world} selection={selection} />;
     case "serverless-lab":
       return <ServerlessProperties world={world} selection={selection} />;
     case "run-service":
@@ -180,6 +183,7 @@ const Body = ({
 /** 見出し。名前を持つものは名前、持たないものは種別の綴り。 */
 const titleOf = (selection: TreeSelection): string => {
   switch (selection.kind) {
+    case "relational":
     case "serverless-lab":
       return selection.name;
     case "container-lab":
@@ -324,6 +328,8 @@ const kindLabel = (selection: TreeSelection): string => {
       return "pubsub#topic";
     case "subscription":
       return "pubsub#subscription";
+    case "relational":
+      return `${selection.resource} · ${selection.region}`;
     case "serverless-lab":
       return `${selection.collection} · ${selection.region}`;
     case "container-lab":

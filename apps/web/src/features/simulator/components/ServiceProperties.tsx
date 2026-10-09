@@ -18,6 +18,7 @@ import { KubeStartup } from "@/engine/domains/kube-startup";
 import { KubeStorage } from "@/engine/domains/kube-storage";
 import { KubePod, KubeService } from "@/engine/domains/kubernetes";
 import { CloudRunService, GkeCluster } from "@/engine/domains/managed-services";
+import { findServer } from "@/engine/domains/relational/model";
 import { AppEngineApp, CloudFunction } from "@/engine/domains/serverless";
 import { World } from "@/engine/domains/world";
 import {
@@ -30,6 +31,7 @@ import {
   type SelectionProps,
 } from "@/features/simulator/components/PropertyParts";
 import { Option } from "@/utils/Option";
+import { DatabaseServerSections } from "./RelationalProperties";
 import { ServerlessProperties } from "./ServerlessProperties";
 
 /** Cloud Storage・GKE・Cloud Run・サーバーレス・データ・運用系サービスのプロパティ（UC-007）。 */
@@ -608,15 +610,21 @@ export const SqlInstanceProperties = ({
   if (!Option.isSome(instance)) return <NotFound what="Cloud SQL インスタンス" />;
   const i = instance.value;
   const backups = World.sqlBackupsOf(world, selection.projectId, selection.name);
+  const server = findServer(world, {
+    projectId: selection.projectId,
+    kind: "sql",
+    name: selection.name,
+  });
   return (
     <>
+      {server && <DatabaseServerSections world={world} server={server} />}
       <Section
         title="基本"
         rows={[
           { label: "databaseVersion", value: i.databaseVersion },
           { label: "tier", value: i.tier },
           { label: "region / zone", value: `${i.region} / ${i.gceZone}` },
-          { label: "ipAddress", value: i.ipAddress },
+          { label: "ipAddress", value: server?.publicIp ? i.ipAddress : "public IP無効" },
           { label: "state", value: i.state },
           { label: "createTime", value: i.createTime },
         ]}

@@ -107,6 +107,7 @@ import { AlertPolicy, Dashboard, LogMetric, UptimeCheck } from "@/engine/domains
 import type { LogSink } from "@/engine/domains/observability";
 import { type Operation, OperationTypes } from "@/engine/domains/operation";
 import { Principal } from "@/engine/domains/principal";
+import { migrateRelational, relationalDecoder } from "@/engine/domains/relational/model";
 import type {
   BillingAccount,
   Folder,
@@ -167,13 +168,14 @@ import { Result } from "@/utils/Result";
  * v30 は複数コンテナ・KSA/WI・VPAとPod admission・クラスタのworker zoneを持つ。
  * v31 は拡張ロードバランサの構成と診断状態を持つ。
  * v32 はサーバーレスのリビジョン・依存リソース・イベント配送と実行履歴を持つ。
+ * v33 はリレーショナルDBの設定・表/ユーザー・復旧コピー・DMS状態を持つ。
  */
-export const SchemaVersion = 32;
+export const SchemaVersion = 33;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
 const MigratableVersions = [
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-  28, 29, 30, 31,
+  28, 29, 30, 31, 32,
 ] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
@@ -1270,6 +1272,7 @@ const world = D.object<World>({
   serviceAccounts: D.array(serviceAccount),
   instances: D.array(instance),
   serverlessLab: labDecoder,
+  relational: relationalDecoder,
   containerLab: D.map(ContainerLab.decoder, ContainerLab.validate),
   terraform: D.map(TerraformState.decoder, TerraformState.validate),
   networks: D.array(network),
@@ -1763,10 +1766,14 @@ const migrateV31 = (version: number, value: unknown): unknown => {
 
 const migrate = (version: number, value: unknown): unknown => {
   const previous = migrateV31(version, value);
-  if (version >= 32 || !isRecord(previous)) {
+  if (!isRecord(previous)) {
     return previous;
   }
-  return migrateServerless(previous);
+  const v32 = version >= 32 ? previous : migrateServerless(previous);
+  if (version >= 33 || !isRecord(v32)) {
+    return v32;
+  }
+  return migrateRelational(v32);
 };
 
 export const Snapshot = {

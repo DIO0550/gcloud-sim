@@ -7,6 +7,14 @@ import { Option } from "@/utils/Option";
 /** ツリーで選べるもの。プロパティパネルはこれを見て World から中身を引く。 */
 export type TreeSelection =
   | Readonly<{
+      kind: "relational";
+      resource: "alloy-cluster" | "alloy-instance" | "alloy-backup" | "dms-profile" | "dms-job";
+      projectId: string;
+      region: string;
+      name: string;
+      cluster: string;
+    }>
+  | Readonly<{
       kind: "serverless-lab";
       collection:
         | "deployments"
@@ -183,6 +191,8 @@ export const TreeSelection = {
   /** ツリーのノード id にもなる一意なキー。 */
   key(selection: TreeSelection): string {
     switch (selection.kind) {
+      case "relational":
+        return `relational:${selection.resource}/${selection.projectId}/${selection.region}/${selection.cluster}/${selection.name}`;
       case "serverless-lab":
         return `serverless:${selection.collection}/${selection.projectId}/${selection.region}/${selection.subtype}/${selection.name}`;
       case "container-lab":
@@ -293,6 +303,19 @@ export const TreeSelection = {
    */
   describeCommand(selection: TreeSelection): Option<string> {
     switch (selection.kind) {
+      case "relational": {
+        const group = {
+          "alloy-cluster": "alloydb clusters",
+          "alloy-instance": "alloydb instances",
+          "alloy-backup": "alloydb backups",
+          "dms-profile": "database-migration connection-profiles",
+          "dms-job": "database-migration migration-jobs",
+        }[selection.resource];
+        const parent = selection.cluster ? ` --cluster=${selection.cluster}` : "";
+        return Option.some(
+          `gcloud ${group} describe ${selection.name} --region=${selection.region} --project=${selection.projectId}${parent}`,
+        );
+      }
       case "serverless-lab": {
         const { collection, subtype, name, region, projectId } = selection;
         const prefix = `--project=${projectId}`;

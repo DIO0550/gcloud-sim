@@ -224,6 +224,8 @@ const ApiServices = [
   { name: "cloudbilling.googleapis.com", title: "Cloud Billing API", billingRequired: false },
   { name: "logging.googleapis.com", title: "Cloud Logging API", billingRequired: false },
   { name: "monitoring.googleapis.com", title: "Cloud Monitoring API", billingRequired: false },
+  { name: "alloydb.googleapis.com", title: "AlloyDB API", billingRequired: true },
+  { name: "datamigration.googleapis.com", title: "Database Migration API", billingRequired: true },
   { name: "sqladmin.googleapis.com", title: "Cloud SQL Admin API", billingRequired: true },
   { name: "cloudfunctions.googleapis.com", title: "Cloud Functions API", billingRequired: true },
   { name: "appengine.googleapis.com", title: "App Engine Admin API", billingRequired: true },

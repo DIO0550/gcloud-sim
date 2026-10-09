@@ -12,6 +12,7 @@ import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { IamPolicy } from "@/engine/domains/iam-policy";
 import { MissionProgress } from "@/engine/domains/mission-progress";
 import type { Principal } from "@/engine/domains/principal";
+import { emptyRelational } from "@/engine/domains/relational/model";
 import { type Folder, type Project, ProjectStates } from "@/engine/domains/resource-hierarchy";
 import { SampleKeyAccount } from "@/engine/domains/sample-files";
 import { emptyLab } from "@/engine/domains/serverless-lab/model";
@@ -97,6 +98,7 @@ const defaultNetwork = (
  */
 export const EmptyCollections = {
   serverlessLab: emptyLab(),
+  relational: emptyRelational(),
   disks: [],
   projectMetadata: [],
   addresses: [],

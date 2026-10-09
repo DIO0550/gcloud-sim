@@ -68,6 +68,7 @@ import type { AlertPolicy, Dashboard, LogMetric, UptimeCheck } from "@/engine/do
 import type { LogSink } from "@/engine/domains/observability";
 import { type Operation, OperationHistoryLimit } from "@/engine/domains/operation";
 import { Principal } from "@/engine/domains/principal";
+import { type RelationalLab, validateRelational } from "@/engine/domains/relational/model";
 import {
   type BillingAccount,
   Folder,
@@ -103,6 +104,7 @@ export type Session = Readonly<{
  */
 export type World = Readonly<{
   serverlessLab: ServerlessLab;
+  relational: RelationalLab;
   terraform: TerraformState;
   containerLab: ContainerLab;
   organization: Organization;
@@ -1552,6 +1554,10 @@ export const World = {
    * @returns 満たしていれば同じ World。満たさなければ最初に見つけた違反
    */
   validate(world: World): Result<World, string> {
+    const relational = validateRelational(world);
+    if (!Result.isOk(relational)) {
+      return relational;
+    }
     const serverless = validateLab(world);
     if (!Result.isOk(serverless)) {
       return serverless;

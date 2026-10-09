@@ -9,7 +9,7 @@ import { BuildCommands } from "@/engine/commands/builds";
 import { ComputeCommands } from "@/engine/commands/compute";
 import { AuthCommands, ConfigCommands, SdkCommands } from "@/engine/commands/config";
 import { ContainerCommands } from "@/engine/commands/container-run";
-import { PubsubCommands, SqlCommands } from "@/engine/commands/data";
+import { PubsubCommands } from "@/engine/commands/data";
 import { GkeLessonCommands } from "@/engine/commands/gke-lessons";
 import { IamCommands } from "@/engine/commands/iam";
 import {
@@ -21,6 +21,15 @@ import { KubectlCommands } from "@/engine/commands/kubectl";
 import { LogMetricCommands, MonitoringResourceCommands } from "@/engine/commands/monitoring";
 import { NotImplementedCommands } from "@/engine/commands/not-implemented";
 import { LoggingCommands } from "@/engine/commands/observability";
+import {
+  AlloyCommands,
+  ConnectCommands,
+  DatabaseCommands,
+  DmsCommands,
+  SelectionCommands,
+  SqlInstanceCommands,
+  TransferCommands,
+} from "@/engine/commands/relational";
 import {
   FolderCommands,
   OrganizationCommands,
@@ -73,7 +82,13 @@ const implemented: readonly CommandSpec[] = [
   ...ServerlessResourceCommands,
   ...WorkflowCommands,
   ...AppCommands,
-  ...SqlCommands,
+  ...SqlInstanceCommands,
+  ...DatabaseCommands,
+  ...ConnectCommands,
+  ...TransferCommands,
+  ...AlloyCommands,
+  ...DmsCommands,
+  ...SelectionCommands,
   ...PubsubCommands,
   ...LoggingCommands,
   ...LogMetricCommands,

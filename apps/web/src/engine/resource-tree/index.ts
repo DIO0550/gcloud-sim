@@ -493,6 +493,83 @@ const projectNode = (world: World, project: Project): TreeNode => {
   const sqlInstances = World.namedOf(world, "sqlInstances", id).map((i) =>
     leaf({ kind: "sql-instance", projectId: id, name: i.name }, i.name),
   );
+  const relational = [
+    ...world.relational.servers
+      .filter((s) => s.projectId === id && s.kind === "alloy")
+      .map((s) =>
+        leaf(
+          {
+            kind: "relational",
+            resource: "alloy-cluster",
+            projectId: id,
+            region: s.region,
+            name: s.name,
+            cluster: "",
+          },
+          `AlloyDB: ${s.name} (${s.region})`,
+        ),
+      ),
+    ...world.relational.alloyInstances
+      .filter((i) => i.projectId === id)
+      .map((i) =>
+        leaf(
+          {
+            kind: "relational",
+            resource: "alloy-instance",
+            projectId: id,
+            region: i.region,
+            name: i.name,
+            cluster: i.cluster,
+          },
+          `${i.type}: ${i.cluster}/${i.name}`,
+        ),
+      ),
+    ...world.relational.copies
+      .filter((c) => c.projectId === id && c.kind === "alloy" && c.type === "BACKUP")
+      .map((c) =>
+        leaf(
+          {
+            kind: "relational",
+            resource: "alloy-backup",
+            projectId: id,
+            region: c.region,
+            name: c.name,
+            cluster: "",
+          },
+          `backup: ${c.name}`,
+        ),
+      ),
+    ...world.relational.profiles
+      .filter((p) => p.projectId === id)
+      .map((p) =>
+        leaf(
+          {
+            kind: "relational",
+            resource: "dms-profile",
+            projectId: id,
+            region: p.region,
+            name: p.name,
+            cluster: "",
+          },
+          `DMS profile: ${p.name}`,
+        ),
+      ),
+    ...world.relational.migrations
+      .filter((j) => j.projectId === id)
+      .map((j) =>
+        leaf(
+          {
+            kind: "relational",
+            resource: "dms-job",
+            projectId: id,
+            region: j.region,
+            name: j.name,
+            cluster: "",
+          },
+          `DMS: ${j.name} (${j.state} / ${j.phase})`,
+        ),
+      ),
+  ];
   const sinks = World.namedOf(world, "logSinks", id).map((s) =>
     leaf({ kind: "log-sink", projectId: id, name: s.name }, s.name),
   );
@@ -582,7 +659,7 @@ const projectNode = (world: World, project: Project): TreeNode => {
       ...group(id, ResourceGroups.Serverless, serverless),
       ...group(id, ResourceGroups.Functions, functions),
       ...group(id, ResourceGroups.AppEngine, appEngineNodes(world, id)),
-      ...group(id, ResourceGroups.Sql, sqlInstances),
+      ...group(id, ResourceGroups.Sql, [...sqlInstances, ...relational]),
       ...group(id, ResourceGroups.Pubsub, pubsubNodes(world, id)),
       ...group(id, ResourceGroups.Logging, sinks),
       ...group(id, ResourceGroups.Monitoring, observability),
