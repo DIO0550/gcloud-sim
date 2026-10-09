@@ -23,7 +23,7 @@
   試行錯誤できる。エラーの下に `gcloud-sim: hint:` で「その権限を含むロール」を出す
 - **リソースツリー**: 組織 → フォルダ → プロジェクト → リソース。クリックでプロパティと
   IAM の継承元、ダブルクリックで `describe` を入力行に挿入
-- **ミッション**: 107 本（ACE の 5 ドメインからカテゴリ→ミッション→手順を選択）。状態に対するアサーションでクリア判定する
+- **ミッション**: 121 本（ACE の 5 ドメインからカテゴリ→ミッション→手順を選択）。状態に対するアサーションでクリア判定する
   （コマンドの文字列一致ではない）
 - **Cloud SQL / AlloyDB / DMS**: SQLの実データ、private接続・HA・replica、backup/PITR・Storage転送、AlloyDB read pool、DMSの初期コピー/CDC/切替を学習できる（[対応範囲](docs/RELATIONAL_DATABASES.md)）
 - **保存**: コマンドごとに localStorage へ自動保存。設定から JSON の export / import / リセット
@@ -340,3 +340,5 @@ pnpm visual:compare -- --expected visual-baseline --actual visual-actual --out v
 ### GKEの更新・復旧
 
 `kubectl set image`、`rollout history/status/undo`でイメージ更新とロールバックを練習できます。ConfigMap/Secretからの環境変数注入・再起動・設定ファイル適用と、Deployment更新・Service接続先の修正も含む6本のミッションと、現在/過去のReplicaSet表示、Podを1つ削除した後の自己修復に対応しています。操作例と再現範囲は [docs/KUBERNETES.md](docs/KUBERNETES.md)。
+
+Firestore・Spanner・Bigtable・Memorystoreの操作と14ミッションは[MANAGED_DATABASES.md](docs/MANAGED_DATABASES.md)を参照してください。実データの読書き、索引、複製、GC、期限、復元、Functionsの実行SA/VPC接続を教材モデルで評価します。

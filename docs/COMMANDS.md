@@ -21,7 +21,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（487）
+## 実装済み（548）
 
 ロードバランサは3種類の接続構成・HC/アプリ/FWの独立診断・NEG・Google-managed HTTPS・CDN設定・backend bucket・依存順の削除に対応します。[LOAD_BALANCING.md](LOAD_BALANCING.md)にミッション、スコープ別権限、旧保存とモデルの範囲を記載しています。
 
@@ -574,6 +574,75 @@ HPAは`autoscale`またはautoscaling/v2の仮想YAML/JSONで作成し、`get/de
 | `sim load-balancing probe` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--port` `--host` `--path` `--source-ip` `--source-network` `--source-region` `--min-healthy` |
 | `sim load-balancing activate-certificate` | `compute.sslCertificates.get` / `compute.targetHttpsProxies.setSslCertificates` | `compute.googleapis.com` | `--global` `--region` |
 | `sim load-balancing checkpoint` | `compute.projects.setCommonInstanceMetadata` | `compute.googleapis.com` | `--global` `--region` |
+
+
+### Firestore / Spanner / Bigtable / Memorystore
+
+[MANAGED_DATABASES.md](MANAGED_DATABASES.md)に14ミッション、再現範囲、旧保存の移行を記載しています。`sim`のデータ操作はSDK/SQL/Redis通信を行う固定教材です。これらの`sim`コマンドは明示した`--project`/`--account`にも対応します。削除確認を省く場合は`--quiet`を使います。
+
+| コマンド | 必要な権限 | 必要な API | フラグ |
+|---|---|---|---|
+| `gcloud bigtable backups create` | bigtable.backups.create | bigtableadmin.googleapis.com | --instance, --cluster, --table |
+| `gcloud bigtable backups delete` | bigtable.backups.delete | bigtableadmin.googleapis.com | --instance, --cluster, --table |
+| `gcloud bigtable backups describe` | bigtable.backups.get | bigtableadmin.googleapis.com | --instance, --cluster, --table |
+| `gcloud bigtable backups list` | bigtable.backups.list | bigtableadmin.googleapis.com | --instance, --cluster, --table |
+| `gcloud bigtable clusters create` | bigtable.clusters.create | bigtableadmin.googleapis.com | --instance, --zone, --num-nodes |
+| `gcloud bigtable clusters delete` | bigtable.clusters.delete | bigtableadmin.googleapis.com | --instance, --zone, --num-nodes |
+| `gcloud bigtable clusters describe` | bigtable.clusters.get | bigtableadmin.googleapis.com | --instance, --zone, --num-nodes |
+| `gcloud bigtable clusters list` | bigtable.clusters.list | bigtableadmin.googleapis.com | --instance, --zone, --num-nodes |
+| `gcloud bigtable clusters update` | bigtable.clusters.update | bigtableadmin.googleapis.com | --instance, --zone, --num-nodes |
+| `gcloud bigtable instances create` | bigtable.instances.create | bigtableadmin.googleapis.com | --cluster, --cluster-zone, --cluster-num-nodes |
+| `gcloud bigtable instances delete` | bigtable.instances.delete | bigtableadmin.googleapis.com | --cluster, --cluster-zone, --cluster-num-nodes |
+| `gcloud bigtable instances describe` | bigtable.instances.get | bigtableadmin.googleapis.com | --cluster, --cluster-zone, --cluster-num-nodes |
+| `gcloud bigtable instances list` | bigtable.instances.list | bigtableadmin.googleapis.com | --cluster, --cluster-zone, --cluster-num-nodes |
+| `gcloud redis instances failover` | redis.instances.update | redis.googleapis.com | --region |
+| `gcloud spanner backups create` | spanner.backups.create | spanner.googleapis.com | --instance, --database |
+| `gcloud spanner backups delete` | spanner.backups.delete | spanner.googleapis.com | --instance |
+| `gcloud spanner backups describe` | spanner.backups.get | spanner.googleapis.com | --instance |
+| `gcloud spanner backups list` | spanner.backups.list | spanner.googleapis.com | --instance |
+| `gcloud spanner databases create` | spanner.databases.create | spanner.googleapis.com | --instance, --ddl |
+| `gcloud spanner databases ddl update` | spanner.databases.updateDdl | spanner.googleapis.com | --instance, --ddl |
+| `gcloud spanner databases delete` | spanner.databases.delete | spanner.googleapis.com | --instance |
+| `gcloud spanner databases describe` | spanner.databases.get | spanner.googleapis.com | --instance |
+| `gcloud spanner databases execute-sql` | spanner.databases.read | spanner.googleapis.com | --instance, --sql |
+| `gcloud spanner databases list` | spanner.databases.list | spanner.googleapis.com | --instance |
+| `gcloud spanner databases restore` | spanner.databases.create | spanner.googleapis.com | --instance, --backup, --backup-instance |
+| `gcloud spanner instances create` | spanner.instances.create | spanner.googleapis.com | --config, --processing-units, --nodes |
+| `gcloud spanner instances delete` | spanner.instances.delete | spanner.googleapis.com | --config, --processing-units, --nodes |
+| `gcloud spanner instances describe` | spanner.instances.get | spanner.googleapis.com | --config, --processing-units, --nodes |
+| `gcloud spanner instances list` | spanner.instances.list | spanner.googleapis.com | --config, --processing-units, --nodes |
+| `gcloud spanner instances update` | spanner.instances.update | spanner.googleapis.com | --config, --processing-units, --nodes |
+| `sim bigtable backups restore` | bigtable.tables.create | bigtableadmin.googleapis.com | --instance, --cluster, --table, --backup-instance, --backup-cluster, --project, --account |
+| `sim bigtable families set-gc` | bigtable.tables.update | bigtableadmin.googleapis.com | --instance, --cluster, --table, --max-versions, --max-age-seconds, --project, --account |
+| `sim bigtable gc` | bigtable.tables.update | bigtableadmin.googleapis.com | --instance, --cluster, --at, --project, --account |
+| `sim bigtable replication advance` | bigtable.clusters.update | bigtableadmin.googleapis.com | --instance, --project, --account |
+| `sim bigtable rows delete` | bigtable.tables.mutateRows | bigtable.googleapis.com | --instance, --cluster, --table, --project, --account, --quiet |
+| `sim bigtable rows read` | bigtable.tables.readRows | bigtable.googleapis.com | --instance, --cluster, --table, --project, --account |
+| `sim bigtable rows scan` | bigtable.tables.readRows | bigtable.googleapis.com | --instance, --cluster, --table, --prefix, --project, --account |
+| `sim bigtable rows write` | bigtable.tables.mutateRows | bigtable.googleapis.com | --instance, --cluster, --table, --family, --qualifier, --value, --timestamp, --project, --account |
+| `sim bigtable tables create` | bigtable.tables.create | bigtableadmin.googleapis.com | --instance, --cluster, --column-families, --project, --account |
+| `sim bigtable tables delete` | bigtable.tables.delete | bigtableadmin.googleapis.com | --instance, --cluster, --project, --account, --quiet |
+| `sim bigtable tables describe` | bigtable.tables.get | bigtableadmin.googleapis.com | --instance, --cluster, --project, --account |
+| `sim bigtable tables list` | bigtable.tables.list | bigtableadmin.googleapis.com | --instance, --cluster, --project, --account |
+| `sim databases time advance` | redis.instances.get | redis.googleapis.com | --seconds, --project, --account |
+| `sim firestore backups create` | datastore.backups.create | firestore.googleapis.com | --database, --location, --project, --account |
+| `sim firestore backups delete` | datastore.backups.delete | firestore.googleapis.com | --database, --location, --project, --account, --quiet |
+| `sim firestore backups describe` | datastore.backups.get | firestore.googleapis.com | --database, --location, --project, --account |
+| `sim firestore backups list` | datastore.backups.list | firestore.googleapis.com | --database, --location, --project, --account |
+| `sim firestore backups restore` | datastore.databases.create | firestore.googleapis.com | --destination-database, --location, --project, --account |
+| `sim firestore documents increment` | datastore.entities.update | firestore.googleapis.com | --database, --field, --amount, --expected-version, --project, --account |
+| `sim firestore indexes create` | datastore.indexes.create | firestore.googleapis.com | --database, --collection, --fields, --project, --account |
+| `sim firestore indexes delete` | datastore.indexes.delete | firestore.googleapis.com | --database, --project, --account, --quiet |
+| `sim firestore indexes describe` | datastore.indexes.get | firestore.googleapis.com | --database, --project, --account |
+| `sim firestore indexes list` | datastore.indexes.list | firestore.googleapis.com | --database, --project, --account |
+| `sim firestore query` | datastore.entities.list | firestore.googleapis.com | --database, --location, --where-field, --equals, --order-by, --descending, --limit, --project, --account |
+| `sim functions database increment-cache` | cloudfunctions.functions.get | cloudfunctions.googleapis.com | --region, --key, --project, --account |
+| `sim functions database read` | cloudfunctions.functions.get | cloudfunctions.googleapis.com | --region, --document, --project, --account |
+| `sim redis cache delete` | redis.instances.get | redis.googleapis.com | --instance, --region, --network, --project, --account, --quiet |
+| `sim redis cache get` | redis.instances.get | redis.googleapis.com | --instance, --region, --network, --project, --account |
+| `sim redis cache increment` | redis.instances.get | redis.googleapis.com | --instance, --region, --network, --project, --account |
+| `sim redis cache set` | redis.instances.get | redis.googleapis.com | --instance, --region, --network, --value, --ttl, --project, --account |
+| `sim spanner execute` | spanner.databases.read | spanner.googleapis.com | --instance, --sql, --project, --account |
 
 ## 解決はできるが未実装（0）
 

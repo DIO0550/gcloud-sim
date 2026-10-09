@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { cacheOf } from "@/engine/domains/managed-databases/cache";
 import { latestRevision } from "@/engine/domains/serverless-lab/model";
 import { NotFound, type Row, Section, type SelectionProps } from "./PropertyParts";
 
@@ -84,13 +85,39 @@ export const ServerlessProperties = ({
     rows.push({ label: "range", value: resource.range });
   }
   if ("host" in resource) {
+    const cache = cacheOf(world, resource);
+    rows.push(
+      { label: "tier / failovers", value: `${cache.tier} / ${cache.failovers}` },
+      ...cache.entries.map((e) => ({
+        label: `key ${e.key}`,
+        value: `${e.value} · ${e.expiresAt === 0 ? "no expiry" : `expires at virtual ${e.expiresAt}s`}`,
+      })),
+    );
     rows.push(
       { label: "host", value: resource.host },
       { label: "size", value: `${resource.sizeGb} GiB` },
     );
   }
   if ("mode" in resource) {
-    rows.push({ label: "mode", value: resource.mode });
+    rows.push(
+      { label: "mode", value: resource.mode },
+      { label: "consistency", value: "STRONG" },
+      ...world.serverlessLab.documents
+        .filter((d) => d.projectId === resource.projectId && d.database === resource.name)
+        .map((d) => ({ label: d.path, value: `${d.data} · version=${d.version}` })),
+      ...world.managedDatabases.indexes
+        .filter((i) => i.projectId === resource.projectId && i.database === resource.name)
+        .map((i) => ({
+          label: `index ${i.name}`,
+          value: `${i.collection}: ${i.fields.join(", ")}`,
+        })),
+      ...world.managedDatabases.firestoreCopies
+        .filter((c) => c.projectId === resource.projectId && c.database === resource.name)
+        .map((c) => ({
+          label: `backup ${c.name}`,
+          value: `${c.location} · ${c.documents.length} documents`,
+        })),
+    );
   }
   if ("enabled" in resource) {
     rows.push(
@@ -114,6 +141,16 @@ export const ServerlessProperties = ({
         .map((v, i) => ({ label: `execution ${i + 1}`, value: `${v.status}: ${v.reason}` })),
     );
   }
+  rows.push(
+    ...world.managedDatabases.observations
+      .filter(
+        (o) =>
+          o.projectId === resource.projectId &&
+          (o.resource === resource.name || o.resource === `${resource.region}/${resource.name}`),
+      )
+      .slice(-5)
+      .map((o, i) => ({ label: `result ${i + 1}: ${o.operation}`, value: o.result })),
+  );
   if ("policy" in resource) {
     rows.push(
       ...resource.policy.bindings.map((b) => ({ label: b.role, value: b.members.join(", ") })),

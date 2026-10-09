@@ -610,6 +610,17 @@ const NetworkSpecs: readonly CommandSpec[] = [
           ),
         );
       }
+      const serverlessReference = [
+        ...ctx.world.serverlessLab.redis,
+        ...ctx.world.serverlessLab.connectors,
+      ].find((r) => r.projectId === network.value.projectId && r.network === network.value.name);
+      if (serverlessReference) {
+        return Result.err(
+          CommandFailure.invalidState(
+            `Network is used by Redis or VPC connector ${serverlessReference.name}.`,
+          ),
+        );
+      }
       const world = Result.mapErr(World.withoutNetwork(ctx.world, network.value), (subnet) =>
         CommandFailure.invalidState(
           `The network resource '${Network.selfLink(network.value)}' is already being used by '${Subnet.selfLink(subnet)}'`,

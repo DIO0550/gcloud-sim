@@ -38,6 +38,7 @@ export const ResourceGroups = {
   Functions: "functions",
   AppEngine: "app-engine",
   Sql: "sql",
+  ManagedDatabases: "managed-databases",
   Pubsub: "pubsub",
   Logging: "logging",
   Monitoring: "monitoring",
@@ -493,6 +494,40 @@ const projectNode = (world: World, project: Project): TreeNode => {
   const sqlInstances = World.namedOf(world, "sqlInstances", id).map((i) =>
     leaf({ kind: "sql-instance", projectId: id, name: i.name }, i.name),
   );
+  const managedLabels = {
+    spannerInstances: "Spanner",
+    spannerDatabases: "Spanner",
+    spannerCopies: "Spanner backup",
+    bigtableInstances: "Bigtable",
+    bigtableCopies: "Bigtable backup",
+    firestoreCopies: "Firestore backup",
+  };
+  const managed = (
+    [
+      "spannerInstances",
+      "spannerDatabases",
+      "spannerCopies",
+      "bigtableInstances",
+      "bigtableCopies",
+      "firestoreCopies",
+    ] as const
+  ).flatMap((collection) =>
+    world.managedDatabases[collection]
+      .filter((r) => r.projectId === id)
+      .map((r) =>
+        leaf(
+          {
+            kind: "managed-database",
+            collection,
+            projectId: id,
+            name: r.name,
+            instance: "instance" in r ? r.instance : "",
+            cluster: "cluster" in r ? r.cluster : "",
+          },
+          `${managedLabels[collection]}: ${"instance" in r ? `${r.instance}/` : ""}${r.name}`,
+        ),
+      ),
+  );
   const relational = [
     ...world.relational.servers
       .filter((s) => s.projectId === id && s.kind === "alloy")
@@ -660,6 +695,7 @@ const projectNode = (world: World, project: Project): TreeNode => {
       ...group(id, ResourceGroups.Functions, functions),
       ...group(id, ResourceGroups.AppEngine, appEngineNodes(world, id)),
       ...group(id, ResourceGroups.Sql, [...sqlInstances, ...relational]),
+      ...group(id, ResourceGroups.ManagedDatabases, managed),
       ...group(id, ResourceGroups.Pubsub, pubsubNodes(world, id)),
       ...group(id, ResourceGroups.Logging, sinks),
       ...group(id, ResourceGroups.Monitoring, observability),

@@ -2,6 +2,7 @@ import { Region } from "@/engine/domains/catalog";
 import { ResourceName } from "@/engine/domains/compute";
 import { Ipv4 } from "@/engine/domains/gke-control-plane";
 import { IamMember, type IamPolicy, RoleName } from "@/engine/domains/iam-policy";
+import { documentValue, firestoreLocations } from "@/engine/domains/managed-databases/model";
 import type { World } from "@/engine/domains/world";
 import { Decoder as D } from "@/utils/Decoder";
 import { Result } from "@/utils/Result";
@@ -379,7 +380,13 @@ export const validateLab = (world: World): Result<World, string> => {
     return Result.err("Serverless lesson state exceeds its limits.");
   }
   if (
-    regional.flat().some((r) => !projectExists(r.projectId) || !Region.parse(r.region).some) ||
+    regional
+      .filter((rs) => rs !== lab.databases)
+      .flat()
+      .some((r) => !projectExists(r.projectId) || !Region.parse(r.region).some) ||
+    lab.databases.some(
+      (d) => !projectExists(d.projectId) || !firestoreLocations().includes(d.region),
+    ) ||
     lab.secrets.some((s) => !projectExists(s.projectId) || s.region !== "global")
   ) {
     return Result.err("Invalid serverless project or region.");
@@ -556,7 +563,7 @@ export const validateLab = (world: World): Result<World, string> => {
       !validDocumentPath(d.path) ||
       !Number.isSafeInteger(d.version) ||
       d.version < 1 ||
-      d.data.length > 4096
+      !documentValue(d.data).ok
     ) {
       return Result.err("Invalid Firestore document reference or value.");
     }

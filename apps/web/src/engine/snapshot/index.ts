@@ -101,6 +101,10 @@ import {
   type LbResource,
   type LbRoute,
 } from "@/engine/domains/load-balancing/graph";
+import {
+  emptyManagedDatabases,
+  managedDatabasesDecoder,
+} from "@/engine/domains/managed-databases/model";
 import type { CloudRunService, GkeCluster, NodePool } from "@/engine/domains/managed-services";
 import { type MissionProgress, MissionStatuses } from "@/engine/domains/mission-progress";
 import { AlertPolicy, Dashboard, LogMetric, UptimeCheck } from "@/engine/domains/monitoring";
@@ -169,13 +173,14 @@ import { Result } from "@/utils/Result";
  * v31 は拡張ロードバランサの構成と診断状態を持つ。
  * v32 はサーバーレスのリビジョン・依存リソース・イベント配送と実行履歴を持つ。
  * v33 はリレーショナルDBの設定・表/ユーザー・復旧コピー・DMS状態を持つ。
+ * v34 は索引・Spanner・Bigtable・Redisデータと明示的な読取/復旧履歴を持つ。
  */
-export const SchemaVersion = 33;
+export const SchemaVersion = 34;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
 const MigratableVersions = [
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-  28, 29, 30, 31, 32,
+  28, 29, 30, 31, 32, 33,
 ] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
@@ -1273,6 +1278,7 @@ const world = D.object<World>({
   instances: D.array(instance),
   serverlessLab: labDecoder,
   relational: relationalDecoder,
+  managedDatabases: managedDatabasesDecoder,
   containerLab: D.map(ContainerLab.decoder, ContainerLab.validate),
   terraform: D.map(TerraformState.decoder, TerraformState.validate),
   networks: D.array(network),
@@ -1770,10 +1776,14 @@ const migrate = (version: number, value: unknown): unknown => {
     return previous;
   }
   const v32 = version >= 32 ? previous : migrateServerless(previous);
-  if (version >= 33 || !isRecord(v32)) {
+  if (!isRecord(v32)) {
     return v32;
   }
-  return migrateRelational(v32);
+  const v33 = version >= 33 ? v32 : migrateRelational(v32);
+  if (version >= 34) {
+    return v33;
+  }
+  return { ...v33, managedDatabases: emptyManagedDatabases() };
 };
 
 export const Snapshot = {

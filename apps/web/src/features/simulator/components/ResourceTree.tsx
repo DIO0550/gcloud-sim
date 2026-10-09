@@ -76,6 +76,8 @@ const groupText = (group: ResourceGroup): string => {
       return "Cloud Functions";
     case "app-engine":
       return "App Engine";
+    case "managed-databases":
+      return "Spanner・Bigtable・バックアップ";
     case "sql":
       return "Cloud SQL";
     case "pubsub":

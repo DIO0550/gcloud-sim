@@ -10,6 +10,7 @@ import {
 import { ContainerLab } from "@/engine/domains/container-lab";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { IamPolicy } from "@/engine/domains/iam-policy";
+import { emptyManagedDatabases } from "@/engine/domains/managed-databases/model";
 import { MissionProgress } from "@/engine/domains/mission-progress";
 import type { Principal } from "@/engine/domains/principal";
 import { emptyRelational } from "@/engine/domains/relational/model";
@@ -99,6 +100,7 @@ const defaultNetwork = (
 export const EmptyCollections = {
   serverlessLab: emptyLab(),
   relational: emptyRelational(),
+  managedDatabases: emptyManagedDatabases(),
   disks: [],
   projectMetadata: [],
   addresses: [],

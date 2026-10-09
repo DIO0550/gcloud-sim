@@ -102,7 +102,13 @@ export type Session = Readonly<{
  * リソースはフラットな集合で持ち、階層は `projectId` / `parent` で結ぶ。
  * スキーマのバージョンは World ではなく Snapshot（`engine/snapshot`）が持つ。
  */
+import {
+  type ManagedDatabases,
+  validateManagedDatabases,
+} from "@/engine/domains/managed-databases/model";
+
 export type World = Readonly<{
+  managedDatabases: ManagedDatabases;
   serverlessLab: ServerlessLab;
   relational: RelationalLab;
   terraform: TerraformState;
@@ -1554,6 +1560,10 @@ export const World = {
    * @returns 満たしていれば同じ World。満たさなければ最初に見つけた違反
    */
   validate(world: World): Result<World, string> {
+    const managed = validateManagedDatabases(world);
+    if (!managed.ok) {
+      return managed;
+    }
     const relational = validateRelational(world);
     if (!Result.isOk(relational)) {
       return relational;

@@ -261,7 +261,7 @@ const cell: D<Cell> = (v, path) => {
   return D.array(D.number)(v, path);
 };
 const row = D.record(cell);
-const table = D.map(
+export const tableDecoder = D.map(
   D.object<Table>({
     name: identifier,
     columns: D.array(
@@ -282,7 +282,7 @@ const database = D.object<Database>({
   server: name,
   name: identifier,
   vector: D.boolean,
-  tables: D.array(table),
+  tables: D.array(tableDecoder),
 });
 export const relationalDecoder = D.object<RelationalLab>({
   servers: D.array(
