@@ -18,6 +18,12 @@ import {
   KmsCommands,
 } from "@/engine/commands/infrastructure-services";
 import { KubectlCommands } from "@/engine/commands/kubectl";
+import {
+  BigtableCommands,
+  FirestoreLessonCommands,
+  RedisLessonCommands,
+  SpannerCommands,
+} from "@/engine/commands/managed-databases";
 import { LogMetricCommands, MonitoringResourceCommands } from "@/engine/commands/monitoring";
 import { NotImplementedCommands } from "@/engine/commands/not-implemented";
 import { LoggingCommands } from "@/engine/commands/observability";
@@ -89,6 +95,10 @@ const implemented: readonly CommandSpec[] = [
   ...AlloyCommands,
   ...DmsCommands,
   ...SelectionCommands,
+  ...BigtableCommands,
+  ...FirestoreLessonCommands,
+  ...RedisLessonCommands,
+  ...SpannerCommands,
   ...PubsubCommands,
   ...LoggingCommands,
   ...LogMetricCommands,

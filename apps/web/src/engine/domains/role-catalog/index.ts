@@ -1,4 +1,10 @@
 import type { RoleName } from "@/engine/domains/iam-policy";
+import {
+  BigtablePermissions,
+  FirestorePermissions,
+  ManagedDatabasePermissions,
+  SpannerPermissions,
+} from "@/engine/domains/managed-databases/permissions";
 import type { JsonRecord } from "@/types/Json";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -380,6 +386,7 @@ const ContainerDeveloperPermissions = [
 ] as const;
 
 const ServerlessPermissions = [
+  ...FirestorePermissions,
   ...[
     "vpcaccess.connectors",
     "redis.instances",
@@ -611,6 +618,9 @@ const ArtifactAdminPermissions = [
 ] as const;
 
 const ViewerPermissions = [
+  ...ManagedDatabasePermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
+  "spanner.databases.read",
+  "bigtable.tables.readRows",
   ...KubeStoragePermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
   ...KubeIngressPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
   ...KubeNetworkPolicyPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
@@ -691,6 +701,7 @@ const ViewerPermissions = [
 ] as const;
 
 const EditorPermissions = [
+  ...ManagedDatabasePermissions,
   ...ServerlessPermissions,
   ...BuildWritePermissions,
   ...ArtifactRepoAdminPermissions,
@@ -754,6 +765,7 @@ const Roles: readonly Role[] = [
   ]),
   role("roles/datastore.user", "Firestore Data User", [
     "datastore.entities.get",
+    "datastore.entities.list",
     "datastore.entities.create",
     "datastore.entities.update",
     "datastore.entities.delete",
@@ -991,6 +1003,29 @@ const Roles: readonly Role[] = [
     "appengine.applications.get",
     "appengine.versions.create",
     "appengine.versions.list",
+  ]),
+  role("roles/spanner.admin", "Spanner Admin", SpannerPermissions),
+  role("roles/spanner.databaseUser", "Spanner Database User", [
+    "spanner.databases.read",
+    "spanner.databases.write",
+  ]),
+  role("roles/spanner.databaseReader", "Spanner Database Reader", ["spanner.databases.read"]),
+  role("roles/bigtable.admin", "Bigtable Admin", BigtablePermissions),
+  role("roles/bigtable.user", "Bigtable User", [
+    "bigtable.tables.get",
+    "bigtable.tables.readRows",
+    "bigtable.tables.mutateRows",
+  ]),
+  role("roles/bigtable.reader", "Bigtable Reader", [
+    "bigtable.tables.get",
+    "bigtable.tables.readRows",
+  ]),
+  role("roles/redis.viewer", "Redis Viewer", ["redis.instances.get", "redis.instances.list"]),
+  role("roles/datastore.viewer", "Firestore Viewer", [
+    "datastore.entities.get",
+    "datastore.entities.list",
+    "datastore.databases.get",
+    "datastore.databases.list",
   ]),
   role("roles/alloydb.admin", "AlloyDB Admin", AlloyPermissions),
   role("roles/alloydb.client", "AlloyDB Client", ["alloydb.instances.connect"]),

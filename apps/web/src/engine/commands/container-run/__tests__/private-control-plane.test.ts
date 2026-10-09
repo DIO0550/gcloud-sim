@@ -367,7 +367,7 @@ test("v27 restores all pool management/evaluation/deleted default and Kubernetes
   expect(next.kubeNetworkPolicies).toEqual(s.world.kubeNetworkPolicies);
   expect(next.clusters[0]?.controlPlane).toEqual(GkeControlPlane.public());
   expect(next.kubeContextEndpoints).toEqual({});
-  expect(Snapshot.create(next, Now).schemaVersion).toBe(33);
+  expect(Snapshot.create(next, Now).schemaVersion).toBe(34);
 });
 
 test.each(["cidr", "network", "overlap", "enforcement", "stale", "source", "context", "subnet"])(

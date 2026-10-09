@@ -190,6 +190,9 @@ export const BucketLocation = {
 } as const;
 
 const ApiServices = [
+  { name: "spanner.googleapis.com", title: "Spanner API", billingRequired: true },
+  { name: "bigtable.googleapis.com", title: "Bigtable Data API", billingRequired: true },
+  { name: "bigtableadmin.googleapis.com", title: "Bigtable Admin API", billingRequired: true },
   { name: "eventarc.googleapis.com", title: "Eventarc API", billingRequired: true },
   { name: "vpcaccess.googleapis.com", title: "Serverless VPC Access API", billingRequired: true },
   { name: "redis.googleapis.com", title: "Memorystore Redis API", billingRequired: true },

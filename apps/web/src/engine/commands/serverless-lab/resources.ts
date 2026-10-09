@@ -15,6 +15,8 @@ import type { ApiName } from "@/engine/domains/catalog";
 import { ResourceName } from "@/engine/domains/compute";
 import { Ipv4 } from "@/engine/domains/gke-control-plane";
 import { IamPolicy } from "@/engine/domains/iam-policy";
+import { cacheOf, saveCache } from "@/engine/domains/managed-databases/cache";
+import { documentValue, firestoreLocations, patch } from "@/engine/domains/managed-databases/model";
 import {
   type Connector,
   type CryptoKey,
@@ -61,6 +63,7 @@ const record = (r: Connector | Redis | Database | Secret | CryptoKey): JsonRecor
   }
   return { ...r };
 };
+
 const idArgs = (
   ctx: ProjectContext,
   args: ParsedArgs,
@@ -71,6 +74,9 @@ const idArgs = (
     return Result.ok({ projectId: ctx.project.projectId, name, region: "global" });
   }
   const raw = Option.or(ParsedArgs.string(args, "region"), ParsedArgs.string(args, "location"));
+  if (key === "databases" && raw.some && firestoreLocations().includes(raw.value)) {
+    return Result.ok({ projectId: ctx.project.projectId, name, region: raw.value });
+  }
   return Result.map(CommandContext.resolveRegion(ctx, raw, "run/region"), (region) => ({
     projectId: ctx.project.projectId,
     name,
@@ -114,7 +120,9 @@ const crud = <K extends Collection>(seed: ResourceSeed<K>): readonly CommandSpec
           : [Positional.required("NAME", "Resource name.", labCandidates(seed.key))],
       flags: [
         regionFlag,
-        Flag.string("location", "Resource location.", { candidates: Candidates.regions }),
+        Flag.string("location", "Resource location.", {
+          candidates: seed.key === "databases" ? () => firestoreLocations() : Candidates.regions,
+        }),
         ...seed.flags,
       ],
       destructive: action === "delete",
@@ -162,13 +170,35 @@ const crud = <K extends Collection>(seed: ResourceSeed<K>): readonly CommandSpec
           if (!Result.isOk(created)) {
             return created;
           }
-          return finish(replace(ctx.world, seed.key, created.value), record(created.value));
+          let world = replace(ctx.world, seed.key, created.value);
+          if (seed.key === "redis") {
+            const tier = Option.unwrapOr(ParsedArgs.string(args, "tier"), "BASIC") as
+              | "BASIC"
+              | "STANDARD_HA";
+            world = saveCache(world, { ...id.value, tier, failovers: 0, entries: [] });
+          }
+          return finish(world, record(created.value));
         }
         const found = itemArg(ctx, args, seed.key);
         if (!Result.isOk(found)) {
           return found;
         }
         if (action === "describe") {
+          if (seed.key === "redis") {
+            const redis = ctx.world.serverlessLab.redis.find((v) => sameId(v, found.value));
+            if (redis) {
+              return finish(ctx.world, { ...record(found.value), ...cacheOf(ctx.world, redis) });
+            }
+          }
+          if (seed.key === "databases") {
+            return finish(ctx.world, {
+              ...record(found.value),
+              consistency: "STRONG",
+              indexes: ctx.world.managedDatabases.indexes.filter(
+                (i) => i.projectId === found.value.projectId && i.database === found.value.name,
+              ),
+            });
+          }
           return finish(ctx.world, record(found.value));
         }
         const r = found.value;
@@ -191,7 +221,20 @@ const crud = <K extends Collection>(seed: ResourceSeed<K>): readonly CommandSpec
         ) {
           return invalid("Delete documents before deleting their database.");
         }
-        return finish(remove(ctx.world, seed.key, r), { deleted: r.name });
+        let removed = remove(ctx.world, seed.key, r);
+        if (seed.key === "redis") {
+          removed = patch(removed, {
+            caches: removed.managedDatabases.caches.filter((c) => !sameId(c, r)),
+          });
+        }
+        if (seed.key === "databases") {
+          removed = patch(removed, {
+            indexes: removed.managedDatabases.indexes.filter(
+              (i) => !(i.projectId === r.projectId && i.database === r.name),
+            ),
+          });
+        }
+        return finish(removed, { deleted: r.name });
       },
     }),
   );
@@ -296,6 +339,7 @@ const RedisCommands = crud({
   flags: [
     Flag.string("network", "Authorized VPC network.", { candidates: Candidates.networks }),
     Flag.integer("size", "Size in GiB (1–100)."),
+    Flag.enum("tier", "Availability tier.", ["BASIC", "STANDARD_HA"]),
   ],
   create: (ctx, args, id) => {
     const network = Option.unwrapOr(ParsedArgs.string(args, "network"), "default");
@@ -562,13 +606,12 @@ const DocumentCommands: readonly CommandSpec[] = ["write", "delete", "read"].map
         return invalid("Document does not exist.");
       }
       const data = Option.unwrapOr(ParsedArgs.string(args, "data"), "{}");
-      try {
-        const parsed = JSON.parse(data);
-        if (!parsed || Array.isArray(parsed) || typeof parsed !== "object" || data.length > 4096) {
-          return invalid("Document data must be a small JSON object.");
-        }
-      } catch {
-        return invalid("Document data must be valid JSON.");
+      const checked = documentValue(data);
+      if (!checked.ok) {
+        return invalid(checked.error);
+      }
+      if (action === "write" && !Number.isSafeInteger((old?.version ?? 0) + 1)) {
+        return invalid("Document version limit exceeded.");
       }
       let docs = ctx.world.serverlessLab.documents.filter((d) => !match(d));
       if (action === "write") {

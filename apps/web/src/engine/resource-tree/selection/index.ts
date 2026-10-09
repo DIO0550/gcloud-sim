@@ -7,6 +7,20 @@ import { Option } from "@/utils/Option";
 /** ツリーで選べるもの。プロパティパネルはこれを見て World から中身を引く。 */
 export type TreeSelection =
   | Readonly<{
+      kind: "managed-database";
+      collection:
+        | "spannerInstances"
+        | "spannerDatabases"
+        | "spannerCopies"
+        | "bigtableInstances"
+        | "bigtableCopies"
+        | "firestoreCopies";
+      projectId: string;
+      name: string;
+      instance: string;
+      cluster: string;
+    }>
+  | Readonly<{
       kind: "relational";
       resource: "alloy-cluster" | "alloy-instance" | "alloy-backup" | "dms-profile" | "dms-job";
       projectId: string;
@@ -191,6 +205,8 @@ export const TreeSelection = {
   /** ツリーのノード id にもなる一意なキー。 */
   key(selection: TreeSelection): string {
     switch (selection.kind) {
+      case "managed-database":
+        return `managed:${selection.collection}/${selection.projectId}/${selection.instance}/${selection.cluster}/${selection.name}`;
       case "relational":
         return `relational:${selection.resource}/${selection.projectId}/${selection.region}/${selection.cluster}/${selection.name}`;
       case "serverless-lab":
@@ -303,6 +319,25 @@ export const TreeSelection = {
    */
   describeCommand(selection: TreeSelection): Option<string> {
     switch (selection.kind) {
+      case "managed-database": {
+        if (selection.collection === "firestoreCopies") {
+          return Option.some(
+            `sim firestore backups describe ${selection.name} --project=${selection.projectId}`,
+          );
+        }
+        const group = {
+          spannerInstances: "spanner instances",
+          spannerDatabases: "spanner databases",
+          spannerCopies: "spanner backups",
+          bigtableInstances: "bigtable instances",
+          bigtableCopies: "bigtable backups",
+        }[selection.collection];
+        const parent = selection.instance ? ` --instance=${selection.instance}` : "";
+        const cluster = selection.cluster ? ` --cluster=${selection.cluster}` : "";
+        return Option.some(
+          `gcloud ${group} describe ${selection.name} --project=${selection.projectId}${parent}${cluster}`,
+        );
+      }
       case "relational": {
         const group = {
           "alloy-cluster": "alloydb clusters",

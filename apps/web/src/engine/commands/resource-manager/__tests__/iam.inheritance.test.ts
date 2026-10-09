@@ -54,7 +54,7 @@ test("カタログに無い権限は許可に倒す", () => {
     id: F.devProjectId,
   });
   expect(EffectivePermissions.allows(effective, "compute.instances.create")).toBe(false);
-  expect(EffectivePermissions.allows(effective, "spanner.instances.create")).toBe(true);
+  expect(EffectivePermissions.allows(effective, "example.unregistered.action")).toBe(true);
 });
 
 test("add-iam-policy-binding は更新後のポリシーを YAML で出す", () => {

@@ -75,7 +75,14 @@ const resourceCandidates = (path: readonly string[]): CandidateSource => {
     return candidates("alloyInstances");
   }
   if (path.includes("choose")) {
-    return () => ["existing-mysql", "global-transactions", "warehouse"];
+    return () => [
+      "existing-mysql",
+      "global-transactions",
+      "warehouse",
+      "mobile-documents",
+      "telemetry",
+      "session-cache",
+    ];
   }
   return candidates("servers", kind);
 };
