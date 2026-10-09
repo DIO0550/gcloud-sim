@@ -21,7 +21,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（432）
+## 実装済み（487）
 
 ロードバランサは3種類の接続構成・HC/アプリ/FWの独立診断・NEG・Google-managed HTTPS・CDN設定・backend bucket・依存順の削除に対応します。[LOAD_BALANCING.md](LOAD_BALANCING.md)にミッション、スコープ別権限、旧保存とモデルの範囲を記載しています。
 
@@ -450,7 +450,7 @@ HPAは`autoscale`またはautoscaling/v2の仮想YAML/JSONで作成し、`get/de
 
 | コマンド | 必要な権限 | 必要な API | フラグ |
 |---|---|---|---|
-| `gcloud sql instances create` | `cloudsql.instances.create` | `sqladmin.googleapis.com` | `--database-version` `--tier` `--region` `--root-password` `--storage-size` `--availability-type` |
+| `gcloud sql instances create` | `cloudsql.instances.create` | `sqladmin.googleapis.com` | `--database-version` `--tier` `--region` `--availability-type` `--network` `--assign-ip` `--authorized-networks` `--enable-point-in-time-recovery` `--master-instance-name` |
 | `gcloud sql instances list` | `cloudsql.instances.list` | `sqladmin.googleapis.com` | — |
 | `gcloud sql instances describe` | `cloudsql.instances.get` | `sqladmin.googleapis.com` | — |
 | `gcloud sql instances delete` | `cloudsql.instances.delete` | `sqladmin.googleapis.com` | — |
@@ -713,3 +713,65 @@ PodのQoSは`kubectl get pods -o json` / `-o yaml` / `kubectl describe pods`の`
 | `gcloud workflows describe` | describe a fixed workflow lesson. |
 | `gcloud workflows delete` | delete a fixed workflow lesson. |
 | `gcloud workflows run` | run a fixed workflow lesson. |
+
+## Cloud SQL・AlloyDB・DMSの教材操作（#18）
+
+対応範囲・接続方式・SQL文法・復旧/移行の制約は [RELATIONAL_DATABASES.md](RELATIONAL_DATABASES.md) を参照。`sim` は教材専用操作です。
+
+| コマンド | 再現範囲 |
+|---|---|
+| `gcloud sql instances patch` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud sql instances failover` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud sql instances clone` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud sql backups describe` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud sql backups restore` | 設定・参照・API/IAM・データ結果を評価 |
+| `sim sql checkpoint` | 設定・参照・API/IAM・データ結果を評価 |
+| `sim sql writes pause` | 設定・参照・API/IAM・データ結果を評価 |
+| `sim sql writes resume` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud sql databases create` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud sql databases list` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud sql databases describe` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud sql databases delete` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud sql users create` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud sql users list` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud sql users delete` | 設定・参照・API/IAM・データ結果を評価 |
+| `sim sql execute` | 設定・参照・API/IAM・データ結果を評価 |
+| `sim alloydb databases create` | 設定・参照・API/IAM・データ結果を評価 |
+| `sim alloydb databases list` | 設定・参照・API/IAM・データ結果を評価 |
+| `sim alloydb databases describe` | 設定・参照・API/IAM・データ結果を評価 |
+| `sim alloydb databases delete` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud alloydb users create` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud alloydb users list` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud alloydb users delete` | 設定・参照・API/IAM・データ結果を評価 |
+| `sim alloydb execute` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud sql connect` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud sql export sql` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud sql import sql` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud alloydb clusters create` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud alloydb clusters list` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud alloydb clusters describe` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud alloydb clusters delete` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud alloydb clusters restore` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud alloydb instances create` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud alloydb instances list` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud alloydb instances describe` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud alloydb instances delete` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud alloydb backups create` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud alloydb backups list` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud alloydb backups describe` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud alloydb backups delete` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud database-migration connection-profiles create` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud database-migration migration-jobs create` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud database-migration connection-profiles list` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud database-migration connection-profiles describe` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud database-migration connection-profiles delete` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud database-migration migration-jobs list` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud database-migration migration-jobs describe` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud database-migration migration-jobs delete` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud database-migration migration-jobs verify` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud database-migration migration-jobs start` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud database-migration migration-jobs stop` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud database-migration migration-jobs resume` | 設定・参照・API/IAM・データ結果を評価 |
+| `gcloud database-migration migration-jobs promote` | 設定・参照・API/IAM・データ結果を評価 |
+| `sim dms advance` | 設定・参照・API/IAM・データ結果を評価 |
+| `sim databases choose` | 設定・参照・API/IAM・データ結果を評価 |

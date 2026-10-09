@@ -568,7 +568,7 @@ test("current Snapshot preserves StatefulSet identities, scale history and per-o
   const next = restore(s);
   expect(next.world).toEqual(s.world);
   expect(cat(next, 1)).toBe("second-note");
-  expect(Snapshot.create(next.world, Now).schemaVersion).toBe(32);
+  expect(Snapshot.create(next.world, Now).schemaVersion).toBe(33);
 });
 test("v28 migration adds empty StatefulSets and preserves private endpoint and node-pool state", () => {
   let s = ready();

@@ -600,6 +600,16 @@ const NetworkSpecs: readonly CommandSpec[] = [
     run: (ctx, args) => {
       const network = requireNetwork(ctx, ParsedArgs.requiredPositional(args, 0));
       if (!Result.isOk(network)) return network;
+      const database = ctx.world.relational.servers.find(
+        (s) => s.projectId === network.value.projectId && s.network === network.value.name,
+      );
+      if (database) {
+        return Result.err(
+          CommandFailure.invalidState(
+            `Network is used by ${database.kind} database ${database.name}.`,
+          ),
+        );
+      }
       const world = Result.mapErr(World.withoutNetwork(ctx.world, network.value), (subnet) =>
         CommandFailure.invalidState(
           `The network resource '${Network.selfLink(network.value)}' is already being used by '${Subnet.selfLink(subnet)}'`,
