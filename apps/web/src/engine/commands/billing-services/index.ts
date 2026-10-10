@@ -11,6 +11,7 @@ import {
   Positional,
   type TargetContext,
 } from "@/engine/cli/command-spec";
+import { apiCheck } from "@/engine/commands/admin-lab/shared";
 import { Candidates, plainCommand, projectCommand, targetCommand } from "@/engine/commands/shared";
 import { Budget } from "@/engine/domains/billing-budget";
 import { ApiService } from "@/engine/domains/catalog";
@@ -204,7 +205,7 @@ const createBudget = (ctx: TargetContext, args: ParsedArgs): CommandResult => {
   const rawAmount = ParsedArgs.requiredString(args, "budget-amount");
   const amountMatch = /^(\d+(?:\.\d+)?)([A-Za-z]{3})?$/.exec(rawAmount);
   const amount = amountMatch === null ? Number.NaN : Number(amountMatch[1]);
-  if (!Number.isFinite(amount)) {
+  if (!Number.isFinite(amount) || (amountMatch?.[2] && amountMatch[2].toUpperCase() !== "JPY")) {
     return Result.err(
       CommandFailure.invalidValue(
         "--budget-amount",
@@ -322,7 +323,16 @@ export const BudgetCommands: readonly CommandSpec[] = [
       }));
     },
   }),
-];
+].map((spec): CommandSpec => {
+  if (spec.kind !== "target") {
+    return spec;
+  }
+  return {
+    ...spec,
+    run: (ctx: TargetContext, a: ParsedArgs) =>
+      Result.flatMap(apiCheck(ctx, "billingbudgets.googleapis.com"), () => spec.run(ctx, a)),
+  };
+});
 
 export const ServiceCommands: readonly CommandSpec[] = [
   projectCommand({

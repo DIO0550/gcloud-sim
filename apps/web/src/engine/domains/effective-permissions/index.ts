@@ -1,3 +1,4 @@
+import { identitySubjects } from "@/engine/domains/admin-lab/model";
 import { type IamMember, IamPolicy, type RoleName } from "@/engine/domains/iam-policy";
 import type { PolicyTarget } from "@/engine/domains/resource-hierarchy";
 import { RoleCatalog } from "@/engine/domains/role-catalog";
@@ -42,14 +43,24 @@ export const EffectivePermissions = {
   resolve(world: World, subject: IamMember, target: PolicyTarget): EffectivePermissions {
     const grants = World.ancestry(world, target).flatMap((ancestor) => {
       const policy = World.findPolicy(world, ancestor);
-      const roles = Option.isSome(policy) ? IamPolicy.rolesOf(policy.value, subject) : [];
+      const roles = Option.isSome(policy)
+        ? [
+            ...new Set(
+              identitySubjects(world, subject).flatMap((member) =>
+                IamPolicy.rolesOf(policy.value, member),
+              ),
+            ),
+          ]
+        : [];
       return roles.map((role): EffectiveGrant => ({ role, grantedAt: ancestor }));
     });
     const permissions = new Set(
       grants.flatMap((grant) => {
         const role = Option.or(
           Option.map(RoleCatalog.find(grant.role), (r) => r.includedPermissions),
-          Option.map(World.findCustomRole(world, grant.role), (r) => r.includedPermissions),
+          Option.map(World.findCustomRole(world, grant.role), (r) =>
+            r.stage === "DISABLED" ? [] : r.includedPermissions,
+          ),
         );
         return Option.unwrapOr(role, []);
       }),

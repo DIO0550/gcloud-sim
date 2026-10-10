@@ -116,6 +116,7 @@ export const Candidates = {
   /** `user:` / `serviceAccount:` を付けたメンバー。ログイン済みのアカウントと SA から */
   members: inProject((world, projectId) => [
     ...world.session.accounts.map((a) => `user:${a}`),
+    ...world.adminLab.groups.map((g) => `group:${g.email}`),
     ...World.serviceAccountsOf(world, projectId).map((s) => `serviceAccount:${s.email}`),
     "allUsers",
     "allAuthenticatedUsers",

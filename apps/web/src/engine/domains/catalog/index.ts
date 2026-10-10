@@ -218,6 +218,20 @@ export const BucketLocation = {
 } as const;
 
 const ApiServices = [
+  { name: "orgpolicy.googleapis.com", title: "Organization Policy API", billingRequired: false },
+  { name: "cloudidentity.googleapis.com", title: "Cloud Identity API", billingRequired: false },
+  {
+    name: "cloudidentityscim.googleapis.com",
+    title: "Cloud Identity SCIM API",
+    billingRequired: false,
+  },
+  { name: "cloudquotas.googleapis.com", title: "Cloud Quotas API", billingRequired: false },
+  { name: "cloudasset.googleapis.com", title: "Cloud Asset API", billingRequired: false },
+  {
+    name: "billingbudgets.googleapis.com",
+    title: "Cloud Billing Budget API",
+    billingRequired: false,
+  },
   { name: "storagetransfer.googleapis.com", title: "Storage Transfer API", billingRequired: false },
   { name: "file.googleapis.com", title: "Cloud Filestore API", billingRequired: true },
   {

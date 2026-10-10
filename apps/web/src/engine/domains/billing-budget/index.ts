@@ -33,13 +33,13 @@ export const Budget = {
       sequence: number;
     }>,
   ): Result<Budget, string> {
-    if (!(seed.amount > 0)) {
+    if (!Number.isFinite(seed.amount) || !(seed.amount > 0)) {
       return Result.err(`Invalid value for [--budget-amount]: ${seed.amount}. Must be positive.`);
     }
-    const outOfRange = seed.thresholds.find((t) => !(t > 0));
+    const outOfRange = seed.thresholds.find((t) => !Number.isFinite(t) || t < 0 || t > 1);
     if (outOfRange !== undefined) {
       return Result.err(
-        `Invalid value for [--threshold-rule]: percent=${outOfRange}. Must be a positive fraction such as 0.5.`,
+        `Invalid value for [--threshold-rule]: percent=${outOfRange}. Must be a fraction from 0.0 through 1.0, such as 0.5.`,
       );
     }
     if (seed.displayName.trim() === "") return Result.err("Display name must not be empty.");
@@ -62,7 +62,7 @@ export const Budget = {
    */
   parseAmount(raw: string): Result<number, string> {
     const amount = /^\d+(\.\d+)?$/.test(raw) ? Number(raw) : Number.NaN;
-    return amount > 0
+    return Number.isFinite(amount) && amount > 0
       ? Result.ok(amount)
       : Result.err(`Invalid value for [--budget-amount]: ${raw}. Must be a positive number.`);
   },

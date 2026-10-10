@@ -64,6 +64,8 @@ const groupText = (group: ResourceGroup): string => {
       return "ロードバランシング";
     case "vpc":
       return "VPC ネットワーク";
+    case "admin":
+      return "組織・ID・クォータ・課金";
     case "storage":
       return "Cloud Storage";
     case "gke":

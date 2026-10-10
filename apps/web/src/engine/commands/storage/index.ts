@@ -28,6 +28,7 @@ import {
   storageUrl,
   versionObject,
 } from "@/engine/commands/storage-lab/runtime";
+import { papEnforced } from "@/engine/domains/admin-lab/policies";
 import { BucketLocation, StorageClass } from "@/engine/domains/catalog";
 import { IamPolicy } from "@/engine/domains/iam-policy";
 import type { PolicyTarget } from "@/engine/domains/resource-hierarchy";
@@ -1129,7 +1130,7 @@ const gsutilAcl = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   const bucket = requireBucket(ctx, url.value.bucket);
   if (!Result.isOk(bucket)) return bucket;
   if (
-    bucket.value.publicAccessPrevention &&
+    papEnforced(ctx.world, bucket.value) &&
     (entity === "allUsers" || entity === "allAuthenticatedUsers")
   ) {
     return Result.err(

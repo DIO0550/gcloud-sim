@@ -27,7 +27,7 @@ test.each([passthroughLesson, internalLesson, negLesson, tlsLesson, bucketLesson
   (commands) => {
     const built = executeLb(session(), ...commands);
     const snapshot = Snapshot.create(built.world, Now);
-    expect(snapshot.schemaVersion).toBe(38);
+    expect(snapshot.schemaVersion).toBe(39);
     const imported = Result.unwrap(Snapshot.fromUnknown(JSON.parse(JSON.stringify(snapshot))));
     expect(imported).toEqual(built.world);
   },

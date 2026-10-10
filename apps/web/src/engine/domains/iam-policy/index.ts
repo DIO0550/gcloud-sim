@@ -11,6 +11,8 @@ export type IamMember =
   | `serviceAccount:${string}`
   | `group:${string}`
   | `domain:${string}`
+  | `principal://iam.googleapis.com/${string}`
+  | `principalSet://iam.googleapis.com/${string}`
   | "allUsers"
   | "allAuthenticatedUsers";
 
@@ -35,6 +37,19 @@ export const IamMember = {
    */
   parse(value: string): Result<IamMember, string> {
     if (value === "allUsers" || value === "allAuthenticatedUsers") return Result.ok(value);
+    if (
+      /^principal(?:Set)?:\/\/iam\.googleapis\.com\/(?:projects\/\d+\/locations\/global\/workloadIdentityPools\/[a-z0-9-]{4,32}|locations\/global\/workforcePools\/[a-z][a-z0-9-]{5,62})\/(?:subject\/[^\s/]+|group\/[^\s/]+|attribute\.[a-zA-Z0-9_]+\/[^\s/]+|\*)$/.test(
+        value,
+      )
+    ) {
+      const isSet = value.startsWith("principalSet:");
+      if (isSet === value.includes("/subject/")) {
+        return Result.err(
+          "Use principal:// for a subject and principalSet:// for pool/group/attribute sets.",
+        );
+      }
+      return Result.ok(value as IamMember);
+    }
     const prefix = MemberPrefixes.find((p) => value.startsWith(p));
     const hasBody = prefix !== undefined && value.length > prefix.length;
     if (!hasBody) {
@@ -55,6 +70,13 @@ export const IamMember = {
    */
   covers(member: IamMember, subject: IamMember): boolean {
     if (member === "allUsers" || member === "allAuthenticatedUsers") return true;
+    if (
+      member.startsWith("principalSet://") &&
+      member.endsWith("/*") &&
+      subject.startsWith("principal://")
+    ) {
+      return subject.replace("principal://", "principalSet://").startsWith(member.slice(0, -1));
+    }
     return member === subject;
   },
 } as const;

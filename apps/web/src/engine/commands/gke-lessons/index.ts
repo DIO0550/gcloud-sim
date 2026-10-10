@@ -16,6 +16,7 @@ import {
   requireNamespace,
 } from "@/engine/commands/kubectl/context";
 import { Candidates, projectCommand } from "@/engine/commands/shared";
+import { observeAdmin } from "@/engine/domains/admin-lab/model";
 import {
   AutopilotAdmission,
   KubeIdentity,
@@ -309,7 +310,13 @@ export const GkeLessonCommands: readonly CommandSpec[] = [
           Option.unwrapOr(ParsedArgs.string(args, "node-pool"), "default-pool"),
         );
         return finish(
-          ctx.world,
+          observeAdmin(ctx.world, {
+            projectId: ctx.project.projectId,
+            kind: "gke-identity",
+            resource: `${d.value.name}/${ParsedArgs.requiredString(args, "permission")}`,
+            result: result.allowed ? "allowed" : "denied",
+            value: result.allowed ? 1 : 0,
+          }),
           `${result.allowed ? "ALLOW" : "DENY"}: ${result.reason} (${result.principal || "no IAM principal"})`,
         );
       }),

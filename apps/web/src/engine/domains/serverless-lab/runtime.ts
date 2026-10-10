@@ -1,3 +1,4 @@
+import { identitySubjects } from "@/engine/domains/admin-lab/model";
 import type { ApiName } from "@/engine/domains/catalog";
 import { EffectivePermissions } from "@/engine/domains/effective-permissions";
 import { type IamMember, IamPolicy } from "@/engine/domains/iam-policy";
@@ -24,6 +25,9 @@ import {
 export const apiEnabled = (world: World, projectId: string, api: ApiName): boolean =>
   world.projects.some((p) => p.projectId === projectId && p.enabledApis.includes(api));
 export const principalMember = (principal: string): IamMember => {
+  if (principal.startsWith("principal://iam.googleapis.com/")) {
+    return principal as IamMember;
+  }
   if (principal === "anonymous") {
     return "allUsers";
   }
@@ -53,15 +57,23 @@ export const allows = (
   }
   const member = principalMember(principal);
   const effective = EffectivePermissions.resolve(world, member, { type: "project", id: projectId });
-  const direct = IamPolicy.rolesOf(policy, member);
+  const direct = identitySubjects(world, member).flatMap((subject) =>
+    IamPolicy.rolesOf(policy, subject),
+  );
   return (
     effective.permissions.has(permission) ||
-    direct.some((r) =>
-      Option.unwrapOr(
-        Option.map(RoleCatalog.find(r), (role) => role.includedPermissions.includes(permission)),
-        false,
-      ),
-    )
+    direct.some((r) => {
+      const predefined = RoleCatalog.find(r);
+      if (predefined.some) {
+        return predefined.value.includedPermissions.includes(permission);
+      }
+      return world.customRoles.some(
+        (role) =>
+          `projects/${role.projectId}/roles/${role.roleId}` === r &&
+          role.stage !== "DISABLED" &&
+          role.includedPermissions.includes(permission),
+      );
+    })
   );
 };
 export const accountExists = (world: World, projectId: string, email: string): boolean => {

@@ -12,7 +12,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 - ここに無いコマンドは `ERROR: (gcloud) Invalid choice: 'xxx'.`（E-001）になる。「未実装」の表に
   あるものは `gcloud-sim: command not implemented yet: ...`（E-002）になる
 - グローバルフラグ `--project` `--account` `--format` `--filter` `--limit` `--sort-by`
-  `--quiet`/`-q` `--help`/`-h` `--verbosity` はgcloud/gsutil/kubectlが受ける（Terraform/sim/Dockerはhelpのみ）
+  `--impersonate-service-account`（gcloudの対象コマンド） `--quiet`/`-q` `--help`/`-h` `--verbosity` はgcloud/gsutil/kubectlが受ける（Terraform/sim/Dockerはhelpのみ）
 - `--format` は `json` / `yaml` / `value(FIELDS)` / `table(FIELDS)` / `none`、`--filter` は
   `key=value` / `key!=value` / `key:substring` / `NOT` / `AND` / `OR` の簡易版（DJ-009）
 - `gcloud beta` / `gcloud alpha` は警告を出して `gcloud` と同じに扱う
@@ -21,7 +21,64 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（731）
+## 実装済み（781）
+
+### 組織・IAM・ID連携・クォータ・課金
+
+構文・公式参照・教材の権限投影・未対応範囲は[ADMINISTRATION.md](ADMINISTRATION.md)を参照してください。
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud org-policies set-policy` | 管理教材の構成・検証・状態操作。 |
+| `gcloud org-policies describe` | 管理教材の構成・検証・状態操作。 |
+| `gcloud org-policies reset` | 管理教材の構成・検証・状態操作。 |
+| `gcloud org-policies delete` | 管理教材の構成・検証・状態操作。 |
+| `sim identity users create` | 管理教材の構成・検証・状態操作。 |
+| `sim identity users describe` | 管理教材の構成・検証・状態操作。 |
+| `sim identity users list` | 管理教材の構成・検証・状態操作。 |
+| `sim identity users update` | 管理教材の構成・検証・状態操作。 |
+| `sim identity users delete` | 管理教材の構成・検証・状態操作。 |
+| `gcloud identity groups create` | 管理教材の構成・検証・状態操作。 |
+| `gcloud identity groups describe` | 管理教材の構成・検証・状態操作。 |
+| `gcloud identity groups search` | 管理教材の構成・検証・状態操作。 |
+| `gcloud identity groups delete` | 管理教材の構成・検証・状態操作。 |
+| `gcloud identity groups memberships add` | 管理教材の構成・検証・状態操作。 |
+| `gcloud identity groups memberships delete` | 管理教材の構成・検証・状態操作。 |
+| `gcloud identity groups memberships list` | 管理教材の構成・検証・状態操作。 |
+| `gcloud auth print-access-token` | 管理教材の構成・検証・状態操作。 |
+| `sim auth credentials check` | 管理教材の構成・検証・状態操作。 |
+| `sim iam runtime check` | 管理教材の構成・検証・状態操作。 |
+| `gcloud iam workload-identity-pools create` | 管理教材の構成・検証・状態操作。 |
+| `gcloud iam workload-identity-pools list` | 管理教材の構成・検証・状態操作。 |
+| `gcloud iam workload-identity-pools describe` | 管理教材の構成・検証・状態操作。 |
+| `gcloud iam workload-identity-pools delete` | 管理教材の構成・検証・状態操作。 |
+| `gcloud iam workforce-pools create` | 管理教材の構成・検証・状態操作。 |
+| `gcloud iam workforce-pools list` | 管理教材の構成・検証・状態操作。 |
+| `gcloud iam workforce-pools describe` | 管理教材の構成・検証・状態操作。 |
+| `gcloud iam workforce-pools delete` | 管理教材の構成・検証・状態操作。 |
+| `gcloud iam workload-identity-pools providers create-oidc` | 管理教材の構成・検証・状態操作。 |
+| `gcloud iam workload-identity-pools providers list` | 管理教材の構成・検証・状態操作。 |
+| `gcloud iam workload-identity-pools providers describe` | 管理教材の構成・検証・状態操作。 |
+| `gcloud iam workload-identity-pools providers delete` | 管理教材の構成・検証・状態操作。 |
+| `gcloud iam workforce-pools providers create-oidc` | 管理教材の構成・検証・状態操作。 |
+| `gcloud iam workforce-pools providers list` | 管理教材の構成・検証・状態操作。 |
+| `gcloud iam workforce-pools providers describe` | 管理教材の構成・検証・状態操作。 |
+| `gcloud iam workforce-pools providers delete` | 管理教材の構成・検証・状態操作。 |
+| `sim identity federation exchange` | 管理教材の構成・検証・状態操作。 |
+| `sim identity federation access` | 管理教材の構成・検証・状態操作。 |
+| `gcloud quotas info list` | 管理教材の構成・検証・状態操作。 |
+| `gcloud quotas preferences create` | 管理教材の構成・検証・状態操作。 |
+| `gcloud quotas preferences update` | 管理教材の構成・検証・状態操作。 |
+| `sim quotas resolve` | 管理教材の構成・検証・状態操作。 |
+| `sim quotas evaluate` | 管理教材の構成・検証・状態操作。 |
+| `gcloud asset search-all-resources` | 管理教材の構成・検証・状態操作。 |
+| `gcloud billing budgets update` | 管理教材の構成・検証・状態操作。 |
+| `gcloud billing budgets delete` | 管理教材の構成・検証・状態操作。 |
+| `sim billing budgets evaluate` | 管理教材の構成・検証・状態操作。 |
+| `sim billing export configure` | 管理教材の構成・検証・状態操作。 |
+| `sim billing export describe` | 管理教材の構成・検証・状態操作。 |
+| `sim billing export run` | 管理教材の構成・検証・状態操作。 |
+| `sim billing placement evaluate` | 管理教材の構成・検証・状態操作。 |
 
 ### Storage・暗号化・転送・共有ファイル
 

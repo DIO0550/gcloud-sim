@@ -9,6 +9,7 @@ import {
   type ProjectContext,
 } from "@/engine/cli/command-spec";
 import { projectCommand, targetCommand } from "@/engine/commands/shared";
+import { papEnforced } from "@/engine/domains/admin-lab/policies";
 import { StorageClass } from "@/engine/domains/catalog";
 import { allows } from "@/engine/domains/serverless-lab/runtime";
 import type { Bucket as BucketType } from "@/engine/domains/storage";
@@ -279,7 +280,8 @@ export const ObjectStorageCommands: readonly CommandSpec[] = [
       const transport = Option.unwrapOr(ParsedArgs.string(a, "transport"), "https");
       const permission = "storage.objects.get";
       const publicAllowed =
-        !bucket.publicAccessPrevention && storageAllows(ctx.world, bucket, "anonymous", permission);
+        !papEnforced(ctx.world, bucket) &&
+        storageAllows(ctx.world, bucket, "anonymous", permission);
       const direct =
         principal !== "anonymous" && storageAllows(ctx.world, bucket, principal, permission);
       const url = storageUrl(ParsedArgs.requiredPositional(a, 0));
@@ -298,7 +300,7 @@ export const ObjectStorageCommands: readonly CommandSpec[] = [
           (entry) =>
             ["READER", "OWNER"].includes(entry.role) &&
             (entry.entity === principal ||
-              (!bucket.publicAccessPrevention &&
+              (!papEnforced(ctx.world, bucket) &&
                 ["allUsers", "allAuthenticatedUsers"].includes(entry.entity))),
         );
       const allowed =

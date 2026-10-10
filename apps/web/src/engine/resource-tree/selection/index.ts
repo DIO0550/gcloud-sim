@@ -1,3 +1,4 @@
+import type { AdminLab } from "@/engine/domains/admin-lab/model";
 import { Region, Zone } from "@/engine/domains/catalog";
 import { LbScope } from "@/engine/domains/load-balancing";
 import type { LbResource } from "@/engine/domains/load-balancing/graph";
@@ -6,6 +7,7 @@ import { Option } from "@/utils/Option";
 
 /** ツリーで選べるもの。プロパティパネルはこれを見て World から中身を引く。 */
 export type TreeSelection =
+  | Readonly<{ kind: "admin-lab"; scope: string; collection: keyof AdminLab; name: string }>
   | Readonly<{
       kind: "storage-lab";
       collection: "files" | "transfers" | "signed";
@@ -257,6 +259,8 @@ export const TreeSelection = {
   /** ツリーのノード id にもなる一意なキー。 */
   key(selection: TreeSelection): string {
     switch (selection.kind) {
+      case "admin-lab":
+        return `admin-lab:${selection.scope}/${selection.collection}/${selection.name}`;
       case "storage-lab":
         return `storage-lab:${selection.collection}/${selection.projectId}/${selection.location}/${selection.subtype}/${selection.name}`;
       case "network-lab":
@@ -379,6 +383,27 @@ export const TreeSelection = {
    */
   describeCommand(selection: TreeSelection): Option<string> {
     switch (selection.kind) {
+      case "admin-lab": {
+        const [scope, id] = selection.scope.split("/");
+        const flag = { projects: "project", folders: "folder", organizations: "organization" }[
+          scope ?? ""
+        ];
+        if (selection.collection === "policies") {
+          return Option.some(`gcloud org-policies describe ${selection.name} --${flag}=${id}`);
+        }
+        if (selection.collection === "groups") {
+          return Option.some(`gcloud identity groups describe ${selection.name}`);
+        }
+        if (selection.collection === "credentials") {
+          return Option.some(`sim auth credentials check ${selection.name} --project=${id}`);
+        }
+        if (selection.collection === "exports") {
+          return Option.some(
+            `sim billing export describe --billing-account=${selection.name} --project=${id}`,
+          );
+        }
+        return Option.none;
+      }
       case "storage-lab": {
         const s = selection;
         const project = `--project=${s.projectId}`;

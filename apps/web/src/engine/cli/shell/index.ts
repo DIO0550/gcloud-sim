@@ -21,6 +21,10 @@ import {
 } from "@/engine/cli/formatter";
 import { CommandRegistry } from "@/engine/cli/registry";
 import { Tokenizer } from "@/engine/cli/tokenizer";
+import { requestedImpersonation } from "@/engine/domains/admin-lab/credentials";
+import { validateAdminLab } from "@/engine/domains/admin-lab/model";
+import { organizationViolation } from "@/engine/domains/admin-lab/policies";
+import { quotaViolation } from "@/engine/domains/admin-lab/quotas";
 import { ApiService } from "@/engine/domains/catalog";
 import { EffectivePermissions } from "@/engine/domains/effective-permissions";
 import { Principal } from "@/engine/domains/principal";
@@ -71,6 +75,11 @@ const Ready: ShellState = Object.freeze({ kind: "ready" });
 
 /** すべてのコマンドが受けるフラグ。`--help` は ArgParser が先に見る。 */
 const GlobalFlags: readonly FlagSpec[] = [
+  Flag.string(
+    "impersonate-service-account",
+    "Use an existing SA after checking getAccessToken and IAM Credentials API.",
+    { candidates: (world) => world.serviceAccounts.map((s) => s.email), singleUse: true },
+  ),
   Flag.string("project", "The Google Cloud project ID to use for this invocation.", {
     candidates: (world) => World.activeProjects(world).map((p) => p.projectId),
   }),
@@ -161,14 +170,24 @@ const outputLines = (output: CommandOutput, options: ListOptions): readonly Outp
  * 主体を決める（`--account` → `core/account`）。`plain` 以外のコマンドは主体が要るので、
  * 無ければ本物と同じ「アカウントが選ばれていない」失敗にする。
  */
-const resolvePrincipal = (world: World, args: ParsedArgs): Result<Principal, CommandFailure> => {
+const resolvePrincipal = (
+  world: World,
+  args: ParsedArgs,
+  impersonate = true,
+): Result<Principal, CommandFailure> => {
   const flag = ParsedArgs.string(args, "account");
   if (Option.isSome(flag)) {
-    return Result.mapErr(Principal.parse(flag.value), (m) =>
+    const parsed = Result.mapErr(Principal.parse(flag.value), (m) =>
       CommandFailure.invalidValue("--account", m),
     );
+    return Result.flatMap(parsed, (caller) =>
+      impersonate ? requestedImpersonation(world, args, caller) : Result.ok(caller),
+    );
   }
-  return Option.toResult(World.currentPrincipal(world), CommandFailure.noActiveAccount);
+  const current = Option.toResult(World.currentPrincipal(world), CommandFailure.noActiveAccount);
+  return Result.flatMap(current, (caller) =>
+    impersonate ? requestedImpersonation(world, args, caller) : Result.ok(caller),
+  );
 };
 
 const authorize = (
@@ -199,7 +218,11 @@ const runSpec = (spec: CommandSpec, ctx: CommandContext, args: ParsedArgs): Comm
     case "target": {
       const target = spec.resolveTarget(ctx, args);
       if (!Result.isOk(target)) return target;
-      const principal = resolvePrincipal(ctx.world, args);
+      const principal = resolvePrincipal(
+        ctx.world,
+        args,
+        spec.path.join(" ") !== "gcloud storage sign-url",
+      );
       if (!Result.isOk(principal)) return principal;
       const authorized = authorize(
         { ...ctx, principal: principal.value },
@@ -219,7 +242,11 @@ const runSpec = (spec: CommandSpec, ctx: CommandContext, args: ParsedArgs): Comm
         const title = Option.isSome(service) ? service.value.title : disabled;
         return Result.err(CommandFailure.apiDisabled(title, disabled, project.value.projectId));
       }
-      const principal = resolvePrincipal(ctx.world, args);
+      const principal = resolvePrincipal(
+        ctx.world,
+        args,
+        spec.path.join(" ") !== "gcloud storage sign-url",
+      );
       if (!Result.isOk(principal)) return principal;
       const target: PolicyTarget = { type: "project", id: project.value.projectId };
       const authorized = authorize(
@@ -322,7 +349,22 @@ const execute = (
     );
   }
 
-  const outcome = runSpec(spec, ctx, args.value);
+  const executed = runSpec(spec, ctx, args.value);
+  const outcome = Result.flatMap(executed, (next) => {
+    const violation = organizationViolation(world, next.world);
+    if (violation) {
+      return Result.err(CommandFailure.invalidState(violation));
+    }
+    const quota = quotaViolation(world, next.world);
+    if (quota) {
+      return Result.err(CommandFailure.invalidState(quota));
+    }
+    const admin = validateAdminLab(next.world);
+    if (!admin.ok) {
+      return Result.err(CommandFailure.invalidState(admin.error));
+    }
+    return Result.ok(next);
+  });
   if (!Result.isOk(outcome))
     return result(
       world,
@@ -360,10 +402,15 @@ const answerConfirmation = (input: ShellInput, tokens: readonly string[]): Shell
   });
 };
 
-const globalsFor = (tool: string | undefined): readonly FlagSpec[] =>
-  tool === "terraform" || tool === "sim" || tool === "docker"
-    ? GlobalFlags.filter((flag) => flag.name === "help")
-    : GlobalFlags;
+const globalsFor = (tool: string | undefined): readonly FlagSpec[] => {
+  if (tool === "terraform" || tool === "sim" || tool === "docker") {
+    return GlobalFlags.filter((flag) => flag.name === "help");
+  }
+  if (tool !== "gcloud") {
+    return GlobalFlags.filter((flag) => flag.name !== "impersonate-service-account");
+  }
+  return GlobalFlags;
+};
 
 export const Shell = {
   Ready,
