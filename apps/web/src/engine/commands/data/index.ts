@@ -17,6 +17,7 @@ import {
   projectCommand,
 } from "@/engine/commands/shared";
 import { PubsubSubscription, PubsubTopic } from "@/engine/domains/data";
+import { settings } from "@/engine/domains/data-processing/pubsub";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -156,7 +157,7 @@ export const PubsubCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "pubsub", "subscriptions", "list"],
     summary: "List Cloud Pub/Sub subscriptions.",
-    permission: "pubsub.topics.list",
+    permission: "pubsub.subscriptions.list",
     requiredApis: [PubsubApi],
     run: (ctx) =>
       Result.ok({
@@ -170,14 +171,40 @@ export const PubsubCommands: readonly CommandSpec[] = [
         ),
       }),
   }),
-  describeNamedCommand({
+  projectCommand({
     path: ["gcloud", "pubsub", "subscriptions", "describe"],
     summary: "Describe a Cloud Pub/Sub subscription.",
-    positional: { name: "SUBSCRIPTION", description: "ID of the subscription to describe." },
-    collection: "pubsubSubscriptions",
+    positionals: [
+      Positional.required("SUBSCRIPTION", "Subscription name.", Candidates.pubsubSubscriptions),
+    ],
     permission: "pubsub.subscriptions.get",
     requiredApis: [PubsubApi],
-    resourcePath: (ref) => `projects/${ref.projectId}/subscriptions/${ref.name}`,
-    record: PubsubSubscription.toRecord,
+    run: (ctx, args) => {
+      const value = ParsedArgs.requiredPositional(args, 0);
+      const sub = ctx.world.pubsubSubscriptions.find(
+        (s) => s.projectId === ctx.project.projectId && s.name === value,
+      );
+      if (!sub) {
+        return Result.err(
+          CommandFailure.notFound(`projects/${ctx.project.projectId}/subscriptions/${value}`),
+        );
+      }
+      const config = settings(ctx.world, sub);
+      return Result.ok({
+        world: ctx.world,
+        output: CommandOutput.yaml({
+          ...PubsubSubscription.toRecord(sub),
+          messageRetentionDuration: `${config.retention}s`,
+          deadLetterPolicy: {
+            topic: config.deadLetterTopic,
+            maxDeliveryAttempts: config.maxAttempts,
+          },
+          clock: ctx.world.dataProcessing.clock,
+          receipts: ctx.world.dataProcessing.receipts.filter(
+            (r) => r.projectId === sub.projectId && r.subscription === sub.name,
+          ),
+        }),
+      });
+    },
   }),
 ];

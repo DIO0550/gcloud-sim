@@ -9,6 +9,7 @@ import {
 } from "@/engine/cli/command-spec";
 import { Candidates, projectCommand } from "@/engine/commands/shared";
 import { ResourceName } from "@/engine/domains/compute";
+import { enqueue } from "@/engine/domains/data-processing/pubsub";
 import {
   type EventFilter,
   findDeployment,
@@ -215,7 +216,17 @@ export const EventCommands: readonly CommandSpec[] = [
         document: "",
       });
       const eventId = world.serverlessLab.events.at(-1)?.id ?? "";
-      return finish(world, {
+      const queued = enqueue(
+        world,
+        ctx.project.projectId,
+        source,
+        ParsedArgs.requiredString(args, "message"),
+        eventId,
+      );
+      if (!queued.ok) {
+        return invalid(queued.error);
+      }
+      return finish(queued.value.world, {
         messageIds: [eventId],
         deliveries: world.serverlessLab.deliveries.filter((d) => d.eventId === eventId),
       });

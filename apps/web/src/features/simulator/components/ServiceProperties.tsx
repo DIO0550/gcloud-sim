@@ -673,6 +673,18 @@ export const SubscriptionProperties = ({
         { label: "type", value: Option.isSome(s.pushEndpoint) ? "PUSH" : "PULL" },
         { label: "pushEndpoint", value: Option.unwrapOr(s.pushEndpoint, Absent) },
         { label: "ackDeadlineSeconds", value: String(s.ackDeadlineSeconds) },
+        { label: "retentionSeconds", value: String(settings(world, s).retention) },
+        { label: "deadLetterTopic", value: settings(world, s).deadLetterTopic || "—" },
+        { label: "maxDeliveryAttempts", value: String(settings(world, s).maxAttempts) },
+        { label: "virtualClock", value: String(world.dataProcessing.clock) },
+        {
+          label: "receipts",
+          value: JSON.stringify(
+            world.dataProcessing.receipts.filter(
+              (r) => r.projectId === s.projectId && r.subscription === s.name,
+            ),
+          ),
+        },
         { label: "createTime", value: s.createTime },
       ]}
     />
@@ -1005,3 +1017,5 @@ export const KubeStorageProperties = ({
     </>
   );
 };
+
+import { settings } from "@/engine/domains/data-processing/pubsub";

@@ -21,7 +21,59 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（548）
+## 実装済み（593）
+
+BigQuery・Pub/Subの配送・Dataflow/Dataproc・Kafka・exportは45コマンドを追加しています。入力・SQL・明示的な進行と15ミッションの手順は[DATA_PROCESSING.md](DATA_PROCESSING.md)を参照してください。
+
+### BigQuery・データ処理
+
+| コマンド | 内容 |
+|---|---|
+| `bq mk` | bq mk: bounded data lesson. |
+| `bq load` | bq load: bounded data lesson. |
+| `bq query` | bq query: bounded data lesson. |
+| `bq ls` | bq ls: bounded data lesson. |
+| `bq show` | bq show: bounded data lesson. |
+| `bq rm` | bq rm: bounded data lesson. |
+| `sim storage objects write` | sim storage objects write: bounded data lesson. |
+| `gcloud pubsub subscriptions pull` | gcloud pubsub subscriptions pull: bounded data lesson. |
+| `gcloud pubsub subscriptions ack` | gcloud pubsub subscriptions ack: bounded data lesson. |
+| `sim pubsub push` | sim pubsub push: bounded data lesson. |
+| `sim time advance` | sim time advance: bounded data lesson. |
+| `gcloud pubsub subscriptions update` | gcloud pubsub subscriptions update: bounded data lesson. |
+| `gcloud pubsub subscriptions delete` | gcloud pubsub subscriptions delete: bounded data lesson. |
+| `gcloud pubsub topics delete` | gcloud pubsub topics delete: bounded data lesson. |
+| `gcloud dataflow jobs run` | gcloud dataflow jobs run: bounded data lesson. |
+| `gcloud dataproc jobs submit spark` | gcloud dataproc jobs submit spark: bounded data lesson. |
+| `gcloud dataflow jobs list` | gcloud dataflow jobs list: bounded data lesson. |
+| `gcloud dataflow jobs describe` | gcloud dataflow jobs describe: bounded data lesson. |
+| `gcloud dataflow jobs cancel` | gcloud dataflow jobs cancel: bounded data lesson. |
+| `sim dataflow jobs advance` | sim dataflow jobs advance: bounded data lesson. |
+| `sim dataflow jobs retry` | sim dataflow jobs retry: bounded data lesson. |
+| `gcloud dataproc jobs list` | gcloud dataproc jobs list: bounded data lesson. |
+| `gcloud dataproc jobs describe` | gcloud dataproc jobs describe: bounded data lesson. |
+| `gcloud dataproc jobs cancel` | gcloud dataproc jobs cancel: bounded data lesson. |
+| `sim dataproc jobs advance` | sim dataproc jobs advance: bounded data lesson. |
+| `sim dataproc jobs retry` | sim dataproc jobs retry: bounded data lesson. |
+| `gcloud dataproc clusters create` | gcloud dataproc clusters create: bounded data lesson. |
+| `gcloud dataproc clusters list` | gcloud dataproc clusters list: bounded data lesson. |
+| `gcloud dataproc clusters describe` | gcloud dataproc clusters describe: bounded data lesson. |
+| `gcloud dataproc clusters update` | gcloud dataproc clusters update: bounded data lesson. |
+| `gcloud dataproc clusters delete` | gcloud dataproc clusters delete: bounded data lesson. |
+| `gcloud managed-kafka clusters create` | gcloud managed-kafka clusters create: bounded data lesson. |
+| `gcloud managed-kafka clusters list` | gcloud managed-kafka clusters list: bounded data lesson. |
+| `gcloud managed-kafka clusters describe` | gcloud managed-kafka clusters describe: bounded data lesson. |
+| `gcloud managed-kafka clusters delete` | gcloud managed-kafka clusters delete: bounded data lesson. |
+| `gcloud managed-kafka topics create` | gcloud managed-kafka topics create: bounded data lesson. |
+| `gcloud managed-kafka topics list` | gcloud managed-kafka topics list: bounded data lesson. |
+| `gcloud managed-kafka topics describe` | gcloud managed-kafka topics describe: bounded data lesson. |
+| `gcloud managed-kafka topics delete` | gcloud managed-kafka topics delete: bounded data lesson. |
+| `sim kafka connect` | sim kafka connect: bounded data lesson. |
+| `sim data-services choose` | sim data-services choose: bounded data lesson. |
+| `sim billing exports configure` | sim billing exports configure: bounded data lesson. |
+| `sim billing exports run` | sim billing exports run: bounded data lesson. |
+| `sim logging sinks grant-writer` | sim logging sinks grant-writer: bounded data lesson. |
+| `sim logging sinks export` | sim logging sinks export: bounded data lesson. |
 
 ロードバランサは3種類の接続構成・HC/アプリ/FWの独立診断・NEG・Google-managed HTTPS・CDN設定・backend bucket・依存順の削除に対応します。[LOAD_BALANCING.md](LOAD_BALANCING.md)にミッション、スコープ別権限、旧保存とモデルの範囲を記載しています。
 

@@ -23,7 +23,7 @@
   試行錯誤できる。エラーの下に `gcloud-sim: hint:` で「その権限を含むロール」を出す
 - **リソースツリー**: 組織 → フォルダ → プロジェクト → リソース。クリックでプロパティと
   IAM の継承元、ダブルクリックで `describe` を入力行に挿入
-- **ミッション**: 121 本（ACE の 5 ドメインからカテゴリ→ミッション→手順を選択）。状態に対するアサーションでクリア判定する
+- **ミッション**: 136 本（ACE の 5 ドメインからカテゴリ→ミッション→手順を選択）。状態に対するアサーションでクリア判定する
   （コマンドの文字列一致ではない）
 - **Cloud SQL / AlloyDB / DMS**: SQLの実データ、private接続・HA・replica、backup/PITR・Storage転送、AlloyDB read pool、DMSの初期コピー/CDC/切替を学習できる（[対応範囲](docs/RELATIONAL_DATABASES.md)）
 - **保存**: コマンドごとに localStorage へ自動保存。設定から JSON の export / import / リセット

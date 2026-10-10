@@ -234,6 +234,9 @@ const ApiServices = [
   { name: "appengine.googleapis.com", title: "App Engine Admin API", billingRequired: true },
   { name: "pubsub.googleapis.com", title: "Cloud Pub/Sub API", billingRequired: false },
   { name: "bigquery.googleapis.com", title: "BigQuery API", billingRequired: false },
+  { name: "dataflow.googleapis.com", title: "Dataflow API", billingRequired: true },
+  { name: "dataproc.googleapis.com", title: "Dataproc API", billingRequired: true },
+  { name: "managedkafka.googleapis.com", title: "Managed Kafka API", billingRequired: true },
   {
     name: "cloudkms.googleapis.com",
     title: "Cloud Key Management Service (KMS) API",
