@@ -2,10 +2,39 @@
 const identifier = (name: string): boolean =>
   /^[A-Za-z_][A-Za-z0-9_-]*$/.test(name) &&
   !["__proto__", "prototype", "constructor"].includes(name);
+const instanceKey = (key: string): boolean =>
+  /^[A-Za-z0-9_-]{1,80}$/.test(key) && !["__proto__", "prototype", "constructor"].includes(key);
+const segment = (part: string): boolean => {
+  const match = /^([A-Za-z_][A-Za-z0-9_-]*)(?:\[(\d+|"[A-Za-z0-9_-]+")\])?$/.exec(part);
+  if (!match || !identifier(match[1] ?? "")) {
+    return false;
+  }
+  const key = match[2];
+  if (key === undefined) {
+    return true;
+  }
+  if (key.startsWith('"')) {
+    return instanceKey(JSON.parse(key));
+  }
+  return /^(0|[1-9]\d*)$/.test(key) && Number(key) < 100;
+};
 export type TfMove = Readonly<{ from: string; to: string }>;
 export const TfStructure = {
   identifier,
+  instanceKey,
+  moduleAddress(address: string): boolean {
+    const parts = address.split(".");
+    return (
+      parts.length <= 8 &&
+      parts.length >= 2 &&
+      parts.length % 2 === 0 &&
+      parts.every((part, index) => (index % 2 === 0 ? part === "module" : segment(part)))
+    );
+  },
   filePath(path: string): boolean {
+    if (path === ".terraform.lock.hcl") {
+      return true;
+    }
     const parts = path.split("/");
     return (
       path.length <= 300 &&
@@ -15,7 +44,7 @@ export const TfStructure = {
           /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}$/.test(p) &&
           !["__proto__", "prototype", "constructor"].includes(p),
       ) &&
-      /\.(tf|tfvars)$/.test(path)
+      /\.(tf|tfvars|tfstate)$/.test(path)
     );
   },
   modulePath(directory: string, source: string): string {
@@ -41,7 +70,7 @@ export const TfStructure = {
   },
   resourceType(address: string): string | undefined {
     const parts = address.split(".");
-    if (parts.length < 2 || parts.length > 10 || parts.length % 2 !== 0 || !parts.every(identifier))
+    if (parts.length < 2 || parts.length > 10 || parts.length % 2 !== 0 || !parts.every(segment))
       return undefined;
     for (let i = 0; i < parts.length - 2; i += 2) if (parts[i] !== "module") return undefined;
     const type = parts.at(-2);

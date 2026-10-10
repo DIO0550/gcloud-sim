@@ -1,4 +1,5 @@
 import { Region } from "@/engine/domains/catalog";
+import { Subnet, SubnetModes } from "@/engine/domains/compute";
 import {
   TerraformState,
   type TfChange,
@@ -7,6 +8,7 @@ import {
 } from "@/engine/domains/terraform";
 import { TfAccess } from "@/engine/domains/terraform/access";
 import { TfBackendRuntime } from "@/engine/domains/terraform/backend-runtime";
+import type { TfCompileOptions } from "@/engine/domains/terraform/compiler";
 import { TfConfiguration } from "@/engine/domains/terraform/configuration";
 import { TfResourceRuntime } from "@/engine/domains/terraform/resource-runtime";
 import { TfResources } from "@/engine/domains/terraform/resources";
@@ -25,6 +27,9 @@ const ordered = (rs: readonly TfResource[]): readonly TfResource[] =>
   [...rs].sort((a, b) => a.address.localeCompare(b.address));
 const replacing = (a: TfResource, b: TfResource): boolean => {
   if (a.type !== b.type || !identity(a, b) || a.project !== b.project) return true;
+  if (a.type === "google_compute_network" && b.type === a.type) {
+    return a.autoMode !== b.autoMode;
+  }
   if (a.type === "google_storage_bucket" && b.type === a.type) return a.location !== b.location;
   if (a.type === "google_compute_instance" && b.type === a.type)
     return (
@@ -57,9 +62,15 @@ const read = (world: World, r: TfResource): TfResource | undefined => {
     return TfResourceRuntime.read(world, r);
   if (isNetwork(r)) {
     const network = world.networks.find((n) => n.projectId === r.project && n.name === r.name);
-    if (network?.subnetMode === "AUTO")
-      fail("Automatic subnet networks are not supported by this Terraform subset.");
-    return network ? { ...r, region: "", network: "", cidr: "", privateAccess: false } : undefined;
+    if (!network) {
+      return undefined;
+    }
+    const result = { ...r, region: "", network: "", cidr: "", privateAccess: false };
+    if (network.subnetMode === "AUTO") {
+      return { ...result, autoMode: true };
+    }
+    const { autoMode: _autoMode, ...custom } = result;
+    return custom;
   }
   const subnet = world.subnets.find(
     (s) => s.projectId === r.project && s.name === r.name && s.region === r.region,
@@ -74,7 +85,11 @@ const read = (world: World, r: TfResource): TfResource | undefined => {
     : undefined;
 };
 
-const diff = (before: readonly TfResource[], after: readonly TfResource[]): readonly TfChange[] => {
+const diff = (
+  before: readonly TfResource[],
+  after: readonly TfResource[],
+  dependencies: Readonly<Record<string, readonly string[]>> = {},
+): readonly TfChange[] => {
   const deletes: TfChange[] = [];
   const writes: TfChange[] = [];
   for (const old of before) {
@@ -91,7 +106,24 @@ const diff = (before: readonly TfResource[], after: readonly TfResource[]): read
   }
   deletes.sort((a, b) => rank(b.resource) - rank(a.resource));
   writes.sort((a, b) => rank(a.resource) - rank(b.resource));
-  return [...deletes, ...writes];
+  const orderedWrites: TfChange[] = [];
+  const remaining = [...writes];
+  while (remaining.length > 0) {
+    const index = remaining.findIndex(
+      (c) =>
+        !(dependencies[c.resource.address] ?? []).some((address) =>
+          remaining.some((other) => other.resource.address === address),
+        ),
+    );
+    if (index < 0) {
+      fail("Cycle in explicit or inferred resource dependencies.");
+    }
+    const change = remaining.splice(index, 1)[0];
+    if (change) {
+      orderedWrites.push(change);
+    }
+  }
+  return [...deletes, ...orderedWrites];
 };
 
 const mutate = (world: World, change: TfChange, checkWrites: boolean, now = ""): World => {
@@ -109,7 +141,10 @@ const mutate = (world: World, change: TfChange, checkWrites: boolean, now = ""):
       .flatMap((i) => i.networkInterfaces);
     if (isNetwork(r)) {
       const dependents = [
-        ...world.subnets,
+        ...world.subnets.filter(
+          (s) =>
+            !(r.autoMode && s.projectId === r.project && s.network === r.name && s.name === r.name),
+        ),
         ...world.firewallRules,
         ...world.routers,
         ...world.peerings,
@@ -121,7 +156,13 @@ const mutate = (world: World, change: TfChange, checkWrites: boolean, now = ""):
         world.peerings.some((p) => p.peerProjectId === r.project && p.peerNetwork === r.name)
       )
         fail(`Network ${r.name} is still in use. Remove dependent resources first.`);
-      return { ...world, networks: world.networks.filter((n) => !matches(n)) };
+      return {
+        ...world,
+        networks: world.networks.filter((n) => !matches(n)),
+        subnets: world.subnets.filter(
+          (s) => !(r.autoMode && s.projectId === r.project && s.network === r.name),
+        ),
+      };
     }
     if (
       world.instances.some(
@@ -145,7 +186,18 @@ const mutate = (world: World, change: TfChange, checkWrites: boolean, now = ""):
       fail(`Network already exists: ${r.name}. Use terraform import.`);
     return {
       ...world,
-      networks: [...world.networks, { projectId: r.project, name: r.name, subnetMode: "CUSTOM" }],
+      networks: [
+        ...world.networks,
+        {
+          projectId: r.project,
+          name: r.name,
+          subnetMode: r.autoMode ? SubnetModes.Auto : SubnetModes.Custom,
+        },
+      ],
+      subnets: [
+        ...world.subnets,
+        ...(r.autoMode ? Subnet.autoRange(r.project, r.name, Region.all()) : []),
+      ],
     };
   }
   const region = Region.parse(r.region);
@@ -193,10 +245,13 @@ const mutate = (world: World, change: TfChange, checkWrites: boolean, now = ""):
 
 export const TfRuntime = {
   read,
-  plan(world: World, mode: TfPlan["mode"]): TfPlan {
+  plan(world: World, mode: TfPlan["mode"], options: TfCompileOptions = {}): TfPlan {
     if (!world.terraform.initialized) fail("Run terraform init first.");
     TfBackendRuntime.check(world, true);
-    const config = TfConfiguration.compile(world.terraform.files);
+    const config = TfConfiguration.compile(world.terraform.files, [], {
+      ...options,
+      providerVersion: world.terraform.providerVersion || undefined,
+    });
     const managed = TfStructure.remap(world.terraform.resources, config.moves);
     const moves = world.terraform.resources.flatMap((r, index) => {
       const to = managed[index]?.address;
@@ -216,18 +271,20 @@ export const TfRuntime = {
       if (!owned && read(world, r))
         fail(`Resource already exists: ${TerraformState.id(r)}. Use terraform import.`);
     }
-    const changes = mode === "refresh-only" ? [] : diff(before, after);
+    const changes = mode === "refresh-only" ? [] : diff(before, after, config.dependencies);
     TfBackendRuntime.protect(world, changes);
     // Validate references, collisions and deletion dependencies without committing changes.
     changes.reduce((next, change) => mutate(next, change, false), world);
     const outputs = mode === "destroy" ? {} : config.outputs;
     const refreshedOutputs =
-      mode === "refresh-only" ? TfRuntime.refreshOutputs(world, before) : outputs;
+      mode === "refresh-only" ? TfRuntime.refreshOutputs(world, before, options) : outputs;
     return {
       moves,
       serial: world.terraform.serial,
       backendRevision: world.terraform.backend.revision,
       mode,
+      dependencies: config.dependencies,
+      sensitiveOutputs: mode === "destroy" ? [] : config.sensitive,
       before,
       after,
       changes,
@@ -235,10 +292,17 @@ export const TfRuntime = {
       outputs: refreshedOutputs,
     };
   },
-  refreshOutputs(world: World, actual: readonly TfResource[]): Readonly<Record<string, string>> {
+  refreshOutputs(
+    world: World,
+    actual: readonly TfResource[],
+    options: TfCompileOptions = {},
+  ): Readonly<Record<string, string>> {
     // Compile an equivalent configuration from actual resources while preserving output blocks.
     // Missing referenced objects cannot yield an invented value; report the unsupported refresh.
-    const configured = TfConfiguration.compile(world.terraform.files);
+    const configured = TfConfiguration.compile(world.terraform.files, [], {
+      ...options,
+      providerVersion: world.terraform.providerVersion || undefined,
+    });
     const outputs = { ...configured.outputs };
     for (const r of configured.resources) {
       const found = actual.find((a) => a.address === r.address);
@@ -248,10 +312,13 @@ export const TfRuntime = {
         );
     }
     // Values that depend on mutable attributes require evaluation against the observed values.
-    return TfConfiguration.outputsFrom(world.terraform.files, actual);
+    return TfConfiguration.compile(world.terraform.files, actual, {
+      ...options,
+      providerVersion: world.terraform.providerVersion || undefined,
+    }).outputs;
   },
-  apply(world: World, plan: TfPlan, now: string): World {
-    TfBackendRuntime.check(world, true);
+  checkPlan(world: World, plan: TfPlan): readonly TfChange[] {
+    TfBackendRuntime.check(world);
     if (plan.backendRevision !== world.terraform.backend.revision)
       fail("Saved plan is stale: backend changed. Run terraform plan again.");
     if (plan.serial !== world.terraform.serial)
@@ -265,12 +332,18 @@ export const TfRuntime = {
     if (!equal(actual, plan.before))
       fail("Saved plan is stale: remote resources changed. Run terraform plan again.");
     for (const r of plan.after) TfConfiguration.validateResource(r);
-    const changes = plan.mode === "refresh-only" ? [] : diff(plan.before, plan.after);
+    const changes =
+      plan.mode === "refresh-only" ? [] : diff(plan.before, plan.after, plan.dependencies);
     if (!equal(changes, plan.changes)) fail("Invalid saved plan changes.");
     if (plan.mode === "refresh-only" && !equal(plan.after, plan.before))
       fail("Invalid refresh-only plan.");
     if (plan.mode === "destroy" && plan.after.length) fail("Invalid destroy plan.");
     TfBackendRuntime.protect(world, changes);
+    return changes;
+  },
+  apply(world: World, plan: TfPlan, now: string): World {
+    TfBackendRuntime.check(world, true);
+    const changes = TfRuntime.checkPlan(world, plan);
     const next = changes.reduce((w, c) => mutate(w, c, true, now), world);
     return TfBackendRuntime.commit(
       world,
@@ -280,6 +353,7 @@ export const TfRuntime = {
           ...world.terraform,
           resources: plan.after,
           outputs: plan.outputs,
+          sensitiveOutputs: plan.sensitiveOutputs,
           serial: world.terraform.serial + 1,
         },
       },
@@ -309,7 +383,7 @@ export const TfRuntime = {
       ...drift,
       ...entries,
       summary,
-      `Outputs: ${JSON.stringify(plan.outputs)}`,
+      `Outputs: ${JSON.stringify(Object.fromEntries(Object.entries(plan.outputs).map(([k, v]) => [k, plan.sensitiveOutputs.includes(k) ? "(sensitive value)" : v])))}`,
     ].join("\n");
   },
 } as const;

@@ -200,10 +200,10 @@ test.each([
   'resource "google_compute_instance" "vm" { name = "vm" }',
   'module "network" { source = "./modules/network" }',
   'terraform { backend "s3" { bucket = "state" } }',
-  'provider "google" { alias = "other" project = "ace-dev-01" }',
+  'provider "google" { alias = "__proto__" project = "ace-dev-01" }',
   'resource "google_compute_network" "net" { project = "ace-dev-01" name = "net" auto_create_subnetworks = false count = 2 }',
   'output "bad" { value = file("secrets") }',
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal HCL template must be rejected
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: HCL reference to an undeclared variable
   'output "bad" { value = "${var.secret}" }',
   'variable "constructor" { type = string default = "bad" }',
   'output "bad" { value = missing.resource.id }',

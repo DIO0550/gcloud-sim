@@ -21,7 +21,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（841）
+## 実装済み（846）
 
 ### コンテナ教材の公開検証
 
@@ -1185,3 +1185,11 @@ PodのQoSは`kubectl get pods -o json` / `-o yaml` / `kubectl describe pods`の`
 | `gcloud database-migration migration-jobs promote` | 設定・参照・API/IAM・データ結果を評価 |
 | `sim dms advance` | 設定・参照・API/IAM・データ結果を評価 |
 | `sim databases choose` | 設定・参照・API/IAM・データ結果を評価 |
+
+| コマンド | 対応範囲 |
+|---|---|
+| `sim terraform state save` | 仮想tfstateバックアップ・同名上書き拒否 |
+| `terraform state push` | 本アプリのstate JSON・確認/serial/権限検証・実リソース保持 |
+| `sim terraform backend restore` | 版管理したGCS backendの既知世代を確認付きで復旧 |
+| `sim terraform plan-json` | 保存planを仮想JSONへ書き出す |
+| `gcloud terraform vet` | 保存plan JSONと限定policy.jsonの検証。Regoは非対応 |

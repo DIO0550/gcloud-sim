@@ -52,6 +52,8 @@ const groupText = (group: ResourceGroup): string => {
       return "Artifact Registry";
     case "builds":
       return "Cloud Build";
+    case "terraform":
+      return "Terraform";
     case "local-docker":
       return "Docker（ローカル）";
     case "compute":

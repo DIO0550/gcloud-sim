@@ -146,6 +146,7 @@ import { Mission } from "@/engine/missions";
 import { Decoder } from "@/utils/Decoder";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
+import { migrateTerraform } from "./terraform-migration";
 
 /**
  * Snapshot の互換性のためのバージョン。World の形を変えたら上げてマイグレーションを足す（DJ-007）。
@@ -185,12 +186,12 @@ import { Result } from "@/utils/Result";
  * v34 は索引・Spanner・Bigtable・Redisデータと明示的な読取/復旧履歴を持つ。
  * v35 はBigQueryの表/入力・Pub/Sub配送・処理ジョブ・Kafka・exportの教材状態を持つ。
  */
-export const SchemaVersion = 41;
+export const SchemaVersion = 42;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
 const MigratableVersions = [
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-  28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+  28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41,
 ] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
@@ -1857,10 +1858,12 @@ const migrate = (version: number, value: unknown): unknown => {
     version < 40 && isRecord(admin.containerLab)
       ? { ...admin, containerLab: { ...admin.containerLab, releases: [] } }
       : admin;
-  if (version >= 41) {
-    return release;
+  const observable =
+    version >= 41 ? release : { ...release, observabilityLab: emptyObservabilityLab() };
+  if (version >= 42 || !isRecord(observable.terraform)) {
+    return observable;
   }
-  return { ...release, observabilityLab: emptyObservabilityLab() };
+  return migrateTerraform(observable);
 };
 
 export const Snapshot = {

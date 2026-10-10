@@ -90,6 +90,7 @@ import { StorageKeyCommands } from "@/engine/commands/storage-lab/keys";
 import { ObjectStorageCommands } from "@/engine/commands/storage-lab/objects";
 import { StorageTransferCommands } from "@/engine/commands/storage-lab/transfers";
 import { TerraformCommands } from "@/engine/commands/terraform";
+import { TerraformStateLessonCommands } from "@/engine/commands/terraform/state-lessons";
 import { ObserveResourceCommands } from "./observability-lab/resources";
 
 const implemented: readonly CommandSpec[] = [
@@ -105,6 +106,7 @@ const implemented: readonly CommandSpec[] = [
   ...KafkaCommands,
   ...ExportCommands,
   ...TerraformCommands,
+  ...TerraformStateLessonCommands,
   ...ArtifactCommands,
   ...DockerCommands,
   ...ContainerReleaseCommands,

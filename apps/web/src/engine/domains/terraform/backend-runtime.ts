@@ -257,6 +257,40 @@ export const TfBackendRuntime = {
       terraform: { ...next.terraform, backend: { ...next.terraform.backend, generation } },
     };
   },
+  restoreGeneration(world: World, generation: number, now: string): World {
+    check(world, true);
+    const config = world.terraform.backend.config;
+    if (config.kind !== "gcs") {
+      return fail("State generation recovery requires a GCS backend.");
+    }
+    const bucket = authorize(world, config, true);
+    if (!bucket.versioning) {
+      fail("Enable Object Versioning before recovering state generations.");
+    }
+    const remote = findRemote(world, config) ?? fail("Remote state is missing.");
+    const version =
+      remote.versions.find((v) => v.generation === generation) ??
+      fail("Known state generation not found.");
+    const data = { ...version.data, serial: world.terraform.serial + 1 };
+    const next = writeRemote(world, config, data, now);
+    const current = findRemote(next, config) ?? fail("State restore failed.");
+    return {
+      ...next,
+      terraform: {
+        ...next.terraform,
+        ...data,
+        events: [
+          ...world.terraform.events,
+          { kind: "restore" as const, serial: data.serial, detail: `generation:${generation}` },
+        ].slice(-32),
+        backend: {
+          ...next.terraform.backend,
+          generation: current.generation,
+          revision: world.terraform.backend.revision + 1,
+        },
+      },
+    };
+  },
   inspect(world: World): string {
     const backend = world.terraform.backend;
     const remote = backend.config.kind === "gcs" ? findRemote(world, backend.config) : undefined;

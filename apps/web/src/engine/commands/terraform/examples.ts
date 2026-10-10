@@ -1,3 +1,4 @@
+import { TerraformLessonExamples } from "./lesson-examples";
 export const TerraformNetworkExample = `provider "google" {
   project = var.project_id
   region = var.region
@@ -150,6 +151,7 @@ output "bucket_url" { value = google_storage_bucket.assets.url }
 `;
 
 export const TerraformExamples: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  ...TerraformLessonExamples,
   "terraform-backend": {
     "backend.tf":
       'terraform { backend "gcs" { bucket = "ace-dev-01-tf-state" prefix = "terraform/lab" } }\n',

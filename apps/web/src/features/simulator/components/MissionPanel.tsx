@@ -152,6 +152,8 @@ const assertionLabel = (assertion: Mission["assertions"][number]): string => {
       return `ローカルstateを gs://${assertion.bucket}/${assertion.prefix} へ移行（版管理有効）`;
     case "terraformDestroyed":
       return "構築した5リソースを保存済みdestroy planで削除し、stateと実リソースの両方から片付ける";
+    case "terraformLesson":
+      return `Terraform ${assertion.lesson}: 適用したplan・state・実リソースと演習記録が一致する`;
     case "terraformManaged":
       return `${assertion.resource.address}: 構成・state・実リソースが指定値と一致する`;
     case "terraformMoved":
