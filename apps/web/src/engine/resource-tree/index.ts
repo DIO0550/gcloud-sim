@@ -40,6 +40,7 @@ export const ResourceGroups = {
   Sql: "sql",
   ManagedDatabases: "managed-databases",
   ComputeLab: "compute-lab",
+  NetworkLab: "network-lab",
   DataProcessing: "data-processing",
   Pubsub: "pubsub",
   Logging: "logging",
@@ -496,6 +497,57 @@ const projectNode = (world: World, project: Project): TreeNode => {
   const sqlInstances = World.namedOf(world, "sqlInstances", id).map((i) =>
     leaf({ kind: "sql-instance", projectId: id, name: i.name }, i.name),
   );
+  const networkOperations = (
+    [
+      "routes",
+      "nats",
+      "gateways",
+      "peerGateways",
+      "tunnels",
+      "interfaces",
+      "bgpPeers",
+      "attachments",
+      "records",
+      "secureTags",
+      "policies",
+    ] as const
+  ).flatMap((collection) =>
+    world.networkLab[collection]
+      .filter((r) => r.projectId === id)
+      .map((r) =>
+        leaf(
+          {
+            kind: "network-lab",
+            collection,
+            projectId: id,
+            name: r.name,
+            region: r.region,
+            parent:
+              "router" in r ? r.router : "zone" in r && collection === "records" ? r.zone : "",
+            subtype: "type" in r ? r.type : "",
+          },
+          `${collection}: ${r.name} (${r.region})`,
+        ),
+      ),
+  );
+  networkOperations.push(
+    ...world.networkLab.shared
+      .filter((s) => s.host === id)
+      .map((s) =>
+        leaf(
+          {
+            kind: "network-lab",
+            collection: "shared",
+            projectId: id,
+            name: s.host,
+            region: "global",
+            parent: "",
+            subtype: "",
+          },
+          `Shared VPC: ${s.host}`,
+        ),
+      ),
+  );
   const computeOperations = (
     ["configs", "disks", "images", "schedules", "tpus", "osPolicies", "migs"] as const
   ).flatMap((collection) =>
@@ -761,6 +813,7 @@ const projectNode = (world: World, project: Project): TreeNode => {
       ...group(id, ResourceGroups.Sql, [...sqlInstances, ...relational]),
       ...group(id, ResourceGroups.ManagedDatabases, managed),
       ...group(id, ResourceGroups.ComputeLab, computeOperations),
+      ...group(id, ResourceGroups.NetworkLab, networkOperations),
       ...group(id, ResourceGroups.DataProcessing, processing),
       ...group(id, ResourceGroups.Pubsub, pubsubNodes(world, id)),
       ...group(id, ResourceGroups.Logging, sinks),

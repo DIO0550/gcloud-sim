@@ -53,6 +53,12 @@ import {
   Router,
 } from "@/engine/domains/compute-networking";
 import { Ipv4 } from "@/engine/domains/gke-control-plane";
+import {
+  subnetOverlap,
+  validAsn,
+  validateNetworkLab,
+  validProtocols,
+} from "@/engine/domains/network-lab/model";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -148,11 +154,37 @@ const createFirewallRule = (ctx: ProjectContext, args: ParsedArgs): CommandResul
     invalidName,
   );
   if (!Result.isOk(rule)) return rule;
+  const configuredRule = {
+    ...rule.value,
+    targetServiceAccounts: ParsedArgs.list(args, "target-service-accounts"),
+    sourceServiceAccounts: ParsedArgs.list(args, "source-service-accounts"),
+    logging: ParsedArgs.boolean(args, "enable-logging"),
+  };
+  if (configuredRule.sourceServiceAccounts.length > 0 && !ParsedArgs.has(args, "source-ranges")) {
+    configuredRule.sourceRanges = [];
+  }
+  const checked = validateNetworkLab({
+    ...ctx.world,
+    firewallRules: [...ctx.world.firewallRules, configuredRule],
+  });
+  if (
+    !checked.ok ||
+    !validProtocols(rules.value) ||
+    [...configuredRule.sourceRanges, ...configuredRule.destinationRanges].some(
+      (r) => !Ipv4.range(r).some,
+    )
+  ) {
+    return Result.err(
+      CommandFailure.invalidArgumentWith(
+        checked.ok ? "Invalid protocol/port/CIDR." : checked.error,
+      ),
+    );
+  }
   return Result.map(
-    Result.mapErr(World.withFirewallRule(ctx.world, rule.value), alreadyExists),
+    Result.mapErr(World.withFirewallRule(ctx.world, configuredRule), alreadyExists),
     (world) => ({
       world,
-      output: CommandOutput.table([firewallRecord(rule.value)], FirewallColumns, [
+      output: CommandOutput.table([firewallRecord(configuredRule)], FirewallColumns, [
         OutputMessage.plain("Creating firewall...done."),
         OutputMessage.plain(`Created [${FirewallRule.selfLink(rule.value)}].`),
       ]),
@@ -235,14 +267,7 @@ const createSubnet = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
       ),
     );
   }
-  if (
-    ctx.world.subnets.some(
-      (s) =>
-        s.projectId === ctx.project.projectId &&
-        s.network === networkName &&
-        Ipv4.overlaps(s.ipCidrRange, subnet.value.ipCidrRange),
-    )
-  ) {
+  if (subnetOverlap(ctx.world, ctx.project.projectId, networkName, subnet.value.ipCidrRange)) {
     return Result.err(
       CommandFailure.invalidState("Subnet range overlaps an existing subnet in the VPC."),
     );
@@ -266,6 +291,7 @@ const createSubnet = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   }
   const configured = {
     ...subnet.value,
+    flowLogs: ParsedArgs.boolean(args, "enable-flow-logs"),
     purpose,
     role: Option.isSome(role) ? (role.value as "ACTIVE" | "BACKUP") : undefined,
   };
@@ -425,6 +451,14 @@ const createRouter = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   const networkName = ParsedArgs.requiredString(args, "network");
   const network = requireNetwork(ctx, networkName);
   if (!Result.isOk(network)) return network;
+  const asn = Option.unwrapOr(ParsedArgs.integer(args, "asn"), 64512);
+  if (asn !== 16550 && !validAsn(asn)) {
+    return Result.err(
+      CommandFailure.invalidArgumentWith(
+        "Cloud Router ASN must be a private ASN, or 16550 for Partner Interconnect.",
+      ),
+    );
+  }
   const router = Result.mapErr(
     Router.create({
       projectId: ctx.project.projectId,
@@ -471,6 +505,21 @@ const createPeering = (ctx: ProjectContext, args: ParsedArgs): CommandResult => 
     return Result.err(
       CommandFailure.invalidValue("--peer-network", "A network cannot peer with itself."),
     );
+  }
+  if (
+    ctx.world.subnets.some(
+      (s) =>
+        s.projectId === ctx.project.projectId &&
+        s.network === networkName &&
+        ctx.world.subnets.some(
+          (t) =>
+            t.projectId === peerProjectId &&
+            t.network === peerNetwork &&
+            Ipv4.overlaps(s.ipCidrRange, t.ipCidrRange),
+        ),
+    )
+  ) {
+    return Result.err(CommandFailure.invalidState("Peered subnet CIDRs must not overlap."));
   }
   const peerSide = World.namedOf(ctx.world, "peerings", peerProjectId).find(
     (p) => p.network === peerNetwork && NetworkPeering.faces(p, ctx.project.projectId, networkName),
@@ -523,9 +572,12 @@ const NetworkSpecs: readonly CommandSpec[] = [
     positionals: [Positional.required("NAME", "Subnetwork name.", Candidates.subnets)],
     flags: [
       CommonFlags.region,
-      Flag.boolean("enable-private-ip-google-access", "Enable or disable Private Google Access.", {
-        required: true,
-      }),
+      Flag.boolean(
+        "enable-private-ip-google-access",
+        "Enable or disable Private Google Access.",
+        {},
+      ),
+      Flag.boolean("enable-flow-logs", "Record explicit modeled connectivity checks."),
     ],
     permission: "compute.subnetworks.setPrivateIpGoogleAccess",
     requiredApis: [ComputeApi],
@@ -539,9 +591,22 @@ const NetworkSpecs: readonly CommandSpec[] = [
         ParsedArgs.requiredPositional(args, 0),
       );
       if (!Option.isSome(subnet)) return Result.err(CommandFailure.notFound("subnetwork"));
+      if (
+        !ParsedArgs.has(args, "enable-private-ip-google-access") &&
+        !ParsedArgs.has(args, "enable-flow-logs")
+      ) {
+        return Result.err(
+          CommandFailure.invalidArgumentWith("Specify Private Google Access or flow logs."),
+        );
+      }
       const updated = {
         ...subnet.value,
-        privateIpGoogleAccess: ParsedArgs.boolean(args, "enable-private-ip-google-access"),
+        privateIpGoogleAccess: ParsedArgs.has(args, "enable-private-ip-google-access")
+          ? ParsedArgs.boolean(args, "enable-private-ip-google-access")
+          : subnet.value.privateIpGoogleAccess,
+        flowLogs: ParsedArgs.has(args, "enable-flow-logs")
+          ? ParsedArgs.boolean(args, "enable-flow-logs")
+          : subnet.value.flowLogs,
       };
       return Result.ok({
         world: {
@@ -600,6 +665,26 @@ const NetworkSpecs: readonly CommandSpec[] = [
     run: (ctx, args) => {
       const network = requireNetwork(ctx, ParsedArgs.requiredPositional(args, 0));
       if (!Result.isOk(network)) return network;
+      const n = network.value;
+      const lab = ctx.world.networkLab;
+      if (
+        [...lab.routes, ...lab.gateways, ...lab.policies].some(
+          (r) => r.projectId === n.projectId && r.network === n.name,
+        ) ||
+        ctx.world.routers.some((r) => r.projectId === n.projectId && r.network === n.name) ||
+        ctx.world.peerings.some(
+          (p) =>
+            (p.projectId === n.projectId && p.network === n.name) ||
+            (p.peerProjectId === n.projectId && p.peerNetwork === n.name),
+        ) ||
+        ctx.world.dnsZones.some((z) => z.projectId === n.projectId && z.networks?.includes(n.name))
+      ) {
+        return Result.err(
+          CommandFailure.invalidState(
+            "Delete routes, routers, VPNs, firewall policy associations, DNS authorization and peerings before deleting this VPC.",
+          ),
+        );
+      }
       const database = ctx.world.relational.servers.find(
         (s) => s.projectId === network.value.projectId && s.network === network.value.name,
       );
@@ -662,6 +747,7 @@ const NetworkSpecs: readonly CommandSpec[] = [
         required: true,
       }),
       CommonFlags.region,
+      Flag.boolean("enable-flow-logs", "Log explicit connectivity checks."),
       Flag.enum("purpose", "Subnet purpose.", ["PRIVATE", "REGIONAL_MANAGED_PROXY"]),
       Flag.enum("role", "Proxy-only subnet role.", ["ACTIVE", "BACKUP"]),
       Flag.boolean(
@@ -750,6 +836,9 @@ const NetworkSpecs: readonly CommandSpec[] = [
         "A list of IP address blocks for outbound connections (EGRESS only).",
       ),
       Flag.boolean("disabled", "Disable the firewall rule."),
+      Flag.list("target-service-accounts", "Apply to VMs with these existing service accounts."),
+      Flag.list("source-service-accounts", "Ingress sources in the same VPC."),
+      Flag.boolean("enable-logging", "Log explicit connectivity checks."),
     ],
     permission: "compute.firewalls.create",
     requiredApis: [ComputeApi],

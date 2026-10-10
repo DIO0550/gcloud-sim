@@ -6,6 +6,7 @@ import {
   ManagedDatabasePermissions,
   SpannerPermissions,
 } from "@/engine/domains/managed-databases/permissions";
+import { NetworkLabPermissions } from "@/engine/domains/network-lab/permissions";
 import type { JsonRecord } from "@/types/Json";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -144,6 +145,16 @@ const ComputeLoadBalancerPermissions = [
 ] as const;
 
 const ComputeNetworkPermissions = [
+  ...NetworkLabPermissions.filter(
+    (p) =>
+      p.startsWith("compute.") &&
+      !p.startsWith("compute.organizations.") &&
+      !p.startsWith("compute.instances.") &&
+      (!p.startsWith("compute.firewallPolicies.") ||
+        p.endsWith(".get") ||
+        p.endsWith(".list") ||
+        p.endsWith(".use")),
+  ),
   "compute.networks.create",
   "compute.networks.delete",
   "compute.networks.get",
@@ -156,11 +167,8 @@ const ComputeNetworkPermissions = [
   "compute.subnetworks.setPrivateIpGoogleAccess",
   "compute.subnetworks.use",
   "compute.subnetworks.useExternalIp",
-  "compute.firewalls.create",
-  "compute.firewalls.delete",
   "compute.firewalls.get",
   "compute.firewalls.list",
-  "compute.firewalls.update",
   "compute.regions.list",
   "compute.routers.create",
   "compute.routers.list",
@@ -168,6 +176,15 @@ const ComputeNetworkPermissions = [
   "compute.networks.addPeering",
   "compute.networks.updatePeering",
   ...ComputeLoadBalancerPermissions,
+] as const;
+
+const ComputeSecurityPermissions = [
+  ...NetworkLabPermissions.filter((p) => p.startsWith("compute.firewallPolicies.")),
+  "compute.firewalls.create",
+  "compute.firewalls.delete",
+  "compute.firewalls.get",
+  "compute.firewalls.list",
+  "compute.firewalls.update",
 ] as const;
 
 const ComputeViewPermissions = [
@@ -574,6 +591,7 @@ const KmsPermissions = [
 ] as const;
 
 const DnsPermissions = [
+  ...NetworkLabPermissions.filter((p) => p.startsWith("dns.")),
   "dns.managedZones.create",
   "dns.managedZones.list",
   "dns.managedZones.get",
@@ -621,6 +639,7 @@ const ArtifactAdminPermissions = [
 ] as const;
 
 const ViewerPermissions = [
+  ...NetworkLabPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
   ...ComputeLabPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
   ...DataProcessingPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
   ...ManagedDatabasePermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
@@ -706,6 +725,8 @@ const ViewerPermissions = [
 ] as const;
 
 const EditorPermissions = [
+  ...ComputeSecurityPermissions,
+  ...NetworkLabPermissions.filter((p) => !p.startsWith("compute.organizations.")),
   ...ComputeLabPermissions,
   ...DataProcessingPermissions,
   ...ManagedDatabasePermissions,
@@ -738,6 +759,7 @@ const EditorPermissions = [
 ] as const;
 
 const OwnerPermissions = [
+  ...NetworkLabPermissions.filter((p) => p.startsWith("compute.organizations.")),
   ...ArtifactAdminPermissions,
   ...EditorPermissions,
   ...ResourceManagerProjectPermissions,
@@ -760,6 +782,15 @@ const role = (name: RoleName, title: string, permissions: readonly string[]): Ro
 
 /** ACE 頻出の事前定義ロール（TBD-006: 約 30 個から開始）。 */
 const Roles: readonly Role[] = [
+  role(
+    "roles/compute.xpnAdmin",
+    "Shared VPC Admin",
+    NetworkLabPermissions.filter((p) => p.startsWith("compute.organizations.")),
+  ),
+  role("roles/resourcemanager.tagUser", "Tag User", [
+    "compute.instances.createTagBinding",
+    "compute.instances.deleteTagBinding",
+  ]),
   role(
     "roles/secretmanager.admin",
     "Secret Manager Admin",
@@ -887,16 +918,13 @@ const Roles: readonly Role[] = [
   role("roles/compute.admin", "Compute Admin", [
     ...ComputeInstancePermissions,
     ...ComputeNetworkPermissions,
+    ...ComputeSecurityPermissions,
   ]),
   role("roles/compute.instanceAdmin.v1", "Compute Instance Admin (v1)", ComputeInstancePermissions),
   role("roles/compute.instanceAdmin", "Compute Instance Admin (beta)", ComputeInstancePermissions),
   role("roles/compute.networkAdmin", "Compute Network Admin", ComputeNetworkPermissions),
   role("roles/compute.securityAdmin", "Compute Security Admin", [
-    "compute.firewalls.create",
-    "compute.firewalls.delete",
-    "compute.firewalls.get",
-    "compute.firewalls.list",
-    "compute.firewalls.update",
+    ...ComputeSecurityPermissions,
     "compute.networks.list",
   ]),
   role("roles/compute.networkUser", "Compute Network User", [

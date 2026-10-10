@@ -63,6 +63,7 @@ import { GkeLessonProperties } from "./GkeLessonProperties";
 import { IngressProperties } from "./IngressProperties";
 import { LbResourceProperties } from "./LbResourceProperties";
 import { ManagedDatabaseProperties } from "./ManagedDatabaseProperties";
+import { NetworkLabProperties } from "./NetworkLabProperties";
 import { RelationalProperties } from "./RelationalProperties";
 import { ServerlessProperties } from "./ServerlessProperties";
 import { StatefulSetProperties } from "./StatefulSetProperties";
@@ -146,6 +147,8 @@ const Body = ({
       return <KubeServiceProperties world={world} selection={selection} />;
     case "managed-database":
       return <ManagedDatabaseProperties world={world} selection={selection} />;
+    case "network-lab":
+      return <NetworkLabProperties world={world} selection={selection} />;
     case "compute-lab":
       return <ComputeLabProperties world={world} selection={selection} />;
     case "data-processing":
@@ -192,6 +195,7 @@ const Body = ({
 /** 見出し。名前を持つものは名前、持たないものは種別の綴り。 */
 const titleOf = (selection: TreeSelection): string => {
   switch (selection.kind) {
+    case "network-lab":
     case "compute-lab":
     case "data-processing":
     case "managed-database":
@@ -262,6 +266,8 @@ const titleOf = (selection: TreeSelection): string => {
 /** 見出しの下に出す API の種別（`compute#instance` の形）と置き場。 */
 const kindLabel = (selection: TreeSelection): string => {
   switch (selection.kind) {
+    case "network-lab":
+      return `${selection.collection} · projects/${selection.projectId}/${selection.region}`;
     case "compute-lab":
       return `compute#${selection.collection} · projects/${selection.projectId}/${selection.location}`;
     case "data-processing":

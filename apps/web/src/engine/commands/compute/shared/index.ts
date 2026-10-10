@@ -27,6 +27,7 @@ import {
   Subnet,
 } from "@/engine/domains/compute";
 import { Operation } from "@/engine/domains/operation";
+import { allows } from "@/engine/domains/serverless-lab/runtime";
 import { ServiceAccount } from "@/engine/domains/service-account";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
@@ -117,8 +118,25 @@ export const resolveNetworkInterface = (
   args: ParsedArgs,
   zone: Zone,
 ): Result<NetworkInterface, CommandFailure> => {
-  const projectId = ctx.project.projectId;
-  const networkName = Option.unwrapOr(ParsedArgs.string(args, "network"), "default");
+  const rawNetwork = Option.unwrapOr(ParsedArgs.string(args, "network"), "default");
+  const hostPath = /^projects\/([^/]+)\/global\/networks\/([^/]+)$/.exec(rawNetwork);
+  const projectId = hostPath?.[1] ?? ctx.project.projectId;
+  const networkName = hostPath?.[2] ?? rawNetwork;
+  if (
+    projectId !== ctx.project.projectId &&
+    (!ctx.world.networkLab.shared.some(
+      (s) => s.host === projectId && s.services.includes(ctx.project.projectId),
+    ) ||
+      !allows(ctx.world, projectId, ctx.principal, "compute.subnetworks.use"))
+  ) {
+    return Result.err(
+      CommandFailure.permissionDenied({
+        permission: "compute.subnetworks.use",
+        target: { type: "project", id: projectId },
+        rolesIncluding: ["roles/compute.networkUser"],
+      }),
+    );
+  }
   const region = Zone.region(zone);
   const network = World.findNetwork(ctx.world, projectId, networkName);
   if (!Option.isSome(network)) {
@@ -126,7 +144,16 @@ export const resolveNetworkInterface = (
       CommandFailure.notFound(`projects/${projectId}/global/networks/${networkName}`),
     );
   }
-  const subnetName = Option.unwrapOr(ParsedArgs.string(args, "subnet"), networkName);
+  const rawSubnet = Option.unwrapOr(ParsedArgs.string(args, "subnet"), networkName);
+  const subnetPath = /^projects\/([^/]+)\/regions\/([^/]+)\/subnetworks\/([^/]+)$/.exec(rawSubnet);
+  if (subnetPath && (subnetPath[1] !== projectId || subnetPath[2] !== region)) {
+    return Result.err(
+      CommandFailure.invalidArgumentWith(
+        "Subnet path must match the network project and VM region.",
+      ),
+    );
+  }
+  const subnetName = subnetPath?.[3] ?? rawSubnet;
   const subnet = World.findSubnet(ctx.world, projectId, region, subnetName);
   if (!Option.isSome(subnet)) {
     const elsewhere = World.subnetsOf(ctx.world, projectId).find(
@@ -149,14 +176,18 @@ export const resolveNetworkInterface = (
       CommandFailure.invalidArgumentWith("VMs require a regular subnet in the selected VPC."),
     );
   }
-  const inSubnet = World.instancesOf(ctx.world, projectId).filter((i) =>
+  const inSubnet = ctx.world.instances.filter((i) =>
     i.networkInterfaces.some(
-      (nic) => nic.subnetwork === subnetName && Zone.region(i.zone) === region,
+      (nic) =>
+        (nic.networkProject ?? i.projectId) === projectId &&
+        nic.subnetwork === subnetName &&
+        Zone.region(i.zone) === region,
     ),
   ).length;
   const wantsAddress = Option.unwrapOr(ParsedArgs.booleanChoice(args, "address"), true);
   return Result.ok({
     network: networkName,
+    ...(projectId !== ctx.project.projectId ? { networkProject: projectId } : {}),
     subnetwork: subnetName,
     networkIP: Subnet.hostAddress(subnet.value, inSubnet),
     externalIP: wantsAddress

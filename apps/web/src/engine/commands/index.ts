@@ -33,6 +33,11 @@ import {
   SpannerCommands,
 } from "@/engine/commands/managed-databases";
 import { LogMetricCommands, MonitoringResourceCommands } from "@/engine/commands/monitoring";
+import {
+  HybridCommands,
+  NetworkCommands,
+  SecurityDnsCommands,
+} from "@/engine/commands/network-lab";
 import { NotImplementedCommands } from "@/engine/commands/not-implemented";
 import { LoggingCommands } from "@/engine/commands/observability";
 import {
@@ -70,6 +75,9 @@ const implemented: readonly CommandSpec[] = [
   ...DiskLabCommands,
   ...MigCommands,
   ...VmCommands,
+  ...HybridCommands,
+  ...NetworkCommands,
+  ...SecurityDnsCommands,
   ...BigQueryCommands,
   ...PubsubDataCommands,
   ...ProcessingCommands,

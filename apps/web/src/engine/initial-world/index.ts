@@ -14,6 +14,7 @@ import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { IamPolicy } from "@/engine/domains/iam-policy";
 import { emptyManagedDatabases } from "@/engine/domains/managed-databases/model";
 import { MissionProgress } from "@/engine/domains/mission-progress";
+import { emptyNetworkLab } from "@/engine/domains/network-lab/model";
 import type { Principal } from "@/engine/domains/principal";
 import { emptyRelational } from "@/engine/domains/relational/model";
 import { type Folder, type Project, ProjectStates } from "@/engine/domains/resource-hierarchy";
@@ -103,6 +104,7 @@ export const EmptyCollections = {
   serverlessLab: emptyLab(),
   relational: emptyRelational(),
   managedDatabases: emptyManagedDatabases(),
+  networkLab: emptyNetworkLab(),
   computeLab: emptyComputeLab(),
   dataProcessing: emptyDataProcessing(),
   disks: [],

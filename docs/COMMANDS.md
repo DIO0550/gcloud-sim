@@ -21,9 +21,78 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（635）
+## 実装済み（697）
 
 Compute・復旧・VM管理は42コマンドと15ミッションを追加しています。構文・範囲・カタログ根拠は[COMPUTE.md](COMPUTE.md)を参照してください。
+
+### VPC・接続・DNS・Firewall
+
+対応範囲・構文例・明示診断は[NETWORKING.md](NETWORKING.md)を参照してください。
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud compute vpn-gateways create` | gcloud compute vpn-gateways create: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute vpn-gateways list` | gcloud compute vpn-gateways list: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute vpn-gateways describe` | gcloud compute vpn-gateways describe: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute vpn-gateways delete` | gcloud compute vpn-gateways delete: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute external-vpn-gateways create` | gcloud compute external-vpn-gateways create: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute external-vpn-gateways list` | gcloud compute external-vpn-gateways list: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute external-vpn-gateways describe` | gcloud compute external-vpn-gateways describe: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute external-vpn-gateways delete` | gcloud compute external-vpn-gateways delete: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute vpn-tunnels create` | gcloud compute vpn-tunnels create: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute vpn-tunnels list` | gcloud compute vpn-tunnels list: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute vpn-tunnels describe` | gcloud compute vpn-tunnels describe: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute vpn-tunnels delete` | gcloud compute vpn-tunnels delete: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute routers add-interface` | gcloud compute routers add-interface: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute routers add-bgp-peer` | gcloud compute routers add-bgp-peer: bounded network configuration or diagnosis; no traffic is sent. |
+| `sim network bgp establish` | sim network bgp establish: bounded network configuration or diagnosis; no traffic is sent. |
+| `sim network bgp disconnect` | sim network bgp disconnect: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute routers remove-bgp-peer` | gcloud compute routers remove-bgp-peer: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute routers remove-interface` | gcloud compute routers remove-interface: bounded network configuration or diagnosis; no traffic is sent. |
+| `sim network hybrid describe` | sim network hybrid describe: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute interconnects attachments partner create` | gcloud compute interconnects attachments partner create: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute interconnects attachments list` | gcloud compute interconnects attachments list: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute interconnects attachments describe` | gcloud compute interconnects attachments describe: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute interconnects attachments delete` | gcloud compute interconnects attachments delete: bounded network configuration or diagnosis; no traffic is sent. |
+| `sim network interconnect activate` | sim network interconnect activate: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute interconnects attachments partner update` | gcloud compute interconnects attachments partner update: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute networks subnets expand-ip-range` | gcloud compute networks subnets expand-ip-range: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute routes create` | gcloud compute routes create: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute routes list` | gcloud compute routes list: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute routes describe` | gcloud compute routes describe: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute routes delete` | gcloud compute routes delete: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute routers nats create` | gcloud compute routers nats create: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute routers nats list` | gcloud compute routers nats list: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute routers nats describe` | gcloud compute routers nats describe: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute routers nats delete` | gcloud compute routers nats delete: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute shared-vpc enable` | gcloud compute shared-vpc enable: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute shared-vpc disable` | gcloud compute shared-vpc disable: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute shared-vpc associated-projects add` | gcloud compute shared-vpc associated-projects add: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute shared-vpc associated-projects remove` | gcloud compute shared-vpc associated-projects remove: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute shared-vpc get-host-project` | gcloud compute shared-vpc get-host-project: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute shared-vpc associated-projects list` | gcloud compute shared-vpc associated-projects list: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute networks peerings delete` | gcloud compute networks peerings delete: bounded network configuration or diagnosis; no traffic is sent. |
+| `sim network connectivity` | sim network connectivity: bounded network configuration or diagnosis; no traffic is sent. |
+| `sim network logs list` | sim network logs list: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute networks update` | gcloud compute networks update: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud dns record-sets create` | gcloud dns record-sets create: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud dns record-sets update` | gcloud dns record-sets update: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud dns record-sets delete` | gcloud dns record-sets delete: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud dns record-sets describe` | gcloud dns record-sets describe: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud dns record-sets list` | gcloud dns record-sets list: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud dns managed-zones update` | gcloud dns managed-zones update: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud dns managed-zones delete` | gcloud dns managed-zones delete: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute firewall-rules update` | gcloud compute firewall-rules update: bounded network configuration or diagnosis; no traffic is sent. |
+| `sim network secure-tags bind` | sim network secure-tags bind: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute network-firewall-policies create` | gcloud compute network-firewall-policies create: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute network-firewall-policies list` | gcloud compute network-firewall-policies list: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute network-firewall-policies describe` | gcloud compute network-firewall-policies describe: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute network-firewall-policies delete` | gcloud compute network-firewall-policies delete: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute network-firewall-policies associations create` | gcloud compute network-firewall-policies associations create: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute network-firewall-policies associations delete` | gcloud compute network-firewall-policies associations delete: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute network-firewall-policies rules create` | gcloud compute network-firewall-policies rules create: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute network-firewall-policies rules delete` | gcloud compute network-firewall-policies rules delete: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute routers delete` | gcloud compute routers delete: bounded network configuration or diagnosis; no traffic is sent. |
 
 ### Compute・復旧・VM管理
 
