@@ -21,6 +21,7 @@ import { type Folder, type Project, ProjectStates } from "@/engine/domains/resou
 import { SampleKeyAccount } from "@/engine/domains/sample-files";
 import { emptyLab } from "@/engine/domains/serverless-lab/model";
 import type { ServiceAccount } from "@/engine/domains/service-account";
+import { emptyStorageLab } from "@/engine/domains/storage-lab/model";
 import type { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 
@@ -105,6 +106,7 @@ export const EmptyCollections = {
   relational: emptyRelational(),
   managedDatabases: emptyManagedDatabases(),
   networkLab: emptyNetworkLab(),
+  storageLab: emptyStorageLab(),
   computeLab: emptyComputeLab(),
   dataProcessing: emptyDataProcessing(),
   disks: [],

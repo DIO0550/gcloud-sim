@@ -69,6 +69,10 @@ import {
   StorageCommands,
   StorageExtraCommands,
 } from "@/engine/commands/storage";
+import { FileStorageCommands, StorageSelectionCommands } from "@/engine/commands/storage-lab/files";
+import { StorageKeyCommands } from "@/engine/commands/storage-lab/keys";
+import { ObjectStorageCommands } from "@/engine/commands/storage-lab/objects";
+import { StorageTransferCommands } from "@/engine/commands/storage-lab/transfers";
 import { TerraformCommands } from "@/engine/commands/terraform";
 
 const implemented: readonly CommandSpec[] = [
@@ -97,6 +101,11 @@ const implemented: readonly CommandSpec[] = [
   ...BudgetCommands,
   ...ServiceCommands,
   ...ComputeCommands,
+  ...FileStorageCommands,
+  ...StorageSelectionCommands,
+  ...StorageKeyCommands,
+  ...ObjectStorageCommands,
+  ...StorageTransferCommands,
   ...StorageCommands,
   ...StorageExtraCommands,
   ...GsutilCommands,

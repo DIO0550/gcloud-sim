@@ -10,6 +10,7 @@ import {
   Positional,
 } from "@/engine/cli/command-spec";
 import { plainCommand } from "@/engine/commands/shared";
+import { storageNow } from "@/engine/commands/storage-lab/runtime";
 import { TerraformExamples } from "@/engine/commands/terraform/examples";
 import { KubeManifest, KubeManifestExamples } from "@/engine/domains/kube-manifest";
 import { TerraformState, type TfPlan } from "@/engine/domains/terraform";
@@ -36,7 +37,7 @@ const guarded =
   (run: (ctx: CommandContext, args: ParsedArgs) => CommandResult) =>
   (ctx: CommandContext, args: ParsedArgs): CommandResult => {
     try {
-      return run(ctx, args);
+      return run({ ...ctx, now: storageNow(ctx) }, args);
     } catch (e) {
       return Result.err(
         CommandFailure.invalidState(
@@ -298,7 +299,7 @@ export const TerraformCommands: readonly CommandSpec[] = [
     confirmation: {
       skip: (args) => ParsedArgs.boolean(args, "force"),
       preview: guarded((ctx, args) => {
-        TfBackendRuntime.unlock(ctx.world, ParsedArgs.requiredPositional(args, 0));
+        TfBackendRuntime.unlock(ctx.world, ParsedArgs.requiredPositional(args, 0), ctx.now);
         return ok(
           ctx.world,
           "Remove this state lock? Confirm that the other operation has stopped. Infrastructure will not change.",
@@ -307,7 +308,7 @@ export const TerraformCommands: readonly CommandSpec[] = [
     },
     run: guarded((ctx, args) =>
       ok(
-        TfBackendRuntime.unlock(ctx.world, ParsedArgs.requiredPositional(args, 0)),
+        TfBackendRuntime.unlock(ctx.world, ParsedArgs.requiredPositional(args, 0), ctx.now),
         "State lock removed. Infrastructure is unchanged.",
       ),
     ),

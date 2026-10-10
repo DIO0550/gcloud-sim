@@ -7,6 +7,7 @@ import {
   SpannerPermissions,
 } from "@/engine/domains/managed-databases/permissions";
 import { NetworkLabPermissions } from "@/engine/domains/network-lab/permissions";
+import { StorageLabPermissions } from "@/engine/domains/storage-lab/permissions";
 import type { JsonRecord } from "@/types/Json";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -216,6 +217,7 @@ const StorageObjectViewPermissions = [
 ] as const;
 
 const StorageObjectAdminPermissions = [
+  "storage.objects.restore",
   ...StorageObjectViewPermissions,
   "storage.objects.create",
   "storage.objects.delete",
@@ -639,6 +641,7 @@ const ArtifactAdminPermissions = [
 ] as const;
 
 const ViewerPermissions = [
+  ...StorageLabPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
   ...NetworkLabPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
   ...ComputeLabPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
   ...DataProcessingPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
@@ -725,6 +728,7 @@ const ViewerPermissions = [
 ] as const;
 
 const EditorPermissions = [
+  ...StorageLabPermissions,
   ...ComputeSecurityPermissions,
   ...NetworkLabPermissions.filter((p) => !p.startsWith("compute.organizations.")),
   ...ComputeLabPermissions,
@@ -782,6 +786,26 @@ const role = (name: RoleName, title: string, permissions: readonly string[]): Ro
 
 /** ACE 頻出の事前定義ロール（TBD-006: 約 30 個から開始）。 */
 const Roles: readonly Role[] = [
+  role(
+    "roles/storagetransfer.admin",
+    "Storage Transfer Admin",
+    StorageLabPermissions.filter((p) => p.startsWith("storagetransfer.")),
+  ),
+  role(
+    "roles/file.editor",
+    "Filestore Editor",
+    StorageLabPermissions.filter((p) => p.startsWith("file.")),
+  ),
+  role(
+    "roles/netapp.admin",
+    "NetApp Admin",
+    StorageLabPermissions.filter((p) => p.startsWith("netapp.")),
+  ),
+  role(
+    "roles/lustre.admin",
+    "Managed Lustre Admin",
+    StorageLabPermissions.filter((p) => p.startsWith("lustre.")),
+  ),
   role(
     "roles/compute.xpnAdmin",
     "Shared VPC Admin",
@@ -962,6 +986,10 @@ const Roles: readonly Role[] = [
   ]),
   role("roles/storage.admin", "Storage Admin", StorageAdminPermissions),
   role("roles/storage.objectAdmin", "Storage Object Admin", StorageObjectAdminPermissions),
+  role("roles/storage.legacyBucketReader", "Storage Legacy Bucket Reader", [
+    "storage.buckets.get",
+    "storage.objects.list",
+  ]),
   role("roles/storage.objectCreator", "Storage Object Creator", ["storage.objects.create"]),
   role("roles/storage.objectViewer", "Storage Object Viewer", StorageObjectViewPermissions),
   role("roles/storage.objectUser", "Storage Object User", StorageObjectAdminPermissions),

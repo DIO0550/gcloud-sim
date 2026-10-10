@@ -21,9 +21,9 @@ import {
   type Row,
   validateDataProcessing,
 } from "@/engine/domains/data-processing/model";
-import { EffectivePermissions } from "@/engine/domains/effective-permissions";
-import { allows, apiEnabled, principalMember } from "@/engine/domains/serverless-lab/runtime";
+import { allows, apiEnabled } from "@/engine/domains/serverless-lab/runtime";
 import { GsUrl } from "@/engine/domains/storage";
+import { keyAccess, storageAllows } from "@/engine/domains/storage-lab/model";
 import { World } from "@/engine/domains/world";
 import type { JsonRecord } from "@/types/Json";
 import { Option } from "@/utils/Option";
@@ -202,11 +202,7 @@ export const storageAccess = (
     ) {
       return invalid("Storage API and a same-project bucket/object URI are required.");
     }
-    const effective = EffectivePermissions.resolve(ctx.world, principalMember(principal), {
-      type: "bucket",
-      id: bucket.name,
-    });
-    if (!effective.permissions.has(permission)) {
+    if (!storageAllows(ctx.world, bucket, principal, permission)) {
       return invalid(`Permission ${permission} on the bucket is required.`);
     }
     return Result.ok({ bucket, url });
@@ -218,10 +214,14 @@ export const readInput = (ctx: ProjectContext, uri: string, principal: string = 
     if (
       !file ||
       !object ||
-      file.token !== object.updated ||
+      (file.token !== object.updated && !object.contentType.endsWith(`;sim-token=${file.token}`)) ||
       object.size !== new TextEncoder().encode(file.data).length
     ) {
       return invalid("Input bytes are missing/stale. Use sim storage objects write.");
+    }
+    const key = keyAccess(ctx.world, bucket, object.kmsKey ?? "", "Decrypt");
+    if (!key.ok) {
+      return invalid(key.error);
     }
     return Result.ok({ file, bucket });
   });

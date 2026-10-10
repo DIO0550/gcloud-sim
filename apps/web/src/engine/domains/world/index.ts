@@ -113,9 +113,11 @@ import {
 } from "@/engine/domains/managed-databases/model";
 
 import { type NetworkLab, validateNetworkLab } from "@/engine/domains/network-lab/model";
+import { type StorageLab, validateStorageLab } from "@/engine/domains/storage-lab/model";
 
 export type World = Readonly<{
   networkLab: NetworkLab;
+  storageLab: StorageLab;
   computeLab: ComputeLab;
   dataProcessing: DataProcessing;
   managedDatabases: ManagedDatabases;
@@ -199,6 +201,7 @@ export type AlreadyExists = Readonly<{ resource: string }>;
 
 /** ポリシーの置き換えの失敗。対象が無いか、組織の最後の Owner を外そうとした。 */
 export type PolicyRejected =
+  | Readonly<{ kind: "invalid"; reason: string }>
   | Readonly<{ kind: "not-found"; target: PolicyTarget }>
   | Readonly<{ kind: "last-owner" }>;
 
@@ -716,13 +719,27 @@ export const World = {
           },
         });
       }
-      case "bucket":
+      case "bucket": {
+        const b = World.findBucket(world, target.id);
+        if (
+          b.some &&
+          b.value.publicAccessPrevention &&
+          policy.bindings.some((binding) =>
+            binding.members.some((m) => m === "allUsers" || m === "allAuthenticatedUsers"),
+          )
+        ) {
+          return Result.err({
+            kind: "invalid",
+            reason: "Public access prevention rejects public IAM bindings.",
+          });
+        }
         return Option.toResult(
           Option.map(World.findBucket(world, target.id), (b) =>
             World.replaceBucket(world, Bucket.withPolicy(b, policy)),
           ),
           () => notFound,
         );
+      }
       case "service-account":
         return Option.toResult(
           Option.map(World.findServiceAccount(world, target.id), (s) =>
@@ -1094,7 +1111,16 @@ export const World = {
   },
 
   withoutBucket(world: World, name: string): World {
-    return { ...world, buckets: world.buckets.filter((b) => b.name !== name) };
+    return {
+      ...world,
+      buckets: world.buckets.filter((b) => b.name !== name),
+      storageLab: {
+        ...world.storageLab,
+        protections: world.storageLab.protections.filter((p) => p.bucket !== name),
+        versions: world.storageLab.versions.filter((v) => v.bucket !== name),
+        signed: world.storageLab.signed.filter((s) => s.bucket !== name),
+      },
+    };
   },
 
   // --- GKE / Cloud Run ---
@@ -1582,6 +1608,10 @@ export const World = {
    * @returns 満たしていれば同じ World。満たさなければ最初に見つけた違反
    */
   validate(world: World): Result<World, string> {
+    const storage = validateStorageLab(world);
+    if (!storage.ok) {
+      return storage;
+    }
     const networking = validateNetworkLab(world);
     if (!networking.ok) {
       return networking;

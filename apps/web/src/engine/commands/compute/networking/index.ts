@@ -713,6 +713,13 @@ const NetworkSpecs: readonly CommandSpec[] = [
       ) {
         return Result.err(CommandFailure.invalidState("Network is referenced by a TPU VM."));
       }
+      if (
+        ctx.world.storageLab.files.some(
+          (f) => f.projectId === network.value.projectId && f.network === network.value.name,
+        )
+      ) {
+        return Result.err(CommandFailure.invalidState("Network is referenced by file storage."));
+      }
       const processing = ctx.world.dataProcessing.clusters.find(
         (c) => c.projectId === network.value.projectId && c.network === network.value.name,
       );

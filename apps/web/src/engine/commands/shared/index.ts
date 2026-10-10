@@ -294,6 +294,8 @@ export const alreadyExists = (failure: AlreadyExists): CommandFailure =>
 /** `PolicyRejected` を E-005 / E-012 に写す。 */
 const policyRejected = (rejected: PolicyRejected): CommandFailure => {
   switch (rejected.kind) {
+    case "invalid":
+      return CommandFailure.invalidState(rejected.reason);
     case "not-found":
       return CommandFailure.notFound(PolicyTarget.toPath(rejected.target));
     case "last-owner":
@@ -604,7 +606,9 @@ const base = (seed: SeedBase) => ({
  * @param seed 材料
  * @returns コマンド定義
  */
-export const projectCommand = (seed: ProjectCommandSeed): CommandSpec => ({
+export const projectCommand = (
+  seed: ProjectCommandSeed,
+): Extract<CommandSpec, { kind: "project" }> => ({
   kind: "project",
   ...base(seed),
   requiredPermissions: permissionsOf(seed),

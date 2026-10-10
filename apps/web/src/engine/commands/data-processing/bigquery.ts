@@ -1,8 +1,9 @@
 import { type CommandSpec, Flag, ParsedArgs, Positional } from "@/engine/cli/command-spec";
+import { storageNow } from "@/engine/commands/storage-lab/runtime";
 import { compatibleLocation, locations, patch } from "@/engine/domains/data-processing/model";
 import { parseRows, parseSchema, select } from "@/engine/domains/data-processing/tabular";
 import { validIdentifier } from "@/engine/domains/relational/model";
-import { Bucket } from "@/engine/domains/storage";
+import { putObject } from "@/engine/domains/storage-lab/model";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -377,16 +378,22 @@ const commands: readonly CommandSpec[] = [
       const numbered = World.nextNumber(ctx.world);
       const token = `${ctx.now}#${numbered.number}`;
       const size = new TextEncoder().encode(data).length;
-      const w = World.replaceBucket(
+      const stored = putObject(
         numbered.world,
-        Bucket.withObject(bucket, {
+        bucket.name,
+        {
           name: url.object,
           size,
-          contentType: "text/plain",
-          updated: token,
+          contentType: `text/plain;sim-token=${token}`,
+          updated: storageNow(ctx),
           storageClass: Option.none,
-        }),
+        },
+        storageNow(ctx),
       );
+      if (!stored.ok) {
+        return invalid(stored.error);
+      }
+      const w = stored.value;
       return finish(
         patch(w, {
           files: [

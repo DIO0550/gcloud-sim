@@ -108,7 +108,9 @@ test("sign-url は存在するオブジェクトの署名付き URL を出し、
     session(),
     bucket,
     "gcloud storage cp ./a.log gs://b-1/",
-    "gcloud storage sign-url gs://b-1/a.log --duration=10m",
+    "gcloud services enable iamcredentials.googleapis.com",
+    "gcloud iam service-accounts add-iam-policy-binding web-sa@ace-dev-01.iam.gserviceaccount.com --member=user:owner@example.com --role=roles/iam.serviceAccountTokenCreator",
+    "gcloud storage sign-url gs://b-1/a.log --duration=10m --impersonate-service-account=web-sa@ace-dev-01.iam.gserviceaccount.com",
   );
   expect(s.text).toContain(
     "signed_url: https://storage.googleapis.com/b-1/a.log?X-Goog-Algorithm=GOOG4-RSA-SHA256",

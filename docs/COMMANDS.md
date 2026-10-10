@@ -21,7 +21,48 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（697）
+## 実装済み（731）
+
+### Storage・暗号化・転送・共有ファイル
+
+構成例、IAM、世代復旧と対応範囲は[STORAGE.md](STORAGE.md)を参照してください。
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud filestore instances create` | Storage教材の構成・検証・状態操作。 |
+| `gcloud filestore instances list` | Storage教材の構成・検証・状態操作。 |
+| `gcloud filestore instances describe` | Storage教材の構成・検証・状態操作。 |
+| `gcloud filestore instances delete` | Storage教材の構成・検証・状態操作。 |
+| `gcloud netapp storage-pools create` | Storage教材の構成・検証・状態操作。 |
+| `gcloud netapp storage-pools list` | Storage教材の構成・検証・状態操作。 |
+| `gcloud netapp storage-pools describe` | Storage教材の構成・検証・状態操作。 |
+| `gcloud netapp storage-pools delete` | Storage教材の構成・検証・状態操作。 |
+| `gcloud netapp volumes create` | Storage教材の構成・検証・状態操作。 |
+| `gcloud netapp volumes list` | Storage教材の構成・検証・状態操作。 |
+| `gcloud netapp volumes describe` | Storage教材の構成・検証・状態操作。 |
+| `gcloud netapp volumes delete` | Storage教材の構成・検証・状態操作。 |
+| `gcloud lustre instances create` | Storage教材の構成・検証・状態操作。 |
+| `gcloud lustre instances list` | Storage教材の構成・検証・状態操作。 |
+| `gcloud lustre instances describe` | Storage教材の構成・検証・状態操作。 |
+| `gcloud lustre instances delete` | Storage教材の構成・検証・状態操作。 |
+| `sim storage choose` | Storage教材の構成・検証・状態操作。 |
+| `gcloud kms keys versions enable` | Storage教材の構成・検証・状態操作。 |
+| `gcloud kms keys versions disable` | Storage教材の構成・検証・状態操作。 |
+| `gcloud storage service-agent` | Storage教材の構成・検証・状態操作。 |
+| `gcloud storage objects describe` | Storage教材の構成・検証・状態操作。 |
+| `gcloud storage restore` | Storage教材の構成・検証・状態操作。 |
+| `sim storage versions restore` | Storage教材の構成・検証・状態操作。 |
+| `sim storage access check` | Storage教材の構成・検証・状態操作。 |
+| `sim storage lifecycle run` | Storage教材の構成・検証・状態操作。 |
+| `sim storage time advance` | Storage教材の構成・検証・状態操作。 |
+| `sim storage signed-url check` | Storage教材の構成・検証・状態操作。 |
+| `gcloud transfer jobs create` | Storage教材の構成・検証・状態操作。 |
+| `gcloud transfer jobs run` | Storage教材の構成・検証・状態操作。 |
+| `gcloud transfer jobs describe` | Storage教材の構成・検証・状態操作。 |
+| `gcloud transfer jobs list` | Storage教材の構成・検証・状態操作。 |
+| `gcloud transfer jobs update` | Storage教材の構成・検証・状態操作。 |
+| `gcloud transfer jobs delete` | Storage教材の構成・検証・状態操作。 |
+| `sim storage transfer-service-agent` | Storage教材の構成・検証・状態操作。 |
 
 Compute・復旧・VM管理は42コマンドと15ミッションを追加しています。構文・範囲・カタログ根拠は[COMPUTE.md](COMPUTE.md)を参照してください。
 

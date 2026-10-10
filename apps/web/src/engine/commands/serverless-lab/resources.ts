@@ -28,6 +28,7 @@ import {
   sameId,
 } from "@/engine/domains/serverless-lab/model";
 import { allows, publishEvent } from "@/engine/domains/serverless-lab/runtime";
+import { keyPath } from "@/engine/domains/storage-lab/model";
 import type { World } from "@/engine/domains/world";
 import type { JsonRecord } from "@/types/Json";
 import { Option } from "@/utils/Option";
@@ -220,6 +221,16 @@ const crud = <K extends Collection>(seed: ResourceSeed<K>): readonly CommandSpec
           )
         ) {
           return invalid("Delete documents before deleting their database.");
+        }
+        if (seed.key === "keys") {
+          const key = ctx.world.serverlessLab.keys.find((k) => sameResource(k, r));
+          if (
+            key &&
+            (ctx.world.storageLab.protections.some((p) => p.defaultKey === keyPath(key)) ||
+              ctx.world.storageLab.versions.some((v) => v.kmsKey === keyPath(key)))
+          ) {
+            return invalid("A bucket or object generation still references this key.");
+          }
         }
         let removed = remove(ctx.world, seed.key, r);
         if (seed.key === "redis") {

@@ -497,6 +497,53 @@ const projectNode = (world: World, project: Project): TreeNode => {
   const sqlInstances = World.namedOf(world, "sqlInstances", id).map((i) =>
     leaf({ kind: "sql-instance", projectId: id, name: i.name }, i.name),
   );
+  const storageOperations: readonly TreeNode[] = [
+    ...world.storageLab.files
+      .filter((f) => f.projectId === id)
+      .map((f) =>
+        leaf(
+          {
+            kind: "storage-lab",
+            collection: "files",
+            projectId: id,
+            name: f.name,
+            location: f.location,
+            subtype: f.kind,
+          },
+          `${f.kind}: ${f.name} (${f.location})`,
+        ),
+      ),
+    ...world.storageLab.transfers
+      .filter((t) => t.projectId === id)
+      .map((t) =>
+        leaf(
+          {
+            kind: "storage-lab",
+            collection: "transfers",
+            projectId: id,
+            name: t.name,
+            location: "",
+            subtype: "",
+          },
+          `transfer: ${t.name} (${t.operation})`,
+        ),
+      ),
+    ...world.storageLab.signed
+      .filter((s) => s.projectId === id)
+      .map((s) =>
+        leaf(
+          {
+            kind: "storage-lab",
+            collection: "signed",
+            projectId: id,
+            name: s.id,
+            location: "",
+            subtype: "",
+          },
+          `signed URL: ${s.id}`,
+        ),
+      ),
+  ];
   const networkOperations = (
     [
       "routes",
@@ -804,7 +851,7 @@ const projectNode = (world: World, project: Project): TreeNode => {
       ...group(id, ResourceGroups.InstanceGroups, instanceGroupNodes(world, id)),
       ...group(id, ResourceGroups.LoadBalancing, loadBalancingNodes(world, id)),
       ...group(id, ResourceGroups.Vpc, networkNodes(world, id)),
-      ...group(id, ResourceGroups.Storage, buckets),
+      ...group(id, ResourceGroups.Storage, [...buckets, ...storageOperations]),
       ...group(id, ResourceGroups.Gke, gkeNodes(world, id)),
       ...group(id, ResourceGroups.Run, runServices),
       ...group(id, ResourceGroups.Serverless, serverless),

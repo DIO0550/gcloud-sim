@@ -172,6 +172,7 @@ import {
 import { type NetworkAssertion, NetworkMissions, networkSatisfied } from "./network-lab";
 import { type RelationalAssertion, RelationalMissions, relationalSatisfied } from "./relational";
 import { type ServerlessAssertion, ServerlessMissions, serverlessSatisfied } from "./serverless";
+import { type StorageAssertion, StorageMissions, storageSatisfied } from "./storage-lab";
 
 /** ACE の 5 ドメイン（設計書 6.2 Mission.domain）。 */
 export const MissionDomains = {
@@ -185,6 +186,7 @@ export type MissionDomain = ValueOf<typeof MissionDomains>;
 
 /** World に対する述語（DJ-010: コマンド文字列ではなく状態で判定する）。値の語彙はドメインの型で閉じる。 */
 export type MissionAssertion =
+  | StorageAssertion
   | NetworkAssertion
   | ComputeAssertion
   | DataAssertion
@@ -377,6 +379,7 @@ const Missions: readonly Mission[] = [
   ...RelationalMissions,
   ...ManagedDatabaseMissions,
   ...ComputeMissions,
+  ...StorageMissions,
   ...NetworkMissions,
   ...DataMissions,
   ...KubeNetworkMissions,
@@ -843,6 +846,8 @@ const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: 
 
 const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
+    case "storageLesson":
+      return storageSatisfied(world, assertion.lesson);
     case "networkLesson":
       return networkSatisfied(world, assertion.lesson);
     case "computeLesson":
@@ -1159,7 +1164,9 @@ const applyPatch = (world: World, patch: WorldPatch): Result<World, string> => {
       return Result.mapErr(World.withPolicy(world, patch.target, removed.value), (rejected) =>
         rejected.kind === "last-owner"
           ? "removing the binding would leave the organization without an owner"
-          : `target ${rejected.target.type}/${rejected.target.id} does not exist`,
+          : rejected.kind === "invalid"
+            ? rejected.reason
+            : `target ${rejected.target.type}/${rejected.target.id} does not exist`,
       );
     }
     case "ensureInstance":
