@@ -169,7 +169,7 @@ const commands = (lines) => lines.map((type) => ({ type }));
 const lessonNames = Object.keys(lessons);
 const missionSteps = (m) => [
   { wait: 800 },
-  { click: "ミッション 0/96" },
+  { click: "ミッション" },
   { click: `${m.domain}0/${m.domain === "計画と構成" ? 13 : 53} クリア` },
   { click: `${m.title}未着手` },
   { click: "開始" },
