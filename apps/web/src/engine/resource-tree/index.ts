@@ -39,6 +39,7 @@ export const ResourceGroups = {
   AppEngine: "app-engine",
   Sql: "sql",
   ManagedDatabases: "managed-databases",
+  DataProcessing: "data-processing",
   Pubsub: "pubsub",
   Logging: "logging",
   Monitoring: "monitoring",
@@ -494,6 +495,50 @@ const projectNode = (world: World, project: Project): TreeNode => {
   const sqlInstances = World.namedOf(world, "sqlInstances", id).map((i) =>
     leaf({ kind: "sql-instance", projectId: id, name: i.name }, i.name),
   );
+  const processing = (
+    [
+      "datasets",
+      "tables",
+      "jobs",
+      "clusters",
+      "processingJobs",
+      "kafkaClusters",
+      "kafkaTopics",
+    ] as const
+  ).flatMap((collection) =>
+    world.dataProcessing[collection]
+      .filter((r) => r.projectId === id)
+      .map((r) => {
+        let location = "";
+        if ("region" in r) {
+          location = r.region;
+        } else if ("location" in r) {
+          location = r.location;
+        } else if ("dataset" in r) {
+          location =
+            world.dataProcessing.datasets.find((d) => d.projectId === id && d.name === r.dataset)
+              ?.location ?? "";
+        }
+        let parent = "";
+        if ("dataset" in r) {
+          parent = r.dataset;
+        } else if ("cluster" in r) {
+          parent = r.cluster;
+        }
+        return leaf(
+          {
+            kind: "data-processing",
+            collection,
+            projectId: id,
+            name: r.name,
+            location,
+            parent,
+            jobKind: "kind" in r ? r.kind : "",
+          },
+          `${collection}: ${parent ? `${parent}/` : ""}${r.name} (${location})`,
+        );
+      }),
+  );
   const managedLabels = {
     spannerInstances: "Spanner",
     spannerDatabases: "Spanner",
@@ -696,6 +741,7 @@ const projectNode = (world: World, project: Project): TreeNode => {
       ...group(id, ResourceGroups.AppEngine, appEngineNodes(world, id)),
       ...group(id, ResourceGroups.Sql, [...sqlInstances, ...relational]),
       ...group(id, ResourceGroups.ManagedDatabases, managed),
+      ...group(id, ResourceGroups.DataProcessing, processing),
       ...group(id, ResourceGroups.Pubsub, pubsubNodes(world, id)),
       ...group(id, ResourceGroups.Logging, sinks),
       ...group(id, ResourceGroups.Monitoring, observability),

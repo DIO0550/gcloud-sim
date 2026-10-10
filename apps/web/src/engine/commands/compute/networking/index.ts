@@ -621,6 +621,14 @@ const NetworkSpecs: readonly CommandSpec[] = [
           ),
         );
       }
+      const processing = ctx.world.dataProcessing.clusters.find(
+        (c) => c.projectId === network.value.projectId && c.network === network.value.name,
+      );
+      if (processing) {
+        return Result.err(
+          CommandFailure.invalidState(`Network is used by Dataproc cluster ${processing.name}.`),
+        );
+      }
       const world = Result.mapErr(World.withoutNetwork(ctx.world, network.value), (subnet) =>
         CommandFailure.invalidState(
           `The network resource '${Network.selfLink(network.value)}' is already being used by '${Subnet.selfLink(subnet)}'`,

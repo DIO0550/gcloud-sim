@@ -18,6 +18,10 @@ import type {
   SqlBackup,
   SqlInstance,
 } from "@/engine/domains/data";
+import {
+  type DataProcessing,
+  validateDataProcessing,
+} from "@/engine/domains/data-processing/model";
 import type { DmDeployment } from "@/engine/domains/deployment-manager";
 import type { DnsManagedZone } from "@/engine/domains/dns";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
@@ -108,6 +112,7 @@ import {
 } from "@/engine/domains/managed-databases/model";
 
 export type World = Readonly<{
+  dataProcessing: DataProcessing;
   managedDatabases: ManagedDatabases;
   serverlessLab: ServerlessLab;
   relational: RelationalLab;
@@ -1560,6 +1565,10 @@ export const World = {
    * @returns 満たしていれば同じ World。満たさなければ最初に見つけた違反
    */
   validate(world: World): Result<World, string> {
+    const data = validateDataProcessing(world);
+    if (!data.ok) {
+      return data;
+    }
     const managed = validateManagedDatabases(world);
     if (!managed.ok) {
       return managed;

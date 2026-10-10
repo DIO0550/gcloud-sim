@@ -183,6 +183,7 @@ export type MissionDomain = ValueOf<typeof MissionDomains>;
 
 /** World に対する述語（DJ-010: コマンド文字列ではなく状態で判定する）。値の語彙はドメインの型で閉じる。 */
 export type MissionAssertion =
+  | DataAssertion
   | ManagedDatabaseAssertion
   | RelationalAssertion
   | ServerlessAssertion
@@ -371,6 +372,7 @@ const Missions: readonly Mission[] = [
   ...ServerlessMissions,
   ...RelationalMissions,
   ...ManagedDatabaseMissions,
+  ...DataMissions,
   ...KubeNetworkMissions,
   ...KubeIngressMissions,
   ...GkeNodePoolMissions,
@@ -835,6 +837,8 @@ const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: 
 
 const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
+    case "dataProcessingLesson":
+      return dataSatisfied(world, assertion.lesson);
     case "managedDatabaseLesson":
       return managedDatabaseSatisfied(world, assertion.lesson);
     case "relationalLesson":
@@ -1265,3 +1269,5 @@ export const Mission = {
     };
   },
 } as const;
+
+import { type DataAssertion, DataMissions, dataSatisfied } from "./data-processing";

@@ -522,6 +522,7 @@ const DmsPermissions = [
 ] as const;
 
 const PubsubPermissions = [
+  ...PubsubDataPermissions,
   "pubsub.topics.publish",
   "pubsub.topics.create",
   "pubsub.topics.list",
@@ -618,6 +619,7 @@ const ArtifactAdminPermissions = [
 ] as const;
 
 const ViewerPermissions = [
+  ...DataProcessingPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
   ...ManagedDatabasePermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
   "spanner.databases.read",
   "bigtable.tables.readRows",
@@ -701,6 +703,7 @@ const ViewerPermissions = [
 ] as const;
 
 const EditorPermissions = [
+  ...DataProcessingPermissions,
   ...ManagedDatabasePermissions,
   ...ServerlessPermissions,
   ...BuildWritePermissions,
@@ -1042,9 +1045,38 @@ const Roles: readonly Role[] = [
     "cloudsql.instances.list",
   ]),
   role("roles/pubsub.publisher", "Pub/Sub Publisher", ["pubsub.topics.publish"]),
+  role("roles/pubsub.subscriber", "Pub/Sub Subscriber", [
+    "pubsub.subscriptions.get",
+    "pubsub.subscriptions.list",
+    "pubsub.subscriptions.consume",
+  ]),
+  role("roles/bigquery.admin", "BigQuery Admin", BigQueryPermissions),
+  role(
+    "roles/bigquery.dataEditor",
+    "BigQuery Data Editor",
+    BigQueryPermissions.filter((p) => !p.startsWith("bigquery.jobs.")),
+  ),
+  role("roles/bigquery.dataViewer", "BigQuery Data Viewer", [
+    "bigquery.datasets.get",
+    "bigquery.tables.get",
+    "bigquery.tables.list",
+    "bigquery.tables.getData",
+  ]),
+  role("roles/bigquery.jobUser", "BigQuery Job User", [
+    "bigquery.jobs.create",
+    "bigquery.jobs.get",
+    "bigquery.jobs.list",
+  ]),
+  role("roles/dataflow.admin", "Dataflow Admin", DataflowPermissions),
+  role("roles/dataflow.worker", "Dataflow Worker", ["dataflow.jobs.update"]),
+  role("roles/dataproc.admin", "Dataproc Admin", DataprocPermissions),
+  role("roles/dataproc.worker", "Dataproc Worker", ["dataproc.jobs.update"]),
+  role("roles/managedkafka.admin", "Managed Kafka Admin", KafkaPermissions),
+  role("roles/managedkafka.client", "Managed Kafka Client", ["managedkafka.clusters.connect"]),
   role("roles/pubsub.admin", "Pub/Sub Admin", PubsubPermissions),
   role("roles/pubsub.editor", "Pub/Sub Editor", PubsubPermissions),
   role("roles/pubsub.viewer", "Pub/Sub Viewer", [
+    "pubsub.subscriptions.list",
     "pubsub.topics.list",
     "pubsub.topics.get",
     "pubsub.subscriptions.get",
@@ -1232,3 +1264,12 @@ export const RoleCatalog = {
     return Roles;
   },
 } as const;
+
+import {
+  BigQueryPermissions,
+  DataflowPermissions,
+  DataProcessingPermissions,
+  DataprocPermissions,
+  KafkaPermissions,
+  PubsubDataPermissions,
+} from "@/engine/domains/data-processing/permissions";

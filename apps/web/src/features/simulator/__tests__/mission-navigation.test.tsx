@@ -36,12 +36,9 @@ test("全ミッションがカテゴリから選択できる", async () => {
   for (const domain of Object.values(MissionDomains)) {
     await user.click(screen.getByRole("button", { name: new RegExp(domain) }));
     const list = screen.getByRole("region", { name: domain });
+    const buttons = within(list).getAllByRole("button");
     for (const mission of Mission.all().filter((m) => m.domain === domain)) {
-      expect(
-        within(list).getByRole("button", {
-          name: new RegExp(mission.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
-        }),
-      ).toBeInTheDocument();
+      expect(buttons.filter((b) => b.textContent?.includes(mission.title))).toHaveLength(1);
     }
     await user.click(screen.getByRole("button", { name: "カテゴリへ" }));
   }

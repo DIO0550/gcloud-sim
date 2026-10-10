@@ -253,6 +253,16 @@ export const IamCommands: readonly CommandSpec[] = [
       if (!Option.isSome(World.findServiceAccount(ctx.world, email))) {
         return Result.err(unknownServiceAccount(email));
       }
+      if (
+        ctx.world.dataProcessing.clusters.some((c) => c.serviceAccount === email) ||
+        ctx.world.dataProcessing.processingJobs.some((j) => j.serviceAccount === email)
+      ) {
+        return Result.err(
+          CommandFailure.invalidArgumentWith(
+            "A retained data processing cluster/job uses this service account.",
+          ),
+        );
+      }
       return Result.ok({
         world: World.withoutServiceAccount(ctx.world, email),
         output: CommandOutput.messages(OutputMessage.plain(`deleted service account [${email}]`)),

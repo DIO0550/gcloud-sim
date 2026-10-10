@@ -57,6 +57,7 @@ import {
 } from "@/features/simulator/components/ServiceProperties";
 import { type ConsoleScreen, ConsoleScreens } from "@/features/simulator/features/console";
 import { Option } from "@/utils/Option";
+import { DataProcessingProperties } from "./DataProcessingProperties";
 import { GkeLessonProperties } from "./GkeLessonProperties";
 import { IngressProperties } from "./IngressProperties";
 import { LbResourceProperties } from "./LbResourceProperties";
@@ -144,6 +145,8 @@ const Body = ({
       return <KubeServiceProperties world={world} selection={selection} />;
     case "managed-database":
       return <ManagedDatabaseProperties world={world} selection={selection} />;
+    case "data-processing":
+      return <DataProcessingProperties world={world} selection={selection} />;
     case "relational":
       return <RelationalProperties world={world} selection={selection} />;
     case "serverless-lab":
@@ -186,6 +189,7 @@ const Body = ({
 /** 見出し。名前を持つものは名前、持たないものは種別の綴り。 */
 const titleOf = (selection: TreeSelection): string => {
   switch (selection.kind) {
+    case "data-processing":
     case "managed-database":
     case "relational":
     case "serverless-lab":
@@ -254,6 +258,8 @@ const titleOf = (selection: TreeSelection): string => {
 /** 見出しの下に出す API の種別（`compute#instance` の形）と置き場。 */
 const kindLabel = (selection: TreeSelection): string => {
   switch (selection.kind) {
+    case "data-processing":
+      return `${selection.collection} · projects/${selection.projectId}/${selection.location}`;
     case "managed-database":
       return `${selection.collection} · projects/${selection.projectId}`;
     case "organization":

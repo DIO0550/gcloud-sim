@@ -173,6 +173,16 @@ export const PubsubSubscription = {
       createTime: string;
     }>,
   ): Result<PubsubSubscription, string> {
+    const deadline = Option.unwrapOr(seed.ackDeadlineSeconds, 10);
+    if (!Number.isSafeInteger(deadline) || deadline < 10 || deadline > 600) {
+      return Result.err("ACK deadline must be 10..600 seconds.");
+    }
+    if (
+      seed.pushEndpoint.some &&
+      !/^https:\/\/[a-z0-9.-]+(?:\/[^\s]*)?$/i.test(seed.pushEndpoint.value)
+    ) {
+      return Result.err("Push endpoint must be an HTTPS URL.");
+    }
     return Result.map(PubsubName.parse(seed.name), (name) => ({
       projectId: seed.projectId,
       name,

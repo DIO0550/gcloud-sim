@@ -7,6 +7,22 @@ import { Option } from "@/utils/Option";
 /** ツリーで選べるもの。プロパティパネルはこれを見て World から中身を引く。 */
 export type TreeSelection =
   | Readonly<{
+      kind: "data-processing";
+      collection:
+        | "datasets"
+        | "tables"
+        | "jobs"
+        | "clusters"
+        | "processingJobs"
+        | "kafkaClusters"
+        | "kafkaTopics";
+      projectId: string;
+      name: string;
+      location: string;
+      parent: string;
+      jobKind: string;
+    }>
+  | Readonly<{
       kind: "managed-database";
       collection:
         | "spannerInstances"
@@ -205,6 +221,8 @@ export const TreeSelection = {
   /** ツリーのノード id にもなる一意なキー。 */
   key(selection: TreeSelection): string {
     switch (selection.kind) {
+      case "data-processing":
+        return `data:${selection.collection}/${selection.projectId}/${selection.location}/${selection.parent}/${selection.jobKind}/${selection.name}`;
       case "managed-database":
         return `managed:${selection.collection}/${selection.projectId}/${selection.instance}/${selection.cluster}/${selection.name}`;
       case "relational":
@@ -319,6 +337,25 @@ export const TreeSelection = {
    */
   describeCommand(selection: TreeSelection): Option<string> {
     switch (selection.kind) {
+      case "data-processing": {
+        const s = selection;
+        const project = `--project=${s.projectId}`;
+        if (["datasets", "tables", "jobs"].includes(s.collection)) {
+          const target = s.parent ? `${s.parent}.${s.name}` : s.name;
+          const job = s.collection === "jobs" ? " --job" : "";
+          return Option.some(`bq show ${target} --location=${s.location} ${project}${job}`);
+        }
+        const group = {
+          clusters: "dataproc clusters",
+          processingJobs: `${s.jobKind} jobs`,
+          kafkaClusters: "managed-kafka clusters",
+          kafkaTopics: "managed-kafka topics",
+        }[s.collection as "clusters" | "processingJobs" | "kafkaClusters" | "kafkaTopics"];
+        const parent = s.collection === "kafkaTopics" ? ` --cluster=${s.parent}` : "";
+        return Option.some(
+          `gcloud ${group} describe ${s.name} --region=${s.location} ${project}${parent}`,
+        );
+      }
       case "managed-database": {
         if (selection.collection === "firestoreCopies") {
           return Option.some(

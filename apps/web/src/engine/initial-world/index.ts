@@ -8,6 +8,7 @@ import {
   SubnetModes,
 } from "@/engine/domains/compute";
 import { ContainerLab } from "@/engine/domains/container-lab";
+import { emptyDataProcessing } from "@/engine/domains/data-processing/model";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { IamPolicy } from "@/engine/domains/iam-policy";
 import { emptyManagedDatabases } from "@/engine/domains/managed-databases/model";
@@ -101,6 +102,7 @@ export const EmptyCollections = {
   serverlessLab: emptyLab(),
   relational: emptyRelational(),
   managedDatabases: emptyManagedDatabases(),
+  dataProcessing: emptyDataProcessing(),
   disks: [],
   projectMetadata: [],
   addresses: [],

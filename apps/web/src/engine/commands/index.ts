@@ -10,6 +10,13 @@ import { ComputeCommands } from "@/engine/commands/compute";
 import { AuthCommands, ConfigCommands, SdkCommands } from "@/engine/commands/config";
 import { ContainerCommands } from "@/engine/commands/container-run";
 import { PubsubCommands } from "@/engine/commands/data";
+import {
+  BigQueryCommands,
+  ExportCommands,
+  KafkaCommands,
+  ProcessingCommands,
+  PubsubDataCommands,
+} from "@/engine/commands/data-processing";
 import { GkeLessonCommands } from "@/engine/commands/gke-lessons";
 import { IamCommands } from "@/engine/commands/iam";
 import {
@@ -59,6 +66,11 @@ import {
 import { TerraformCommands } from "@/engine/commands/terraform";
 
 const implemented: readonly CommandSpec[] = [
+  ...BigQueryCommands,
+  ...PubsubDataCommands,
+  ...ProcessingCommands,
+  ...KafkaCommands,
+  ...ExportCommands,
   ...TerraformCommands,
   ...ArtifactCommands,
   ...DockerCommands,

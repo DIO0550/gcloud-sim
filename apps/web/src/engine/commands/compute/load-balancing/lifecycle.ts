@@ -355,6 +355,13 @@ export const LifecycleCommands: readonly CommandSpec[] = [
           if (s === undefined) {
             return Result.err(CommandFailure.notFound("subnetworks"));
           }
+          if (
+            ctx.world.dataProcessing.kafkaClusters.some(
+              (c) => c.projectId === s.projectId && c.region === s.region && c.subnet === s.name,
+            )
+          ) {
+            return invalid("Subnet is still in use by a Kafka cluster.");
+          }
           const vms = ctx.world.instances.some(
             (v) =>
               v.projectId === s.projectId &&
