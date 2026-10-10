@@ -115,9 +115,14 @@ import {
 } from "@/engine/domains/managed-databases/model";
 
 import { type NetworkLab, validateNetworkLab } from "@/engine/domains/network-lab/model";
+import {
+  type ObservabilityLab,
+  validateObservabilityLab,
+} from "@/engine/domains/observability-lab/model";
 import { type StorageLab, validateStorageLab } from "@/engine/domains/storage-lab/model";
 
 export type World = Readonly<{
+  observabilityLab: ObservabilityLab;
   networkLab: NetworkLab;
   storageLab: StorageLab;
   adminLab: AdminLab;
@@ -1611,6 +1616,10 @@ export const World = {
    * @returns 満たしていれば同じ World。満たさなければ最初に見つけた違反
    */
   validate(world: World): Result<World, string> {
+    const observability = validateObservabilityLab(world);
+    if (!observability.ok) {
+      return observability;
+    }
     const administration = validateAdminLab(world);
     if (!administration.ok) {
       return administration;

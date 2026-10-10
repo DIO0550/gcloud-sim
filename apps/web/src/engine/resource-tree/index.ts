@@ -4,6 +4,7 @@ import { Instance } from "@/engine/domains/compute";
 import { type IamMember, IamPolicy, type RoleName } from "@/engine/domains/iam-policy";
 import { KubeStorage } from "@/engine/domains/kube-storage";
 import type { GkeCluster } from "@/engine/domains/managed-services";
+import { observeResources } from "@/engine/domains/observability-lab/resources";
 import { type ParentRef, PolicyTarget, type Project } from "@/engine/domains/resource-hierarchy";
 import { World } from "@/engine/domains/world";
 import { TreeSelection } from "@/engine/resource-tree/selection";
@@ -876,7 +877,15 @@ const projectNode = (world: World, project: Project): TreeNode => {
       ...group(id, ResourceGroups.DataProcessing, processing),
       ...group(id, ResourceGroups.Pubsub, pubsubNodes(world, id)),
       ...group(id, ResourceGroups.Logging, sinks),
-      ...group(id, ResourceGroups.Monitoring, observability),
+      ...group(id, ResourceGroups.Monitoring, [
+        ...observability,
+        ...observeResources(world, id).map((r) =>
+          leaf(
+            { kind: "observability-lab", projectId: id, collection: r.collection, name: r.name },
+            r.label,
+          ),
+        ),
+      ]),
       ...group(id, ResourceGroups.Kms, keyRings),
       ...group(id, ResourceGroups.Dns, dnsZones),
       ...group(id, ResourceGroups.DeploymentManager, deployments),

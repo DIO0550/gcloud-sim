@@ -65,6 +65,7 @@ import { IngressProperties } from "./IngressProperties";
 import { LbResourceProperties } from "./LbResourceProperties";
 import { ManagedDatabaseProperties } from "./ManagedDatabaseProperties";
 import { NetworkLabProperties } from "./NetworkLabProperties";
+import { ObservabilityLabProperties } from "./ObservabilityLabProperties";
 import { RelationalProperties } from "./RelationalProperties";
 import { ServerlessProperties } from "./ServerlessProperties";
 import { StatefulSetProperties } from "./StatefulSetProperties";
@@ -149,6 +150,8 @@ const Body = ({
       return <KubeServiceProperties world={world} selection={selection} />;
     case "managed-database":
       return <ManagedDatabaseProperties world={world} selection={selection} />;
+    case "observability-lab":
+      return <ObservabilityLabProperties world={world} selection={selection} />;
     case "admin-lab":
       return <AdminLabProperties world={world} selection={selection} />;
     case "storage-lab":
@@ -201,6 +204,7 @@ const Body = ({
 /** 見出し。名前を持つものは名前、持たないものは種別の綴り。 */
 const titleOf = (selection: TreeSelection): string => {
   switch (selection.kind) {
+    case "observability-lab":
     case "admin-lab":
     case "storage-lab":
     case "network-lab":
@@ -274,6 +278,8 @@ const titleOf = (selection: TreeSelection): string => {
 /** 見出しの下に出す API の種別（`compute#instance` の形）と置き場。 */
 const kindLabel = (selection: TreeSelection): string => {
   switch (selection.kind) {
+    case "observability-lab":
+      return `${selection.collection} · projects/${selection.projectId}`;
     case "admin-lab":
       return `${selection.collection} · ${selection.scope}`;
     case "storage-lab":

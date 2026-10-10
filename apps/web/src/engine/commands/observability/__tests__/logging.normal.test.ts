@@ -30,10 +30,13 @@ test("logging read --freshness は綴りを検証し、--limit で件数を絞�
   expect(limited.text.match(/methodName/g)).toHaveLength(1);
 });
 
-test("logging logs list は監査ログの 3 つを出す", () => {
+test("logging logs list は4種の監査ログとflow/firewallを出す", () => {
   const s = run(session(), "gcloud logging logs list");
   expect(s.text).toContain("projects/ace-dev-01/logs/cloudaudit.googleapis.com%2Factivity");
-  expect(s.text.split("\n")).toHaveLength(3);
+  expect(s.text.split("\n")).toHaveLength(6);
+  expect(s.text).toContain("cloudaudit.googleapis.com%2Fpolicy");
+  expect(s.text).toContain("compute.googleapis.com%2Fvpc_flows");
+  expect(s.text).toContain("compute.googleapis.com%2Ffirewall");
 });
 
 test("sinks create は Storage / BigQuery / Pub/Sub の転送先だけを受け、list に出る", () => {

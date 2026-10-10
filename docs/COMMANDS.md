@@ -21,7 +21,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（784）
+## 実装済み（841）
 
 ### コンテナ教材の公開検証
 
@@ -919,6 +919,71 @@ HPAは`autoscale`またはautoscaling/v2の仮想YAML/JSONで作成し、`get/de
 | `sim redis cache increment` | redis.instances.get | redis.googleapis.com | --instance, --region, --network, --project, --account |
 | `sim redis cache set` | redis.instances.get | redis.googleapis.com | --instance, --region, --network, --value, --ttl, --project, --account |
 | `sim spanner execute` | spanner.databases.read | spanner.googleapis.com | --instance, --sql, --project, --account |
+
+
+### 監視・ログの運用教材
+
+詳細と再現範囲: [OBSERVABILITY.md](OBSERVABILITY.md)。`sim` コマンドは教材専用。
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud monitoring channels create` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud monitoring channels list` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud monitoring channels describe` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud monitoring channels update` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud monitoring channels delete` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim monitoring channels verify` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim monitoring clock advance` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim monitoring metric-descriptors create` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim monitoring time-series write` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim monitoring time-series list` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud monitoring metrics-scopes create` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud monitoring metrics-scopes describe` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud monitoring metrics-scopes list` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim monitoring policies evaluate` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim monitoring slos create` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim monitoring slos record` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim monitoring slos describe` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud monitoring policies update` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud monitoring dashboards update` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud monitoring uptime update` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud logging buckets list` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud logging buckets create` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud logging buckets describe` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud logging buckets update` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud logging buckets delete` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud logging buckets undelete` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud logging views create` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud logging views describe` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud logging views update` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud logging views delete` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud logging views list` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim logging views grant-reader` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim logging views read` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim logging audit configure` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim logging audit emit` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim logging router describe` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim logging exclusions configure` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim logging exclusions delete` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim logging exclusions list` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim logging analytics links create` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim logging analytics links describe` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim logging analytics links delete` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim logging analytics query` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim monitoring collectors configure` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim monitoring collectors describe` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim monitoring collectors delete` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim monitoring collectors collect` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim monitoring collectors list` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim monitoring metric-descriptors list` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim monitoring metric-descriptors describe` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim monitoring metric-descriptors delete` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud monitoring metrics-scopes delete` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim monitoring slos list` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim monitoring slos update` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim monitoring slos delete` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim monitoring resources describe` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `sim monitoring resources list` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
 
 ## 解決はできるが未実装（0）
 

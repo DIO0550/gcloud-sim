@@ -800,9 +800,17 @@ export const ObservabilityProperties = ({
   return (
     <Section
       title="設定"
-      rows={Object.entries(resource.value).map(([label, value]) => ({
+      rows={Object.entries({
+        ...resource.value,
+        ...world.observabilityLab.policies.find(
+          (p) =>
+            p.projectId === selection.projectId &&
+            p.name === selection.name &&
+            selection.collection === "alertPolicies",
+        ),
+      }).map(([label, value]) => ({
         label,
-        value: String(value),
+        value: typeof value === "object" ? JSON.stringify(value) : String(value),
       }))}
     />
   );

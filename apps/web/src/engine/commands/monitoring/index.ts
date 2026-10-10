@@ -12,6 +12,8 @@ import {
 } from "@/engine/cli/command-spec";
 import { Filter } from "@/engine/cli/formatter";
 import { LogFilter } from "@/engine/commands/observability/filter";
+import { createPolicyFromFile } from "@/engine/commands/observability-lab/policies";
+import { readJson } from "@/engine/commands/observability-lab/shared";
 import { alreadyExists, Candidates, projectCommand } from "@/engine/commands/shared";
 import { AlertPolicy, Dashboard, LogMetric, UptimeCheck } from "@/engine/domains/monitoring";
 import { SampleFile } from "@/engine/domains/sample-files";
@@ -37,7 +39,7 @@ const lifecycle = <K extends Collection>(
     permission: string;
     resource: string;
     api: "logging.googleapis.com" | "monitoring.googleapis.com";
-    record: (item: NamedItem<K>) => JsonRecord;
+    record: (item: NamedItem<K>, world?: World) => JsonRecord;
   }>,
 ): readonly CommandSpec[] => [
   projectCommand({
@@ -49,7 +51,9 @@ const lifecycle = <K extends Collection>(
       Result.ok({
         world: ctx.world,
         output: CommandOutput.table(
-          World.namedOf(ctx.world, seed.collection, ctx.project.projectId).map(seed.record),
+          World.namedOf(ctx.world, seed.collection, ctx.project.projectId).map((item) =>
+            seed.record(item, ctx.world),
+          ),
           [Column.create("NAME", "name"), Column.create("DISPLAY_NAME", "displayName")],
         ),
       }),
@@ -79,12 +83,26 @@ const lifecycle = <K extends Collection>(
           name,
         });
         if (!Option.isSome(item)) return Result.err(CommandFailure.notFound(`${prefix}${name}`));
-        if (action === "delete")
-          return success(
-            World.withoutNamed(ctx.world, seed.collection, item.value),
-            `Deleted [${prefix}${name}].`,
-          );
-        return Result.ok({ world: ctx.world, output: CommandOutput.yaml(seed.record(item.value)) });
+        if (action === "delete") {
+          let world = World.withoutNamed(ctx.world, seed.collection, item.value);
+          if (seed.collection === "alertPolicies") {
+            const matches = (p: { projectId: string; name: string }) =>
+              p.projectId === ctx.project.projectId && p.name === name;
+            world = {
+              ...world,
+              observabilityLab: {
+                ...world.observabilityLab,
+                policies: world.observabilityLab.policies.filter((p) => !matches(p)),
+                evaluations: world.observabilityLab.evaluations.filter((e) => !matches(e)),
+              },
+            };
+          }
+          return success(world, `Deleted [${prefix}${name}].`);
+        }
+        return Result.ok({
+          world: ctx.world,
+          output: CommandOutput.yaml(seed.record(item.value, ctx.world)),
+        });
       },
     }),
   ),
@@ -179,7 +197,7 @@ const exact =
     }
     return D.object<T>(fields)(value, path);
   };
-const dashboardConfig = exact({
+export const dashboardConfig = exact({
   displayName: D.string,
   gridLayout: exact({
     columns: D.literal([1]),
@@ -212,12 +230,26 @@ const createDashboard = (ctx: ProjectContext, args: ParsedArgs): CommandResult =
     }
   }
   if (Option.isSome(filename)) {
+    const virtual =
+      ctx.world.kubeFiles[filename.value] ?? ctx.world.terraform.files[filename.value];
+    if (virtual !== undefined) {
+      const parsed = readJson(ctx, filename.value);
+      if (!Result.isOk(parsed)) {
+        return parsed;
+      }
+      input = parsed.value;
+    }
     const sample = SampleFile.find(filename.value);
-    if (!Option.isSome(sample) || sample.value.kind !== "monitoring-dashboard")
+    if (
+      virtual === undefined &&
+      (!Option.isSome(sample) || sample.value.kind !== "monitoring-dashboard")
+    )
       return Result.err(
         invalid(`No supported dashboard file: ${filename.value}. Use cpu-dashboard.json.`),
       );
-    input = sample.value.config;
+    if (virtual === undefined && sample.some && sample.value.kind === "monitoring-dashboard") {
+      input = sample.value.config;
+    }
   }
   const config = Result.mapErr(dashboardConfig(input, "config"), invalid);
   if (!Result.isOk(config)) return config;
@@ -285,17 +317,34 @@ export const MonitoringResourceCommands: readonly CommandSpec[] = [
     path: ["gcloud", "monitoring", "policies", "create"],
     summary: "Create one metric threshold condition. Incidents and notifications are not executed.",
     flags: [
-      Flag.string("display-name", "Policy display name.", { required: true }),
-      Flag.string("condition-display-name", "Condition display name.", { required: true }),
-      Flag.string("condition-filter", "Metric/resource filter.", { required: true }),
-      Flag.string("if", "Comparison, e.g. '> 0.8' or '< 1'.", { required: true }),
-      Flag.string("duration", "Retest interval, a multiple of 60s.", { required: true }),
+      Flag.string("policy-from-file", "Virtual JSON full policy configuration."),
+      Flag.string("display-name", "Policy display name."),
+      Flag.string("condition-display-name", "Condition display name."),
+      Flag.string("condition-filter", "Metric/resource filter."),
+      Flag.string("if", "Comparison, e.g. '> 0.8' or '< 1'."),
+      Flag.string("duration", "Retest interval, a multiple of 60s."),
       Flag.enum("combiner", "Single condition combiner.", ["OR"]),
       Flag.boolean("enabled", "Whether the policy is enabled (default true)."),
     ],
     permission: "monitoring.alertPolicies.create",
     requiredApis: ["monitoring.googleapis.com"],
     run: (ctx, args) => {
+      if (ParsedArgs.string(args, "policy-from-file").some) {
+        if (
+          [
+            "display-name",
+            "condition-display-name",
+            "condition-filter",
+            "if",
+            "duration",
+            "combiner",
+            "enabled",
+          ].some((f) => ParsedArgs.has(args, f))
+        ) {
+          return Result.err(invalid("Use a policy file or condition flags, separately."));
+        }
+        return createPolicyFromFile(ctx, args);
+      }
       const comparison = /^([<>])\s*(-?\d+(?:\.\d+)?)$/.exec(text(args, "if", ""));
       if (comparison === null) return Result.err(invalid("--if must be '> NUMBER' or '< NUMBER'."));
       const numbered = World.nextNumber(ctx.world);

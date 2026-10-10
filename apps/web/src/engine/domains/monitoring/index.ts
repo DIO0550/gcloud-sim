@@ -1,3 +1,5 @@
+import { conditionRecord } from "@/engine/domains/observability-lab/policy";
+import type { World } from "@/engine/domains/world";
 import type { JsonRecord } from "@/types/Json";
 import { Decoder as D } from "@/utils/Decoder";
 import { Result } from "@/utils/Result";
@@ -125,7 +127,23 @@ export const AlertPolicy = {
         : Result.err("duration must be a multiple of 60s"),
     ),
   }),
-  toRecord(policy: AlertPolicy): JsonRecord {
+  toRecord(policy: AlertPolicy, world?: World): JsonRecord {
+    const configuration = world?.observabilityLab.policies.find(
+      (p) => p.projectId === policy.projectId && p.name === policy.name,
+    );
+    const prefix = `projects/${policy.projectId}/alertPolicies/${policy.name}`;
+    if (configuration) {
+      return {
+        name: prefix,
+        displayName: policy.displayName,
+        enabled: policy.enabled,
+        combiner: configuration.combiner,
+        notificationChannels: configuration.channels.map(
+          (c) => `projects/${policy.projectId}/notificationChannels/${c}`,
+        ),
+        conditions: configuration.conditions.map((c) => conditionRecord(c, prefix)),
+      };
+    }
     return {
       name: `projects/${policy.projectId}/alertPolicies/${policy.name}`,
       displayName: policy.displayName,
@@ -146,6 +164,14 @@ export const AlertPolicy = {
   },
 } as const;
 
+export const dashboardEtag = (dashboard: Dashboard): string => {
+  const value = JSON.stringify(dashboard);
+  let hash = 2166136261;
+  for (const letter of value) {
+    hash = Math.imul(hash ^ letter.charCodeAt(0), 16777619);
+  }
+  return `sim-${(hash >>> 0).toString(16)}`;
+};
 export const Dashboard = {
   decode: D.object<Dashboard>({
     projectId: nonempty,
@@ -157,6 +183,7 @@ export const Dashboard = {
   toRecord(dashboard: Dashboard): JsonRecord {
     return {
       name: `projects/${dashboard.projectId}/dashboards/${dashboard.name}`,
+      etag: dashboardEtag(dashboard),
       displayName: dashboard.displayName,
       gridLayout: {
         columns: 1,

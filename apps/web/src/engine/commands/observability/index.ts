@@ -13,7 +13,10 @@ import {
 import type { FilterExpr } from "@/engine/cli/formatter";
 import { LogFilter } from "@/engine/commands/observability/filter";
 import { alreadyExists, describeNamedCommand, projectCommand } from "@/engine/commands/shared";
+import { EffectivePermissions } from "@/engine/domains/effective-permissions";
 import { Freshness, LogEntry, LogNames, LogSink } from "@/engine/domains/observability";
+import { observeLogRecord, storedLogs } from "@/engine/domains/observability-lab/logging";
+import { Principal } from "@/engine/domains/principal";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -46,16 +49,40 @@ const readLogs = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
     : Result.map(LogFilter.parse(rawFilter), Option.some);
   if (!Result.isOk(filter)) return filter;
   const entries = World.operationsOf(ctx.world, ctx.project.projectId)
+    .filter(
+      (o) =>
+        ctx.world.observabilityLab.logs.length < 1000 &&
+        !ctx.world.observabilityLab.logs.some(
+          (l) => l.projectId === o.projectId && l.name === `operation-${o.id}`,
+        ),
+    )
     .map(LogEntry.fromOperation)
     .filter((e) => Date.parse(e.timestamp) >= since)
     .map(LogEntry.toRecord)
     .filter(
       (entry) => !Option.isSome(filter.value) || LogFilter.matches(filter.value.value, entry),
     );
+  const permissions = EffectivePermissions.resolve(ctx.world, Principal.toMember(ctx.principal), {
+    type: "project",
+    id: ctx.project.projectId,
+  }).permissions;
+  const ingested = [
+    ...storedLogs(ctx.world, ctx.project.projectId, "global", "_Required"),
+    ...storedLogs(ctx.world, ctx.project.projectId, "global", "_Default"),
+  ]
+    .filter((l) => l.kind !== "DATA_ACCESS" || permissions.has("logging.privateLogEntries.list"))
+    .map(observeLogRecord)
+    .filter((entry) => Date.parse(String(entry.timestamp)) >= since)
+    .filter(
+      (entry) => !Option.isSome(filter.value) || LogFilter.matches(filter.value.value, entry),
+    );
+  const combined = [...entries, ...ingested].toSorted((a, b) =>
+    String(a.timestamp).localeCompare(String(b.timestamp)),
+  );
   const ordered =
     Option.unwrapOr(ParsedArgs.string(args, "order"), "desc") === "asc"
-      ? entries
-      : entries.toReversed();
+      ? combined
+      : combined.toReversed();
   return Result.ok({
     world: ctx.world,
     output: CommandOutput.yamlList(ordered),
@@ -131,7 +158,15 @@ const sinkMutations: readonly CommandSpec[] = (["update", "delete"] as const).ma
       if (!Option.isSome(existing)) return Result.err(CommandFailure.notFound(name));
       if (action === "delete")
         return Result.ok({
-          world: World.withoutNamed(ctx.world, "logSinks", existing.value),
+          world: {
+            ...World.withoutNamed(ctx.world, "logSinks", existing.value),
+            observabilityLab: {
+              ...ctx.world.observabilityLab,
+              exclusions: ctx.world.observabilityLab.exclusions.filter(
+                (e) => e.projectId !== ctx.project.projectId || e.sink !== name,
+              ),
+            },
+          },
           output: CommandOutput.messages(OutputMessage.plain(`Deleted [${name}].`)),
         });
       const filter = Option.unwrapOr(ParsedArgs.string(args, "log-filter"), existing.value.filter);

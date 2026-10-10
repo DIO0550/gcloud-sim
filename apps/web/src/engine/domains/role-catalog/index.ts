@@ -8,6 +8,12 @@ import {
   SpannerPermissions,
 } from "@/engine/domains/managed-databases/permissions";
 import { NetworkLabPermissions } from "@/engine/domains/network-lab/permissions";
+import {
+  ObserveLoggingRead,
+  ObserveLoggingWrite,
+  ObserveMonitoringRead,
+  ObserveMonitoringWrite,
+} from "@/engine/domains/observability-lab/permissions";
 import { StorageLabPermissions } from "@/engine/domains/storage-lab/permissions";
 import type { JsonRecord } from "@/types/Json";
 import { Option } from "@/utils/Option";
@@ -556,6 +562,12 @@ const PubsubPermissions = [
 ] as const;
 
 const LoggingPermissions = [
+  ...ObserveLoggingWrite,
+  "logging.logEntries.route",
+  "logging.privateLogEntries.list",
+  "logging.logEntries.create",
+  "logging.views.access",
+  "logging.buckets.write",
   "logging.logEntries.list",
   "logging.logs.list",
   "logging.sinks.create",
@@ -571,6 +583,7 @@ const LoggingPermissions = [
 ] as const;
 
 const MonitoringViewPermissions = [
+  ...ObserveMonitoringRead,
   "monitoring.timeSeries.list",
   "monitoring.dashboards.list",
   "monitoring.alertPolicies.list",
@@ -580,6 +593,7 @@ const MonitoringViewPermissions = [
   "monitoring.uptimeCheckConfigs.get",
 ] as const;
 const MonitoringPermissions = [
+  ...ObserveMonitoringWrite,
   ...MonitoringViewPermissions,
   "monitoring.dashboards.create",
   "monitoring.dashboards.delete",
@@ -1087,9 +1101,47 @@ const Roles: readonly Role[] = [
     "run.services.update",
   ]),
   role("roles/run.invoker", "Cloud Run Invoker", ["run.routes.invoke"]),
-  role("roles/logging.viewer", "Logs Viewer", ["logging.logEntries.list", "logging.logs.list"]),
+  role("roles/logging.viewer", "Logs Viewer", [
+    ...ObserveLoggingRead,
+    "logging.logEntries.list",
+    "logging.logs.list",
+  ]),
   role("roles/logging.admin", "Logging Admin", LoggingPermissions),
+  role("roles/logging.privateLogViewer", "Private Logs Viewer", [
+    "logging.logEntries.list",
+    "logging.privateLogEntries.list",
+    "logging.logs.list",
+  ]),
+  role("roles/logging.viewAccessor", "Logs View Accessor", ["logging.views.access"]),
+  role("roles/logging.bucketWriter", "Logs Bucket Writer", ["logging.buckets.write"]),
+  role("roles/logging.logWriter", "Logs Writer", [
+    "logging.logEntries.create",
+    "logging.logEntries.route",
+  ]),
+  role("roles/monitoring.notificationChannelViewer", "Notification Channel Viewer", [
+    "monitoring.notificationChannels.get",
+    "monitoring.notificationChannels.list",
+  ]),
+  role("roles/monitoring.notificationChannelEditor", "Notification Channel Editor", [
+    "monitoring.notificationChannels.get",
+    "monitoring.notificationChannels.list",
+    "monitoring.notificationChannels.create",
+    "monitoring.notificationChannels.update",
+    "monitoring.notificationChannels.delete",
+  ]),
+  role("roles/monitoring.metricsScopesAdmin", "Metrics Scopes Admin", [
+    "monitoring.metricsScopes.get",
+    "monitoring.metricsScopes.link",
+    "resourcemanager.projects.get",
+  ]),
+  role("roles/monitoring.metricWriter", "Monitoring Metric Writer", [
+    "monitoring.timeSeries.create",
+    "monitoring.metricDescriptors.create",
+    "monitoring.metricDescriptors.get",
+    "monitoring.metricDescriptors.list",
+  ]),
   role("roles/logging.configWriter", "Logs Configuration Writer", [
+    ...ObserveLoggingWrite,
     "logging.sinks.update",
     "logging.sinks.delete",
     "logging.logMetrics.create",

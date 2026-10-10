@@ -1,7 +1,5 @@
-import { LogFilter } from "@/engine/commands/observability/filter";
 import { type DataTable, type Field, patch } from "@/engine/domains/data-processing/model";
 import { type IamMember, IamPolicy } from "@/engine/domains/iam-policy";
-import { LogEntry } from "@/engine/domains/observability";
 import { allows, apiEnabled } from "@/engine/domains/serverless-lab/runtime";
 import { World } from "@/engine/domains/world";
 import { Result } from "@/utils/Result";
@@ -148,14 +146,18 @@ export const ExportCommands = [
       const project = {
         ...ctx.project,
         iamPolicy: IamPolicy.addBinding(
-          ctx.project.iamPolicy,
+          IamPolicy.addBinding(
+            ctx.project.iamPolicy,
+            "roles/logging.logWriter",
+            sink.writerIdentity as IamMember,
+          ),
           "roles/bigquery.dataEditor",
           sink.writerIdentity as IamMember,
         ),
       };
       return finish(World.replaceProject(ctx.world, project), {
         writerIdentity: sink.writerIdentity,
-        role: "roles/bigquery.dataEditor",
+        roles: ["roles/bigquery.dataEditor", "roles/logging.logWriter"],
       });
     },
     [locationFlag],
@@ -182,13 +184,10 @@ export const ExportCommands = [
       const writer = sink.writerIdentity.replace(/^serviceAccount:/, "");
       if (
         !allows(ctx.world, ctx.project.projectId, writer, "bigquery.tables.create") ||
-        !allows(ctx.world, ctx.project.projectId, writer, "bigquery.tables.updateData")
+        !allows(ctx.world, ctx.project.projectId, writer, "bigquery.tables.updateData") ||
+        !allows(ctx.world, ctx.project.projectId, writer, "logging.logEntries.route")
       ) {
         return invalid("Sink writer needs BigQuery table create/write permission.");
-      }
-      const filter = LogFilter.parse(sink.filter || "severity=NOTICE");
-      if (!filter.ok) {
-        return invalid("Unsupported sink filter.");
       }
       const existing = ctx.world.dataProcessing.tables.find(
         (t) =>
@@ -199,17 +198,31 @@ export const ExportCommands = [
       if (!compatibleSchema(existing, logSchema)) {
         return invalid("Log export table schema differs.");
       }
-      const entries = ctx.world.operations
-        .filter((o) => o.projectId === ctx.project.projectId)
-        .map(LogEntry.fromOperation)
-        .filter((e) => !sink.filter || LogFilter.matches(filter.value, e));
+      const entries = ctx.world.observabilityLab.logs.filter(
+        (log) =>
+          log.projectId === ctx.project.projectId &&
+          (log.kind !== "DATA_ACCESS" ||
+            allows(
+              ctx.world,
+              ctx.project.projectId,
+              ctx.principal,
+              "logging.privateLogEntries.list",
+            )) &&
+          ctx.world.observabilityLab.deliveries.some(
+            (delivery) =>
+              delivery.projectId === log.projectId &&
+              delivery.log === log.name &&
+              delivery.destination === sink.destination &&
+              delivery.state === "STORED",
+          ),
+      );
       const previous = existing?.rows ?? [];
       const rows = entries
-        .filter((e) => !previous.some((r) => r.insert_id === e.insertId))
+        .filter((e) => !previous.some((r) => r.insert_id === e.name))
         .map((e) => ({
-          insert_id: e.insertId,
-          method: e.methodName,
-          principal: e.principalEmail,
+          insert_id: e.name,
+          method: e.method,
+          principal: e.principal,
           severity: e.severity,
         }));
       if (previous.length + rows.length > 1000) {

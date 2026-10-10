@@ -176,6 +176,7 @@ import {
   managedDatabaseSatisfied,
 } from "./managed-databases";
 import { type NetworkAssertion, NetworkMissions, networkSatisfied } from "./network-lab";
+import { type ObserveAssertion, ObserveMissions, observeSatisfied } from "./observability-lab";
 import { type RelationalAssertion, RelationalMissions, relationalSatisfied } from "./relational";
 import { type ServerlessAssertion, ServerlessMissions, serverlessSatisfied } from "./serverless";
 import { type StorageAssertion, StorageMissions, storageSatisfied } from "./storage-lab";
@@ -192,6 +193,7 @@ export type MissionDomain = ValueOf<typeof MissionDomains>;
 
 /** World に対する述語（DJ-010: コマンド文字列ではなく状態で判定する）。値の語彙はドメインの型で閉じる。 */
 export type MissionAssertion =
+  | ObserveAssertion
   | AdminAssertion
   | StorageAssertion
   | NetworkAssertion
@@ -365,6 +367,7 @@ const devFolder: PolicyTarget = { type: "folder", id: F.devFolderId };
 const organization: PolicyTarget = { type: "organization", id: F.organizationId };
 
 const Missions: readonly Mission[] = [
+  ...ObserveMissions,
   ...ObservabilityMissions,
   ...TerraformMissions,
   ...ContainerMissions,
@@ -857,6 +860,8 @@ const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: 
 
 const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
+    case "observationLesson":
+      return observeSatisfied(world, assertion.lesson);
     case "adminLesson":
       return adminSatisfied(world, assertion.lesson);
     case "storageLesson":
