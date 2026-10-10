@@ -218,6 +218,18 @@ export const BucketLocation = {
 } as const;
 
 const ApiServices = [
+  { name: "storagetransfer.googleapis.com", title: "Storage Transfer API", billingRequired: false },
+  { name: "file.googleapis.com", title: "Cloud Filestore API", billingRequired: true },
+  {
+    name: "netapp.googleapis.com",
+    title: "Google Cloud NetApp Volumes API",
+    billingRequired: true,
+  },
+  {
+    name: "lustre.googleapis.com",
+    title: "Google Cloud Managed Lustre API",
+    billingRequired: true,
+  },
   { name: "tpu.googleapis.com", title: "Cloud TPU API", billingRequired: true },
   { name: "osconfig.googleapis.com", title: "OS Config API", billingRequired: true },
   { name: "spanner.googleapis.com", title: "Spanner API", billingRequired: true },

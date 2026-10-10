@@ -134,6 +134,7 @@ import { labDecoder } from "@/engine/domains/serverless-lab/model";
 import { migrateServerless } from "@/engine/domains/serverless-lab/runtime";
 import type { ServiceAccount } from "@/engine/domains/service-account";
 import type { AclEntry, Bucket, LifecycleRule, StorageObject } from "@/engine/domains/storage";
+import { emptyStorageLab, storageLabDecoder } from "@/engine/domains/storage-lab/model";
 import { type Session, World } from "@/engine/domains/world";
 import { EmptyCollections } from "@/engine/initial-world";
 import { Mission } from "@/engine/missions";
@@ -179,12 +180,12 @@ import { Result } from "@/utils/Result";
  * v34 は索引・Spanner・Bigtable・Redisデータと明示的な読取/復旧履歴を持つ。
  * v35 はBigQueryの表/入力・Pub/Sub配送・処理ジョブ・Kafka・exportの教材状態を持つ。
  */
-export const SchemaVersion = 37;
+export const SchemaVersion = 38;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
 const MigratableVersions = [
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-  28, 29, 30, 31, 32, 33, 34, 35, 36,
+  28, 29, 30, 31, 32, 33, 34, 35, 36, 37,
 ] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
@@ -383,6 +384,9 @@ const diskSnapshot = D.object<DiskSnapshot>({
 });
 
 const storageObject = D.object<StorageObject>({
+  generation: optional(D.number),
+  created: optional(string),
+  kmsKey: optional(string),
   name: string,
   size: D.number,
   contentType: string,
@@ -1295,6 +1299,7 @@ const world = D.object<World>({
   relational: relationalDecoder,
   managedDatabases: managedDatabasesDecoder,
   networkLab: networkLabDecoder,
+  storageLab: storageLabDecoder,
   computeLab: computeLabDecoder,
   dataProcessing: dataProcessingDecoder,
   containerLab: D.map(ContainerLab.decoder, ContainerLab.validate),
@@ -1801,7 +1806,38 @@ const migrate = (version: number, value: unknown): unknown => {
   const v34 = version >= 34 ? v33 : { ...v33, managedDatabases: emptyManagedDatabases() };
   const v35 = version >= 35 ? v34 : { ...v34, dataProcessing: emptyDataProcessing() };
   const v36 = version >= 36 ? v35 : { ...v35, computeLab: emptyComputeLab() };
-  return version >= 37 ? v36 : { ...v36, networkLab: emptyNetworkLab() };
+  const v37 = version >= 37 ? v36 : { ...v36, networkLab: emptyNetworkLab() };
+  if (version >= 38) {
+    return v37;
+  }
+  return {
+    ...v37,
+    storageLab: emptyStorageLab(),
+    buckets: Array.isArray(v37.buckets)
+      ? v37.buckets.map((value) => {
+          if (!isRecord(value)) {
+            return value;
+          }
+          return {
+            ...value,
+            objects: Array.isArray(value.objects)
+              ? value.objects.map((object) => {
+                  if (!isRecord(object)) {
+                    return object;
+                  }
+                  const {
+                    generation: _generation,
+                    created: _created,
+                    kmsKey: _kmsKey,
+                    ...legacy
+                  } = object;
+                  return legacy;
+                })
+              : value.objects,
+          };
+        })
+      : v37.buckets,
+  };
 };
 
 export const Snapshot = {

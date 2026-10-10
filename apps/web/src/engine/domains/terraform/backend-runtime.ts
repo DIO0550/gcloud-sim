@@ -1,6 +1,12 @@
 import { EffectivePermissions } from "@/engine/domains/effective-permissions";
 import { Principal } from "@/engine/domains/principal";
-import { Bucket, type StorageObject } from "@/engine/domains/storage";
+import type { Bucket, StorageObject } from "@/engine/domains/storage";
+import {
+  deleteObject,
+  keyAccess,
+  protectionFor,
+  putObject,
+} from "@/engine/domains/storage-lab/model";
 import type { TfChange } from "@/engine/domains/terraform";
 import {
   TfBackend,
@@ -26,6 +32,15 @@ const authorize = (world: World, config: TfGcsBackend, write: boolean): Bucket =
     fail(`Backend project not found: ${bucket.projectId}`);
   if (!World.hasApi(world, bucket.projectId, "storage.googleapis.com"))
     fail(`storage.googleapis.com is disabled in backend project ${bucket.projectId}.`);
+  if (write && protectionFor(world, bucket.name).retention > 0) {
+    fail("Backend retention policy prevents safe state replacement and lock deletion.");
+  }
+  for (const object of bucket.objects.filter((o) => o.name === TfBackend.path(config))) {
+    const key = keyAccess(world, bucket, object.kmsKey ?? "", "Decrypt");
+    if (!key.ok) {
+      fail(key.error);
+    }
+  }
   const adc = world.session.adc;
   if (!Option.isSome(adc))
     return fail(
@@ -62,9 +77,27 @@ const lockObject = (remote: TfRemoteState): StorageObject => {
     storageClass: Option.none,
   };
 };
+const matchesObject = (actual: StorageObject | undefined, expected: StorageObject): boolean => {
+  if (!actual) {
+    return false;
+  }
+  return (
+    actual.name === expected.name &&
+    actual.size === expected.size &&
+    actual.contentType === expected.contentType &&
+    actual.updated === expected.updated
+  );
+};
+const stored = (world: World, bucket: string, object: StorageObject, now: string): World => {
+  const result = putObject(world, bucket, object, now);
+  if (!result.ok) {
+    return fail(result.error);
+  }
+  return result.value;
+};
 const verifyObject = (bucket: Bucket, remote: TfRemoteState): void => {
   const actual = bucket.objects.find((o) => o.name === TfBackend.path(remote.config));
-  if (!actual || !equal(actual, stateObject(remote)))
+  if (!matchesObject(actual, stateObject(remote)))
     fail(
       "Remote state object was deleted or changed outside Terraform. This simulator cannot recover arbitrary overwritten state.",
     );
@@ -124,12 +157,7 @@ const writeRemote = (world: World, config: TfGcsBackend, data: TfStateData, now:
     lock: Option.none,
   };
   const next = replaceRemote(world, remote);
-  return {
-    ...next,
-    buckets: next.buckets.map((b) =>
-      b.name === bucket.name ? Bucket.withObject(b, stateObject(remote)) : b,
-    ),
-  };
+  return stored(next, bucket.name, stateObject(remote), now);
 };
 const check = (world: World, write = false, configuration = true): void => {
   const backend = world.terraform.backend;
@@ -265,16 +293,11 @@ export const TfBackendRuntime = {
     };
     const next = replaceRemote(numbered.world, remote);
     return {
-      world: {
-        ...next,
-        buckets: next.buckets.map((b) =>
-          b.name === config.bucket ? Bucket.withObject(b, lockObject(remote)) : b,
-        ),
-      },
+      world: stored(next, config.bucket, lockObject(remote), now),
       id,
     };
   },
-  unlock(world: World, id: string): World {
+  unlock(world: World, id: string, now: string): World {
     // Recovery uses the initialized backend even if configuration has been edited.
     check(world, false, false);
     const config = world.terraform.backend.config;
@@ -284,18 +307,17 @@ export const TfBackendRuntime = {
     if (!Option.isSome(remote.lock) || remote.lock.value.id !== id)
       fail("Lock ID does not match. No lock was removed.");
     if (
-      !equal(
+      !matchesObject(
         bucket.objects.find((o) => o.name === TfBackend.path(config, true)),
         lockObject(remote),
       )
     )
       fail("Lock object changed outside Terraform; refusing to remove it.");
     const next = replaceRemote(world, { ...remote, lock: Option.none });
-    return {
-      ...next,
-      buckets: next.buckets.map((b) =>
-        b.name === config.bucket ? Bucket.withoutObject(b, TfBackend.path(config, true)) : b,
-      ),
-    };
+    const deleted = deleteObject(next, config.bucket, TfBackend.path(config, true), now);
+    if (!deleted.ok) {
+      return fail(deleted.error);
+    }
+    return deleted.value;
   },
 } as const;

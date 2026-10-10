@@ -7,6 +7,14 @@ import { Option } from "@/utils/Option";
 /** ツリーで選べるもの。プロパティパネルはこれを見て World から中身を引く。 */
 export type TreeSelection =
   | Readonly<{
+      kind: "storage-lab";
+      collection: "files" | "transfers" | "signed";
+      projectId: string;
+      name: string;
+      location: string;
+      subtype: string;
+    }>
+  | Readonly<{
       kind: "network-lab";
       collection:
         | "routes"
@@ -249,6 +257,8 @@ export const TreeSelection = {
   /** ツリーのノード id にもなる一意なキー。 */
   key(selection: TreeSelection): string {
     switch (selection.kind) {
+      case "storage-lab":
+        return `storage-lab:${selection.collection}/${selection.projectId}/${selection.location}/${selection.subtype}/${selection.name}`;
       case "network-lab":
         return `network-lab:${selection.collection}/${selection.projectId}/${selection.region}/${selection.parent}/${selection.name}/${selection.subtype}`;
       case "compute-lab":
@@ -369,6 +379,26 @@ export const TreeSelection = {
    */
   describeCommand(selection: TreeSelection): Option<string> {
     switch (selection.kind) {
+      case "storage-lab": {
+        const s = selection;
+        const project = `--project=${s.projectId}`;
+        if (s.collection === "signed") {
+          return Option.none;
+        }
+        if (s.collection === "transfers") {
+          return Option.some(`gcloud transfer jobs describe ${s.name} ${project}`);
+        }
+        const groups: Readonly<Record<string, string>> = {
+          filestore: "filestore instances",
+          "netapp-pool": "netapp storage-pools",
+          "netapp-volume": "netapp volumes",
+          lustre: "lustre instances",
+        };
+        const scope = s.subtype === "filestore" ? "zone" : "location";
+        return Option.some(
+          `gcloud ${groups[s.subtype]} describe ${s.name} --${scope}=${s.location} ${project}`,
+        );
+      }
       case "network-lab": {
         const s = selection;
         const project = `--project=${s.projectId}`;

@@ -5,6 +5,9 @@ import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
 export type StorageObject = Readonly<{
+  generation?: number;
+  created?: string;
+  kmsKey?: string;
   name: string;
   size: number;
   contentType: string;
@@ -173,6 +176,9 @@ export const Bucket = {
       contentType: object.contentType,
       storageClass: Option.unwrapOr(object.storageClass, bucket.storageClass),
       updated: object.updated,
+      generation: object.generation === undefined ? undefined : String(object.generation),
+      timeCreated: object.created ?? object.updated,
+      kmsKeyName: object.kmsKey ?? "",
       selfLink: `https://www.googleapis.com/storage/v1/b/${bucket.name}/o/${encodeURIComponent(object.name)}`,
     };
   },

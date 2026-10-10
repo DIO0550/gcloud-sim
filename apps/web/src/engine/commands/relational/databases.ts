@@ -5,7 +5,7 @@ import {
   ParsedArgs,
   type ProjectContext,
 } from "@/engine/cli/command-spec";
-import { EffectivePermissions } from "@/engine/domains/effective-permissions";
+import { storageNow } from "@/engine/commands/storage-lab/runtime";
 import {
   type Database,
   databasesOf,
@@ -18,8 +18,8 @@ import {
   validIdentifier,
 } from "@/engine/domains/relational/model";
 import { evaluateSql } from "@/engine/domains/relational/sql";
-import { principalMember } from "@/engine/domains/serverless-lab/runtime";
-import { Bucket, GsUrl } from "@/engine/domains/storage";
+import { GsUrl } from "@/engine/domains/storage";
+import { keyAccess, putObject, storageAllows } from "@/engine/domains/storage-lab/model";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -423,16 +423,19 @@ const transfer = (ctx: ProjectContext, args: ParsedArgs, importing: boolean): Co
   ) {
     return invalid("Use a same-project regional or supported multi-region bucket.");
   }
-  const effective = EffectivePermissions.resolve(ctx.world, principalMember(ctx.principal), {
-    type: "bucket",
-    id: b.value.name,
-  });
+  const permitted = (permission: string) =>
+    storageAllows(ctx.world, b.value, ctx.principal, permission);
   const p = importing ? "storage.objects.get" : "storage.objects.create";
-  if (!effective.permissions.has(p)) {
+  if (!permitted(p)) {
     return invalid(`Permission ${p} on the bucket is required.`);
   }
   const uri = ParsedArgs.requiredPositional(args, 1);
   if (importing) {
+    const current = b.value.objects.find((o) => o.name === url.value.object);
+    const key = keyAccess(ctx.world, b.value, current?.kmsKey ?? "", "Decrypt");
+    if (!key.ok) {
+      return invalid(key.error);
+    }
     const copy = ctx.world.relational.copies.find(
       (c) =>
         c.projectId === s.value.projectId &&
@@ -479,13 +482,10 @@ const transfer = (ctx: ProjectContext, args: ParsedArgs, importing: boolean): Co
     updated: ctx.now,
     storageClass: Option.none,
   };
-  if (
-    b.value.objects.some((o) => o.name === object.name) &&
-    !effective.permissions.has("storage.objects.delete")
-  ) {
+  if (b.value.objects.some((o) => o.name === object.name) && !permitted("storage.objects.delete")) {
     return invalid("Overwrite requires storage.objects.delete.");
   }
-  const world = World.replaceBucket(
+  const stored = putObject(
     {
       ...numbered.world,
       relational: {
@@ -498,8 +498,14 @@ const transfer = (ctx: ProjectContext, args: ParsedArgs, importing: boolean): Co
         ],
       },
     },
-    Bucket.withObject(b.value, object),
+    b.value.name,
+    object,
+    storageNow(ctx),
   );
+  if (!stored.ok) {
+    return invalid(stored.error);
+  }
+  const world = stored.value;
   return finish(world, { exported: uri, bytes: object.size });
 };
 export const TransferCommands = [

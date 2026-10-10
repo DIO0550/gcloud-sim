@@ -2,6 +2,7 @@ import { BucketLocation, MachineType, StorageClass, Zone } from "@/engine/domain
 import { BootDiskType, ExternalIp, Instance } from "@/engine/domains/compute";
 import { ServiceAccount } from "@/engine/domains/service-account";
 import { Bucket } from "@/engine/domains/storage";
+import { protectionFor, retentionAllows } from "@/engine/domains/storage-lab/model";
 import type { TfChange } from "@/engine/domains/terraform";
 import { TfAccess } from "@/engine/domains/terraform/access";
 import {
@@ -117,7 +118,28 @@ const mutateBucket = (
     if (old?.objects.length && checkWrites)
       for (const permission of ["storage.objects.list", "storage.objects.delete"])
         TfAccess.check(world, r, permission);
-    return { ...world, buckets: world.buckets.filter((b) => b.name !== r.name) };
+    if (world.storageLab.transfers.some((t) => t.source === r.name || t.destination === r.name)) {
+      fail("A transfer job references this bucket.");
+    }
+    const generations = world.storageLab.versions.filter(
+      (v) => v.bucket === r.name && v.state !== "SOFT_DELETED",
+    );
+    if (generations.length > 0 && !r.forceDestroy) {
+      fail("Bucket contains object generations. force_destroy is required.");
+    }
+    if (
+      Number.isFinite(Date.parse(now)) &&
+      protectionFor(world, r.name).retention > 0 &&
+      (generations.some((v) => !retentionAllows(world, r.name, v.created, now)) ||
+        old?.objects.some(
+          (o) =>
+            Date.parse(now) <
+            Date.parse(o.created ?? o.updated) + protectionFor(world, r.name).retention * 1000,
+        ))
+    ) {
+      fail("Object retention prevents bucket destruction.");
+    }
+    return World.withoutBucket(world, r.name);
   }
   if (action === "create" && old) fail(`Bucket already exists: ${r.name}. Use terraform import.`);
   const base =

@@ -20,6 +20,7 @@ import { KubePod, KubeService } from "@/engine/domains/kubernetes";
 import { CloudRunService, GkeCluster } from "@/engine/domains/managed-services";
 import { findServer } from "@/engine/domains/relational/model";
 import { AppEngineApp, CloudFunction } from "@/engine/domains/serverless";
+import { protectionFor } from "@/engine/domains/storage-lab/model";
 import { World } from "@/engine/domains/world";
 import {
   Absent,
@@ -40,6 +41,7 @@ export const BucketProperties = ({ world, selection }: SelectionProps<"bucket">)
   const bucket = World.findBucket(world, selection.name);
   if (!Option.isSome(bucket)) return <NotFound what="バケット" />;
   const b = bucket.value;
+  const protection = protectionFor(world, b.name);
   return (
     <>
       <Section
@@ -53,6 +55,24 @@ export const BucketProperties = ({ world, selection }: SelectionProps<"bucket">)
           { label: "lifecycleRules", value: String(b.lifecycleRules.length) },
           { label: "objects", value: String(b.objects.length) },
         ]}
+      />
+      <Section
+        title="保護と暗号化"
+        rows={[
+          { label: "retentionPeriod", value: `${protection.retention}s` },
+          { label: "retentionLocked", value: String(protection.locked) },
+          { label: "softDeleteRetention", value: `${protection.softDelete}s` },
+          { label: "defaultKmsKey", value: protection.defaultKey || "Google-managed" },
+        ]}
+      />
+      <Section
+        title="オブジェクト世代"
+        rows={world.storageLab.versions
+          .filter((v) => v.bucket === b.name)
+          .map((v) => ({
+            label: `${v.name}#${v.generation}`,
+            value: `${v.state} · ${v.storageClass} · ${v.kmsKey || "Google-managed"}${v.expires ? ` · expires ${v.expires}` : ""}`,
+          }))}
       />
       <IamSection world={world} target={{ type: "bucket", id: b.name }} />
     </>
