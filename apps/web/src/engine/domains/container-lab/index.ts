@@ -52,7 +52,15 @@ export type CloudBuild = Readonly<{
   digest: string;
   logs: readonly string[];
 }>;
+export type ReleaseEvidence = Readonly<{
+  id: "ace-release";
+  stage: "LOCAL_VALIDATED" | "DEPLOYMENT_VALIDATED";
+  digest: string;
+  localValidatedAt: string;
+  deploymentValidatedAt: string;
+}>;
 export type ContainerLab = Readonly<{
+  releases: readonly ReleaseEvidence[];
   builds: readonly CloudBuild[];
   images: readonly LocalImage[];
   containers: readonly LocalContainer[];
@@ -122,6 +130,7 @@ const imageName = (name: string): boolean =>
 const tagValid = (tag: string): boolean => /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/.test(tag);
 export const ContainerLab = {
   empty: (): ContainerLab => ({
+    releases: [],
     builds: [],
     images: [],
     containers: [],
@@ -130,6 +139,15 @@ export const ContainerLab = {
     registryImages: [],
   }),
   decoder: D.object<ContainerLab>({
+    releases: D.array(
+      D.object<ReleaseEvidence>({
+        id: D.literal(["ace-release"]),
+        stage: D.literal(["LOCAL_VALIDATED", "DEPLOYMENT_VALIDATED"]),
+        digest: D.string,
+        localValidatedAt: D.string,
+        deploymentValidatedAt: D.string,
+      }),
+    ),
     builds: D.array(
       D.object<CloudBuild>({
         id: D.string,
@@ -292,6 +310,26 @@ export const ContainerLab = {
   },
   validate(lab: ContainerLab): Result<ContainerLab, string> {
     try {
+      if (lab.releases.length > 1) {
+        fail("Only one fixed release lesson is supported.");
+      }
+      for (const evidence of lab.releases) {
+        if (evidence.digest !== ContainerLab.digest("hello-web")) {
+          fail("Invalid release evidence digest.");
+        }
+        if (!Number.isFinite(Date.parse(evidence.localValidatedAt))) {
+          fail("Invalid local validation timestamp.");
+        }
+        if (evidence.stage === "LOCAL_VALIDATED" && evidence.deploymentValidatedAt !== "") {
+          fail("Local evidence cannot contain a deployment validation.");
+        }
+        if (evidence.stage === "DEPLOYMENT_VALIDATED") {
+          const deployed = Date.parse(evidence.deploymentValidatedAt);
+          if (!Number.isFinite(deployed) || deployed < Date.parse(evidence.localValidatedAt)) {
+            fail("Invalid deployment validation timestamp.");
+          }
+        }
+      }
       if (lab.builds.length > 100 || !unique(lab.builds.map((b) => b.id)))
         fail("Invalid build collection.");
       for (const b of lab.builds) {

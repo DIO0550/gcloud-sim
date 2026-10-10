@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "vitest";
 
 import { initialWorld, Now } from "@/engine/__tests__/setup";
+import { SchemaVersion } from "@/engine/snapshot";
 import { StorageKey, WorldStorage } from "@/libs/world-storage";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -35,10 +36,13 @@ test("壊れた JSON は退避してから理由を返す", () => {
 test("版が違う保存も退避して unsupportedVersion で返す", () => {
   localStorage.setItem(
     StorageKey,
-    JSON.stringify({ schemaVersion: 40, exportedAt: Now, world: {} }),
+    JSON.stringify({ schemaVersion: SchemaVersion + 1, exportedAt: Now, world: {} }),
   );
   const loaded = WorldStorage.load();
   expect(Result.isOk(loaded)).toBe(false);
   if (!Result.isOk(loaded))
-    expect(loaded.error.failure).toEqual({ kind: "unsupportedVersion", version: "40" });
+    expect(loaded.error.failure).toEqual({
+      kind: "unsupportedVersion",
+      version: String(SchemaVersion + 1),
+    });
 });

@@ -935,6 +935,9 @@ export const TreeNode = {
     );
     const billing = world.billingAccounts.map((b) => billingNode(world, b.id));
     const localDocker = group("local", ResourceGroups.LocalDocker, [
+      ...world.containerLab.releases.map((r) =>
+        leaf({ kind: "container-lab", collection: "releases", id: r.id }, `公開検証: ${r.id}`),
+      ),
       ...world.containerLab.images.map((i) =>
         leaf(
           { kind: "container-lab", collection: "images", id: i.id },

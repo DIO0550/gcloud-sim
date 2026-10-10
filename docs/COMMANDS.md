@@ -21,7 +21,15 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（781）
+## 実装済み（784）
+
+### コンテナ教材の公開検証
+
+| コマンド | 内容 |
+|---|---|
+| `sim container-release validate-local` | 固定教材のローカル稼働・イメージ・ポートを検証して履歴を残す。実HTTPなし。 |
+| `sim container-release validate-deployment` | `--region=us-central1`。専用GKEの取得IAM・API・2 Readyレプリカ・公開Service・同一イメージを検証。 |
+| `sim container-release status` | 削除後も残る検証履歴と現在の片付け状態。 |
 
 ### 組織・IAM・ID連携・クォータ・課金
 

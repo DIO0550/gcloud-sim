@@ -41,6 +41,11 @@ import {
 } from "@/engine/missions/artifact-lifecycle";
 import { type BuildAssertion, BuildMissions, buildSatisfied } from "@/engine/missions/builds";
 import {
+  type ContainerReleaseAssertion,
+  ContainerReleaseMissions,
+  containerReleaseSatisfied,
+} from "@/engine/missions/container-release";
+import {
   type ContainerAssertion,
   ContainerMissions,
   containerSatisfied,
@@ -221,6 +226,7 @@ export type MissionAssertion =
   | KubeResourceAssertion
   | KubeConfigurationAssertion
   | KubernetesAssertion
+  | ContainerReleaseAssertion
   | ArtifactLifecycleAssertion
   | ContainerAssertion
   | TerraformAssertion
@@ -335,6 +341,7 @@ export type MissionAssertion =
 /** ミッション開始時に World へ当てる変更（設計書 6.2 Mission.setup）。 */
 export type WorldPatch =
   | Readonly<{ kind: "ensureContainerCleanupLab" }>
+  | Readonly<{ kind: "resetContainerReleaseEvidence" }>
   | Readonly<{ kind: "setPrincipal"; principal: Principal }>
   | Readonly<{ kind: "setProject"; projectId: string }>
   | Readonly<{ kind: "removeBinding"; target: PolicyTarget; role: RoleName; member: IamMember }>
@@ -362,6 +369,7 @@ const Missions: readonly Mission[] = [
   ...TerraformMissions,
   ...ContainerMissions,
   ...BuildMissions,
+  ...ContainerReleaseMissions,
   ...KubernetesMissions,
   ...KubeWorkloadMissions,
   ...KubeLabelMissions,
@@ -932,6 +940,8 @@ const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
     case "kubeImageUpdated":
     case "kubeRollbackRecovered":
       return kubernetesSatisfied(world, assertion);
+    case "containerReleaseCleaned":
+      return containerReleaseSatisfied(world);
     case "artifactReleasePromoted":
     case "containerCleanupComplete":
       return artifactLifecycleSatisfied(world, assertion);
@@ -1154,6 +1164,8 @@ const applyPatch = (world: World, patch: WorldPatch): Result<World, string> => {
   switch (patch.kind) {
     case "ensureContainerCleanupLab":
       return ensureContainerCleanupLab(world);
+    case "resetContainerReleaseEvidence":
+      return Result.ok({ ...world, containerLab: { ...world.containerLab, releases: [] } });
     case "setPrincipal":
       return Result.ok(World.withPrincipal(world, patch.principal));
     case "setProject":

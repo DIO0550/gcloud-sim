@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { expect, test } from "vitest";
 import { run, session } from "@/engine/__tests__/setup";
 import { ContainerLab } from "@/engine/domains/container-lab";
+import { ContainerReleaseSteps } from "@/engine/missions/container-release";
 import { ContainerLabProperties } from "@/features/simulator/components/ContainerLabProperties";
 
 test("repository properties show remote image versions and inherited/direct IAM", () => {
@@ -31,4 +32,17 @@ test("repository properties show remote image versions and inherited/direct IAM"
     "roles/artifactregistry.reader",
   );
   expect(screen.getByText("このリポジトリ")).toBeInTheDocument();
+});
+
+test("retained release evidence displays cleanup separately from successful deployment", () => {
+  const s = run(session(), ...ContainerReleaseSteps.slice(0, 16));
+  expect(s.text).not.toContain("ERROR:");
+  const selection = { kind: "container-lab", collection: "releases", id: "ace-release" } as const;
+  const { rerender } = render(<ContainerLabProperties world={s.world} selection={selection} />);
+  expect(screen.getByText("未完了")).toBeInTheDocument();
+  expect(screen.getByText("GKE検証").nextElementSibling).not.toHaveTextContent("未検証");
+  const cleaned = run(s, ...ContainerReleaseSteps.slice(16));
+  rerender(<ContainerLabProperties world={cleaned.world} selection={selection} />);
+  expect(screen.getByText("完了")).toBeInTheDocument();
+  expect(screen.getByText("公開検証の履歴")).toBeInTheDocument();
 });

@@ -1,6 +1,6 @@
 # Docker・Artifact Registry・Cloud Build 学習シミュレーター
 
-Issue [#14](https://github.com/DIO0550/gcloud-sim/issues/14) の部分実装です。ローカルイメージ・コンテナとクラウドのリポジトリ・イメージを別状態で扱い、ビルド、起動、タグ付け、push/pull、IAM、片付けを練習します。実Docker、ホスト上のファイル、クラウド、HTTPには接続しません。
+Issue [#14](https://github.com/DIO0550/gcloud-sim/issues/14) の限定教材モデルです。ローカルイメージ・コンテナとクラウドのリポジトリ・イメージを別状態で扱い、ビルド、起動、タグ付け、push/pull、IAM、片付けを練習します。実Docker、ホスト上のファイル、クラウド、HTTPには接続しません。
 
 ## ローカルでビルドして起動する
 
@@ -149,10 +149,21 @@ gcloud artifacts docker images delete us-central1-docker.pkg.dev/ace-dev-01/ace-
 
 ## 残作業
 
-Cloud Buildの任意設定・トリガー・ログ転送/ソース保存先、GKEのキャッシュ/リトライ・ノードプールごとのSA、GKEを含む一連のクリーンアップ採点は残っています。Issue #14は閉じません。
+Cloud Buildの任意設定・トリガー・ログ転送/ソース保存先、GKEのキャッシュ/リトライ・ノードプールごとのSA、固定教材では以下の一連のクリーンアップ採点を追加しました。任意設定や実キャッシュ等は再現対象外です。
 
 任意Dockerfile、公開registryからのpull、認証トークン/docker login、対話実行・任意コマンド、マウント、環境変数、複数ポート、IPv6、build args/cache/layers、短縮ID、docker image/container系の別名、registryのremote/virtual repository・CMEKなどは未対応です。Dockerのフラグは登録したものとhelpのみを受け付け、gcloud共通フラグを流用しません。実Dockerと異なる出力・固定のログ・一括成功/失敗の簡略モデルであることを表示します。
 
 参照: [Docker run](https://docs.docker.com/reference/cli/docker/container/run/)、[Artifact Registry push/pull](https://docs.cloud.google.com/artifact-registry/docs/docker/pushing-and-pulling)、[Docker認証](https://docs.cloud.google.com/artifact-registry/docs/docker/authentication)、[repository作成](https://docs.cloud.google.com/sdk/gcloud/reference/artifacts/repositories/create)、[アクセス制御](https://docs.cloud.google.com/artifact-registry/docs/access-control)。
 
 GKEの更新履歴・ロールバック・Snapshot v10への移行は[KUBERNETES.md](KUBERNETES.md)を参照してください。
+
+
+## ビルドから片付けまでの採点（#14の最終項目）
+
+「コンテナを検証・公開して教材を片付ける」は初期Worldから独立して解ける8件目のコンテナミッションです。`release-local:v1`をhello-webから作り、`release-local`を8080→8080で起動します。`sim container-release validate-local`で構成を検証して固定の200応答と履歴を保存します。対象イメージを先に公開した場合は受け付けません。
+
+`release-images/hello:v1`へpushし、`release-nodes`を明示した`release-gke`に`release-web`を2レプリカで配置します。ノードにはリポジトリのReader権限を設定し、LoadBalancer Service 80→8080を公開します。`sim container-release validate-deployment --region=us-central1`は呼出元のclusters/deployments/services.get、2 API、プロジェクト、ロケーション、ノードのpull IAMとイメージ存在、全コンテナのReady、Service selector/portを検証します。未検証・ImagePullBackOff・誤ポートは記録しません。検証コマンドはアプリ専用で、実際のgcloud/Dockerにはありません。
+
+検証後、専用Service、Deployment、クラスタ、リポジトリ、ローカルコンテナ、ローカルとリモート形式のタグ、ノードSAを削除します。空の初期状態・検証前の削除・停止だけ・クラウドだけの片付けでは未達成です。他のイメージ/コンテナは残して構いません。認証helper/APIは共有設定なので削除条件に含めません。
+
+`sim container-release status`と「Docker（ローカル）」の「公開検証: ace-release」で履歴と片付け結果を確認します。Snapshot v40は検証したdigest・日時・段階を保存し、v1〜39のDocker/Cloud Build/レジストリを保って空の履歴を補います。旧データから検証済みという履歴を作りません。再挑戦では履歴だけをリセットし、既存リソースを削除しません。実コード、HTTP、クラウドAPI、課金は動かしません。

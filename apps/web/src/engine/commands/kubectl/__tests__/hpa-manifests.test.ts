@@ -5,7 +5,7 @@ import { Now, run, type Session, session } from "@/engine/__tests__/setup";
 import { KubeManifest, KubeManifestExamples } from "@/engine/domains/kube-manifest";
 import { KubePod } from "@/engine/domains/kubernetes";
 import { World } from "@/engine/domains/world";
-import { Snapshot } from "@/engine/snapshot";
+import { SchemaVersion, Snapshot } from "@/engine/snapshot";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
@@ -102,7 +102,7 @@ test("YAML and JSON create/apply preserve identical HPA state and existing evalu
     execute(s, "kubectl apply -f autoscale-web.yaml", "kubectl apply -f autoscale-hpa.yaml").world,
   ).toEqual(s.world);
   expect(restore(s).world).toEqual(s.world);
-  expect(Snapshot.create(s.world, Now).schemaVersion).toBe(39);
+  expect(Snapshot.create(s.world, Now).schemaVersion).toBe(SchemaVersion);
   rejected(s, "kubectl create -f autoscale-hpa.yaml", "already exists");
 });
 test("configuration changes clear the sample, preserve creation time and Pods, and require explicit reevaluation", () => {

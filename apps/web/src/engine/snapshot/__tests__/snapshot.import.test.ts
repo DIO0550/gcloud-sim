@@ -3,7 +3,7 @@ import { expect, test } from "vitest";
 
 import { initialWorld, Now, run, session } from "@/engine/__tests__/setup";
 import { World } from "@/engine/domains/world";
-import { Snapshot } from "@/engine/snapshot";
+import { SchemaVersion, Snapshot } from "@/engine/snapshot";
 import { Result } from "@/utils/Result";
 
 test("初期 World は不変条件を満たす", () => {
@@ -19,13 +19,16 @@ test("export した JSON を import すると同じ World に戻る", () => {
 
 test("schemaVersion が未対応なら E-011 で理由に版が入る", () => {
   const result = Snapshot.fromUnknown({
-    schemaVersion: 40,
+    schemaVersion: SchemaVersion + 1,
     exportedAt: Now,
     world: initialWorld(),
   });
   expect(Result.isOk(result)).toBe(false);
   if (!Result.isOk(result)) {
-    expect(result.error).toEqual({ kind: "unsupportedVersion", version: "40" });
+    expect(result.error).toEqual({
+      kind: "unsupportedVersion",
+      version: String(SchemaVersion + 1),
+    });
   }
 });
 

@@ -5,7 +5,7 @@ import { Now, run, type Session, session } from "@/engine/__tests__/setup";
 import { GkeControlPlane } from "@/engine/domains/gke-control-plane";
 import { KubeContext } from "@/engine/domains/kube-context";
 import { World } from "@/engine/domains/world";
-import { Snapshot } from "@/engine/snapshot";
+import { SchemaVersion, Snapshot } from "@/engine/snapshot";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
@@ -367,7 +367,7 @@ test("v27 restores all pool management/evaluation/deleted default and Kubernetes
   expect(next.kubeNetworkPolicies).toEqual(s.world.kubeNetworkPolicies);
   expect(next.clusters[0]?.controlPlane).toEqual(GkeControlPlane.public());
   expect(next.kubeContextEndpoints).toEqual({});
-  expect(Snapshot.create(next, Now).schemaVersion).toBe(39);
+  expect(Snapshot.create(next, Now).schemaVersion).toBe(SchemaVersion);
 });
 
 test.each(["cidr", "network", "overlap", "enforcement", "stale", "source", "context", "subnet"])(

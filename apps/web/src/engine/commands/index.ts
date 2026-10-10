@@ -7,6 +7,7 @@ import { IdentityCommands } from "@/engine/commands/admin-lab/identity";
 import { OrgPolicyCommands } from "@/engine/commands/admin-lab/policies";
 import { QuotaCommands } from "@/engine/commands/admin-lab/quotas";
 import { ArtifactCommands, DockerCommands } from "@/engine/commands/artifacts";
+import { ContainerReleaseCommands } from "@/engine/commands/artifacts/release";
 import {
   BillingCommands,
   BudgetCommands,
@@ -97,6 +98,7 @@ const implemented: readonly CommandSpec[] = [
   ...TerraformCommands,
   ...ArtifactCommands,
   ...DockerCommands,
+  ...ContainerReleaseCommands,
   ...BuildCommands,
   ...ConfigCommands,
   ...AuthCommands,

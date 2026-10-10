@@ -104,6 +104,18 @@ const statefulDataSteps = [
   { type: "sim kubernetes write-file pod/notes-1 --path=/data/note.txt --content=second-note" },
 ];
 export const SCENARIOS = [
+  {
+    name: "container-release-evidence",
+    label: "コンテナ: ローカル検証履歴と未完了の片付け",
+    steps: [
+      { wait: 800 },
+      { type: "docker build -t release-local:v1 ./hello-web" },
+      { type: "docker run -d --name release-local -p 8080:8080 release-local:v1" },
+      { type: "sim container-release validate-local" },
+      { click: "公開検証: ace-release" },
+      { wait: 300 },
+    ],
+  },
   ...ADMIN_SCENARIOS,
   ...LB_SCENARIOS,
   {
