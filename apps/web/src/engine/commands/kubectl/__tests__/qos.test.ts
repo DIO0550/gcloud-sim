@@ -5,7 +5,7 @@ import { Now, run, type Session, session } from "@/engine/__tests__/setup";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { KubePod } from "@/engine/domains/kubernetes";
 import { World } from "@/engine/domains/world";
-import { Snapshot } from "@/engine/snapshot";
+import { SchemaVersion, Snapshot } from "@/engine/snapshot";
 import { Result } from "@/utils/Result";
 
 const execute = (s: Session, ...commands: string[]) =>
@@ -134,7 +134,7 @@ test("QoS follows CLI changes, undo, restart, scale, Pod recreation and Snapshot
     "kubectl set resources deployment/web --requests=cpu=0,memory=0 --limits=cpu=0,memory=0",
   );
   expect(pod(removed).status.qosClass).toBe("BestEffort");
-  expect(Snapshot.create(removed.world, Now).schemaVersion).toBe(39);
+  expect(Snapshot.create(removed.world, Now).schemaVersion).toBe(SchemaVersion);
 });
 
 test("manifest replacement clears QoS inputs and repeated apply preserves Pods", () => {

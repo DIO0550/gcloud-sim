@@ -8,7 +8,7 @@ import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
 import { KubePod } from "@/engine/domains/kubernetes";
 import { World } from "@/engine/domains/world";
 import { TreeSelection } from "@/engine/resource-tree/selection";
-import { Snapshot } from "@/engine/snapshot";
+import { SchemaVersion, Snapshot } from "@/engine/snapshot";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
@@ -396,7 +396,7 @@ test("snapshot v17 retains probes/restarts/HPA/files/env/history while adding de
     for (const r of value.world[key]) delete r.namespace;
   const migrated = Result.unwrap(Snapshot.fromUnknown(value));
   expect(migrated).toEqual(s.world);
-  expect(Snapshot.create(migrated, Now).schemaVersion).toBe(39);
+  expect(Snapshot.create(migrated, Now).schemaVersion).toBe(SchemaVersion);
 });
 
 test.each([

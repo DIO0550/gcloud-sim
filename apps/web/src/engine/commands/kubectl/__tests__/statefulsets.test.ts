@@ -6,7 +6,7 @@ import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
 import { KubeStorage } from "@/engine/domains/kube-storage";
 import { KubePod } from "@/engine/domains/kubernetes";
 import { World } from "@/engine/domains/world";
-import { Snapshot } from "@/engine/snapshot";
+import { SchemaVersion, Snapshot } from "@/engine/snapshot";
 import { Result } from "@/utils/Result";
 
 const required = <T>(v: T | undefined): T => {
@@ -568,7 +568,7 @@ test("current Snapshot preserves StatefulSet identities, scale history and per-o
   const next = restore(s);
   expect(next.world).toEqual(s.world);
   expect(cat(next, 1)).toBe("second-note");
-  expect(Snapshot.create(next.world, Now).schemaVersion).toBe(39);
+  expect(Snapshot.create(next.world, Now).schemaVersion).toBe(SchemaVersion);
 });
 test("v28 migration adds empty StatefulSets and preserves private endpoint and node-pool state", () => {
   let s = ready();

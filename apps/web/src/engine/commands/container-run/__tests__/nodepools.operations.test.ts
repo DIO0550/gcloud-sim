@@ -4,7 +4,7 @@ import { Engine } from "@/engine";
 import { Now, run, type Session, session } from "@/engine/__tests__/setup";
 import { MasterVersion, NextMasterVersion } from "@/engine/domains/managed-services";
 import { World } from "@/engine/domains/world";
-import { Snapshot } from "@/engine/snapshot";
+import { SchemaVersion, Snapshot } from "@/engine/snapshot";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
@@ -304,7 +304,7 @@ test("v26 migration materializes old default and retains custom settings and Ing
   expect(next.kubeDeployments).toEqual(s.world.kubeDeployments);
   expect(next.kubeNetworkPolicies).toEqual(s.world.kubeNetworkPolicies);
   expect(next.kubePvs).toEqual(s.world.kubePvs);
-  expect(Snapshot.create(next, Now).schemaVersion).toBe(39);
+  expect(Snapshot.create(next, Now).schemaVersion).toBe(SchemaVersion);
 });
 
 test.each(["count", "bounds", "newer", "evaluation", "autopilot"])(

@@ -108,7 +108,7 @@ export type TreeSelection =
     }>
   | Readonly<{
       kind: "container-lab";
-      collection: "repositories" | "images" | "containers" | "builds";
+      collection: "repositories" | "images" | "containers" | "builds" | "releases";
       id: string;
     }>
   | Readonly<{
@@ -554,6 +554,9 @@ export const TreeSelection = {
         );
       }
       case "container-lab":
+        if (selection.collection === "releases") {
+          return Option.some("sim container-release status");
+        }
         if (selection.collection === "builds") return Option.none;
         if (selection.collection === "repositories")
           return Option.some(`gcloud artifacts repositories describe ${selection.id}`);

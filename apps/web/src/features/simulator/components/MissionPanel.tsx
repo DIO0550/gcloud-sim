@@ -130,6 +130,8 @@ const assertionLabel = (assertion: Mission["assertions"][number]): string => {
       return "helloをv1からv2へ更新し、履歴と取得権限を保って2レプリカで起動";
     case "kubeRollbackRecovered":
       return "missingへの更新履歴を残し、v1へのロールバック後も3レプリカで起動";
+    case "containerReleaseCleaned":
+      return "ローカルとGKEの検証履歴を残し、専用教材リソースをすべて片付ける";
     case "artifactReleasePromoted":
       return "helloのv1を残し、v2とstableがhello-web-v2の同じdigestを指している";
     case "containerCleanupComplete":

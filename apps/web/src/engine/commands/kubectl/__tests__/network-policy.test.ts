@@ -8,7 +8,7 @@ import { KubePod } from "@/engine/domains/kubernetes";
 import { World } from "@/engine/domains/world";
 import { kubeNetworkSatisfied } from "@/engine/missions/kube-network-policy";
 import { TreeSelection } from "@/engine/resource-tree";
-import { Snapshot } from "@/engine/snapshot";
+import { SchemaVersion, Snapshot } from "@/engine/snapshot";
 import { Result } from "@/utils/Result";
 
 const required = <T>(v: T | undefined): T => {
@@ -382,7 +382,7 @@ test("Snapshot v25 roundtrip preserves policies and v24 migration keeps PVC file
     "kubectl apply -f storage-web.yaml",
     "sim kubernetes write-file storage-web --path=/data/x --content=keep",
   );
-  expect(Snapshot.create(s.world, Now).schemaVersion).toBe(39);
+  expect(Snapshot.create(s.world, Now).schemaVersion).toBe(SchemaVersion);
   expect(restored(s).world).toEqual(s.world);
   const raw = JSON.parse(JSON.stringify(Snapshot.create(s.world, Now)));
   raw.schemaVersion = 24;
