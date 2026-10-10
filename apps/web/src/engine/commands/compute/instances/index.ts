@@ -25,6 +25,15 @@ import {
   resolveNetworkInterface,
   resolveServiceAccount,
 } from "@/engine/commands/compute/shared";
+import { text } from "@/engine/commands/compute-lab/shared";
+import {
+  CustomFlags,
+  checkActAs,
+  configFromArgs,
+  removeVmLab,
+  resolveCustomMachine,
+  SchedulingFlags,
+} from "@/engine/commands/compute-lab/vms";
 import {
   alreadyExists,
   Candidates,
@@ -53,6 +62,14 @@ import {
   ProvisioningModels,
   Scope,
 } from "@/engine/domains/compute";
+import {
+  patchCompute,
+  sameRef,
+  saveConfig,
+  saveDiskData,
+  vmConfig,
+  vmRef,
+} from "@/engine/domains/compute-lab/model";
 import { OsLoginSshKey } from "@/engine/domains/credentials";
 import { Operation, OperationTypes } from "@/engine/domains/operation";
 import { World } from "@/engine/domains/world";
@@ -77,7 +94,7 @@ const createInstance = (ctx: ProjectContext, args: ParsedArgs): CommandResult =>
       ),
     );
   }
-  const image = resolveImage(args);
+  const image = resolveImage(args, ctx);
   if (!Result.isOk(image)) return image;
   const bootDisk = resolveBootDisk(args);
   if (!Result.isOk(bootDisk)) return bootDisk;
@@ -85,6 +102,12 @@ const createInstance = (ctx: ProjectContext, args: ParsedArgs): CommandResult =>
   if (!Result.isOk(nic)) return nic;
   const serviceAccount = resolveServiceAccount(ctx, args);
   if (!Result.isOk(serviceAccount)) return serviceAccount;
+  if (ParsedArgs.has(args, "service-account")) {
+    const actAs = checkActAs(ctx, serviceAccount.value);
+    if (!actAs.ok) {
+      return actAs;
+    }
+  }
   const rawScopes = ParsedArgs.list(args, "scopes");
   const scopes = rawScopes.length === 0 ? DefaultScopes : rawScopes.flatMap(Scope.expand);
   const numbered = World.nextNumber(ctx.world);
@@ -109,7 +132,23 @@ const createInstance = (ctx: ProjectContext, args: ParsedArgs): CommandResult =>
     invalidName,
   );
   if (!Result.isOk(instance)) return instance;
-  const added = Result.mapErr(World.withInstance(numbered.world, instance.value), alreadyExists);
+  const configuration = configFromArgs(instance.value, args, vmConfig(ctx.world, instance.value));
+  if (!configuration.ok) {
+    return configuration;
+  }
+  const customImage = ctx.world.computeLab.images.find(
+    (i) => i.projectId === ctx.project.projectId && i.name === image.value.name,
+  );
+  if (customImage && instance.value.disks.some((d) => d.boot && d.sizeGb < customImage.sizeGb)) {
+    return Result.err(
+      CommandFailure.invalidArgumentWith("Boot disk is smaller than source image."),
+    );
+  }
+  let configuredWorld = saveConfig(numbered.world, configuration.value);
+  if (customImage) {
+    configuredWorld = saveDiskData(configuredWorld, vmRef(instance.value), customImage.data);
+  }
+  const added = Result.mapErr(World.withInstance(configuredWorld, instance.value), alreadyExists);
   if (!Result.isOk(added)) return added;
   const { world, operation } = recordOperation(
     added.value,
@@ -125,6 +164,9 @@ const createInstance = (ctx: ProjectContext, args: ParsedArgs): CommandResult =>
 
 /** `--machine-type`。無指定は e2-medium、カタログに無ければ E-005。 */
 const resolveMachineType = (ctx: ProjectContext, args: ParsedArgs, zone: Zone) => {
+  if (["custom-cpu", "custom-memory", "custom-vm-type"].some((k) => ParsedArgs.has(args, k))) {
+    return resolveCustomMachine(args, DefaultMachineType);
+  }
   const name = Option.unwrapOr(ParsedArgs.string(args, "machine-type"), DefaultMachineType);
   return Result.map(
     Option.toResult(MachineType.parse(name), () =>
@@ -360,6 +402,33 @@ const attachDisk = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   const instance = instanceArg(ctx, args);
   if (!Result.isOk(instance)) return instance;
   const diskName = ParsedArgs.requiredString(args, "disk");
+  const scope = text(args, "disk-scope", "zonal");
+  const loc = scope === "regional" ? Zone.region(instance.value.zone) : instance.value.zone;
+  const labDisk = ctx.world.computeLab.disks.find(
+    (d) => d.projectId === ctx.project.projectId && d.location === loc && d.name === diskName,
+  );
+  if (labDisk) {
+    if (
+      ParsedArgs.has(args, "device-name") ||
+      text(args, "mode", "rw") !== "rw" ||
+      labDisk.users.length
+    ) {
+      return Result.err(
+        CommandFailure.invalidArgumentWith(
+          "This disk model supports one rw attachment with its own device name.",
+        ),
+      );
+    }
+    const next = { ...labDisk, users: [`${instance.value.zone}/${instance.value.name}`] };
+    const world = patchCompute(ctx.world, {
+      disks: ctx.world.computeLab.disks.map((d) => (sameRef(d, labDisk) ? next : d)),
+    });
+    const checked = World.validate(world);
+    return Result.map(Result.mapErr(checked, CommandFailure.invalidState), (world) => ({
+      world,
+      output: CommandOutput.yaml({ ...next }),
+    }));
+  }
   const found = findZonedDisk(ctx, instance.value.zone, diskName);
   const standalone = Option.flatMap(found, (d) =>
     d.kind === "standalone" ? Option.some(d.disk) : Option.none,
@@ -441,6 +510,9 @@ export const InstanceCommands: readonly CommandSpec[] = [
     summary: "Create Compute Engine virtual machine instances.",
     positionals: [Positional.required("INSTANCE_NAME", "Name of the instance to create.")],
     flags: [
+      ...CustomFlags,
+      ...SchedulingFlags,
+      Flag.string("image", "Custom image in the selected project."),
       CommonFlags.zone,
       Flag.string(
         "machine-type",
@@ -527,7 +599,14 @@ export const InstanceCommands: readonly CommandSpec[] = [
     run: (ctx, args) =>
       Result.map(instanceArg(ctx, args), (instance) => ({
         world: ctx.world,
-        output: CommandOutput.yaml(Instance.toRecord(instance)),
+        output: CommandOutput.yaml({
+          ...Instance.toRecord(instance),
+          scheduling: {
+            ...vmConfig(ctx.world, instance),
+            provisioningModel: instance.provisioningModel,
+            preemptible: instance.preemptible,
+          },
+        }),
       })),
   }),
   ...Object.values(InstanceTransitions).map(transitionCommand),
@@ -562,6 +641,19 @@ export const InstanceCommands: readonly CommandSpec[] = [
           CommandFailure.invalidState("VM is still a NEG endpoint. Remove the endpoint first."),
         );
       }
+      if (
+        ctx.world.instanceGroups.some(
+          (g) =>
+            g.projectId === instance.value.projectId &&
+            g.instanceNames.includes(instance.value.name),
+        )
+      ) {
+        return Result.err(
+          CommandFailure.invalidArgumentWith(
+            "Resize or delete the owning MIG instead of deleting its member VM.",
+          ),
+        );
+      }
       const detached = World.disksOf(ctx.world, ctx.project.projectId)
         .filter((d) => d.zone === instance.value.zone && d.users.includes(instance.value.name))
         .reduce(
@@ -570,7 +662,7 @@ export const InstanceCommands: readonly CommandSpec[] = [
           World.withoutInstance(ctx.world, instance.value),
         );
       const { world, operation } = recordOperation(
-        detached,
+        removeVmLab(detached, instance.value),
         instanceOperationSeed(instance.value, OperationTypes.Delete, ctx),
       );
       const output = ParsedArgs.boolean(args, "async")
@@ -657,6 +749,14 @@ export const InstanceCommands: readonly CommandSpec[] = [
       if (!Result.isOk(instance)) return instance;
       const machineType = resolveMachineType(ctx, args, instance.value.zone);
       if (!Result.isOk(machineType)) return machineType;
+      const compatible = configFromArgs(
+        { ...instance.value, machineType: machineType.value },
+        args,
+        vmConfig(ctx.world, instance.value),
+      );
+      if (!compatible.ok) {
+        return compatible;
+      }
       const changed = Result.mapErr(
         Instance.withMachineType(instance.value, machineType.value),
         (status) =>
@@ -678,6 +778,7 @@ export const InstanceCommands: readonly CommandSpec[] = [
       ),
     ],
     flags: [
+      Flag.enum("disk-scope", "Zonal or regional disk.", ["zonal", "regional"]),
       CommonFlags.zone,
       Flag.string("disk", "The name of the disk to attach to the instance.", {
         required: true,
@@ -848,8 +949,12 @@ export const InstanceCommands: readonly CommandSpec[] = [
     summary: "List Compute Engine images.",
     permission: "compute.images.list",
     columns: ImageColumns,
-    records: () =>
-      PublicImage.all().map((image) => ({ ...image, deprecated: "", status: "READY" })),
+    records: (ctx) => [
+      ...PublicImage.all().map((image) => ({ ...image, deprecated: "", status: "READY" })),
+      ...ctx.world.computeLab.images
+        .filter((i) => i.projectId === ctx.project.projectId)
+        .map((i) => ({ ...i, project: i.projectId, status: "READY" })),
+    ],
   }),
   listCommand({
     path: ["gcloud", "compute", "operations", "list"],

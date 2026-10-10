@@ -44,6 +44,8 @@ const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElem
 
 const assertionLabel = (assertion: Mission["assertions"][number]): string => {
   switch (assertion.kind) {
+    case "computeLesson":
+      return "構成・配置・権限・復旧データ・更新と修復の結果を確認する";
     case "dataProcessingLesson":
       return "実データの分析・配送・変換・復旧・権限・接続を確認する";
     case "managedDatabaseLesson":

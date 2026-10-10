@@ -20,6 +20,7 @@ import {
   resolveBootDisk,
   resolveImage,
 } from "@/engine/commands/compute/shared";
+import { checkActAs } from "@/engine/commands/compute-lab/vms";
 import {
   alreadyExists,
   Candidates,
@@ -80,7 +81,7 @@ const createTemplate = (ctx: ProjectContext, args: ParsedArgs): CommandResult =>
     ),
   );
   if (!Result.isOk(machineType)) return machineType;
-  const image = resolveImage(args);
+  const image = resolveImage(args, ctx);
   if (!Result.isOk(image)) return image;
   const bootDisk = resolveBootDisk(args);
   if (!Result.isOk(bootDisk)) return bootDisk;
@@ -89,6 +90,12 @@ const createTemplate = (ctx: ProjectContext, args: ParsedArgs): CommandResult =>
     return Result.err(
       CommandFailure.notFound(`projects/${ctx.project.projectId}/global/networks/${networkName}`),
     );
+  }
+  if (ParsedArgs.has(args, "service-account")) {
+    const actAs = checkActAs(ctx, Option.unwrapOr(ParsedArgs.string(args, "service-account"), ""));
+    if (!actAs.ok) {
+      return actAs;
+    }
   }
   const rawScopes = ParsedArgs.list(args, "scopes");
   const template = Result.mapErr(
@@ -137,12 +144,18 @@ const createTemplate = (ctx: ProjectContext, args: ParsedArgs): CommandResult =>
 };
 
 /** テンプレートから 1 台作って World に足す。内部 IP はサブネット内の台数で採番する。 */
-const addMember = (
+export const addMember = (
   ctx: ProjectContext,
   world: World,
   template: InstanceTemplate,
   placement: Readonly<{ name: string; zone: Zone }>,
 ): Result<World, CommandFailure> => {
+  if (template.serviceAccount.some) {
+    const actAs = checkActAs({ ...ctx, world }, template.serviceAccount.value);
+    if (!actAs.ok) {
+      return actAs;
+    }
+  }
   const region = Zone.region(placement.zone);
   const subnetName = Option.unwrapOr(template.subnet, template.network);
   const subnet = World.findSubnet(world, ctx.project.projectId, region, subnetName);
@@ -228,7 +241,7 @@ const createGroup = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   );
   if (!Result.isOk(template)) return template;
   const size = Option.unwrapOr(ParsedArgs.integer(args, "size"), 0);
-  if (size < 0)
+  if (size < 0 || size > 100)
     return Result.err(
       CommandFailure.invalidValue("--size", `Value [${size}] must be non-negative.`),
     );
@@ -335,6 +348,7 @@ export const GroupCommands: readonly CommandSpec[] = [
     summary: "Create a Compute Engine virtual machine instance template.",
     positionals: [Positional.required("NAME", "Name of the instance template to create.")],
     flags: [
+      Flag.string("image", "Custom image in this project."),
       Flag.string(
         "machine-type",
         "Specifies the machine type used for the instances (default: e2-medium).",

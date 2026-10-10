@@ -39,6 +39,7 @@ export const ResourceGroups = {
   AppEngine: "app-engine",
   Sql: "sql",
   ManagedDatabases: "managed-databases",
+  ComputeLab: "compute-lab",
   DataProcessing: "data-processing",
   Pubsub: "pubsub",
   Logging: "logging",
@@ -495,6 +496,24 @@ const projectNode = (world: World, project: Project): TreeNode => {
   const sqlInstances = World.namedOf(world, "sqlInstances", id).map((i) =>
     leaf({ kind: "sql-instance", projectId: id, name: i.name }, i.name),
   );
+  const computeOperations = (
+    ["configs", "disks", "images", "schedules", "tpus", "osPolicies", "migs"] as const
+  ).flatMap((collection) =>
+    world.computeLab[collection]
+      .filter((r) => r.projectId === id)
+      .map((r) =>
+        leaf(
+          {
+            kind: "compute-lab",
+            collection,
+            projectId: id,
+            name: r.name,
+            location: "location" in r ? r.location : "",
+          },
+          `${collection}: ${r.name}${"location" in r ? ` (${r.location})` : ""}`,
+        ),
+      ),
+  );
   const processing = (
     [
       "datasets",
@@ -741,6 +760,7 @@ const projectNode = (world: World, project: Project): TreeNode => {
       ...group(id, ResourceGroups.AppEngine, appEngineNodes(world, id)),
       ...group(id, ResourceGroups.Sql, [...sqlInstances, ...relational]),
       ...group(id, ResourceGroups.ManagedDatabases, managed),
+      ...group(id, ResourceGroups.ComputeLab, computeOperations),
       ...group(id, ResourceGroups.DataProcessing, processing),
       ...group(id, ResourceGroups.Pubsub, pubsubNodes(world, id)),
       ...group(id, ResourceGroups.Logging, sinks),

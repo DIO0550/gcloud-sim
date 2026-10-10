@@ -290,9 +290,14 @@ const resetStorage = (entries) => {
 
 const clickByText = (text) => {
   const buttons = [...document.querySelectorAll("button")];
+  const categoryName = (value) => value.replace(/\d+\/\d+ クリア$/, "");
   const target = buttons.find(
     (button) =>
-      (button.textContent ?? "").trim() === text || button.getAttribute("aria-label") === text,
+      (button.textContent ?? "").trim() === text ||
+      button.getAttribute("aria-label") === text ||
+      (/\d+\/\d+ クリア$/.test(text) &&
+        categoryName((button.textContent ?? "").trim()) === categoryName(text)) ||
+      (text === "ミッション" && /^ミッション \d+\/\d+$/.test((button.textContent ?? "").trim())),
   );
   if (!target) {
     return {

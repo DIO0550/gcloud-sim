@@ -1,4 +1,4 @@
-import { type Region, Zone } from "@/engine/domains/catalog";
+import { Region, Zone } from "@/engine/domains/catalog";
 import { LbScope } from "@/engine/domains/load-balancing";
 import type { LbResource } from "@/engine/domains/load-balancing/graph";
 import type { PolicyTarget } from "@/engine/domains/resource-hierarchy";
@@ -6,6 +6,13 @@ import { Option } from "@/utils/Option";
 
 /** ツリーで選べるもの。プロパティパネルはこれを見て World から中身を引く。 */
 export type TreeSelection =
+  | Readonly<{
+      kind: "compute-lab";
+      collection: "configs" | "disks" | "images" | "schedules" | "tpus" | "osPolicies" | "migs";
+      projectId: string;
+      name: string;
+      location: string;
+    }>
   | Readonly<{
       kind: "data-processing";
       collection:
@@ -221,6 +228,8 @@ export const TreeSelection = {
   /** ツリーのノード id にもなる一意なキー。 */
   key(selection: TreeSelection): string {
     switch (selection.kind) {
+      case "compute-lab":
+        return `compute-lab:${selection.collection}/${selection.projectId}/${selection.location}/${selection.name}`;
       case "data-processing":
         return `data:${selection.collection}/${selection.projectId}/${selection.location}/${selection.parent}/${selection.jobKind}/${selection.name}`;
       case "managed-database":
@@ -337,6 +346,25 @@ export const TreeSelection = {
    */
   describeCommand(selection: TreeSelection): Option<string> {
     switch (selection.kind) {
+      case "compute-lab": {
+        const s = selection;
+        const target = `${s.name} --project=${s.projectId}`;
+        let flag = "";
+        if (s.location) {
+          const scope = Region.parse(s.location).some ? "region" : "zone";
+          flag = ` --${scope}=${s.location}`;
+        }
+        const group = {
+          configs: "gcloud compute instances",
+          disks: "gcloud compute disks",
+          images: "gcloud compute images",
+          schedules: "gcloud compute resource-policies",
+          tpus: "gcloud compute tpus tpu-vm",
+          osPolicies: "gcloud compute os-config os-policy-assignments",
+          migs: "sim compute instance-groups managed",
+        }[s.collection];
+        return Option.some(`${group} describe ${target}${flag}`);
+      }
       case "data-processing": {
         const s = selection;
         const project = `--project=${s.projectId}`;

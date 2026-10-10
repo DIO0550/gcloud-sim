@@ -21,7 +21,56 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（593）
+## 実装済み（635）
+
+Compute・復旧・VM管理は42コマンドと15ミッションを追加しています。構文・範囲・カタログ根拠は[COMPUTE.md](COMPUTE.md)を参照してください。
+
+### Compute・復旧・VM管理
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud compute disks delete` | gcloud compute disks delete: bounded Compute lesson; no cloud execution. |
+| `gcloud compute disks update` | gcloud compute disks update: bounded Compute lesson; no cloud execution. |
+| `sim compute disks write` | sim compute disks write: bounded Compute lesson; no cloud execution. |
+| `sim compute disks read` | sim compute disks read: bounded Compute lesson; no cloud execution. |
+| `gcloud compute snapshots delete` | gcloud compute snapshots delete: bounded Compute lesson; no cloud execution. |
+| `gcloud compute images create` | gcloud compute images create: bounded Compute lesson; no cloud execution. |
+| `gcloud compute images describe` | gcloud compute images describe: bounded Compute lesson; no cloud execution. |
+| `gcloud compute images delete` | gcloud compute images delete: bounded Compute lesson; no cloud execution. |
+| `gcloud compute resource-policies create snapshot-schedule` | gcloud compute resource-policies create snapshot-schedule: bounded Compute lesson; no cloud execution. |
+| `gcloud compute resource-policies describe` | gcloud compute resource-policies describe: bounded Compute lesson; no cloud execution. |
+| `gcloud compute resource-policies delete` | gcloud compute resource-policies delete: bounded Compute lesson; no cloud execution. |
+| `gcloud compute resource-policies list` | gcloud compute resource-policies list: bounded Compute lesson; no cloud execution. |
+| `gcloud compute disks add-resource-policies` | gcloud compute disks add-resource-policies: bounded Compute lesson; no cloud execution. |
+| `gcloud compute disks remove-resource-policies` | gcloud compute disks remove-resource-policies: bounded Compute lesson; no cloud execution. |
+| `sim compute snapshot-schedules run` | sim compute snapshot-schedules run: bounded Compute lesson; no cloud execution. |
+| `gcloud compute instance-groups managed set-instance-template` | gcloud compute instance-groups managed set-instance-template: bounded Compute lesson; no cloud execution. |
+| `gcloud compute instance-groups managed rolling-action start-update` | gcloud compute instance-groups managed rolling-action start-update: bounded Compute lesson; no cloud execution. |
+| `sim compute instance-groups managed advance-update` | sim compute instance-groups managed advance-update: bounded Compute lesson; no cloud execution. |
+| `gcloud compute instance-groups managed update` | gcloud compute instance-groups managed update: bounded Compute lesson; no cloud execution. |
+| `sim compute instance-groups managed fail-instance` | sim compute instance-groups managed fail-instance: bounded Compute lesson; no cloud execution. |
+| `sim compute instance-groups managed autoheal` | sim compute instance-groups managed autoheal: bounded Compute lesson; no cloud execution. |
+| `sim compute instance-groups managed evaluate-autoscaling` | sim compute instance-groups managed evaluate-autoscaling: bounded Compute lesson; no cloud execution. |
+| `gcloud compute instance-groups managed resize` | gcloud compute instance-groups managed resize: bounded Compute lesson; no cloud execution. |
+| `sim compute instance-groups managed describe` | sim compute instance-groups managed describe: bounded Compute lesson; no cloud execution. |
+| `sim compute time advance` | sim compute time advance: bounded Compute lesson; no cloud execution. |
+| `sim compute instances os-login-check` | sim compute instances os-login-check: bounded Compute lesson; no cloud execution. |
+| `gcloud compute instances detach-disk` | gcloud compute instances detach-disk: bounded Compute lesson; no cloud execution. |
+| `gcloud compute instances set-scheduling` | gcloud compute instances set-scheduling: bounded Compute lesson; no cloud execution. |
+| `gcloud compute instances set-service-account` | gcloud compute instances set-service-account: bounded Compute lesson; no cloud execution. |
+| `sim compute instances runtime-check` | sim compute instances runtime-check: bounded Compute lesson; no cloud execution. |
+| `sim compute instances preempt` | sim compute instances preempt: bounded Compute lesson; no cloud execution. |
+| `gcloud compute tpus tpu-vm create` | gcloud compute tpus tpu-vm create: bounded Compute lesson; no cloud execution. |
+| `gcloud compute tpus tpu-vm list` | gcloud compute tpus tpu-vm list: bounded Compute lesson; no cloud execution. |
+| `gcloud compute tpus tpu-vm describe` | gcloud compute tpus tpu-vm describe: bounded Compute lesson; no cloud execution. |
+| `gcloud compute tpus tpu-vm start` | gcloud compute tpus tpu-vm start: bounded Compute lesson; no cloud execution. |
+| `gcloud compute tpus tpu-vm stop` | gcloud compute tpus tpu-vm stop: bounded Compute lesson; no cloud execution. |
+| `gcloud compute tpus tpu-vm delete` | gcloud compute tpus tpu-vm delete: bounded Compute lesson; no cloud execution. |
+| `gcloud compute os-config inventories describe` | gcloud compute os-config inventories describe: bounded Compute lesson; no cloud execution. |
+| `gcloud compute os-config os-policy-assignments create` | gcloud compute os-config os-policy-assignments create: bounded Compute lesson; no cloud execution. |
+| `gcloud compute os-config os-policy-assignments describe` | gcloud compute os-config os-policy-assignments describe: bounded Compute lesson; no cloud execution. |
+| `gcloud compute os-config os-policy-assignments delete` | gcloud compute os-config os-policy-assignments delete: bounded Compute lesson; no cloud execution. |
+| `sim compute os-config os-policy-assignments apply` | sim compute os-config os-policy-assignments apply: bounded Compute lesson; no cloud execution. |
 
 BigQuery・Pub/Subの配送・Dataflow/Dataproc・Kafka・exportは45コマンドを追加しています。入力・SQL・明示的な進行と15ミッションの手順は[DATA_PROCESSING.md](DATA_PROCESSING.md)を参照してください。
 

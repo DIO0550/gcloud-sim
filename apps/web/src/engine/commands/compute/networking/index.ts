@@ -621,6 +621,13 @@ const NetworkSpecs: readonly CommandSpec[] = [
           ),
         );
       }
+      if (
+        ctx.world.computeLab.tpus.some(
+          (t) => t.projectId === network.value.projectId && t.network === network.value.name,
+        )
+      ) {
+        return Result.err(CommandFailure.invalidState("Network is referenced by a TPU VM."));
+      }
       const processing = ctx.world.dataProcessing.clusters.find(
         (c) => c.projectId === network.value.projectId && c.network === network.value.name,
       );

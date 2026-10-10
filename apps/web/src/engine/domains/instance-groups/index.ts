@@ -159,13 +159,24 @@ export const Autoscaling = {
     }>,
   ): Result<Autoscaling, string> {
     const minReplicas = Option.unwrapOr(seed.minReplicas, 1);
+    const cooldown = Option.unwrapOr(seed.coolDownPeriodSec, 60);
+    if (
+      !Number.isInteger(minReplicas) ||
+      minReplicas < 0 ||
+      !Number.isInteger(seed.maxReplicas) ||
+      seed.maxReplicas > 100 ||
+      !Number.isInteger(cooldown) ||
+      cooldown < 0
+    ) {
+      return Result.err("Replica bounds must be integers 0..100; cooldown must be nonnegative.");
+    }
     const target = Option.unwrapOr(seed.targetCpuUtilization, 0.6);
     if (seed.maxReplicas < 1 || seed.maxReplicas < minReplicas) {
       return Result.err(
         `Invalid value for [--max-num-replicas]: ${seed.maxReplicas}. Must be at least 1 and not less than --min-num-replicas (${minReplicas}).`,
       );
     }
-    if (target <= 0 || target > 1) {
+    if (!Number.isFinite(target) || target <= 0 || target > 1) {
       return Result.err(
         `Invalid value for [--target-cpu-utilization]: ${target}. Must be a fraction between 0 and 1.`,
       );
@@ -174,7 +185,7 @@ export const Autoscaling = {
       minReplicas,
       maxReplicas: seed.maxReplicas,
       targetCpuUtilization: target,
-      coolDownPeriodSec: Option.unwrapOr(seed.coolDownPeriodSec, 60),
+      coolDownPeriodSec: cooldown,
     });
   },
 } as const;
