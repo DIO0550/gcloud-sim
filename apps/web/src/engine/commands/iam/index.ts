@@ -254,12 +254,17 @@ export const IamCommands: readonly CommandSpec[] = [
         return Result.err(unknownServiceAccount(email));
       }
       if (
+        ctx.world.computeLab.tpus.some((t) => t.serviceAccount === email) ||
+        ctx.world.instances.some((i) => i.serviceAccount === email) ||
+        ctx.world.instanceTemplates.some(
+          (t) => t.serviceAccount.some && t.serviceAccount.value === email,
+        ) ||
         ctx.world.dataProcessing.clusters.some((c) => c.serviceAccount === email) ||
         ctx.world.dataProcessing.processingJobs.some((j) => j.serviceAccount === email)
       ) {
         return Result.err(
           CommandFailure.invalidArgumentWith(
-            "A retained data processing cluster/job uses this service account.",
+            "A retained VM, TPU, template or data processing cluster/job uses this service account.",
           ),
         );
       }

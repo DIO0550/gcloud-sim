@@ -9,6 +9,7 @@ import type {
   ProjectMetadata,
   Subnet,
 } from "@/engine/domains/compute";
+import { type ComputeLab, validateComputeLab } from "@/engine/domains/compute-lab/model";
 import type { Address, NetworkPeering, Router } from "@/engine/domains/compute-networking";
 import { ContainerLab } from "@/engine/domains/container-lab";
 import type { OsLoginSshKey, ServiceAccountKey } from "@/engine/domains/credentials";
@@ -112,6 +113,7 @@ import {
 } from "@/engine/domains/managed-databases/model";
 
 export type World = Readonly<{
+  computeLab: ComputeLab;
   dataProcessing: DataProcessing;
   managedDatabases: ManagedDatabases;
   serverlessLab: ServerlessLab;
@@ -1565,6 +1567,10 @@ export const World = {
    * @returns 満たしていれば同じ World。満たさなければ最初に見つけた違反
    */
   validate(world: World): Result<World, string> {
+    const compute = validateComputeLab(world);
+    if (!compute.ok) {
+      return compute;
+    }
     const data = validateDataProcessing(world);
     if (!data.ok) {
       return data;

@@ -117,7 +117,10 @@ const MachineTypes = [
   { name: "n1-standard-1", guestCpus: 1, memoryMb: 3840, description: "1 vCPU, 3.75 GB RAM" },
 ] as const;
 
-export type MachineTypeName = (typeof MachineTypes)[number]["name"];
+export type MachineTypeName =
+  | (typeof MachineTypes)[number]["name"]
+  | `n1-custom-${number}-${number}`
+  | `n2-custom-${number}-${number}`;
 
 export type MachineType = Readonly<{
   name: MachineTypeName;
@@ -137,7 +140,32 @@ export const MachineType = {
    * @returns カタログにあればその定義。無ければ `none`
    */
   parse(value: string): Option<MachineType> {
-    return Option.fromNullable(MachineTypes.find((type) => type.name === value));
+    const predefined = MachineTypes.find((type) => type.name === value);
+    if (predefined) {
+      return Option.some(predefined);
+    }
+    const match = /^(n1|n2)-custom-(\d+)-(\d+)$/.exec(value);
+    if (!match) {
+      return Option.none;
+    }
+    const cpu = Number(match[2]);
+    const memory = Number(match[3]);
+    const n1 = match[1] === "n1";
+    const cpuStep = cpu <= 32 ? 2 : 4;
+    const validCpu = n1
+      ? cpu === 1 || (cpu >= 2 && cpu <= 96 && cpu % 2 === 0)
+      : cpu >= 2 && cpu <= 80 && cpu % cpuStep === 0;
+    const min = n1 ? 0.9 * 1024 : 512;
+    const max = n1 ? 6.5 * 1024 : 8192;
+    if (!validCpu || memory % 256 !== 0 || memory < cpu * min || memory > cpu * max) {
+      return Option.none;
+    }
+    return Option.some({
+      name: value as MachineTypeName,
+      guestCpus: cpu,
+      memoryMb: memory,
+      description: `${cpu} vCPUs, ${memory / 1024} GB RAM (custom)`,
+    });
   },
 
   all(): readonly MachineType[] {
@@ -190,6 +218,8 @@ export const BucketLocation = {
 } as const;
 
 const ApiServices = [
+  { name: "tpu.googleapis.com", title: "Cloud TPU API", billingRequired: true },
+  { name: "osconfig.googleapis.com", title: "OS Config API", billingRequired: true },
   { name: "spanner.googleapis.com", title: "Spanner API", billingRequired: true },
   { name: "bigtable.googleapis.com", title: "Bigtable Data API", billingRequired: true },
   { name: "bigtableadmin.googleapis.com", title: "Bigtable Admin API", billingRequired: true },

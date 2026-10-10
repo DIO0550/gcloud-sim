@@ -7,6 +7,7 @@ import {
 } from "@/engine/commands/billing-services";
 import { BuildCommands } from "@/engine/commands/builds";
 import { ComputeCommands } from "@/engine/commands/compute";
+import { DiskLabCommands, MigCommands, VmCommands } from "@/engine/commands/compute-lab";
 import { AuthCommands, ConfigCommands, SdkCommands } from "@/engine/commands/config";
 import { ContainerCommands } from "@/engine/commands/container-run";
 import { PubsubCommands } from "@/engine/commands/data";
@@ -66,6 +67,9 @@ import {
 import { TerraformCommands } from "@/engine/commands/terraform";
 
 const implemented: readonly CommandSpec[] = [
+  ...DiskLabCommands,
+  ...MigCommands,
+  ...VmCommands,
   ...BigQueryCommands,
   ...PubsubDataCommands,
   ...ProcessingCommands,

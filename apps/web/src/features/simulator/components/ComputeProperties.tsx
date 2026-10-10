@@ -8,6 +8,7 @@ import {
   ProtocolRule,
   type ProtocolRule as ProtocolRuleType,
 } from "@/engine/domains/compute";
+import { vmConfig } from "@/engine/domains/compute-lab/model";
 import { LbScope } from "@/engine/domains/load-balancing";
 import { lbHealth } from "@/engine/domains/load-balancing/graph";
 import { World } from "@/engine/domains/world";
@@ -62,7 +63,8 @@ export const InstanceProperties = ({
   const hasDefaultScopes =
     i.scopes.length === DefaultScopes.length && DefaultScopes.every((s) => i.scopes.includes(s));
   const bootDisk = i.disks.find((d) => d.boot);
-  const automaticRestart = !i.preemptible && i.provisioningModel === "STANDARD";
+  const config = vmConfig(world, i);
+  const automaticRestart = config.automaticRestart;
   return (
     <>
       <Section
@@ -73,6 +75,22 @@ export const InstanceProperties = ({
           {
             label: "scheduling",
             value: `${i.provisioningModel}${i.preemptible ? " · preemptible" : ""}${automaticRestart ? " · 自動再起動" : ""}`,
+          },
+          { label: "maintenancePolicy", value: config.maintenance },
+          { label: "terminationAction", value: config.terminationAction },
+          {
+            label: "accelerator",
+            value: config.gpuType ? `${config.gpuType} × ${config.gpuCount}` : "なし",
+          },
+          {
+            label: "regional / Hyperdisk",
+            value:
+              world.computeLab.disks
+                .filter(
+                  (d) => d.projectId === i.projectId && d.users.includes(`${i.zone}/${i.name}`),
+                )
+                .map((d) => `${d.name} (${d.type}, ${d.location})`)
+                .join(", ") || "なし",
           },
           { label: "creationTimestamp", value: timestamp(i.creationTimestamp) },
         ]}

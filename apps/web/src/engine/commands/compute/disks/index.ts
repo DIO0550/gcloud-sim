@@ -24,6 +24,15 @@ import {
   resolveImage,
 } from "@/engine/commands/compute/shared";
 import {
+  diskRecord,
+  extendedDiskCreate,
+  extendedDiskFlags,
+  labDiskArg,
+  needsExtendedCreate,
+  snapshotWithData,
+} from "@/engine/commands/compute-lab/disks";
+import { location, rf } from "@/engine/commands/compute-lab/shared";
+import {
   alreadyExists,
   Candidates,
   describeNamedCommand,
@@ -33,6 +42,7 @@ import {
 } from "@/engine/commands/shared";
 import type { PublicImage, Zone } from "@/engine/domains/catalog";
 import { Disk, DiskSizeGb, DiskSnapshot, Instance } from "@/engine/domains/compute";
+import { patchCompute, sameRef } from "@/engine/domains/compute-lab/model";
 import { OperationTypes } from "@/engine/domains/operation";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
@@ -61,50 +71,24 @@ const snapshotDisk = (
   ctx: ProjectContext,
   seed: Readonly<{ snapshotName: string; diskName: string; zone: Zone }>,
 ): CommandResult => {
-  const disk = findZonedDisk(ctx, seed.zone, seed.diskName);
-  if (!Option.isSome(disk)) return Result.err(diskNotFound(ctx, seed.zone, seed.diskName));
-  const sizeGb = disk.value.disk.sizeGb;
-  const snapshot = Result.mapErr(
-    DiskSnapshot.create({
-      projectId: ctx.project.projectId,
-      name: seed.snapshotName,
-      sourceDisk: seed.diskName,
-      sourceZone: seed.zone,
-      diskSizeGb: sizeGb,
-      creationTimestamp: ctx.now,
-    }),
-    invalidName,
+  return snapshotWithData(
+    ctx,
+    { projectId: ctx.project.projectId, name: seed.diskName, location: seed.zone },
+    seed.snapshotName,
   );
-  if (!Result.isOk(snapshot)) return snapshot;
-  const added = Result.mapErr(World.withDiskSnapshot(ctx.world, snapshot.value), alreadyExists);
-  if (!Result.isOk(added)) return added;
-  const { world } = recordOperation(added.value, {
-    projectId: snapshot.value.projectId,
-    operationType: OperationTypes.CreateSnapshot,
-    targetLink: DiskSnapshot.sourceDiskLink(snapshot.value),
-    targetName: seed.diskName,
-    zone: Option.some(seed.zone),
-    user: ctx.principal,
-    now: ctx.now,
-  });
-  return Result.ok({
-    world,
-    output: createdTable(
-      DiskSnapshot.selfLink(snapshot.value),
-      DiskSnapshot.toRecord(snapshot.value),
-      SnapshotColumns,
-    ),
-  });
 };
 
 const createDisk = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+  if (needsExtendedCreate(args)) {
+    return extendedDiskCreate(ctx, args);
+  }
   const zone = CommandContext.resolveZone(ctx, ParsedArgs.string(args, "zone"));
   if (!Result.isOk(zone)) return zone;
   const shape = resolveDiskShape(args, "size", "type", "500GB");
   if (!Result.isOk(shape)) return shape;
   const hasImage = ParsedArgs.has(args, "image-family") || ParsedArgs.has(args, "image");
   const image: Result<Option<PublicImage>, CommandFailure> = hasImage
-    ? Result.map(resolveImage(args), (i) => Option.some(i))
+    ? Result.map(resolveImage(args, ctx), (i) => Option.some(i))
     : Result.ok(Option.none);
   if (!Result.isOk(image)) return image;
   const numbered = World.nextNumber(ctx.world);
@@ -140,6 +124,35 @@ const createDisk = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
 };
 
 const resizeDisk = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+  const loc = location(ctx, args);
+  if (!loc.ok) {
+    return loc;
+  }
+  const labDisk = ctx.world.computeLab.disks.find(
+    (d) =>
+      d.projectId === ctx.project.projectId &&
+      d.location === loc.value &&
+      d.name === ParsedArgs.requiredPositional(args, 0),
+  );
+  if (labDisk) {
+    const size = DiskSizeGb.parse(ParsedArgs.requiredString(args, "size"));
+    if (!size.ok || size.value <= labDisk.sizeGb) {
+      return Result.err(CommandFailure.invalidArgumentWith("Disk size can only increase."));
+    }
+    const next = { ...labDisk, sizeGb: size.value };
+    const checked = World.validate(
+      patchCompute(ctx.world, {
+        disks: ctx.world.computeLab.disks.map((d) => (sameRef(d, labDisk) ? next : d)),
+      }),
+    );
+    return Result.map(Result.mapErr(checked, CommandFailure.invalidState), (world) => ({
+      world,
+      output: CommandOutput.yaml(diskRecord(next)),
+    }));
+  }
+  if (ParsedArgs.has(args, "region")) {
+    return Result.err(CommandFailure.notFoundWith("Disk not found in the selected region."));
+  }
   const zone = CommandContext.resolveZone(ctx, ParsedArgs.string(args, "zone"));
   if (!Result.isOk(zone)) return zone;
   const size = Result.mapErr(DiskSizeGb.parse(ParsedArgs.requiredString(args, "size")), (m) =>
@@ -176,6 +189,26 @@ const resizeDisk = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
 
 /** `disks describe`。独立ディスクはそのまま、インスタンスに繋がったディスクは `disks list` と同じ形で出す。 */
 const describeDisk = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+  const loc = location(ctx, args);
+  if (!loc.ok) {
+    return loc;
+  }
+  if (
+    ctx.world.computeLab.disks.some(
+      (d) =>
+        d.projectId === ctx.project.projectId &&
+        d.location === loc.value &&
+        d.name === ParsedArgs.requiredPositional(args, 0),
+    )
+  ) {
+    return Result.map(labDiskArg(ctx, args), (d) => ({
+      world: ctx.world,
+      output: CommandOutput.yaml(diskRecord(d)),
+    }));
+  }
+  if (ParsedArgs.has(args, "region")) {
+    return Result.err(CommandFailure.notFoundWith("Disk not found in the selected region."));
+  }
   const zone = CommandContext.resolveZone(ctx, ParsedArgs.string(args, "zone"));
   if (!Result.isOk(zone)) return zone;
   const name = ParsedArgs.requiredPositional(args, 0);
@@ -208,12 +241,14 @@ export const DiskCommands: readonly CommandSpec[] = [
     summary: "Create Compute Engine persistent disks.",
     positionals: [Positional.required("DISK_NAME", "Name of the disk to create.")],
     flags: [
+      ...extendedDiskFlags,
       DiskZoneFlag,
       Flag.string("size", "Size of the disk, e.g. 200GB (default: 500GB)."),
       Flag.enum("type", "Type of the disk (default: pd-balanced).", [
         "pd-standard",
         "pd-balanced",
         "pd-ssd",
+        "hyperdisk-balanced",
       ]),
       Flag.string(
         "image-family",
@@ -232,7 +267,7 @@ export const DiskCommands: readonly CommandSpec[] = [
     positionals: [
       Positional.required("DISK_NAME", "Name of the disk to describe.", Candidates.disks),
     ],
-    flags: [DiskZoneFlag],
+    flags: [DiskZoneFlag, rf],
     permission: "compute.disks.get",
     requiredApis: [ComputeApi],
     run: describeDisk,
@@ -245,6 +280,7 @@ export const DiskCommands: readonly CommandSpec[] = [
     ],
     flags: [
       DiskZoneFlag,
+      rf,
       Flag.string("snapshot-names", "Name of the snapshot to create (one disk at a time).", {
         required: true,
       }),
@@ -252,13 +288,17 @@ export const DiskCommands: readonly CommandSpec[] = [
     permission: "compute.disks.createSnapshot",
     requiredApis: [ComputeApi],
     run: (ctx, args) => {
-      const zone = CommandContext.resolveZone(ctx, ParsedArgs.string(args, "zone"));
-      if (!Result.isOk(zone)) return zone;
-      return snapshotDisk(ctx, {
-        snapshotName: ParsedArgs.requiredString(args, "snapshot-names"),
-        diskName: ParsedArgs.requiredPositional(args, 0),
-        zone: zone.value,
-      });
+      return Result.flatMap(location(ctx, args), (location) =>
+        snapshotWithData(
+          ctx,
+          {
+            projectId: ctx.project.projectId,
+            name: ParsedArgs.requiredPositional(args, 0),
+            location,
+          },
+          ParsedArgs.requiredString(args, "snapshot-names"),
+        ),
+      );
     },
   }),
   projectCommand({
@@ -269,6 +309,7 @@ export const DiskCommands: readonly CommandSpec[] = [
     ],
     flags: [
       DiskZoneFlag,
+      rf,
       Flag.string("size", "New size of the disk, e.g. 100GB.", { required: true }),
     ],
     permission: "compute.disks.update",

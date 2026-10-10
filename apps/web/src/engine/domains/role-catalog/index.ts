@@ -1,3 +1,4 @@
+import { ComputeLabPermissions } from "@/engine/domains/compute-lab/permissions";
 import type { RoleName } from "@/engine/domains/iam-policy";
 import {
   BigtablePermissions,
@@ -17,6 +18,7 @@ export type Role = Readonly<{
 }>;
 
 const ComputeInstancePermissions = [
+  ...ComputeLabPermissions.filter((p) => p.startsWith("compute.")),
   "compute.instances.create",
   "compute.instances.delete",
   "compute.instances.get",
@@ -619,6 +621,7 @@ const ArtifactAdminPermissions = [
 ] as const;
 
 const ViewerPermissions = [
+  ...ComputeLabPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
   ...DataProcessingPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
   ...ManagedDatabasePermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
   "spanner.databases.read",
@@ -703,6 +706,7 @@ const ViewerPermissions = [
 ] as const;
 
 const EditorPermissions = [
+  ...ComputeLabPermissions,
   ...DataProcessingPermissions,
   ...ManagedDatabasePermissions,
   ...ServerlessPermissions,
@@ -902,8 +906,32 @@ const Roles: readonly Role[] = [
     "compute.subnetworks.list",
   ]),
   role("roles/compute.viewer", "Compute Viewer", ComputeViewPermissions),
+  role(
+    "roles/tpu.admin",
+    "TPU Admin",
+    ComputeLabPermissions.filter((p) => p.startsWith("tpu.")),
+  ),
+  role(
+    "roles/tpu.viewer",
+    "TPU Viewer",
+    ComputeLabPermissions.filter(
+      (p) => p.startsWith("tpu.") && (p.endsWith(".get") || p.endsWith(".list")),
+    ),
+  ),
+  role(
+    "roles/osconfig.osPolicyAssignmentAdmin",
+    "OS Policy Assignment Admin",
+    ComputeLabPermissions.filter((p) => p.startsWith("osconfig.")),
+  ),
+  role("roles/osconfig.inventoryViewer", "OS Inventory Viewer", [
+    "osconfig.inventories.get",
+    "osconfig.inventories.list",
+  ]),
   role("roles/compute.osLogin", "Compute OS Login", ["compute.instances.osLogin"]),
-  role("roles/compute.osAdminLogin", "Compute OS Admin Login", ["compute.instances.osAdminLogin"]),
+  role("roles/compute.osAdminLogin", "Compute OS Admin Login", [
+    "compute.instances.osAdminLogin",
+    "compute.instances.osLogin",
+  ]),
   role("roles/storage.admin", "Storage Admin", StorageAdminPermissions),
   role("roles/storage.objectAdmin", "Storage Object Admin", StorageObjectAdminPermissions),
   role("roles/storage.objectCreator", "Storage Object Creator", ["storage.objects.create"]),

@@ -29,6 +29,7 @@ import {
   type Subnet,
   SubnetModes,
 } from "@/engine/domains/compute";
+import { computeLabDecoder, emptyComputeLab } from "@/engine/domains/compute-lab/model";
 import {
   type Address,
   AddressType,
@@ -177,12 +178,12 @@ import { Result } from "@/utils/Result";
  * v34 は索引・Spanner・Bigtable・Redisデータと明示的な読取/復旧履歴を持つ。
  * v35 はBigQueryの表/入力・Pub/Sub配送・処理ジョブ・Kafka・exportの教材状態を持つ。
  */
-export const SchemaVersion = 35;
+export const SchemaVersion = 36;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
 const MigratableVersions = [
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-  28, 29, 30, 31, 32, 33, 34,
+  28, 29, 30, 31, 32, 33, 34, 35,
 ] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
@@ -365,7 +366,7 @@ const diskSnapshot = D.object<DiskSnapshot>({
   projectId: string,
   name: string,
   sourceDisk: string,
-  sourceZone: zone,
+  sourceZone: location,
   diskSizeGb: D.number,
   creationTimestamp: string,
 });
@@ -1281,6 +1282,7 @@ const world = D.object<World>({
   serverlessLab: labDecoder,
   relational: relationalDecoder,
   managedDatabases: managedDatabasesDecoder,
+  computeLab: computeLabDecoder,
   dataProcessing: dataProcessingDecoder,
   containerLab: D.map(ContainerLab.decoder, ContainerLab.validate),
   terraform: D.map(TerraformState.decoder, TerraformState.validate),
@@ -1784,10 +1786,8 @@ const migrate = (version: number, value: unknown): unknown => {
   }
   const v33 = version >= 33 ? v32 : migrateRelational(v32);
   const v34 = version >= 34 ? v33 : { ...v33, managedDatabases: emptyManagedDatabases() };
-  if (version >= 35) {
-    return v34;
-  }
-  return { ...v34, dataProcessing: emptyDataProcessing() };
+  const v35 = version >= 35 ? v34 : { ...v34, dataProcessing: emptyDataProcessing() };
+  return version >= 36 ? v35 : { ...v35, computeLab: emptyComputeLab() };
 };
 
 export const Snapshot = {

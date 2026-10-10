@@ -11,7 +11,7 @@ import {
   type ProjectContext,
 } from "@/engine/cli/command-spec";
 import { projectCommand } from "@/engine/commands/shared";
-import { DefaultImage, PublicImage, Zone } from "@/engine/domains/catalog";
+import { DefaultImage, PublicImage, Region, Zone } from "@/engine/domains/catalog";
 import {
   type AttachedDisk,
   BootDiskType,
@@ -54,7 +54,19 @@ export const externalIp = (sequence: number): string =>
   `34.84.${(sequence >> 8) % 256}.${sequence % 256}`;
 
 /** `--image-family` / `--image-project` からイメージを引く。無指定なら Debian 12。 */
-export const resolveImage = (args: ParsedArgs): Result<PublicImage, CommandFailure> => {
+export const resolveImage = (
+  args: ParsedArgs,
+  ctx?: ProjectContext,
+): Result<PublicImage, CommandFailure> => {
+  const explicit = ParsedArgs.string(args, "image");
+  if (explicit.some) {
+    const image = ctx?.world.computeLab.images.find(
+      (i) => i.projectId === ctx.project.projectId && i.name === explicit.value,
+    );
+    return image
+      ? Result.ok({ name: image.name, project: image.projectId, family: image.family })
+      : Result.err(CommandFailure.notFoundWith("Custom image not found in selected project."));
+  }
   const family = ParsedArgs.string(args, "image-family");
   const project = Option.unwrapOr(ParsedArgs.string(args, "image-project"), DefaultImage.project);
   if (!Option.isSome(family)) return Result.ok(DefaultImage);
@@ -234,7 +246,18 @@ export const diskRecords = (ctx: ProjectContext): readonly JsonRecord[] => {
     instance.disks.filter((d) => d.boot).map((disk) => attachedDiskRecord(instance, disk)),
   );
   const standalone = World.disksOf(ctx.world, ctx.project.projectId).map(Disk.toRecord);
-  return [...boot, ...standalone].toSorted((a, b) => String(a.name).localeCompare(String(b.name)));
+  return [
+    ...boot,
+    ...standalone,
+    ...ctx.world.computeLab.disks
+      .filter((d) => d.projectId === ctx.project.projectId)
+      .map((d) => ({
+        ...d,
+        zone: d.location,
+        locationScope: Region.parse(d.location).some ? "region" : "zone",
+        status: "READY",
+      })),
+  ].toSorted((a, b) => String(a.name).localeCompare(String(b.name)));
 };
 
 export type ListCommandSeed = Readonly<{

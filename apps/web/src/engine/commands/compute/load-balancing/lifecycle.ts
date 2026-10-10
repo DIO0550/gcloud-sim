@@ -8,8 +8,10 @@ import {
   type ProjectContext,
 } from "@/engine/cli/command-spec";
 import { ComputeApi } from "@/engine/commands/compute/shared";
+import { removeVmLab } from "@/engine/commands/compute-lab/vms";
 import { Candidates, CommonFlags, projectCommand } from "@/engine/commands/shared";
 import { Zone } from "@/engine/domains/catalog";
+import { patchCompute, sameRef } from "@/engine/domains/compute-lab/model";
 import { Address } from "@/engine/domains/compute-networking";
 import { ManagedInstanceGroup } from "@/engine/domains/instance-groups";
 import { BackendService, HealthCheck, LbScope } from "@/engine/domains/load-balancing";
@@ -187,6 +189,9 @@ export const LifecycleCommands: readonly CommandSpec[] = [
           return Result.err(CommandFailure.notFound("healthChecks"));
         }
         if (
+          ctx.world.computeLab.migs.some(
+            (m) => m.projectId === h.projectId && m.healthCheck === h.name,
+          ) ||
           lbUsed(ctx.world, HealthCheck.selfLink(h)) ||
           ctx.world.backendServices.some(
             (b) => b.projectId === h.projectId && b.healthChecks.includes(h.name),
@@ -304,10 +309,13 @@ export const LifecycleCommands: readonly CommandSpec[] = [
           return invalid("MIG member VM is still a NEG endpoint.");
         }
         const world = members.reduce(
-          (w, v) => World.withoutInstance(w, v),
+          (w, v) => removeVmLab(World.withoutInstance(w, v), v),
           World.withoutNamed(ctx.world, "instanceGroups", g),
         );
-        return finish(world, { deleted: g.name, members: members.map((v) => v.name) });
+        const cleaned = patchCompute(world, {
+          migs: world.computeLab.migs.filter((m) => !sameRef(m, g)),
+        });
+        return finish(cleaned, { deleted: g.name, members: members.map((v) => v.name) });
       }),
   }),
   projectCommand({
@@ -327,7 +335,14 @@ export const LifecycleCommands: readonly CommandSpec[] = [
         return Result.err(CommandFailure.notFound("instanceTemplates"));
       }
       if (
-        ctx.world.instanceGroups.some((g) => g.projectId === t.projectId && g.template === t.name)
+        ctx.world.instanceGroups.some(
+          (g) => g.projectId === t.projectId && g.template === t.name,
+        ) ||
+        ctx.world.computeLab.migs.some(
+          (m) =>
+            m.projectId === t.projectId &&
+            (m.desiredTemplate === t.name || Object.values(m.applied).includes(t.name)),
+        )
       ) {
         return invalid("Template is still referenced by a MIG.");
       }

@@ -2,6 +2,7 @@ import {
   type MachineTypeName,
   type PublicImage,
   type Region,
+  Region as RegionCatalog,
   Zone,
 } from "@/engine/domains/catalog";
 import type { JsonRecord } from "@/types/Json";
@@ -815,7 +816,7 @@ export type DiskSnapshot = Readonly<{
   projectId: string;
   name: string;
   sourceDisk: string;
-  sourceZone: Zone;
+  sourceZone: Zone | Region;
   diskSizeGb: number;
   creationTimestamp: string;
 }>;
@@ -826,7 +827,7 @@ export const DiskSnapshot = {
       projectId: string;
       name: string;
       sourceDisk: string;
-      sourceZone: Zone;
+      sourceZone: Zone | Region;
       diskSizeGb: number;
       creationTimestamp: string;
     }>,
@@ -840,7 +841,8 @@ export const DiskSnapshot = {
 
   /** 元ディスクの selfLink。オペレーションの対象に使う。 */
   sourceDiskLink(snapshot: DiskSnapshot): string {
-    return `${projectBase(snapshot.projectId)}/zones/${snapshot.sourceZone}/disks/${snapshot.sourceDisk}`;
+    const scope = RegionCatalog.parse(snapshot.sourceZone).some ? "regions" : "zones";
+    return `${projectBase(snapshot.projectId)}/${scope}/${snapshot.sourceZone}/disks/${snapshot.sourceDisk}`;
   },
 
   toRecord(snapshot: DiskSnapshot): JsonRecord {
