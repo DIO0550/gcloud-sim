@@ -1,3 +1,4 @@
+import { AdminPermissions } from "@/engine/domains/admin-lab/permissions";
 import { ComputeLabPermissions } from "@/engine/domains/compute-lab/permissions";
 import type { RoleName } from "@/engine/domains/iam-policy";
 import {
@@ -288,6 +289,8 @@ const BillingPermissions = [
   "billing.resourceAssociations.create",
   "billing.resourceAssociations.delete",
   "billing.resourceAssociations.list",
+  "billing.budgets.update",
+  "billing.budgets.delete",
   "billing.budgets.create",
   "billing.budgets.list",
   "billing.budgets.get",
@@ -641,6 +644,7 @@ const ArtifactAdminPermissions = [
 ] as const;
 
 const ViewerPermissions = [
+  ...AdminPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
   ...StorageLabPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
   ...NetworkLabPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
   ...ComputeLabPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
@@ -763,6 +767,7 @@ const EditorPermissions = [
 ] as const;
 
 const OwnerPermissions = [
+  ...AdminPermissions,
   ...NetworkLabPermissions.filter((p) => p.startsWith("compute.organizations.")),
   ...ArtifactAdminPermissions,
   ...EditorPermissions,
@@ -873,6 +878,28 @@ const Roles: readonly Role[] = [
     ArtifactRepoAdminPermissions,
   ),
   role("roles/artifactregistry.admin", "Artifact Registry Administrator", ArtifactAdminPermissions),
+  role(
+    "roles/orgpolicy.policyAdmin",
+    "Organization Policy Administrator",
+    AdminPermissions.filter((p) => p.startsWith("orgpolicy.")),
+  ),
+  role(
+    "roles/iam.workloadIdentityPoolAdmin",
+    "Workload Identity Pool Administrator",
+    AdminPermissions.filter((p) => p.startsWith("iam.workloadIdentity")),
+  ),
+  role(
+    "roles/iam.workforcePoolAdmin",
+    "Workforce Pool Administrator",
+    AdminPermissions.filter((p) => p.startsWith("iam.workforce")),
+  ),
+  role(
+    "roles/cloudquotas.admin",
+    "Cloud Quotas Administrator",
+    AdminPermissions.filter((p) => p.startsWith("cloudquotas.")),
+  ),
+  role("roles/cloudquotas.viewer", "Cloud Quotas Viewer", ["cloudquotas.quotas.get"]),
+  role("roles/cloudasset.viewer", "Cloud Asset Viewer", ["cloudasset.assets.searchAllResources"]),
   role("roles/owner", "Owner", OwnerPermissions),
   role("roles/editor", "Editor", EditorPermissions),
   role("roles/viewer", "Viewer", ViewerPermissions),
@@ -1174,6 +1201,8 @@ const Roles: readonly Role[] = [
   role("roles/billing.costsManager", "Billing Account Costs Manager", [
     "billing.accounts.get",
     "billing.accounts.list",
+    "billing.budgets.update",
+    "billing.budgets.delete",
     "billing.budgets.create",
     "billing.budgets.list",
     "billing.budgets.get",

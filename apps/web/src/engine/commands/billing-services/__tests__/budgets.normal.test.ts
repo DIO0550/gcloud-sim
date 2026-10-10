@@ -24,9 +24,9 @@ test("budgets create は額・しきい値・請求アカウント・プロジ�
   expect(
     run(
       session(),
-      `gcloud billing budgets create ${account} --display-name=x --budget-amount=100 --threshold-rule=percent=0`,
+      `gcloud billing budgets create ${account} --display-name=x --budget-amount=100 --threshold-rule=percent=2`,
     ).text,
-  ).toContain("Must be a positive fraction");
+  ).toContain("Must be a fraction from 0.0 through 1.0");
   expect(
     run(
       session(),

@@ -1,4 +1,11 @@
 import type { CommandSpec } from "@/engine/cli/command-spec";
+import { AssetCommands } from "@/engine/commands/admin-lab/assets";
+import { BillingLabCommands } from "@/engine/commands/admin-lab/billing";
+import { CredentialCommands } from "@/engine/commands/admin-lab/credentials";
+import { FederationCommands } from "@/engine/commands/admin-lab/federation";
+import { IdentityCommands } from "@/engine/commands/admin-lab/identity";
+import { OrgPolicyCommands } from "@/engine/commands/admin-lab/policies";
+import { QuotaCommands } from "@/engine/commands/admin-lab/quotas";
 import { ArtifactCommands, DockerCommands } from "@/engine/commands/artifacts";
 import {
   BillingCommands,
@@ -106,6 +113,13 @@ const implemented: readonly CommandSpec[] = [
   ...StorageKeyCommands,
   ...ObjectStorageCommands,
   ...StorageTransferCommands,
+  ...OrgPolicyCommands,
+  ...IdentityCommands,
+  ...CredentialCommands,
+  ...FederationCommands,
+  ...QuotaCommands,
+  ...AssetCommands,
+  ...BillingLabCommands,
   ...StorageCommands,
   ...StorageExtraCommands,
   ...GsutilCommands,

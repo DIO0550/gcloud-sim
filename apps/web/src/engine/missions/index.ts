@@ -103,6 +103,7 @@ import {
 import type { ValueOf } from "@/types/ValueOf";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
+import { type AdminAssertion, AdminMissions, adminSatisfied } from "./admin-lab";
 import { type ComputeAssertion, ComputeMissions, computeSatisfied } from "./compute-lab";
 import {
   type GkeCompletionAssertion,
@@ -186,6 +187,7 @@ export type MissionDomain = ValueOf<typeof MissionDomains>;
 
 /** World に対する述語（DJ-010: コマンド文字列ではなく状態で判定する）。値の語彙はドメインの型で閉じる。 */
 export type MissionAssertion =
+  | AdminAssertion
   | StorageAssertion
   | NetworkAssertion
   | ComputeAssertion
@@ -380,6 +382,7 @@ const Missions: readonly Mission[] = [
   ...ManagedDatabaseMissions,
   ...ComputeMissions,
   ...StorageMissions,
+  ...AdminMissions,
   ...NetworkMissions,
   ...DataMissions,
   ...KubeNetworkMissions,
@@ -846,6 +849,8 @@ const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: 
 
 const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
+    case "adminLesson":
+      return adminSatisfied(world, assertion.lesson);
     case "storageLesson":
       return storageSatisfied(world, assertion.lesson);
     case "networkLesson":

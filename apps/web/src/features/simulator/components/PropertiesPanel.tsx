@@ -57,6 +57,7 @@ import {
 } from "@/features/simulator/components/ServiceProperties";
 import { type ConsoleScreen, ConsoleScreens } from "@/features/simulator/features/console";
 import { Option } from "@/utils/Option";
+import { AdminLabProperties } from "./AdminLabProperties";
 import { ComputeLabProperties } from "./ComputeLabProperties";
 import { DataProcessingProperties } from "./DataProcessingProperties";
 import { GkeLessonProperties } from "./GkeLessonProperties";
@@ -148,6 +149,8 @@ const Body = ({
       return <KubeServiceProperties world={world} selection={selection} />;
     case "managed-database":
       return <ManagedDatabaseProperties world={world} selection={selection} />;
+    case "admin-lab":
+      return <AdminLabProperties world={world} selection={selection} />;
     case "storage-lab":
       return <StorageLabProperties world={world} selection={selection} />;
     case "network-lab":
@@ -198,6 +201,7 @@ const Body = ({
 /** 見出し。名前を持つものは名前、持たないものは種別の綴り。 */
 const titleOf = (selection: TreeSelection): string => {
   switch (selection.kind) {
+    case "admin-lab":
     case "storage-lab":
     case "network-lab":
     case "compute-lab":
@@ -270,6 +274,8 @@ const titleOf = (selection: TreeSelection): string => {
 /** 見出しの下に出す API の種別（`compute#instance` の形）と置き場。 */
 const kindLabel = (selection: TreeSelection): string => {
   switch (selection.kind) {
+    case "admin-lab":
+      return `${selection.collection} · ${selection.scope}`;
     case "storage-lab":
       return `${selection.subtype || selection.collection} · projects/${selection.projectId}/${selection.location}`;
     case "network-lab":

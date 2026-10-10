@@ -78,14 +78,14 @@ test("現行の Snapshot は v35 で、export → import が同一になる", ()
   );
   const snapshot = Snapshot.create(s.world, Now);
   expect(snapshot.schemaVersion).toBe(SchemaVersion);
-  expect(SchemaVersion).toBe(38);
+  expect(SchemaVersion).toBe(39);
   const imported = Result.unwrap(Snapshot.fromUnknown(JSON.parse(JSON.stringify(snapshot))));
   expect(imported).toEqual(s.world);
 });
 
-test("v39 以降は unsupportedVersion", () => {
-  const result = Snapshot.fromUnknown({ schemaVersion: 39, world: {} });
-  expect(result).toEqual(Result.err({ kind: "unsupportedVersion", version: "39" }));
+test("v40 以降は unsupportedVersion", () => {
+  const result = Snapshot.fromUnknown({ schemaVersion: 40, world: {} });
+  expect(result).toEqual(Result.err({ kind: "unsupportedVersion", version: "40" }));
 });
 
 test("v1 でも形が壊れていれば malformed になる（マイグレーションは埋めるだけで検証はしない）", () => {

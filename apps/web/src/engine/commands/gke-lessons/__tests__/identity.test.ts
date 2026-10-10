@@ -46,7 +46,15 @@ test("Autopilot requires both annotation and exact workloadIdentityUser binding,
     "DENY: ResourcePermissionDenied",
   );
   expect(permitted.world.serviceAccountKeys).toHaveLength(0);
-  expect(access(permitted).world).toEqual(permitted.world);
+  const checked = access(permitted).world;
+  expect({ ...checked, adminLab: permitted.world.adminLab }).toEqual(permitted.world);
+  expect(checked.adminLab.observations).toContainEqual({
+    projectId: "ace-dev-01",
+    kind: "gke-identity",
+    resource: "identity-app/storage.objects.list",
+    result: "allowed",
+    value: 1,
+  });
   expect(restore(permitted).world).toEqual(permitted.world);
   const disabled = execute(permitted, "gcloud services disable iamcredentials.googleapis.com");
   expect(access(disabled).text).toContain("IamCredentialsApiDisabled");

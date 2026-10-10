@@ -1,3 +1,4 @@
+import { adminResources } from "@/engine/domains/admin-lab/resources";
 import { Budget } from "@/engine/domains/billing-budget";
 import { Instance } from "@/engine/domains/compute";
 import { type IamMember, IamPolicy, type RoleName } from "@/engine/domains/iam-policy";
@@ -32,6 +33,7 @@ export const ResourceGroups = {
   LoadBalancing: "load-balancing",
   Vpc: "vpc",
   Storage: "storage",
+  Admin: "admin",
   Gke: "gke",
   Run: "run",
   Serverless: "serverless",
@@ -110,6 +112,15 @@ const leaf = (selection: TreeSelection, label: string, fields: LeafFields = {}):
     selection: Option.some(selection),
     ...fields,
   });
+
+const adminNodes = (world: World, scope: string): readonly TreeNode[] =>
+  group(
+    scope,
+    ResourceGroups.Admin,
+    adminResources(world, scope).map((r) =>
+      leaf({ kind: "admin-lab", scope, collection: r.collection, name: r.name }, r.label),
+    ),
+  );
 
 const byName = <T extends { name: string }>(items: readonly T[]): readonly T[] =>
   items.toSorted((a, b) => a.name.localeCompare(b.name));
@@ -851,6 +862,7 @@ const projectNode = (world: World, project: Project): TreeNode => {
       ...group(id, ResourceGroups.InstanceGroups, instanceGroupNodes(world, id)),
       ...group(id, ResourceGroups.LoadBalancing, loadBalancingNodes(world, id)),
       ...group(id, ResourceGroups.Vpc, networkNodes(world, id)),
+      ...adminNodes(world, `projects/${id}`),
       ...group(id, ResourceGroups.Storage, [...buckets, ...storageOperations]),
       ...group(id, ResourceGroups.Gke, gkeNodes(world, id)),
       ...group(id, ResourceGroups.Run, runServices),
@@ -881,7 +893,10 @@ const childrenUnder = (world: World, parent: ParentRef): readonly TreeNode[] => 
     node(TreeSelection.key({ kind: "folder", id: f.id }), text(f.displayName), {
       badge: TreeBadges.Folder,
       selection: Option.some({ kind: "folder", id: f.id }),
-      children: childrenUnder(world, { type: "folder", id: f.id }),
+      children: [
+        ...adminNodes(world, `folders/${f.id}`),
+        ...childrenUnder(world, { type: "folder", id: f.id }),
+      ],
     }),
   ),
   ...World.projectsUnder(world, parent).map((p) => projectNode(world, p)),
@@ -912,7 +927,10 @@ export const TreeNode = {
       {
         badge: TreeBadges.Organization,
         selection: Option.some({ kind: "organization" }),
-        children: childrenUnder(world, { type: "organization", id: world.organization.id }),
+        children: [
+          ...adminNodes(world, `organizations/${world.organization.id}`),
+          ...childrenUnder(world, { type: "organization", id: world.organization.id }),
+        ],
       },
     );
     const billing = world.billingAccounts.map((b) => billingNode(world, b.id));

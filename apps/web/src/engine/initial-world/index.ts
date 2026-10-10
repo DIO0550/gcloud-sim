@@ -1,3 +1,4 @@
+import { emptyAdminLab } from "@/engine/domains/admin-lab/model";
 import { Region } from "@/engine/domains/catalog";
 import {
   Directions,
@@ -107,6 +108,7 @@ export const EmptyCollections = {
   managedDatabases: emptyManagedDatabases(),
   networkLab: emptyNetworkLab(),
   storageLab: emptyStorageLab(),
+  adminLab: emptyAdminLab(),
   computeLab: emptyComputeLab(),
   dataProcessing: emptyDataProcessing(),
   disks: [],
@@ -200,6 +202,7 @@ export const InitialWorld = {
           "cloudresourcemanager.googleapis.com",
           "logging.googleapis.com",
           "monitoring.googleapis.com",
+          "billingbudgets.googleapis.com",
         ],
         iamPolicy: IamPolicy.create([
           { role: "roles/viewer", members: [`user:${f.developer}`] },

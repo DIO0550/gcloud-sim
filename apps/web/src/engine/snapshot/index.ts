@@ -1,3 +1,4 @@
+import { adminLabDecoder, emptyAdminLab } from "@/engine/domains/admin-lab/model";
 import type { Budget } from "@/engine/domains/billing-budget";
 import {
   ApiService,
@@ -180,12 +181,12 @@ import { Result } from "@/utils/Result";
  * v34 は索引・Spanner・Bigtable・Redisデータと明示的な読取/復旧履歴を持つ。
  * v35 はBigQueryの表/入力・Pub/Sub配送・処理ジョブ・Kafka・exportの教材状態を持つ。
  */
-export const SchemaVersion = 38;
+export const SchemaVersion = 39;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
 const MigratableVersions = [
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-  28, 29, 30, 31, 32, 33, 34, 35, 36, 37,
+  28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
 ] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
@@ -1300,6 +1301,7 @@ const world = D.object<World>({
   managedDatabases: managedDatabasesDecoder,
   networkLab: networkLabDecoder,
   storageLab: storageLabDecoder,
+  adminLab: adminLabDecoder,
   computeLab: computeLabDecoder,
   dataProcessing: dataProcessingDecoder,
   containerLab: D.map(ContainerLab.decoder, ContainerLab.validate),
@@ -1793,7 +1795,7 @@ const migrateV31 = (version: number, value: unknown): unknown => {
   return { ...v30, lbResources: [] };
 };
 
-const migrate = (version: number, value: unknown): unknown => {
+const migrateStorage = (version: number, value: unknown): unknown => {
   const previous = migrateV31(version, value);
   if (!isRecord(previous)) {
     return previous;
@@ -1838,6 +1840,14 @@ const migrate = (version: number, value: unknown): unknown => {
         })
       : v37.buckets,
   };
+};
+
+const migrate = (version: number, value: unknown): unknown => {
+  const previous = migrateStorage(version, value);
+  if (version >= 39 || !isRecord(previous)) {
+    return previous;
+  }
+  return { ...previous, adminLab: emptyAdminLab() };
 };
 
 export const Snapshot = {

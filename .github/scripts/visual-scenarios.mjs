@@ -1,3 +1,4 @@
+import { ADMIN_SCENARIOS } from "./admin-scenarios.mjs";
 import { LB_SCENARIOS } from "./load-balancing-scenarios.mjs";
 
 /**
@@ -103,6 +104,7 @@ const statefulDataSteps = [
   { type: "sim kubernetes write-file pod/notes-1 --path=/data/note.txt --content=second-note" },
 ];
 export const SCENARIOS = [
+  ...ADMIN_SCENARIOS,
   ...LB_SCENARIOS,
   {
     name: "gke-statefulset-initial",

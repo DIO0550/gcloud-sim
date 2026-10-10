@@ -1,3 +1,4 @@
+import { papEnforced } from "@/engine/domains/admin-lab/policies";
 import { StorageClass } from "@/engine/domains/catalog";
 import type { IamPolicy } from "@/engine/domains/iam-policy";
 import type { CryptoKey } from "@/engine/domains/serverless-lab/model";
@@ -115,7 +116,7 @@ export const storageAllows = (
   principal: string,
   permission: string,
 ): boolean => {
-  if (!bucket.publicAccessPrevention) {
+  if (!papEnforced(world, bucket)) {
     return allows(world, bucket.projectId, principal, permission, bucket.iamPolicy);
   }
   const privatePolicy = (policy: IamPolicy): IamPolicy => ({

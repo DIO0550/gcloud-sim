@@ -1,3 +1,5 @@
+import { type AdminLab, validateAdminLab } from "@/engine/domains/admin-lab/model";
+import { papEnforced } from "@/engine/domains/admin-lab/policies";
 import type { Budget } from "@/engine/domains/billing-budget";
 import { type ApiName, type Zone, Zone as ZoneCatalog } from "@/engine/domains/catalog";
 import type {
@@ -118,6 +120,7 @@ import { type StorageLab, validateStorageLab } from "@/engine/domains/storage-la
 export type World = Readonly<{
   networkLab: NetworkLab;
   storageLab: StorageLab;
+  adminLab: AdminLab;
   computeLab: ComputeLab;
   dataProcessing: DataProcessing;
   managedDatabases: ManagedDatabases;
@@ -723,7 +726,7 @@ export const World = {
         const b = World.findBucket(world, target.id);
         if (
           b.some &&
-          b.value.publicAccessPrevention &&
+          papEnforced(world, b.value) &&
           policy.bindings.some((binding) =>
             binding.members.some((m) => m === "allUsers" || m === "allAuthenticatedUsers"),
           )
@@ -1608,6 +1611,10 @@ export const World = {
    * @returns 満たしていれば同じ World。満たさなければ最初に見つけた違反
    */
   validate(world: World): Result<World, string> {
+    const administration = validateAdminLab(world);
+    if (!administration.ok) {
+      return administration;
+    }
     const storage = validateStorageLab(world);
     if (!storage.ok) {
       return storage;
