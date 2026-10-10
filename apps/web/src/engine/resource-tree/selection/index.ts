@@ -7,6 +7,27 @@ import { Option } from "@/utils/Option";
 /** ツリーで選べるもの。プロパティパネルはこれを見て World から中身を引く。 */
 export type TreeSelection =
   | Readonly<{
+      kind: "network-lab";
+      collection:
+        | "routes"
+        | "nats"
+        | "gateways"
+        | "peerGateways"
+        | "tunnels"
+        | "interfaces"
+        | "bgpPeers"
+        | "attachments"
+        | "records"
+        | "secureTags"
+        | "policies"
+        | "shared";
+      projectId: string;
+      name: string;
+      region: string;
+      parent: string;
+      subtype: string;
+    }>
+  | Readonly<{
       kind: "compute-lab";
       collection: "configs" | "disks" | "images" | "schedules" | "tpus" | "osPolicies" | "migs";
       projectId: string;
@@ -228,6 +249,8 @@ export const TreeSelection = {
   /** ツリーのノード id にもなる一意なキー。 */
   key(selection: TreeSelection): string {
     switch (selection.kind) {
+      case "network-lab":
+        return `network-lab:${selection.collection}/${selection.projectId}/${selection.region}/${selection.parent}/${selection.name}/${selection.subtype}`;
       case "compute-lab":
         return `compute-lab:${selection.collection}/${selection.projectId}/${selection.location}/${selection.name}`;
       case "data-processing":
@@ -346,6 +369,33 @@ export const TreeSelection = {
    */
   describeCommand(selection: TreeSelection): Option<string> {
     switch (selection.kind) {
+      case "network-lab": {
+        const s = selection;
+        const project = `--project=${s.projectId}`;
+        const region = s.region !== "global" ? ` --region=${s.region}` : "";
+        if (s.collection === "records") {
+          return Option.some(
+            `gcloud dns record-sets describe ${s.name} --zone=${s.parent} --type=${s.subtype} ${project}`,
+          );
+        }
+        if (s.collection === "nats") {
+          return Option.some(
+            `gcloud compute routers nats describe ${s.name} --router=${s.parent}${region} ${project}`,
+          );
+        }
+        const groups: Partial<Record<typeof s.collection, string>> = {
+          routes: "routes",
+          gateways: "vpn-gateways",
+          peerGateways: "external-vpn-gateways",
+          tunnels: "vpn-tunnels",
+          attachments: "interconnects attachments",
+          policies: "network-firewall-policies",
+        };
+        const group = groups[s.collection];
+        return group
+          ? Option.some(`gcloud compute ${group} describe ${s.name}${region} ${project}`)
+          : Option.none;
+      }
       case "compute-lab": {
         const s = selection;
         const target = `${s.name} --project=${s.projectId}`;

@@ -77,6 +77,7 @@ export const ExternalIp = {
 
 export type NetworkInterface = Readonly<{
   network: string;
+  networkProject?: string;
   subnetwork: string;
   networkIP: string;
   externalIP: ExternalIp;
@@ -413,8 +414,8 @@ export const Instance = {
       status: instance.status,
       creationTimestamp: instance.creationTimestamp,
       networkInterfaces: instance.networkInterfaces.map((nic) => ({
-        network: `${base}/global/networks/${nic.network}`,
-        subnetwork: `${base}/regions/${Zone.region(instance.zone)}/subnetworks/${nic.subnetwork}`,
+        network: `${projectBase(nic.networkProject ?? instance.projectId)}/global/networks/${nic.network}`,
+        subnetwork: `${projectBase(nic.networkProject ?? instance.projectId)}/regions/${Zone.region(instance.zone)}/subnetworks/${nic.subnetwork}`,
         networkIP: nic.networkIP,
         accessConfigs: Option.isSome(ExternalIp.address(nic.externalIP))
           ? [
@@ -458,6 +459,7 @@ export type Network = Readonly<{
   projectId: string;
   name: string;
   subnetMode: SubnetMode;
+  firewallPolicyOrder?: "BEFORE_CLASSIC_FIREWALL" | "AFTER_CLASSIC_FIREWALL";
 }>;
 
 export type Subnet = Readonly<{
@@ -467,6 +469,7 @@ export type Subnet = Readonly<{
   network: string;
   ipCidrRange: string;
   privateIpGoogleAccess: boolean;
+  flowLogs?: boolean;
   purpose?: "PRIVATE" | "REGIONAL_MANAGED_PROXY";
   role?: "ACTIVE" | "BACKUP";
 }>;
@@ -522,6 +525,7 @@ export const Subnet = {
       network: string;
       ipCidrRange: string;
       privateIpGoogleAccess: boolean;
+      flowLogs?: boolean;
     }>,
   ): Result<Subnet, string> {
     const validRange = /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/.test(seed.ipCidrRange);
@@ -578,6 +582,7 @@ export const Subnet = {
       network: `${base}/global/networks/${subnet.network}`,
       ipCidrRange: subnet.ipCidrRange,
       privateIpGoogleAccess: subnet.privateIpGoogleAccess,
+      enableFlowLogs: subnet.flowLogs ?? false,
       purpose: subnet.purpose ?? "PRIVATE",
       role: subnet.role,
       gatewayAddress: Subnet.hostAddress(subnet, -1),
@@ -635,6 +640,9 @@ export type FirewallRule = Readonly<{
   sourceRanges: readonly string[];
   destinationRanges: readonly string[];
   targetTags: readonly string[];
+  targetServiceAccounts?: readonly string[];
+  sourceServiceAccounts?: readonly string[];
+  logging?: boolean;
   allowed: readonly ProtocolRule[];
   denied: readonly ProtocolRule[];
   disabled: boolean;
@@ -753,10 +761,17 @@ export const FirewallRule = {
    * @returns 同じネットワークで、タグが一致（または無指定）なら真
    */
   appliesTo(rule: FirewallRule, instance: Instance): boolean {
-    const sameNetwork = instance.networkInterfaces.some((nic) => nic.network === rule.network);
+    const sameNetwork = instance.networkInterfaces.some(
+      (nic) =>
+        nic.network === rule.network &&
+        (nic.networkProject ?? instance.projectId) === rule.projectId,
+    );
     const tagMatches =
       rule.targetTags.length === 0 || rule.targetTags.some((tag) => instance.tags.includes(tag));
-    return sameNetwork && tagMatches;
+    const serviceAccountMatches =
+      (rule.targetServiceAccounts ?? []).length === 0 ||
+      rule.targetServiceAccounts?.includes(instance.serviceAccount);
+    return sameNetwork && tagMatches && Boolean(serviceAccountMatches);
   },
 
   /**
@@ -803,6 +818,9 @@ export const FirewallRule = {
       sourceRanges: rule.sourceRanges,
       destinationRanges: rule.destinationRanges,
       targetTags: rule.targetTags,
+      targetServiceAccounts: rule.targetServiceAccounts,
+      sourceServiceAccounts: rule.sourceServiceAccounts,
+      logConfig: { enable: rule.logging ?? false },
       allowed: rule.allowed.map((r) => ({ IPProtocol: r.protocol, ports: r.ports })),
       denied: rule.denied.map((r) => ({ IPProtocol: r.protocol, ports: r.ports })),
       disabled: rule.disabled,

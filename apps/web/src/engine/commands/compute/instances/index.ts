@@ -53,7 +53,6 @@ import {
   BootDiskTypes,
   DefaultScopes,
   ExternalIp,
-  FirewallRule,
   Instance,
   type InstanceTransition,
   InstanceTransitions,
@@ -71,6 +70,7 @@ import {
   vmRef,
 } from "@/engine/domains/compute-lab/model";
 import { OsLoginSshKey } from "@/engine/domains/credentials";
+import { firewallDecision } from "@/engine/domains/network-lab/model";
 import { Operation, OperationTypes } from "@/engine/domains/operation";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
@@ -308,10 +308,8 @@ const checkReachable = (ctx: ProjectContext, target: SshTarget): Result<string, 
       ),
     );
   }
-  const origin = target.viaExternalIp ? "internet" : "internal";
-  const allowed = World.firewallRulesOf(ctx.world, ctx.project.projectId).some((rule) =>
-    FirewallRule.allowsIngress(rule, { instance, protocol: "tcp", port: SshPort, origin }),
-  );
+  const originIp = target.viaExternalIp ? "203.0.113.10" : (nic?.networkIP ?? "");
+  const { allowed } = firewallDecision(ctx.world, instance, "INGRESS", originIp, "tcp", SshPort);
   if (!allowed) {
     return Result.err(
       timedOut(

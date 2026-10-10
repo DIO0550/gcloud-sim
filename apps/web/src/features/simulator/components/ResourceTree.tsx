@@ -78,6 +78,8 @@ const groupText = (group: ResourceGroup): string => {
       return "App Engine";
     case "managed-databases":
       return "Spanner・Bigtable・バックアップ";
+    case "network-lab":
+      return "VPC・接続・DNS・Firewall";
     case "compute-lab":
       return "VM構成・復旧・段階更新";
     case "data-processing":

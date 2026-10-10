@@ -96,3 +96,21 @@ test("user@INSTANCE の綴りでも同じインスタンスを指す", () => {
   const s = run(session(), create, "gcloud compute ssh alice@web-1 --zone=asia-northeast1-a");
   expect(s.text).toContain("(web-1)");
 });
+
+test("SSH uses deny priority and service account targets", () => {
+  const blocked = run(
+    session(),
+    create,
+    "gcloud compute firewall-rules create deny-ssh --action=DENY --rules=tcp:22 --priority=500",
+    ssh,
+  );
+  expect(blocked.text).toContain("Connection timed out");
+  const wrongAccount = run(
+    blocked,
+    "gcloud compute firewall-rules delete deny-ssh --quiet",
+    "gcloud compute firewall-rules delete default-allow-ssh --quiet",
+    "gcloud compute firewall-rules create account-ssh --allow=tcp:22 --target-service-accounts=web-sa@ace-dev-01.iam.gserviceaccount.com",
+    ssh,
+  );
+  expect(wrongAccount.text).toContain("Connection timed out");
+});

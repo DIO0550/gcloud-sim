@@ -15,6 +15,7 @@ import { Region } from "@/engine/domains/catalog";
 import { DmDeployment } from "@/engine/domains/deployment-manager";
 import { DnsManagedZone } from "@/engine/domains/dns";
 import { KmsKeyRing } from "@/engine/domains/kms";
+import { validateNetworkLab } from "@/engine/domains/network-lab/model";
 import { SampleFile } from "@/engine/domains/sample-files";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
@@ -87,12 +88,31 @@ const createManagedZone = (ctx: ProjectContext, args: ParsedArgs): CommandResult
     (m) => CommandFailure.invalidValue(m.includes("--dns-name") ? "--dns-name" : "ZONE_NAME", m),
   );
   if (!Result.isOk(zone)) return zone;
+  const networks = ParsedArgs.list(args, "networks");
+  if (zone.value.visibility === "private" && networks.length === 0) {
+    return Result.err(
+      CommandFailure.invalidArgumentWith("Private zones require --networks in this bounded model."),
+    );
+  }
+  if (zone.value.visibility === "public" && networks.length > 0) {
+    return Result.err(
+      CommandFailure.invalidArgumentWith("Public zones cannot authorize private networks."),
+    );
+  }
+  const configuredZone = { ...zone.value, ...(networks.length > 0 ? { networks } : {}) };
+  const checked = validateNetworkLab({
+    ...ctx.world,
+    dnsZones: [...ctx.world.dnsZones, configuredZone],
+  });
+  if (!checked.ok) {
+    return Result.err(CommandFailure.invalidArgumentWith(checked.error));
+  }
   return Result.map(
     Result.mapErr(
       World.withNamed(
         ctx.world,
         "dnsZones",
-        zone.value,
+        configuredZone,
         `projects/${ctx.project.projectId}/managedZones/${zone.value.name}`,
       ),
       alreadyExists,
@@ -237,6 +257,7 @@ export const DnsCommands: readonly CommandSpec[] = [
       ),
       Flag.string("description", "Short description for the managed-zone.", { required: true }),
       Flag.enum("visibility", "Visibility of the zone.", ["public", "private"]),
+      Flag.list("networks", "Authorized VPC names in this project; required for private zones."),
     ],
     permission: "dns.managedZones.create",
     requiredApis: [DnsApi],

@@ -254,6 +254,9 @@ export const IamCommands: readonly CommandSpec[] = [
         return Result.err(unknownServiceAccount(email));
       }
       if (
+        ctx.world.firewallRules.some((f) =>
+          [...(f.targetServiceAccounts ?? []), ...(f.sourceServiceAccounts ?? [])].includes(email),
+        ) ||
         ctx.world.computeLab.tpus.some((t) => t.serviceAccount === email) ||
         ctx.world.instances.some((i) => i.serviceAccount === email) ||
         ctx.world.instanceTemplates.some(

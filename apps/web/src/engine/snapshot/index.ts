@@ -110,6 +110,7 @@ import {
 import type { CloudRunService, GkeCluster, NodePool } from "@/engine/domains/managed-services";
 import { type MissionProgress, MissionStatuses } from "@/engine/domains/mission-progress";
 import { AlertPolicy, Dashboard, LogMetric, UptimeCheck } from "@/engine/domains/monitoring";
+import { emptyNetworkLab, networkLabDecoder } from "@/engine/domains/network-lab/model";
 import type { LogSink } from "@/engine/domains/observability";
 import { type Operation, OperationTypes } from "@/engine/domains/operation";
 import { Principal } from "@/engine/domains/principal";
@@ -178,12 +179,12 @@ import { Result } from "@/utils/Result";
  * v34 は索引・Spanner・Bigtable・Redisデータと明示的な読取/復旧履歴を持つ。
  * v35 はBigQueryの表/入力・Pub/Sub配送・処理ジョブ・Kafka・exportの教材状態を持つ。
  */
-export const SchemaVersion = 36;
+export const SchemaVersion = 37;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
 const MigratableVersions = [
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-  28, 29, 30, 31, 32, 33, 34, 35,
+  28, 29, 30, 31, 32, 33, 34, 35, 36,
 ] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
@@ -289,6 +290,8 @@ const externalIp: Decoder<ExternalIp> = (value, path) =>
 
 const networkInterface = D.object<NetworkInterface>({
   network: string,
+  networkProject: (value, path) =>
+    value === undefined ? Result.ok(undefined) : string(value, path),
   subnetwork: string,
   networkIP: string,
   externalIP: externalIp,
@@ -324,6 +327,10 @@ const network = D.object<Network>({
   projectId: string,
   name: string,
   subnetMode: D.literal(Object.values(SubnetModes)),
+  firewallPolicyOrder: (value, path) =>
+    value === undefined
+      ? Result.ok(undefined)
+      : D.literal(["BEFORE_CLASSIC_FIREWALL", "AFTER_CLASSIC_FIREWALL"] as const)(value, path),
 });
 
 const optional =
@@ -344,6 +351,7 @@ const subnet = D.object<Subnet>({
   network: string,
   ipCidrRange: string,
   privateIpGoogleAccess: D.boolean,
+  flowLogs: optional(D.boolean),
 });
 
 const protocolRule = D.object<ProtocolRule>({ protocol: string, ports: strings });
@@ -357,6 +365,9 @@ const firewallRule = D.object<FirewallRule>({
   sourceRanges: strings,
   destinationRanges: strings,
   targetTags: strings,
+  targetServiceAccounts: optional(strings),
+  sourceServiceAccounts: optional(strings),
+  logging: optional(D.boolean),
   allowed: D.array(protocolRule),
   denied: D.array(protocolRule),
   disabled: D.boolean,
@@ -1218,6 +1229,7 @@ const dnsZone = D.object<DnsManagedZone>({
   dnsName: string,
   description: string,
   visibility: D.literal(["public", "private"]),
+  networks: optional(strings),
   nameServers: strings,
   createTime: string,
 });
@@ -1282,6 +1294,7 @@ const world = D.object<World>({
   serverlessLab: labDecoder,
   relational: relationalDecoder,
   managedDatabases: managedDatabasesDecoder,
+  networkLab: networkLabDecoder,
   computeLab: computeLabDecoder,
   dataProcessing: dataProcessingDecoder,
   containerLab: D.map(ContainerLab.decoder, ContainerLab.validate),
@@ -1787,7 +1800,8 @@ const migrate = (version: number, value: unknown): unknown => {
   const v33 = version >= 33 ? v32 : migrateRelational(v32);
   const v34 = version >= 34 ? v33 : { ...v33, managedDatabases: emptyManagedDatabases() };
   const v35 = version >= 35 ? v34 : { ...v34, dataProcessing: emptyDataProcessing() };
-  return version >= 36 ? v35 : { ...v35, computeLab: emptyComputeLab() };
+  const v36 = version >= 36 ? v35 : { ...v35, computeLab: emptyComputeLab() };
+  return version >= 37 ? v36 : { ...v36, networkLab: emptyNetworkLab() };
 };
 
 export const Snapshot = {

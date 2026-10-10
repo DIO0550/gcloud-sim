@@ -112,7 +112,10 @@ import {
   validateManagedDatabases,
 } from "@/engine/domains/managed-databases/model";
 
+import { type NetworkLab, validateNetworkLab } from "@/engine/domains/network-lab/model";
+
 export type World = Readonly<{
+  networkLab: NetworkLab;
   computeLab: ComputeLab;
   dataProcessing: DataProcessing;
   managedDatabases: ManagedDatabases;
@@ -873,7 +876,19 @@ export const World = {
   },
 
   withoutInstance(world: World, instance: Instance): World {
-    return { ...world, instances: world.instances.filter((i) => !sameInstance(i, instance)) };
+    return {
+      ...world,
+      instances: world.instances.filter((i) => !sameInstance(i, instance)),
+      networkLab: {
+        ...world.networkLab,
+        secureTags: world.networkLab.secureTags.filter(
+          (t) =>
+            t.projectId !== instance.projectId ||
+            t.zone !== instance.zone ||
+            t.instance !== instance.name,
+        ),
+      },
+    };
   },
 
   networksOf(world: World, projectId: string): readonly Network[] {
@@ -1567,6 +1582,10 @@ export const World = {
    * @returns 満たしていれば同じ World。満たさなければ最初に見つけた違反
    */
   validate(world: World): Result<World, string> {
+    const networking = validateNetworkLab(world);
+    if (!networking.ok) {
+      return networking;
+    }
     const compute = validateComputeLab(world);
     if (!compute.ok) {
       return compute;

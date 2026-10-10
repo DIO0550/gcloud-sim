@@ -9,6 +9,7 @@ export type DnsManagedZone = Readonly<{
   description: string;
   visibility: "public" | "private";
   nameServers: readonly string[];
+  networks?: readonly string[];
   createTime: string;
 }>;
 
@@ -43,6 +44,7 @@ export const DnsManagedZone = {
       dnsName: zone.dnsName,
       description: zone.description,
       visibility: zone.visibility,
+      privateVisibilityConfig: { networks: zone.networks ?? [] },
       nameServers: zone.visibility === "public" ? [...zone.nameServers] : [],
       creationTime: zone.createTime,
     };

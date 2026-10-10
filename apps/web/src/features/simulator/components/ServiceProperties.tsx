@@ -742,6 +742,7 @@ export const DnsZoneProperties = ({
         { label: "dnsName", value: z.dnsName },
         { label: "description", value: z.description || Absent },
         { label: "visibility", value: z.visibility },
+        { label: "networks", value: (z.networks ?? []).join(", ") },
         { label: "nameServers", value: joined(z.nameServers) },
         { label: "createTime", value: z.createTime },
       ]}

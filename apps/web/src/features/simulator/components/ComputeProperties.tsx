@@ -320,6 +320,10 @@ export const NetworkProperties = ({
         rows={[
           { label: "name", value: network.value.name },
           { label: "subnetMode", value: network.value.subnetMode },
+          {
+            label: "firewallPolicyOrder",
+            value: network.value.firewallPolicyOrder ?? "AFTER_CLASSIC_FIREWALL",
+          },
         ]}
       />
       <Section
@@ -352,6 +356,7 @@ export const SubnetProperties = ({ world, selection }: SelectionProps<"subnet">)
         { label: "network", value: s.network },
         { label: "ipCidrRange", value: s.ipCidrRange },
         { label: "privateIpGoogleAccess", value: String(s.privateIpGoogleAccess) },
+        { label: "flowLogs", value: String(s.flowLogs ?? false) },
         { label: "purpose / role", value: `${s.purpose ?? "PRIVATE"} ${s.role ?? ""}` },
         { label: "instances", value: joined(instances.map((i) => i.name)) },
       ]}
@@ -374,6 +379,9 @@ export const FirewallProperties = ({
         { label: "direction", value: r.direction },
         { label: "priority", value: String(r.priority) },
         { label: "sourceRanges", value: r.sourceRanges.join(", ") || Absent },
+        { label: "targetServiceAccounts", value: (r.targetServiceAccounts ?? []).join(", ") },
+        { label: "sourceServiceAccounts", value: (r.sourceServiceAccounts ?? []).join(", ") },
+        { label: "logging", value: String(r.logging ?? false) },
         { label: "targetTags", value: r.targetTags.join(", ") || "(すべてのインスタンス)" },
         { label: "allow", value: protocolText(r.allowed) },
         { label: "deny", value: protocolText(r.denied) },
