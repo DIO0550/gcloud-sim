@@ -23,6 +23,9 @@ export const LogNames = {
   Activity: "cloudaudit.googleapis.com/activity",
   DataAccess: "cloudaudit.googleapis.com/data_access",
   SystemEvent: "cloudaudit.googleapis.com/system_event",
+  PolicyDenied: "cloudaudit.googleapis.com/policy",
+  Flow: "compute.googleapis.com/vpc_flows",
+  Firewall: "compute.googleapis.com/firewall",
 } as const;
 
 export const LogEntry = {

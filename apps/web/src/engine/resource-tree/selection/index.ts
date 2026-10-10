@@ -2,11 +2,18 @@ import type { AdminLab } from "@/engine/domains/admin-lab/model";
 import { Region, Zone } from "@/engine/domains/catalog";
 import { LbScope } from "@/engine/domains/load-balancing";
 import type { LbResource } from "@/engine/domains/load-balancing/graph";
+import type { ObserveCollection } from "@/engine/domains/observability-lab/resources";
 import type { PolicyTarget } from "@/engine/domains/resource-hierarchy";
 import { Option } from "@/utils/Option";
 
 /** ツリーで選べるもの。プロパティパネルはこれを見て World から中身を引く。 */
 export type TreeSelection =
+  | Readonly<{
+      kind: "observability-lab";
+      projectId: string;
+      collection: ObserveCollection;
+      name: string;
+    }>
   | Readonly<{ kind: "admin-lab"; scope: string; collection: keyof AdminLab; name: string }>
   | Readonly<{
       kind: "storage-lab";
@@ -259,6 +266,8 @@ export const TreeSelection = {
   /** ツリーのノード id にもなる一意なキー。 */
   key(selection: TreeSelection): string {
     switch (selection.kind) {
+      case "observability-lab":
+        return `observe:${selection.projectId}/${selection.collection}/${selection.name}`;
       case "admin-lab":
         return `admin-lab:${selection.scope}/${selection.collection}/${selection.name}`;
       case "storage-lab":
@@ -383,6 +392,10 @@ export const TreeSelection = {
    */
   describeCommand(selection: TreeSelection): Option<string> {
     switch (selection.kind) {
+      case "observability-lab":
+        return Option.some(
+          `sim monitoring resources describe ${selection.name} --collection=${selection.collection} --project=${selection.projectId}`,
+        );
       case "admin-lab": {
         const [scope, id] = selection.scope.split("/");
         const flag = { projects: "project", folders: "folder", organizations: "organization" }[

@@ -48,6 +48,14 @@ import {
 } from "@/engine/commands/network-lab";
 import { NotImplementedCommands } from "@/engine/commands/not-implemented";
 import { LoggingCommands } from "@/engine/commands/observability";
+import { ObserveBucketCommands } from "@/engine/commands/observability-lab/buckets";
+import { ObserveChannelCommands } from "@/engine/commands/observability-lab/channels";
+import { ObserveCollectorCommands } from "@/engine/commands/observability-lab/collectors";
+import { ObserveLifecycleCommands } from "@/engine/commands/observability-lab/lifecycle";
+import { ObserveLogCommands } from "@/engine/commands/observability-lab/logs";
+import { ObserveMetricCommands } from "@/engine/commands/observability-lab/metrics";
+import { ObservePolicyCommands } from "@/engine/commands/observability-lab/policies";
+import { ObserveUpdateCommands } from "@/engine/commands/observability-lab/updates";
 import {
   AlloyCommands,
   ConnectCommands,
@@ -82,6 +90,7 @@ import { StorageKeyCommands } from "@/engine/commands/storage-lab/keys";
 import { ObjectStorageCommands } from "@/engine/commands/storage-lab/objects";
 import { StorageTransferCommands } from "@/engine/commands/storage-lab/transfers";
 import { TerraformCommands } from "@/engine/commands/terraform";
+import { ObserveResourceCommands } from "./observability-lab/resources";
 
 const implemented: readonly CommandSpec[] = [
   ...DiskLabCommands,
@@ -150,6 +159,15 @@ const implemented: readonly CommandSpec[] = [
   ...SpannerCommands,
   ...PubsubCommands,
   ...LoggingCommands,
+  ...ObserveChannelCommands,
+  ...ObserveMetricCommands,
+  ...ObservePolicyCommands,
+  ...ObserveUpdateCommands,
+  ...ObserveBucketCommands,
+  ...ObserveLogCommands,
+  ...ObserveCollectorCommands,
+  ...ObserveLifecycleCommands,
+  ...ObserveResourceCommands,
   ...LogMetricCommands,
   ...MonitoringResourceCommands,
   ...KmsCommands,

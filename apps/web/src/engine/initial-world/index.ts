@@ -252,6 +252,7 @@ export const InitialWorld = {
       serviceAccounts,
       instances: [],
       terraform: TerraformState.empty(),
+      observabilityLab: emptyObservabilityLab(),
       containerLab: ContainerLab.empty(),
       networks: [dev.network, prod.network],
       subnets: [...dev.subnets, ...prod.subnets],
@@ -272,4 +273,5 @@ export const InitialWorld = {
   },
 } as const;
 
+import { emptyObservabilityLab } from "@/engine/domains/observability-lab/model";
 import { TerraformState } from "@/engine/domains/terraform";

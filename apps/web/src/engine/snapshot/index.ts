@@ -113,6 +113,10 @@ import { type MissionProgress, MissionStatuses } from "@/engine/domains/mission-
 import { AlertPolicy, Dashboard, LogMetric, UptimeCheck } from "@/engine/domains/monitoring";
 import { emptyNetworkLab, networkLabDecoder } from "@/engine/domains/network-lab/model";
 import type { LogSink } from "@/engine/domains/observability";
+import {
+  emptyObservabilityLab,
+  observabilityLabDecoder,
+} from "@/engine/domains/observability-lab/model";
 import { type Operation, OperationTypes } from "@/engine/domains/operation";
 import { Principal } from "@/engine/domains/principal";
 import { migrateRelational, relationalDecoder } from "@/engine/domains/relational/model";
@@ -181,12 +185,12 @@ import { Result } from "@/utils/Result";
  * v34 は索引・Spanner・Bigtable・Redisデータと明示的な読取/復旧履歴を持つ。
  * v35 はBigQueryの表/入力・Pub/Sub配送・処理ジョブ・Kafka・exportの教材状態を持つ。
  */
-export const SchemaVersion = 40;
+export const SchemaVersion = 41;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
 const MigratableVersions = [
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-  28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+  28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
 ] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
@@ -1304,6 +1308,7 @@ const world = D.object<World>({
   adminLab: adminLabDecoder,
   computeLab: computeLabDecoder,
   dataProcessing: dataProcessingDecoder,
+  observabilityLab: observabilityLabDecoder,
   containerLab: D.map(ContainerLab.decoder, ContainerLab.validate),
   terraform: D.map(TerraformState.decoder, TerraformState.validate),
   networks: D.array(network),
@@ -1848,10 +1853,14 @@ const migrate = (version: number, value: unknown): unknown => {
     return previous;
   }
   const admin = version < 39 ? { ...previous, adminLab: emptyAdminLab() } : previous;
-  if (version >= 40 || !isRecord(admin.containerLab)) {
-    return admin;
+  const release =
+    version < 40 && isRecord(admin.containerLab)
+      ? { ...admin, containerLab: { ...admin.containerLab, releases: [] } }
+      : admin;
+  if (version >= 41) {
+    return release;
   }
-  return { ...admin, containerLab: { ...admin.containerLab, releases: [] } };
+  return { ...release, observabilityLab: emptyObservabilityLab() };
 };
 
 export const Snapshot = {
