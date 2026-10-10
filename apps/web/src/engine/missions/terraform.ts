@@ -260,7 +260,9 @@ export const terraformSatisfied = (world: World, assertion: TerraformAssertion):
   if (expected.type === "google_compute_network")
     return world.networks.some(
       (n) =>
-        n.projectId === expected.project && n.name === expected.name && n.subnetMode === "CUSTOM",
+        n.projectId === expected.project &&
+        n.name === expected.name &&
+        n.subnetMode === (expected.autoMode ? "AUTO" : "CUSTOM"),
     );
   if (expected.type !== "google_compute_subnetwork") {
     try {

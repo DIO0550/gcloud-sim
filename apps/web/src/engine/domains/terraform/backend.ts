@@ -9,6 +9,7 @@ export type TfGcsBackend = Readonly<{ kind: "gcs"; bucket: string; prefix: strin
 export type TfBackendConfig = Readonly<{ kind: "local" }> | TfGcsBackend;
 export type TfStateData = Readonly<{
   serial: number;
+  sensitiveOutputs: readonly string[];
   resources: readonly TfResource[];
   outputs: Readonly<Record<string, string>>;
 }>;
@@ -45,6 +46,7 @@ const config: Decoder<TfBackendConfig> = (value, path) => {
 };
 const data = D.object<TfStateData>({
   serial: D.number,
+  sensitiveOutputs: D.array(D.string),
   resources: D.array(TfResources.decoder),
   outputs: D.record(D.string),
 });
@@ -86,6 +88,7 @@ export const TfBackend = {
     remotes: [],
     migration: Option.none,
   }),
+  dataDecoder: data,
   decoder: D.object<TfBackendState>({
     config,
     revision: D.number,
@@ -132,7 +135,12 @@ export const TfBackend = {
     return `${c.prefix ? `${c.prefix}/` : ""}default.${lock ? "tflock" : "tfstate"}`;
   },
   data(state: TfStateData): TfStateData {
-    return { serial: state.serial, resources: state.resources, outputs: state.outputs };
+    return {
+      serial: state.serial,
+      sensitiveOutputs: state.sensitiveOutputs,
+      resources: state.resources,
+      outputs: state.outputs,
+    };
   },
   validate(state: TfBackendState): void {
     validateConfig(state.config);

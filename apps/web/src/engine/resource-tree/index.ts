@@ -29,6 +29,7 @@ export const ResourceGroups = {
   Artifacts: "artifacts",
   Builds: "builds",
   LocalDocker: "local-docker",
+  Terraform: "terraform",
   Disks: "disks",
   InstanceGroups: "instance-groups",
   LoadBalancing: "load-balancing",
@@ -961,7 +962,24 @@ export const TreeNode = {
         ),
       ),
     ]);
-    return [organization, ...billing, ...localDocker];
+    const terraform = group("local", ResourceGroups.Terraform, [
+      ...(world.terraform.initialized || Object.keys(world.terraform.files).length
+        ? [leaf({ kind: "terraform", collection: "workspace", name: "作業領域" }, "作業領域")]
+        : []),
+      ...Object.keys(world.terraform.files)
+        .sort()
+        .map((name) => leaf({ kind: "terraform", collection: "files", name }, `File: ${name}`)),
+      ...world.terraform.resources.map((r) =>
+        leaf(
+          { kind: "terraform", collection: "resources", name: r.address },
+          `State: ${r.address}`,
+        ),
+      ),
+      ...Object.keys(world.terraform.plans)
+        .sort()
+        .map((name) => leaf({ kind: "terraform", collection: "plans", name }, `Plan: ${name}`)),
+    ]);
+    return [organization, ...billing, ...localDocker, ...terraform];
   },
 } as const;
 

@@ -217,7 +217,7 @@ test("refresh-only observes module output values without changing cloud resource
 });
 
 test.each([
-  ['module "x" { source = "hashicorp/network/google" }', {}, "Only local"],
+  ['module "x" { source = "hashicorp/network/google" }', {}, "offline teaching catalog"],
   ['module "x" { source = "../outside" }', {}, "escapes"],
   ['module "x" { source = "./absent" }', {}, "no .tf"],
   ['module "x" { source = "./" }', {}, "Invalid local"],
@@ -233,17 +233,17 @@ test.each([
     { "x/main.tf": child },
     "Undeclared variable",
   ],
-  ['module "x" { source = "./x" count = 2 }', { "x/main.tf": "" }, "meta-argument"],
+  ['module "x" { source = "./x" count = 2.5 }', { "x/main.tf": "" }, "count must be"],
   ['module "x" { source = "./x" }', { "x/main.tf": provider }, "Child provider"],
   [
     'module "x" { source = "./x" } output "bad" { value = module.x.absent }',
     { "x/main.tf": "" },
-    "Unknown module output",
+    "Unknown attribute or key",
   ],
   [
     'module "x" { source = "./x" } output "bad" { value = module.x.constructor }',
     { "x/main.tf": "" },
-    "Unknown module output",
+    "Unsupported identifier",
   ],
   ['module "x" { source = "./x" name = module.x.id }', { "x/main.tf": child }, "Dependency cycle"],
   [

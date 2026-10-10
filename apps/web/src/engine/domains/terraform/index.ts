@@ -9,6 +9,8 @@ export type { TfResource } from "@/engine/domains/terraform/resources";
 export type TfChange = Readonly<{ action: "create" | "update" | "delete"; resource: TfResource }>;
 export type TfPlan = Readonly<{
   backendRevision: number;
+  sensitiveOutputs: readonly string[];
+  dependencies: Readonly<Record<string, readonly string[]>>;
   moves: readonly TfMove[];
   serial: number;
   mode: "normal" | "destroy" | "refresh-only";
@@ -20,6 +22,9 @@ export type TfPlan = Readonly<{
 }>;
 export type TerraformState = Readonly<{
   backend: TfBackendState;
+  providerVersion: string;
+  sensitiveOutputs: readonly string[];
+  events: readonly Readonly<{ kind: "vet" | "restore"; serial: number; detail: string }>[];
   files: Readonly<Record<string, string>>;
   initialized: boolean;
   serial: number;
@@ -30,6 +35,8 @@ export type TerraformState = Readonly<{
 const resource = TfResources.decoder;
 const plan = D.object<TfPlan>({
   backendRevision: D.number,
+  sensitiveOutputs: D.array(D.string),
+  dependencies: D.record(D.array(D.string)),
   moves: D.array(D.object<TfMove>({ from: D.string, to: D.string })),
   serial: D.number,
   mode: D.literal(["normal", "destroy", "refresh-only"]),
@@ -46,6 +53,9 @@ const plan = D.object<TfPlan>({
 export const TerraformState = {
   empty: (): TerraformState => ({
     backend: TfBackend.empty(),
+    providerVersion: "",
+    sensitiveOutputs: [],
+    events: [],
     files: {},
     initialized: false,
     serial: 0,
@@ -55,6 +65,11 @@ export const TerraformState = {
   }),
   decoder: D.object<TerraformState>({
     backend: TfBackend.decoder,
+    providerVersion: D.string,
+    sensitiveOutputs: D.array(D.string),
+    events: D.array(
+      D.object({ kind: D.literal(["vet", "restore"]), serial: D.number, detail: D.string }),
+    ),
     files: D.record(D.string),
     initialized: D.boolean,
     serial: D.number,
@@ -62,9 +77,31 @@ export const TerraformState = {
     outputs: D.record(D.string),
     plans: D.record(plan),
   }),
+  planDecoder: plan,
   id: TfResources.id,
   record: TfResources.record,
   validate(state: TerraformState): Result<TerraformState, string> {
+    if (state.providerVersion && !["4.84.0", "5.45.0", "6.0.0"].includes(state.providerVersion)) {
+      return Result.err("Invalid simulated provider version.");
+    }
+    if (
+      state.sensitiveOutputs.length > 100 ||
+      state.sensitiveOutputs.some((k) => !Object.hasOwn(state.outputs, k))
+    ) {
+      return Result.err("Invalid sensitive output names.");
+    }
+    if (
+      state.events.length > 32 ||
+      state.events.some(
+        (e) =>
+          !Number.isSafeInteger(e.serial) ||
+          e.serial < 0 ||
+          e.serial > state.serial ||
+          e.detail.length > 64000,
+      )
+    ) {
+      return Result.err("Invalid Terraform exercise history.");
+    }
     const safe = (name: string): boolean =>
       /^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/.test(name) &&
       !["constructor", "prototype", "__proto__"].includes(name);
@@ -82,6 +119,20 @@ export const TerraformState = {
       Object.keys(state.plans).some((name) => !safe(name) || Object.hasOwn(state.files, name))
     )
       return Result.err("Invalid saved plan name or limits.");
+    const outputsValid = (
+      outputs: Readonly<Record<string, string>>,
+      sensitive: readonly string[],
+    ): boolean =>
+      Object.keys(outputs).length <= 100 &&
+      Object.entries(outputs).every(
+        ([key, value]) => TfStructure.identifier(key) && value.length <= 64000,
+      ) &&
+      sensitive.length <= 100 &&
+      new Set(sensitive).size === sensitive.length &&
+      sensitive.every((key) => Object.hasOwn(outputs, key));
+    if (!outputsValid(state.outputs, state.sensitiveOutputs)) {
+      return Result.err("Invalid Terraform outputs or sensitive names.");
+    }
     const resourcesValid = (rs: readonly TfResource[]): boolean =>
       rs.length <= 100 &&
       new Set(rs.map((r) => r.address)).size === rs.length &&
@@ -108,7 +159,8 @@ export const TerraformState = {
         if (
           !Number.isSafeInteger(saved.serial) ||
           saved.serial < 0 ||
-          !resourcesValid(saved.resources)
+          !resourcesValid(saved.resources) ||
+          !outputsValid(saved.outputs, saved.sensitiveOutputs)
         )
           throw new Error("Invalid remote state data.");
         for (const r of saved.resources) TfResources.validate(r);
@@ -137,7 +189,16 @@ export const TerraformState = {
           p.serial > state.serial ||
           !resourcesValid(p.before) ||
           !resourcesValid(p.after) ||
-          p.changes.length > 200,
+          p.changes.length > 200 ||
+          p.drift.length > 200 ||
+          !outputsValid(p.outputs, p.sensitiveOutputs) ||
+          Object.keys(p.dependencies).length > 100 ||
+          Object.entries(p.dependencies).some(
+            ([address, dependencies]) =>
+              !TfStructure.resourceType(address) ||
+              dependencies.length > 100 ||
+              dependencies.some((dependency) => !TfStructure.resourceType(dependency)),
+          ),
       )
     )
       return Result.err("Invalid saved Terraform plan.");

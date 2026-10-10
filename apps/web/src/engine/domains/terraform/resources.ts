@@ -18,6 +18,7 @@ export type TfNetwork = Identity &
     network: string;
     cidr: string;
     privateAccess: boolean;
+    autoMode?: boolean;
   }> &
   (Readonly<{ type: "google_compute_network" }> | Readonly<{ type: "google_compute_subnetwork" }>);
 export type TfInstance = Identity &
@@ -62,7 +63,7 @@ export type TfBucket = Identity &
   }>;
 export type TfResource = TfNetwork | TfInstance | TfFirewall | TfBucket;
 const identity = { address: D.string, project: D.string, name: D.string };
-const network = D.object<
+const networkBase = D.object<
   Identity &
     Readonly<{
       type: "google_compute_network" | "google_compute_subnetwork";
@@ -79,6 +80,21 @@ const network = D.object<
   cidr: D.string,
   privateAccess: D.boolean,
 });
+const network: Decoder<TfNetwork> = (value, path) =>
+  Result.flatMap(networkBase(value, path), (resource) => {
+    if (typeof value !== "object" || value === null || !("autoMode" in value)) {
+      return Result.ok(resource);
+    }
+    return Result.flatMap(D.boolean(value.autoMode, `${path}.autoMode`), (autoMode) => {
+      if (resource.type !== "google_compute_network" && autoMode) {
+        return Result.err("Only networks can use auto subnet mode.");
+      }
+      if (autoMode) {
+        return Result.ok({ ...resource, autoMode });
+      }
+      return Result.ok(resource);
+    });
+  });
 const instance = D.object<TfInstance>({
   ...identity,
   type: D.literal(["google_compute_instance"]),
@@ -279,7 +295,8 @@ export const TfResources = {
         service_account: { email: r.serviceAccount, scopes: r.scopes },
         allow_stopping_for_update: r.allowStopping,
       };
-    if (r.type === "google_compute_network") return { ...base, auto_create_subnetworks: false };
+    if (r.type === "google_compute_network")
+      return { ...base, auto_create_subnetworks: r.autoMode === true };
     return {
       ...base,
       region: r.region,

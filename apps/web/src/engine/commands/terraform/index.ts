@@ -11,6 +11,7 @@ import {
 } from "@/engine/cli/command-spec";
 import { plainCommand } from "@/engine/commands/shared";
 import { storageNow } from "@/engine/commands/storage-lab/runtime";
+import { TerraformVariableFlags, terraformOptions } from "@/engine/commands/terraform/arguments";
 import { TerraformExamples } from "@/engine/commands/terraform/examples";
 import { KubeManifest, KubeManifestExamples } from "@/engine/domains/kube-manifest";
 import { TerraformState, type TfPlan } from "@/engine/domains/terraform";
@@ -97,7 +98,12 @@ const planMode = (args: ParsedArgs, destroy = false): TfPlan["mode"] => {
 const savedPlan = (world: World, args: ParsedArgs): TfPlan | undefined => {
   const name = args.positionals[0];
   if (name === undefined) return undefined;
-  if (ParsedArgs.has(args, "destroy") || ParsedArgs.has(args, "refresh-only"))
+  if (
+    ParsedArgs.has(args, "destroy") ||
+    ParsedArgs.has(args, "refresh-only") ||
+    ParsedArgs.has(args, "var") ||
+    ParsedArgs.has(args, "var-file")
+  )
     fail("Planning options cannot be used with a saved plan.");
   return world.terraform.plans[fileName(name)] ?? fail(`Saved plan not found: ${name}`);
 };
@@ -112,6 +118,7 @@ const applyCommand = (destroy: boolean): CommandSpec => ({
     : [Positional.optional("PLAN", "Saved plan file.", (w) => Object.keys(w.terraform.plans))],
   flags: [
     ...modeFlags,
+    ...TerraformVariableFlags,
     Flag.boolean("auto-approve", "Skip interactive approval.", { aliases: ["-auto-approve"] }),
   ],
   destructive: false,
@@ -119,14 +126,19 @@ const applyCommand = (destroy: boolean): CommandSpec => ({
     skip: (args) =>
       ParsedArgs.boolean(args, "auto-approve") || (!destroy && args.positionals.length > 0),
     preview: guarded((ctx, args) =>
-      ok(ctx.world, TfRuntime.summary(TfRuntime.plan(ctx.world, planMode(args, destroy)))),
+      ok(
+        ctx.world,
+        TfRuntime.summary(
+          TfRuntime.plan(ctx.world, planMode(args, destroy), terraformOptions(ctx.world, args)),
+        ),
+      ),
     ),
   },
   run: guarded((ctx, args) => {
     requireInit(ctx.world);
     const plan =
       (!destroy && savedPlan(ctx.world, args)) ||
-      TfRuntime.plan(ctx.world, planMode(args, destroy));
+      TfRuntime.plan(ctx.world, planMode(args, destroy), terraformOptions(ctx.world, args));
     return ok(
       TfRuntime.apply(ctx.world, plan, ctx.now),
       `${TfRuntime.summary(plan)}\nApply complete (simulated).`,
@@ -240,9 +252,12 @@ export const TerraformCommands: readonly CommandSpec[] = [
   {
     kind: "plain",
     path: ["terraform", "init"],
-    summary: "Initialize a local or GCS backend, optionally migrating state.",
+    summary: "Initialize a backend and the offline Google provider lock; optionally migrate state.",
     positionals: [],
     flags: [
+      Flag.boolean("upgrade", "Select a compatible version from the offline provider catalog.", {
+        aliases: ["-upgrade"],
+      }),
       Flag.boolean("migrate-state", "Copy existing state after changing backend.", {
         aliases: ["-migrate-state"],
       }),
@@ -264,13 +279,30 @@ export const TerraformCommands: readonly CommandSpec[] = [
       }),
     },
     run: guarded((ctx, args) => {
-      TfConfiguration.compile(ctx.world.terraform.files);
+      const config = TfConfiguration.compile(ctx.world.terraform.files, [], {
+        providerVersion: ParsedArgs.boolean(args, "upgrade")
+          ? undefined
+          : ctx.world.terraform.providerVersion || undefined,
+      });
       const result = TfBackendRuntime.initialize(
         ctx.world,
         ParsedArgs.boolean(args, "migrate-state") || ParsedArgs.boolean(args, "force-copy"),
         ctx.now,
       );
-      return ok(result.world, result.message);
+      const lockedWorld = withVirtualFiles(result.world, {
+        ...virtualFiles(result.world),
+        ".terraform.lock.hcl": `# Offline teaching lock; no provider binary or checksums.\nprovider "registry.terraform.io/hashicorp/google" { version = "${config.providerVersion}" }\n`,
+      });
+      return ok(
+        {
+          ...lockedWorld,
+          terraform: {
+            ...lockedWorld.terraform,
+            providerVersion: config.providerVersion,
+          },
+        },
+        `${result.message}\nGoogle provider ${config.providerVersion} selected from the offline teaching catalog.`,
+      );
     }),
   },
   plainCommand({
@@ -321,7 +353,11 @@ export const TerraformCommands: readonly CommandSpec[] = [
       TfBackendRuntime.check(ctx.world);
       return ok(
         ctx.world,
-        JSON.stringify({ version: 4, ...TfBackend.data(ctx.world.terraform) }, null, 2),
+        JSON.stringify(
+          { simulator: "gcloud-sim", version: 4, ...TfBackend.data(ctx.world.terraform) },
+          null,
+          2,
+        ),
       );
     }),
   }),
@@ -330,7 +366,9 @@ export const TerraformCommands: readonly CommandSpec[] = [
     summary: "Validate the supported HCL subset and configured variable values.",
     run: guarded((ctx) => {
       requireInit(ctx.world);
-      TfConfiguration.compile(ctx.world.terraform.files);
+      TfConfiguration.compile(ctx.world.terraform.files, [], {
+        providerVersion: ctx.world.terraform.providerVersion || undefined,
+      });
       return ok(ctx.world, "Success! The configuration is valid for the simulator subset.");
     }),
   }),
@@ -347,7 +385,8 @@ export const TerraformCommands: readonly CommandSpec[] = [
       const files = Object.fromEntries(
         Object.entries(ctx.world.terraform.files).map(([name, text]) => [
           name,
-          name.includes("/") && !ParsedArgs.boolean(args, "recursive")
+          (!name.endsWith(".tf") && !name.endsWith(".tfvars")) ||
+          (name.includes("/") && !ParsedArgs.boolean(args, "recursive"))
             ? text
             : Hcl.format(Hcl.parse(text)),
         ]),
@@ -370,10 +409,11 @@ export const TerraformCommands: readonly CommandSpec[] = [
     summary: "Preview changes without mutating cloud resources or managed state.",
     flags: [
       ...modeFlags,
+      ...TerraformVariableFlags,
       Flag.string("out", "Save the plan under this name.", { aliases: ["-out"] }),
     ],
     run: guarded((ctx, args) => {
-      const plan = TfRuntime.plan(ctx.world, planMode(args));
+      const plan = TfRuntime.plan(ctx.world, planMode(args), terraformOptions(ctx.world, args));
       const out = ParsedArgs.string(args, "out");
       if (!Option.isSome(out)) return ok(ctx.world, TfRuntime.summary(plan));
       const name = fileName(out.value);
@@ -400,19 +440,46 @@ export const TerraformCommands: readonly CommandSpec[] = [
   applyCommand(true),
   plainCommand({
     path: ["terraform", "show"],
-    summary: "Show a saved plan or current Terraform state.",
+    summary: "Show a saved plan or state; -json exposes the raw simulator data.",
+    flags: [
+      Flag.boolean("json", "Emit JSON including raw sensitive values (simulator schema).", {
+        aliases: ["-json"],
+      }),
+    ],
     positionals: [
       Positional.optional("PLAN", "Saved plan.", (w) => Object.keys(w.terraform.plans)),
     ],
     run: guarded((ctx, args) => {
       const plan = savedPlan(ctx.world, args);
       if (!plan) TfBackendRuntime.check(ctx.world);
+      if (ParsedArgs.boolean(args, "json")) {
+        return ok(
+          ctx.world,
+          JSON.stringify(
+            {
+              simulator: "gcloud-sim",
+              plan: plan ?? null,
+              state: TfBackend.data(ctx.world.terraform),
+            },
+            null,
+            2,
+          ),
+        );
+      }
       return ok(
         ctx.world,
         plan
           ? TfRuntime.summary(plan)
           : JSON.stringify(
-              { resources: ctx.world.terraform.resources, outputs: ctx.world.terraform.outputs },
+              {
+                resources: ctx.world.terraform.resources,
+                outputs: Object.fromEntries(
+                  Object.entries(ctx.world.terraform.outputs).map(([k, v]) => [
+                    k,
+                    ctx.world.terraform.sensitiveOutputs.includes(k) ? "(sensitive value)" : v,
+                  ]),
+                ),
+              },
               null,
               2,
             ),
@@ -432,7 +499,16 @@ export const TerraformCommands: readonly CommandSpec[] = [
         args.positionals[0]
           ? (ctx.world.terraform.outputs[args.positionals[0]] ??
               fail("Output not found. Apply the configuration first."))
-          : JSON.stringify(ctx.world.terraform.outputs, null, 2),
+          : JSON.stringify(
+              Object.fromEntries(
+                Object.entries(ctx.world.terraform.outputs).map(([k, v]) => [
+                  k,
+                  ctx.world.terraform.sensitiveOutputs.includes(k) ? "(sensitive value)" : v,
+                ]),
+              ),
+              null,
+              2,
+            ),
       );
     }),
   }),

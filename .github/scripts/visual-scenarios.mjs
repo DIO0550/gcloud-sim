@@ -1,6 +1,7 @@
 import { ADMIN_SCENARIOS } from "./admin-scenarios.mjs";
 import { LB_SCENARIOS } from "./load-balancing-scenarios.mjs";
 import { OBSERVABILITY_SCENARIOS } from "./observability-scenarios.mjs";
+import { TERRAFORM_SCENARIOS } from "./terraform-scenarios.mjs";
 
 /**
  * 撮影する画面の一覧。
@@ -105,6 +106,7 @@ const statefulDataSteps = [
   { type: "sim kubernetes write-file pod/notes-1 --path=/data/note.txt --content=second-note" },
 ];
 export const SCENARIOS = [
+  ...TERRAFORM_SCENARIOS,
   ...OBSERVABILITY_SCENARIOS,
   {
     name: "container-release-evidence",

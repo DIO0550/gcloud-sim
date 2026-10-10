@@ -180,6 +180,11 @@ import { type ObserveAssertion, ObserveMissions, observeSatisfied } from "./obse
 import { type RelationalAssertion, RelationalMissions, relationalSatisfied } from "./relational";
 import { type ServerlessAssertion, ServerlessMissions, serverlessSatisfied } from "./serverless";
 import { type StorageAssertion, StorageMissions, storageSatisfied } from "./storage-lab";
+import {
+  type TerraformLessonAssertion,
+  TerraformLessonMissions,
+  terraformLessonSatisfied,
+} from "./terraform-lessons";
 
 /** ACE の 5 ドメイン（設計書 6.2 Mission.domain）。 */
 export const MissionDomains = {
@@ -193,6 +198,7 @@ export type MissionDomain = ValueOf<typeof MissionDomains>;
 
 /** World に対する述語（DJ-010: コマンド文字列ではなく状態で判定する）。値の語彙はドメインの型で閉じる。 */
 export type MissionAssertion =
+  | TerraformLessonAssertion
   | ObserveAssertion
   | AdminAssertion
   | StorageAssertion
@@ -370,6 +376,7 @@ const Missions: readonly Mission[] = [
   ...ObserveMissions,
   ...ObservabilityMissions,
   ...TerraformMissions,
+  ...TerraformLessonMissions,
   ...ContainerMissions,
   ...BuildMissions,
   ...ContainerReleaseMissions,
@@ -956,6 +963,8 @@ const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
     case "localContainerReady":
     case "artifactPublished":
       return containerSatisfied(world, assertion);
+    case "terraformLesson":
+      return terraformLessonSatisfied(world, assertion);
     case "terraformManaged":
     case "terraformMoved":
     case "terraformDestroyed":

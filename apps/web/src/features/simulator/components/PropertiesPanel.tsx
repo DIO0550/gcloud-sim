@@ -70,6 +70,7 @@ import { RelationalProperties } from "./RelationalProperties";
 import { ServerlessProperties } from "./ServerlessProperties";
 import { StatefulSetProperties } from "./StatefulSetProperties";
 import { StorageLabProperties } from "./StorageLabProperties";
+import { TerraformProperties } from "./TerraformProperties";
 
 type PropertiesPanelProps = Readonly<{
   world: World;
@@ -84,6 +85,8 @@ const Body = ({
   selection,
 }: Readonly<{ world: World; selection: TreeSelection }>): ReactElement => {
   switch (selection.kind) {
+    case "terraform":
+      return <TerraformProperties world={world} selection={selection} />;
     case "organization":
       return <OrganizationProperties world={world} selection={selection} />;
     case "folder":
@@ -204,6 +207,8 @@ const Body = ({
 /** 見出し。名前を持つものは名前、持たないものは種別の綴り。 */
 const titleOf = (selection: TreeSelection): string => {
   switch (selection.kind) {
+    case "terraform":
+      return selection.name;
     case "observability-lab":
     case "admin-lab":
     case "storage-lab":
@@ -278,6 +283,8 @@ const titleOf = (selection: TreeSelection): string => {
 /** 見出しの下に出す API の種別（`compute#instance` の形）と置き場。 */
 const kindLabel = (selection: TreeSelection): string => {
   switch (selection.kind) {
+    case "terraform":
+      return `Terraform · ${selection.collection}`;
     case "observability-lab":
       return `${selection.collection} · projects/${selection.projectId}`;
     case "admin-lab":

@@ -180,7 +180,11 @@ export const TfResourceConfiguration = {
       machineType: text(attr("machine_type"), "machine_type"),
       network: reference(text(evaluate(nic.attributes.network), "network"), project, "networks"),
       subnet: reference(
-        text(evaluate(nic.attributes.subnetwork), "subnetwork"),
+        text(
+          evaluate(nic.attributes.subnetwork) ??
+            reference(text(evaluate(nic.attributes.network), "network"), project, "networks"),
+          "subnetwork",
+        ),
         project,
         "subnetworks",
         zone.slice(0, -2),
