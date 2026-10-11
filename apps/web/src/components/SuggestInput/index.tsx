@@ -5,6 +5,10 @@ export type Suggestion = Readonly<{ value: string; description: string }>;
 
 type SuggestInputProps = Readonly<{
   id?: string;
+  ariaLabel?: string;
+  placeholder?: string;
+  /** 候補を確定したときだけ呼ぶ（入力中は呼ばない）。 */
+  onSelect?: (value: string) => void;
   value: string;
   suggestions: readonly Suggestion[];
   onChange: (value: string) => void;
@@ -29,6 +33,9 @@ const matches = (suggestions: readonly Suggestion[], text: string): readonly Sug
  */
 export const SuggestInput = ({
   id,
+  ariaLabel,
+  placeholder,
+  onSelect,
   value,
   suggestions,
   onChange,
@@ -52,6 +59,7 @@ export const SuggestInput = ({
 
   const choose = (suggestion: Suggestion): void => {
     onChange(suggestion.value);
+    onSelect?.(suggestion.value);
     setOpen(false);
     setActive(undefined);
   };
@@ -89,6 +97,8 @@ export const SuggestInput = ({
     <div className="relative">
       <input
         id={id}
+        aria-label={ariaLabel}
+        placeholder={placeholder}
         role="combobox"
         aria-autocomplete="list"
         aria-expanded={isOpen}

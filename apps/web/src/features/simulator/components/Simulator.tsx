@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactElement, useCallback, useEffect } from "react";
+import { type CSSProperties, type ReactElement, useCallback, useEffect, useState } from "react";
 import { Tab } from "@/components/Tab";
 import { TextButton } from "@/components/TextButton";
 import { Engine } from "@/engine";
@@ -15,6 +15,11 @@ import { ResourceTree } from "@/features/simulator/components/ResourceTree";
 import { SettingsDialog } from "@/features/simulator/components/SettingsDialog";
 import { Terminal } from "@/features/simulator/components/Terminal";
 import { type ConsoleHandlers, ConsoleView } from "@/features/simulator/features/console";
+import {
+  ConsoleScreen,
+  ConsoleScreens,
+  ConsoleSections,
+} from "@/features/simulator/features/console/domains/console-screen";
 import {
   type PanelTab,
   PanelTabs,
@@ -57,6 +62,8 @@ const Tabs: readonly Readonly<{ tab: PanelTab; label: (missions: string) => stri
 /** CLI 画面全体（モック 2a）: ヘッダー / リソース階層 / ターミナル / 右ペイン / 設定。 */
 export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
   const [state, dispatch] = useSimulator(start);
+  const [navigationOpen, setNavigationOpen] = useState(true);
+  const [terminalMaximized, setTerminalMaximized] = useState(false);
   const { world, saveState } = state;
   const namespace = Option.flatMap(WorldOps.currentProjectId(world), (projectId) =>
     Option.flatMap(KubeContext.current(world, projectId), (cluster) =>
@@ -109,6 +116,13 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
 
   const counts = Mission.counts(world);
   const isConsole = state.view === Views.Console;
+  const isCreate = state.consoleScreen === ConsoleScreens.VmCreate;
+  const navWidth =
+    ConsoleScreen.section(state.consoleScreen) === ConsoleSections.Compute ? "14.5rem" : "16rem";
+  const consoleLayout = {
+    "--console-nav-width": navigationOpen && !isCreate ? navWidth : "0px",
+    "--console-terminal-height": terminalMaximized ? "70dvh" : "18rem",
+  } as CSSProperties;
   const copy = async (text: string): Promise<void> => {
     const copied = await io.copy(text);
     if (!Result.isOk(copied)) dispatch({ type: "copyFailed", reason: copied.error });
@@ -136,6 +150,9 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
         onTerminalToggle={() =>
           dispatch({ type: "consoleTerminalToggled", open: !state.consoleTerminalOpen })
         }
+        isNavigationOpen={navigationOpen}
+        onNavigationToggle={() => setNavigationOpen((open) => !open)}
+        onNavigate={consoleHandlers.changeScreen}
       />
       <div
         className={`grid min-h-0 flex-1 ${isConsole ? "grid-cols-[minmax(0,1fr)]" : "grid-cols-1 content-start overflow-y-auto lg:grid-cols-[17.5rem_minmax(0,1fr)_26rem] lg:content-normal lg:overflow-hidden"}`}
@@ -150,7 +167,8 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
           />
         )}
         <div
-          className={`flex min-w-0 flex-col ${isConsole ? "min-h-0" : "order-2 h-96 lg:order-none lg:h-auto lg:min-h-0"}`}
+          className={`relative flex min-w-0 flex-col ${isConsole ? "min-h-0" : "order-2 h-96 lg:order-none lg:h-auto lg:min-h-0"}`}
+          style={consoleLayout}
         >
           {isConsole && (
             <ConsoleView
@@ -158,6 +176,8 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
               screen={state.consoleScreen}
               outcome={Option.map(state.consoleOutcome, (o) => o.outcome)}
               handlers={consoleHandlers}
+              navigationOpen={navigationOpen}
+              terminalOpen={state.consoleTerminalOpen}
               onOutcomeDismiss={() => dispatch({ type: "consoleOutcomeCleared" })}
             />
           )}
@@ -165,7 +185,7 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
           <div
             className={
               isConsole
-                ? `${state.consoleTerminalOpen ? "flex" : "hidden"} h-72 shrink-0 flex-col border-line border-t`
+                ? `${state.consoleTerminalOpen ? "flex" : "hidden"} absolute right-0 bottom-0 left-0 z-20 h-[var(--console-terminal-height)] flex-col border-line border-t md:left-[var(--console-nav-width)]`
                 : "contents"
             }
           >
@@ -178,6 +198,11 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
               completionCandidates={completionCandidates}
               createView={io.createTerminalView}
               caption={terminalCaption}
+              consoleMode={isConsole}
+              projectId={Option.unwrapOr(WorldOps.currentProjectId(world), "未設定")}
+              isMaximized={terminalMaximized}
+              onMaximizeToggle={() => setTerminalMaximized((maximized) => !maximized)}
+              onClose={() => dispatch({ type: "consoleTerminalToggled", open: false })}
               status={
                 <span className={saveState.kind === "saved" ? "text-ok" : "text-danger"}>
                   {saveState.kind === "saved"
