@@ -34,6 +34,7 @@ test("画面で組織→フォルダ→プロジェクトを作成し、選択�
     within(resourceTree()).getByRole("button", { name: /フォルダ\s*Study "A"/ }),
   ).toBeInTheDocument();
 
+  await user.click(screen.getByRole("button", { name: "learning.example を折りたたむ" }));
   await user.click(screen.getByRole("button", { name: "リソースを作成" }));
   expect(screen.getByRole("combobox", { name: "作成先" })).toHaveTextContent('Study "A"');
   await user.type(screen.getByRole("textbox", { name: "名前" }), "My Project");

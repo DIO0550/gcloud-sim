@@ -174,10 +174,10 @@ const Node = ({
     Option.isSome(selection) &&
     node.children.some((child) => containsSelection(child, selection.value));
   useEffect(() => {
-    if (selectedDescendant) {
+    if (Option.isSome(selection) && selectedDescendant) {
       setOpen(true);
     }
-  }, [selectedDescendant]);
+  }, [selection, selectedDescendant]);
   const label = labelText(node.label);
   const badge = badgeText(node.badge);
   const isSelected =
