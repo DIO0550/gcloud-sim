@@ -479,6 +479,7 @@ export const VmCreateScreen = ({
         <button
           type="button"
           key={item.id}
+          aria-label={item.title}
           aria-pressed={activeSection === item.id}
           className={`min-w-40 shrink-0 border-l-2 px-5 py-4 text-left lg:w-full ${activeSection === item.id ? "border-accent bg-accent-soft text-accent" : "border-transparent hover:bg-canvas"}`}
           onClick={() => setActiveSection(item.id)}
