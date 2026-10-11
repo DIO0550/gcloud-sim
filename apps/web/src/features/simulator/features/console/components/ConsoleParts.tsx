@@ -225,27 +225,27 @@ export const CreatePage = ({
 }>): ReactElement => {
   const command = CommandPart.join(parts);
   return (
-    <div className="flex min-h-full flex-col">
-      <div className="flex min-h-14 items-center gap-4 border-line border-b px-5 py-3">
+    <div className="flex min-h-full flex-col xl:h-full xl:min-h-0">
+      <div className="flex min-h-14 shrink-0 items-center gap-4 border-line border-b px-5 py-3">
         {header}
       </div>
       <div
-        className={`grid flex-1 grid-cols-1 ${navigationOpen ? "lg:grid-cols-[13.75rem_minmax(0,1fr)] xl:grid-cols-[13.75rem_minmax(0,1fr)_26rem]" : "xl:grid-cols-[minmax(0,1fr)_26rem]"}`}
+        className={`grid flex-1 grid-cols-1 xl:min-h-0 ${navigationOpen ? "lg:grid-cols-[13.75rem_minmax(0,1fr)] xl:grid-cols-[13.75rem_minmax(0,1fr)_26rem]" : "xl:grid-cols-[minmax(0,1fr)_26rem]"}`}
       >
         {navigationOpen && (
           <nav
             aria-label="VM 作成の設定"
-            className="flex overflow-x-auto border-line border-b py-4 lg:block lg:border-r lg:border-b-0"
+            className="flex overflow-x-auto border-line border-b py-4 lg:block lg:border-r lg:border-b-0 xl:min-h-0 xl:overflow-auto"
           >
             {navigation}
           </nav>
         )}
-        <div className="flex min-w-0 flex-col px-6 py-7 xl:px-9">
-          <div className="pb-8">{children}</div>
-          <div className="mt-auto flex gap-3 border-line border-t pt-4">{actions}</div>
+        <div className="flex min-w-0 flex-col px-6 py-7 xl:min-h-0 xl:px-9">
+          <div className="pb-8 xl:min-h-0 xl:flex-1 xl:overflow-auto">{children}</div>
+          <div className="mt-auto flex shrink-0 gap-3 border-line border-t pt-4">{actions}</div>
         </div>
         <section
-          className="flex min-w-0 flex-col border-line border-t bg-canvas px-6 py-6 xl:border-t-0 xl:border-l"
+          className={`flex min-w-0 flex-col border-line border-t bg-canvas px-6 py-6 xl:min-h-0 xl:overflow-auto xl:border-t-0 xl:border-l ${navigationOpen ? "lg:col-span-2 xl:col-span-1" : ""}`}
           aria-label="同等のコマンドライン"
         >
           <div className="mb-7 border-line border-b pb-5">{summary}</div>

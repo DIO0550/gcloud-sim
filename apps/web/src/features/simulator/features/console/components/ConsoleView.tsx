@@ -94,7 +94,7 @@ export const ConsoleView = ({
         <ConsoleNav screen={screen} onChange={handlers.changeScreen} onInsert={handlers.insert} />
       )}
       <main
-        className={`min-h-0 min-w-0 overflow-auto bg-surface md:col-start-2 ${screen === ConsoleScreens.VmCreate ? "" : "px-5 py-5"} ${terminalOpen ? "pb-[var(--console-terminal-height)]" : ""}`}
+        className={`min-h-0 min-w-0 overflow-auto bg-surface md:col-start-2 ${screen === ConsoleScreens.VmCreate ? "xl:overflow-hidden" : "px-5 py-5"} ${terminalOpen ? "pb-[var(--console-terminal-height)]" : ""}`}
         aria-label="Console"
       >
         {body()}
