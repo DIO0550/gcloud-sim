@@ -3,10 +3,38 @@ import { expect, test } from "vitest";
 
 import { run, session } from "@/engine/__tests__/setup";
 import { World } from "@/engine/domains/world";
+import { Snapshot } from "@/engine/snapshot";
 import { Option } from "@/utils/Option";
+import { Result } from "@/utils/Result";
 
 const create =
   "gcloud compute instances create web-1 --zone=asia-northeast1-a --machine-type=e2-small --tags=http-server";
+
+test.each(["__proto__", "constructor", "prototype"])(
+  "--metadata の禁止キー %s は World を変更せずエラーになる",
+  (key) => {
+    const before = session();
+    const after = run(before, `${create} --metadata=valid=yes,${key}=value`);
+    expect(after.text).toContain(`Forbidden dictionary key: ${key}`);
+    expect(after.world).toBe(before.world);
+  },
+);
+
+test("通常の metadata を持つ VM は export / import 後も保持される", () => {
+  const s = run(session(), `${create} --metadata=startup-script=echo=hello,owner=dev`);
+  expect(s.text).toContain("Created [");
+  const imported = Result.unwrap(
+    Snapshot.fromUnknown(
+      JSON.parse(JSON.stringify(Snapshot.create(s.world, "2026-10-11T00:00:00.000Z"))),
+    ),
+  );
+  expect(imported).toEqual(s.world);
+  const described = run(
+    session(imported),
+    "gcloud compute instances describe web-1 --zone=asia-northeast1-a",
+  );
+  expect(described.text).toContain("echo=hello");
+});
 
 test("create は Created と table を出し、list / describe で取れる", () => {
   const s = run(session(), create);

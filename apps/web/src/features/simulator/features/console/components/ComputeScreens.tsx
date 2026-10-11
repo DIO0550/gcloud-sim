@@ -2,6 +2,7 @@ import { type ReactElement, useId, useState } from "react";
 import { Checkbox } from "@/components/Checkbox";
 import { GhostButton } from "@/components/GhostButton";
 import { Select } from "@/components/Select";
+import { type DotStatus, StatusDot } from "@/components/StatusDot";
 import { TextButton } from "@/components/TextButton";
 import { ToggleButton } from "@/components/ToggleButton";
 
@@ -72,24 +73,15 @@ const toolbarText = (action: ToolbarAction): string =>
   action === "start-or-resume" ? actionText("start") : actionText(action);
 
 /** 状態のアイコン（UI 案 2b: 実行中は緑の丸にチェック、それ以外は灰色の丸に停止の四角）。 */
+const dotStatus = (instance: Instance): DotStatus => {
+  if (InstanceOps.isRunning(instance)) {
+    return "running";
+  }
+  return instance.status === "SUSPENDED" ? "suspended" : "stopped";
+};
+
 const StatusIcon = ({ instance }: Readonly<{ instance: Instance }>): ReactElement => (
-  <span role="img" aria-label={instance.status} title={instance.status} className="inline-flex">
-    {InstanceOps.isRunning(instance) ? (
-      <svg aria-hidden="true" viewBox="0 0 20 20" className="h-5 w-5">
-        <circle cx="10" cy="10" r="9" className="fill-ok" />
-        <path d="M6 10.2l2.6 2.6L14 7.4" fill="none" stroke="white" strokeWidth="1.8" />
-      </svg>
-    ) : (
-      <svg aria-hidden="true" viewBox="0 0 20 20" className="h-5 w-5">
-        <circle cx="10" cy="10" r="9" className="fill-[#8a919c]" />
-        {instance.status === "SUSPENDED" ? (
-          <path d="M8 6.5v7M12 6.5v7" stroke="white" strokeWidth="1.8" />
-        ) : (
-          <rect x="7" y="7" width="6" height="6" rx="0.5" fill="white" />
-        )}
-      </svg>
-    )}
-  </span>
+  <StatusDot status={dotStatus(instance)} label={instance.status} variant="icon" />
 );
 
 /** 検索の対象にする綴り（名前・ゾーン・マシンタイプ・状態・IP）。 */

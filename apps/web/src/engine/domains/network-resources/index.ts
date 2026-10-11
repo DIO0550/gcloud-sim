@@ -1,5 +1,6 @@
 import type { Region } from "@/engine/domains/catalog";
 import { ResourceName } from "@/engine/domains/compute";
+import { type RegionalScope, ResourceLocation } from "@/engine/domains/resource-location";
 import type { JsonRecord } from "@/types/Json";
 import type { ValueOf } from "@/types/ValueOf";
 import { Option } from "@/utils/Option";
@@ -30,7 +31,7 @@ export const AddressType = {
 export type Address = Readonly<{
   projectId: string;
   name: string;
-  region: Option<Region>;
+  scope: RegionalScope;
   address: string;
   addressType: AddressType;
   status: "RESERVED" | "IN_USE";
@@ -60,7 +61,9 @@ export const Address = {
     return Result.map(ResourceName.parse(seed.name), (name) => ({
       projectId: seed.projectId,
       name,
-      region: seed.region,
+      scope: Option.isSome(seed.region)
+        ? ResourceLocation.region(seed.region.value)
+        : ResourceLocation.Global,
       address: seed.address,
       addressType: seed.addressType,
       status: "RESERVED",
@@ -69,7 +72,7 @@ export const Address = {
   },
 
   selfLink(address: Address): string {
-    const scope = Option.isSome(address.region) ? `regions/${address.region.value}` : "global";
+    const scope = ResourceLocation.toPath(address.scope);
     return `${projectBase(address.projectId)}/${scope}/addresses/${address.name}`;
   },
 
@@ -78,9 +81,10 @@ export const Address = {
       name: address.name,
       address: address.address,
       addressType: address.addressType,
-      region: Option.isSome(address.region)
-        ? `${projectBase(address.projectId)}/regions/${address.region.value}`
-        : undefined,
+      region:
+        address.scope.kind === "region"
+          ? `${projectBase(address.projectId)}/regions/${address.scope.region}`
+          : undefined,
       status: address.status,
       networkTier: address.networkTier ?? "PREMIUM",
       subnetwork: address.subnet,

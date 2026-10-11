@@ -12,10 +12,15 @@ import {
   Positional,
   type ProjectContext,
 } from "@/engine/cli/command-spec";
-import { Candidates, projectCommand } from "@/engine/commands/shared";
+import { Candidates, createNamed, projectCommand } from "@/engine/commands/shared";
 import { FunctionRuntime, FunctionRuntimes } from "@/engine/domains/catalog";
+import {
+  AppEngineApp,
+  AppVersion,
+  CloudFunction,
+  TrafficSplit,
+} from "@/engine/domains/functions-app-engine";
 import { SampleFile } from "@/engine/domains/sample-files";
-import { AppEngineApp, AppVersion, CloudFunction, TrafficSplit } from "@/engine/domains/serverless";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -127,30 +132,30 @@ const deployFunction = (ctx: ProjectContext, args: ParsedArgs): CommandResult =>
     (m) => CommandFailure.invalidValue("NAME", m),
   );
   if (!Result.isOk(fn)) return fn;
-  const world = Option.isSome(previous)
-    ? World.replaceNamed(ctx.world, "functions", fn.value)
-    : Result.unwrapOr(
-        World.withNamed(ctx.world, "functions", fn.value, CloudFunction.fullName(fn.value)),
-        ctx.world,
-      );
   const url = CloudFunction.url(fn.value);
-  return Result.ok({
-    world,
-    output: CommandOutput.messages(
-      OutputMessage.plain(`Preparing function...done.`),
-      OutputMessage.plain(
-        Option.isSome(previous)
-          ? "Updating function (may take a while)...done."
-          : "Deploying function (may take a while)...done.",
-      ),
-      OutputMessage.plain(""),
-      OutputMessage.plain(`buildConfig:`),
-      OutputMessage.plain(`  entryPoint: ${fn.value.entryPoint}`),
-      OutputMessage.plain(`  runtime: ${fn.value.runtime}`),
-      OutputMessage.plain(`name: ${CloudFunction.fullName(fn.value)}`),
-      OutputMessage.plain(`state: ACTIVE`),
-      ...(Option.isSome(url) ? [OutputMessage.plain(`url: ${url.value}`)] : []),
+  const output = CommandOutput.messages(
+    OutputMessage.plain(`Preparing function...done.`),
+    OutputMessage.plain(
+      Option.isSome(previous)
+        ? "Updating function (may take a while)...done."
+        : "Deploying function (may take a while)...done.",
     ),
+    OutputMessage.plain(""),
+    OutputMessage.plain(`buildConfig:`),
+    OutputMessage.plain(`  entryPoint: ${fn.value.entryPoint}`),
+    OutputMessage.plain(`  runtime: ${fn.value.runtime}`),
+    OutputMessage.plain(`name: ${CloudFunction.fullName(fn.value)}`),
+    OutputMessage.plain(`state: ACTIVE`),
+    ...(Option.isSome(url) ? [OutputMessage.plain(`url: ${url.value}`)] : []),
+  );
+  if (previous.some) {
+    return Result.ok({ world: World.replaceNamed(ctx.world, "functions", fn.value), output });
+  }
+  return createNamed(ctx.world, {
+    collection: "functions",
+    item: fn.value,
+    resource: CloudFunction.fullName(fn.value),
+    output,
   });
 };
 

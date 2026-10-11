@@ -10,7 +10,12 @@ import {
   Positional,
   type ProjectContext,
 } from "@/engine/cli/command-spec";
-import { alreadyExists, describeNamedCommand, projectCommand } from "@/engine/commands/shared";
+import {
+  createNamed,
+  describeNamedCommand,
+  listCommand,
+  projectCommand,
+} from "@/engine/commands/shared";
 import { Region } from "@/engine/domains/catalog";
 import { DmDeployment } from "@/engine/domains/deployment-manager";
 import { DnsManagedZone } from "@/engine/domains/dns";
@@ -107,25 +112,16 @@ const createManagedZone = (ctx: ProjectContext, args: ParsedArgs): CommandResult
   if (!checked.ok) {
     return Result.err(CommandFailure.invalidArgumentWith(checked.error));
   }
-  return Result.map(
-    Result.mapErr(
-      World.withNamed(
-        ctx.world,
-        "dnsZones",
-        configuredZone,
-        `projects/${ctx.project.projectId}/managedZones/${zone.value.name}`,
+  return createNamed(ctx.world, {
+    collection: "dnsZones",
+    item: configuredZone,
+    resource: `projects/${ctx.project.projectId}/managedZones/${zone.value.name}`,
+    output: CommandOutput.messages(
+      OutputMessage.plain(
+        `Created [https://dns.googleapis.com/dns/v1/projects/${ctx.project.projectId}/managedZones/${zone.value.name}].`,
       ),
-      alreadyExists,
     ),
-    (world) => ({
-      world,
-      output: CommandOutput.messages(
-        OutputMessage.plain(
-          `Created [https://dns.googleapis.com/dns/v1/projects/${ctx.project.projectId}/managedZones/${zone.value.name}].`,
-        ),
-      ),
-    }),
-  );
+  });
 };
 
 const createDeployment = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
@@ -150,50 +146,41 @@ const createDeployment = (ctx: ProjectContext, args: ParsedArgs): CommandResult 
   );
   if (!Result.isOk(deployment)) return deployment;
   const d = deployment.value;
-  return Result.map(
-    Result.mapErr(
-      World.withNamed(
-        ctx.world,
-        "dmDeployments",
-        d,
-        `projects/${ctx.project.projectId}/global/deployments/${d.name}`,
+  return createNamed(ctx.world, {
+    collection: "dmDeployments",
+    item: d,
+    resource: `projects/${ctx.project.projectId}/global/deployments/${d.name}`,
+    output: CommandOutput.withTrailing(
+      CommandOutput.table(
+        d.resources.map((r) => ({
+          name: r.name,
+          type: r.type,
+          state: "COMPLETED",
+          errors: "[]",
+        })),
+        [
+          Column.create("NAME", "name"),
+          Column.create("TYPE", "type"),
+          Column.create("STATE", "state"),
+          Column.create("ERRORS", "errors"),
+        ],
+        [
+          OutputMessage.plain(
+            `The fingerprint of the deployment is b'${(0x5d + ctx.world.sequence).toString(16)}=='`,
+          ),
+          OutputMessage.plain(
+            `Waiting for create [operation-${Date.parse(ctx.now)}-${d.name}]...done.`,
+          ),
+          OutputMessage.plain(
+            `Create operation operation-${Date.parse(ctx.now)}-${d.name} completed successfully.`,
+          ),
+        ],
       ),
-      alreadyExists,
+      OutputMessage.hint(
+        "gcloud-sim: Deployment Manager が作るリソースは記録するだけで、Compute Engine の VM としては作りません。",
+      ),
     ),
-    (world) => ({
-      world,
-      output: CommandOutput.withTrailing(
-        CommandOutput.table(
-          d.resources.map((r) => ({
-            name: r.name,
-            type: r.type,
-            state: "COMPLETED",
-            errors: "[]",
-          })),
-          [
-            Column.create("NAME", "name"),
-            Column.create("TYPE", "type"),
-            Column.create("STATE", "state"),
-            Column.create("ERRORS", "errors"),
-          ],
-          [
-            OutputMessage.plain(
-              `The fingerprint of the deployment is b'${(0x5d + ctx.world.sequence).toString(16)}=='`,
-            ),
-            OutputMessage.plain(
-              `Waiting for create [operation-${Date.parse(ctx.now)}-${d.name}]...done.`,
-            ),
-            OutputMessage.plain(
-              `Create operation operation-${Date.parse(ctx.now)}-${d.name} completed successfully.`,
-            ),
-          ],
-        ),
-        OutputMessage.hint(
-          "gcloud-sim: Deployment Manager が作るリソースは記録するだけで、Compute Engine の VM としては作りません。",
-        ),
-      ),
-    }),
-  );
+  });
 };
 
 export const KmsCommands: readonly CommandSpec[] = [
@@ -263,19 +250,14 @@ export const DnsCommands: readonly CommandSpec[] = [
     requiredApis: [DnsApi],
     run: createManagedZone,
   }),
-  projectCommand({
+  listCommand({
     path: ["gcloud", "dns", "managed-zones", "list"],
     summary: "View the list of all your managed-zones.",
     permission: "dns.managedZones.list",
     requiredApis: [DnsApi],
-    run: (ctx) =>
-      Result.ok({
-        world: ctx.world,
-        output: CommandOutput.table(
-          World.namedOf(ctx.world, "dnsZones", ctx.project.projectId).map(DnsManagedZone.toRecord),
-          ZoneColumns,
-        ),
-      }),
+    collection: "dnsZones",
+    record: DnsManagedZone.toRecord,
+    columns: ZoneColumns,
   }),
   describeNamedCommand({
     path: ["gcloud", "dns", "managed-zones", "describe"],
@@ -307,24 +289,19 @@ export const DeploymentManagerCommands: readonly CommandSpec[] = [
     requiredApis: [DmApi],
     run: createDeployment,
   }),
-  projectCommand({
+  listCommand({
     path: ["gcloud", "deployment-manager", "deployments", "list"],
     summary: "List deployments in a project.",
     permission: "deploymentmanager.deployments.list",
     requiredApis: [DmApi],
-    run: (ctx) =>
-      Result.ok({
-        world: ctx.world,
-        output: CommandOutput.table(
-          World.namedOf(ctx.world, "dmDeployments", ctx.project.projectId).map((d) => ({
-            ...DmDeployment.toRecord(d),
-            description: "",
-            manifest: `manifest-${Date.parse(d.insertTime)}`,
-            errors: "[]",
-          })),
-          DeploymentColumns,
-        ),
-      }),
+    collection: "dmDeployments",
+    record: (d) => ({
+      ...DmDeployment.toRecord(d),
+      description: "",
+      manifest: `manifest-${Date.parse(d.insertTime)}`,
+      errors: "[]",
+    }),
+    columns: DeploymentColumns,
   }),
   describeNamedCommand({
     path: ["gcloud", "deployment-manager", "deployments", "describe"],

@@ -25,6 +25,7 @@ import {
   alreadyExists,
   Candidates,
   CommonFlags,
+  createNamed,
   describeNamedCommand,
   instanceOperationSeed,
   projectCommand,
@@ -48,6 +49,7 @@ import {
   ManagedInstanceGroup,
 } from "@/engine/domains/instance-groups";
 import { OperationTypes } from "@/engine/domains/operation";
+import { MigLocation } from "@/engine/domains/resource-location";
 import { ServiceAccount } from "@/engine/domains/service-account";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
@@ -122,25 +124,16 @@ const createTemplate = (ctx: ProjectContext, args: ParsedArgs): CommandResult =>
     invalidName,
   );
   if (!Result.isOk(template)) return template;
-  return Result.map(
-    Result.mapErr(
-      World.withNamed(
-        ctx.world,
-        "instanceTemplates",
-        template.value,
-        InstanceTemplate.selfLink(template.value),
-      ),
-      alreadyExists,
+  return createNamed(ctx.world, {
+    collection: "instanceTemplates",
+    item: template.value,
+    resource: InstanceTemplate.selfLink(template.value),
+    output: createdTable(
+      InstanceTemplate.selfLink(template.value),
+      InstanceTemplate.toRecord(template.value),
+      TemplateColumns,
     ),
-    (world) => ({
-      world,
-      output: createdTable(
-        InstanceTemplate.selfLink(template.value),
-        InstanceTemplate.toRecord(template.value),
-        TemplateColumns,
-      ),
-    }),
-  );
+  });
 };
 
 /** テンプレートから 1 台作って World に足す。内部 IP はサブネット内の台数で採番する。 */
@@ -266,40 +259,37 @@ const createGroup = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
     invalidName,
   );
   if (!Result.isOk(group)) return group;
-  const withGroup = Result.mapErr(
-    World.withNamed(
-      ctx.world,
-      "instanceGroups",
-      group.value,
-      ManagedInstanceGroup.selfLink(group.value),
-    ),
-    alreadyExists,
-  );
-  if (!Result.isOk(withGroup)) return withGroup;
-  const populated = members.reduce<Result<World, CommandFailure>>(
-    (acc, member, index) =>
-      Result.flatMap(acc, (w) =>
-        addMember(ctx, w, template.value, {
-          name: member,
-          zone: ManagedInstanceGroup.zoneFor(location.value, index),
-        }),
-      ),
-    withGroup,
-  );
-  return Result.map(populated, (world) => ({
-    world,
-    output: createdTable(
-      ManagedInstanceGroup.selfLink(group.value),
-      groupRecord(group.value),
-      GroupColumns,
-    ),
-  }));
+  return createNamed(ctx.world, {
+    collection: "instanceGroups",
+    item: group.value,
+    resource: ManagedInstanceGroup.selfLink(group.value),
+    output: (world) => {
+      const populated = members.reduce<Result<World, CommandFailure>>(
+        (acc, member, index) =>
+          Result.flatMap(acc, (w) =>
+            addMember(ctx, w, template.value, {
+              name: member,
+              zone: ManagedInstanceGroup.zoneFor(location.value, index),
+            }),
+          ),
+        Result.ok(world),
+      );
+      return Result.map(populated, (world) => ({
+        world,
+        output: createdTable(
+          ManagedInstanceGroup.selfLink(group.value),
+          groupRecord(group.value),
+          GroupColumns,
+        ),
+      }));
+    },
+  });
 };
 
 const groupRecord = (group: ManagedInstanceGroup) => ({
   ...ManagedInstanceGroup.toRecord(group),
-  location: group.location,
-  scope: Option.isSome(Zone.parse(group.location)) ? "zone" : "region",
+  location: MigLocation.name(group.location),
+  scope: group.location.kind,
 });
 
 const setAutoscaling = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
@@ -336,7 +326,7 @@ const setAutoscaling = (ctx: ProjectContext, args: ParsedArgs): CommandResult =>
     world: World.replaceNamed(ctx.world, "instanceGroups", next),
     output: CommandOutput.table([groupRecord(next)], GroupColumns, [
       OutputMessage.plain(
-        `Created [https://www.googleapis.com/compute/v1/projects/${ctx.project.projectId}/${Option.isSome(Zone.parse(next.location)) ? "zones" : "regions"}/${next.location}/autoscalers/${next.name}].`,
+        `Created [https://www.googleapis.com/compute/v1/projects/${ctx.project.projectId}/${MigLocation.toPath(next.location)}/autoscalers/${next.name}].`,
       ),
     ]),
   });
@@ -380,10 +370,8 @@ export const GroupCommands: readonly CommandSpec[] = [
     summary: "List Compute Engine virtual machine instance templates.",
     permission: "compute.instanceTemplates.list",
     columns: TemplateColumns,
-    records: (ctx) =>
-      World.namedOf(ctx.world, "instanceTemplates", ctx.project.projectId).map(
-        InstanceTemplate.toRecord,
-      ),
+    collection: "instanceTemplates",
+    record: InstanceTemplate.toRecord,
   }),
   describeNamedCommand({
     path: ["gcloud", "compute", "instance-templates", "describe"],
@@ -421,8 +409,8 @@ export const GroupCommands: readonly CommandSpec[] = [
     summary: "List Compute Engine managed instance groups.",
     permission: "compute.instanceGroupManagers.list",
     columns: GroupColumns,
-    records: (ctx) =>
-      World.namedOf(ctx.world, "instanceGroups", ctx.project.projectId).map(groupRecord),
+    collection: "instanceGroups",
+    record: groupRecord,
   }),
   describeNamedCommand({
     path: ["gcloud", "compute", "instance-groups", "managed", "describe"],

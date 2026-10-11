@@ -11,7 +11,7 @@ import {
   Positional,
   type ProjectContext,
 } from "@/engine/cli/command-spec";
-import { alreadyExists, Candidates, CommonFlags, projectCommand } from "@/engine/commands/shared";
+import { Candidates, CommonFlags, createNamed, projectCommand } from "@/engine/commands/shared";
 import { DefaultMachineType, MachineType, type Region, type Zone } from "@/engine/domains/catalog";
 import { EffectivePermissions } from "@/engine/domains/effective-permissions";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
@@ -159,24 +159,28 @@ const createCluster = (
     verticalPodAutoscaling:
       nodes.kind === "autopilot" || ParsedArgs.boolean(args, "enable-vertical-pod-autoscaling"),
   };
-  return Result.map(
-    Result.mapErr(World.withCluster(ctx.world, created), alreadyExists),
-    (world) => ({
-      world: World.withConfig(
-        KubeContext.setEndpoint(
-          world,
-          created,
-          created.controlPlane.privateEndpoint ? "private" : "public",
+  return createNamed(ctx.world, {
+    collection: "clusters",
+    item: created,
+    resource: GkeCluster.selfLink(created),
+    insert: World.withCluster,
+    output: (world) =>
+      Result.ok({
+        world: World.withConfig(
+          KubeContext.setEndpoint(
+            world,
+            created,
+            created.controlPlane.privateEndpoint ? "private" : "public",
+          ),
+          GcloudConfig.set(world.config, "container/cluster", created.name),
         ),
-        GcloudConfig.set(world.config, "container/cluster", created.name),
-      ),
-      output: CommandOutput.table([clusterRecord(world, created)], ClusterColumns, [
-        OutputMessage.plain(`Creating cluster ${created.name} in ${created.location}... done.`),
-        OutputMessage.plain(`Created [${GkeCluster.selfLink(created)}].`),
-        OutputMessage.plain(`kubeconfig entry generated for ${created.name}.`),
-      ]),
-    }),
-  );
+        output: CommandOutput.table([clusterRecord(world, created)], ClusterColumns, [
+          OutputMessage.plain(`Creating cluster ${created.name} in ${created.location}... done.`),
+          OutputMessage.plain(`Created [${GkeCluster.selfLink(created)}].`),
+          OutputMessage.plain(`kubeconfig entry generated for ${created.name}.`),
+        ]),
+      }),
+  });
 };
 
 /** 名前とロケーションでクラスタを引く。本物と同じく、ロケーションが違えば無いものとして扱う。 */
@@ -736,18 +740,22 @@ export const ContainerCommands: readonly CommandSpec[] = [
         (m) => CommandFailure.invalidValue("NAME", m),
       );
       if (!Result.isOk(pool)) return pool;
-      return Result.map(
-        Result.mapErr(World.withNodePool(ctx.world, pool.value), alreadyExists),
-        (world) => ({
-          world,
-          output: CommandOutput.table([NodePool.toRecord(pool.value)], NodePoolColumns, [
-            OutputMessage.plain(`Creating node pool ${pool.value.name}...done.`),
-            OutputMessage.plain(
-              `Created [${GkeCluster.selfLink(cluster.value)}/nodePools/${pool.value.name}].`,
-            ),
-          ]),
-        }),
-      );
+      return createNamed(ctx.world, {
+        collection: "nodePools",
+        item: pool.value,
+        resource: `${GkeCluster.selfLink(cluster.value)}/nodePools/${pool.value.name}`,
+        insert: World.withNodePool,
+        output: (world) =>
+          Result.ok({
+            world,
+            output: CommandOutput.table([NodePool.toRecord(pool.value)], NodePoolColumns, [
+              OutputMessage.plain(`Creating node pool ${pool.value.name}...done.`),
+              OutputMessage.plain(
+                `Created [${GkeCluster.selfLink(cluster.value)}/nodePools/${pool.value.name}].`,
+              ),
+            ]),
+          }),
+      });
     },
   }),
   projectCommand({

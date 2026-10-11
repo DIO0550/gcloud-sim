@@ -1,9 +1,11 @@
 import { type ReactElement, useMemo, useState } from "react";
+import { StatusDot } from "@/components/StatusDot";
 
 import { TextButton } from "@/components/TextButton";
 import type { World } from "@/engine/domains/world";
 import {
   type ResourceGroup,
+  type ResourceLabelKind,
   type TreeBadge,
   type TreeLabel,
   TreeNode,
@@ -113,31 +115,40 @@ const groupText = (group: ResourceGroup): string => {
   }
 };
 
+const resourcePrefixes: Readonly<Record<ResourceLabelKind, string>> = {
+  snapshot: "snapshot",
+  "instance-template": "template",
+  "instance-group": "mig",
+  "health-check": "hc",
+  "backend-service": "bes",
+  "forwarding-rule": "fr",
+  address: "ip",
+  firewall: "fw",
+  subnet: "subnet",
+  router: "router",
+  "node-pool": "pool",
+  "kube-statefulset": "sts",
+  "kube-deployment": "deploy",
+  "kube-service": "svc",
+  "kube-hpa": "hpa",
+  pvc: "pvc",
+  "kube-ingress": "ing",
+  "kube-network-policy": "netpol",
+  "kube-namespace": "namespace",
+  storageclass: "sc",
+  pv: "pv",
+  subscription: "sub",
+  budget: "budget",
+};
+
 const labelText = (label: TreeLabel): string => {
   switch (label.kind) {
     case "text":
-      return label.text;
+      return label.resource === undefined
+        ? label.text
+        : `${resourcePrefixes[label.resource]}: ${label.text}`;
     case "group":
       return groupText(label.group);
-  }
-};
-
-const StatusDot = ({ status }: Readonly<{ status: TreeNode["status"] }>): ReactElement => {
-  switch (status) {
-    case "none":
-      return <span className="hidden" />;
-    case "running":
-      return (
-        <span role="img" aria-label="RUNNING" className="inline-block h-2 w-2 rounded-full bg-ok" />
-      );
-    case "stopped":
-      return (
-        <span
-          role="img"
-          aria-label="停止中"
-          className="inline-block h-2 w-2 rounded-full bg-[#b5bcc5]"
-        />
-      );
   }
 };
 

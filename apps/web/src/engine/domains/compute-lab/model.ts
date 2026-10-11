@@ -1,5 +1,6 @@
 import { MachineType, Region, Zone } from "@/engine/domains/catalog";
 import { type Instance, ResourceName } from "@/engine/domains/compute";
+import { MigLocation } from "@/engine/domains/resource-location";
 import type { World } from "@/engine/domains/world";
 import { Decoder as D } from "@/utils/Decoder";
 import { Result } from "@/utils/Result";
@@ -310,7 +311,9 @@ export const validateComputeLab = (w: World): Result<World, string> => {
     }
   }
   for (const m of lab.migs) {
-    const g = w.instanceGroups.find((g) => sameRef({ ...g, location: g.location }, m));
+    const g = w.instanceGroups.find((g) =>
+      sameRef({ ...g, location: MigLocation.name(g.location) }, m),
+    );
     if (
       !g ||
       !w.instanceTemplates.some(

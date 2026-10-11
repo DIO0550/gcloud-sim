@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 
-import type { ExecutionOutcome } from "@/engine";
+import type { ExecutionStatus } from "@/engine";
 import { ApiService } from "@/engine/domains/catalog";
 import { World } from "@/engine/domains/world";
 import { ConsoleNav } from "@/features/simulator/features/console/components/ConsoleNav";
@@ -21,7 +21,7 @@ type ConsoleViewProps = Readonly<{
   world: World;
   screen: Screen;
   /** 直近にこの Console から流したコマンドの結果。失敗なら画面の上に赤帯で出す */
-  outcome: Option<ExecutionOutcome>;
+  outcome: Option<ExecutionStatus>;
   handlers: ConsoleHandlers;
   onOutcomeDismiss: () => void;
 }>;

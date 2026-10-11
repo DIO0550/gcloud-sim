@@ -1,7 +1,9 @@
 import { Flag, ParsedArgs, type ProjectContext } from "@/engine/cli/command-spec";
 import { addMember } from "@/engine/commands/compute/groups";
+import { Zone } from "@/engine/domains/catalog";
 import { clock, type MigConfig, sameRef, saveMig } from "@/engine/domains/compute-lab/model";
 import { type InstanceTemplate, ManagedInstanceGroup } from "@/engine/domains/instance-groups";
+import { MigLocation } from "@/engine/domains/resource-location";
 import { World } from "@/engine/domains/world";
 import { Result } from "@/utils/Result";
 import {
@@ -21,7 +23,9 @@ import { checkActAs, removeVmLab } from "./vms";
 
 const groupArg = (c: ProjectContext, a: ParsedArgs) =>
   Result.flatMap(ref(c, a), (r) => {
-    const g = c.world.instanceGroups.find((g) => sameRef({ ...g, location: g.location }, r));
+    const g = c.world.instanceGroups.find((g) =>
+      sameRef({ ...g, location: MigLocation.name(g.location) }, r),
+    );
     return g ? Result.ok(g) : missing("MIG missing in selected project / location.");
   });
 const templateArg = (c: ProjectContext, template: string) => {
@@ -37,10 +41,10 @@ const templateArg = (c: ProjectContext, template: string) => {
   return Result.ok(t);
 };
 const config = (w: World, g: ManagedInstanceGroup): MigConfig =>
-  w.computeLab.migs.find((m) => sameRef(m, { ...g, location: g.location })) ?? {
+  w.computeLab.migs.find((m) => sameRef(m, { ...g, location: MigLocation.name(g.location) })) ?? {
     projectId: g.projectId,
     name: g.name,
-    location: g.location,
+    location: MigLocation.name(g.location),
     desiredTemplate: g.template,
     applied: Object.fromEntries(g.instanceNames.map((n) => [n, g.template])),
     pending: [],
@@ -186,7 +190,8 @@ export const MigCommands = [
         const h = c.world.healthChecks.find(
           (h) => h.projectId === g.projectId && h.name === healthCheck,
         );
-        const region = g.location.includes("-") ? g.location.replace(/-[a-z]$/, "") : g.location;
+        const region =
+          g.location.kind === "zone" ? Zone.region(g.location.zone) : g.location.region;
         if (!h || (h.scope?.kind === "region" && h.scope.region !== region)) {
           return missing("Autohealing health check missing / scope mismatch.");
         }
@@ -284,7 +289,7 @@ export const MigCommands = [
         const recommended = elapsed < autoscaling.coolDownPeriodSec ? g.targetSize : desired;
         return observed(
           c.world,
-          { projectId: g.projectId, name: g.name, location: g.location },
+          { projectId: g.projectId, name: g.name, location: MigLocation.name(g.location) },
           "autoscaling",
           {
             cpu,

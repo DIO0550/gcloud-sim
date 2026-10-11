@@ -27,9 +27,9 @@ import {
   requireNetwork,
 } from "@/engine/commands/compute/shared";
 import {
-  alreadyExists,
   Candidates,
   CommonFlags,
+  createNamed,
   describeNamedCommand,
   projectCommand,
 } from "@/engine/commands/shared";
@@ -45,20 +45,22 @@ import {
   Subnet,
   SubnetModes,
 } from "@/engine/domains/compute";
-import {
-  Address,
-  AddressType,
-  AddressTypes,
-  NetworkPeering,
-  Router,
-} from "@/engine/domains/compute-networking";
 import { Ipv4 } from "@/engine/domains/gke-control-plane";
+import { IpAllocation } from "@/engine/domains/ip-allocation";
 import {
   subnetOverlap,
   validAsn,
   validateNetworkLab,
   validProtocols,
 } from "@/engine/domains/network-lab/model";
+import {
+  Address,
+  AddressType,
+  AddressTypes,
+  NetworkPeering,
+  Router,
+} from "@/engine/domains/network-resources";
+import { ResourceLocation } from "@/engine/domains/resource-location";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -180,16 +182,20 @@ const createFirewallRule = (ctx: ProjectContext, args: ParsedArgs): CommandResul
       ),
     );
   }
-  return Result.map(
-    Result.mapErr(World.withFirewallRule(ctx.world, configuredRule), alreadyExists),
-    (world) => ({
-      world,
-      output: CommandOutput.table([firewallRecord(configuredRule)], FirewallColumns, [
-        OutputMessage.plain("Creating firewall...done."),
-        OutputMessage.plain(`Created [${FirewallRule.selfLink(rule.value)}].`),
-      ]),
-    }),
-  );
+  return createNamed(ctx.world, {
+    collection: "firewallRules",
+    item: configuredRule,
+    resource: FirewallRule.selfLink(configuredRule),
+    insert: World.withFirewallRule,
+    output: (world) =>
+      Result.ok({
+        world,
+        output: CommandOutput.table([firewallRecord(configuredRule)], FirewallColumns, [
+          OutputMessage.plain("Creating firewall...done."),
+          OutputMessage.plain(`Created [${FirewallRule.selfLink(rule.value)}].`),
+        ]),
+      }),
+  });
 };
 
 const createNetwork = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
@@ -208,28 +214,34 @@ const createNetwork = (ctx: ProjectContext, args: ParsedArgs): CommandResult => 
     created.subnetMode === SubnetModes.Auto
       ? Subnet.autoRange(created.projectId, created.name, Region.all())
       : [];
-  return Result.map(
-    Result.mapErr(World.withNetwork(ctx.world, created, subnets), alreadyExists),
-    (world) => ({
-      world,
-      output: CommandOutput.withTrailing(
-        createdTable(Network.selfLink(created), networkRecord(created), NetworkColumns),
-        OutputMessage.plain(""),
-        OutputMessage.plain("Instances on this network will not be reachable until firewall rules"),
-        OutputMessage.plain(
-          "are created. As an example, you can allow all internal traffic between",
+  return createNamed(ctx.world, {
+    collection: "networks",
+    item: created,
+    resource: Network.selfLink(created),
+    insert: (world, item) => World.withNetwork(world, item, subnets),
+    output: (world) =>
+      Result.ok({
+        world,
+        output: CommandOutput.withTrailing(
+          createdTable(Network.selfLink(created), networkRecord(created), NetworkColumns),
+          OutputMessage.plain(""),
+          OutputMessage.plain(
+            "Instances on this network will not be reachable until firewall rules",
+          ),
+          OutputMessage.plain(
+            "are created. As an example, you can allow all internal traffic between",
+          ),
+          OutputMessage.plain("instances as well as SSH, RDP, and ICMP by running:"),
+          OutputMessage.plain(""),
+          OutputMessage.plain(
+            `$ gcloud compute firewall-rules create <FIREWALL_NAME> --network ${created.name} --allow tcp,udp,icmp --source-ranges <IP_RANGE>`,
+          ),
+          OutputMessage.plain(
+            `$ gcloud compute firewall-rules create <FIREWALL_NAME> --network ${created.name} --allow tcp:22,tcp:3389,icmp`,
+          ),
         ),
-        OutputMessage.plain("instances as well as SSH, RDP, and ICMP by running:"),
-        OutputMessage.plain(""),
-        OutputMessage.plain(
-          `$ gcloud compute firewall-rules create <FIREWALL_NAME> --network ${created.name} --allow tcp,udp,icmp --source-ranges <IP_RANGE>`,
-        ),
-        OutputMessage.plain(
-          `$ gcloud compute firewall-rules create <FIREWALL_NAME> --network ${created.name} --allow tcp:22,tcp:3389,icmp`,
-        ),
-      ),
-    }),
-  );
+      }),
+  });
 };
 
 const createSubnet = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
@@ -308,17 +320,21 @@ const createSubnet = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
     return Result.err(
       CommandFailure.invalidState("Subnet overlaps an existing GKE master-ipv4-cidr."),
     );
-  return Result.map(
-    Result.mapErr(World.withSubnet(ctx.world, configured), alreadyExists),
-    (world) => ({
-      world,
-      output: createdTable(
-        Subnet.selfLink(subnet.value),
-        Subnet.toRecord(configured),
-        SubnetColumns,
-      ),
-    }),
-  );
+  return createNamed(ctx.world, {
+    collection: "subnets",
+    item: configured,
+    resource: Subnet.selfLink(configured),
+    insert: World.withSubnet,
+    output: (world) =>
+      Result.ok({
+        world,
+        output: createdTable(
+          Subnet.selfLink(subnet.value),
+          Subnet.toRecord(configured),
+          SubnetColumns,
+        ),
+      }),
+  });
 };
 
 const describeSubnet = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
@@ -339,12 +355,7 @@ const describeSubnet = (ctx: ProjectContext, args: ParsedArgs): CommandResult =>
 };
 
 /** 予約アドレスの採番。外部はグローバル / リージョンで系統を分け、内部はサブネット風の値。 */
-const reservedAddress = (sequence: number, type: string, global: boolean): string =>
-  type === AddressTypes.Internal
-    ? `10.146.15.${200 + (sequence % 50)}`
-    : global
-      ? `34.120.${(sequence >> 8) % 256}.${sequence % 256}`
-      : `35.200.${(sequence >> 8) % 256}.${sequence % 256}`;
+const reservedAddress = IpAllocation.reserved;
 
 const createAddress = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   const global = ParsedArgs.boolean(args, "global");
@@ -429,20 +440,16 @@ const createAddress = (ctx: ProjectContext, args: ParsedArgs): CommandResult => 
   };
 
   const numbered = World.nextNumber(ctx.world);
-  return Result.map(
-    Result.mapErr(
-      World.withNamed(numbered.world, "addresses", configured, Address.selfLink(configured)),
-      alreadyExists,
+  return createNamed(numbered.world, {
+    collection: "addresses",
+    item: configured,
+    resource: Address.selfLink(configured),
+    output: createdTable(
+      Address.selfLink(address.value),
+      Address.toRecord(configured),
+      AddressColumns,
     ),
-    (world) => ({
-      world,
-      output: createdTable(
-        Address.selfLink(address.value),
-        Address.toRecord(configured),
-        AddressColumns,
-      ),
-    }),
-  );
+  });
 };
 
 const createRouter = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
@@ -470,20 +477,16 @@ const createRouter = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
     invalidName,
   );
   if (!Result.isOk(router)) return router;
-  return Result.map(
-    Result.mapErr(
-      World.withNamed(ctx.world, "routers", router.value, Router.selfLink(router.value)),
-      alreadyExists,
+  return createNamed(ctx.world, {
+    collection: "routers",
+    item: router.value,
+    resource: Router.selfLink(router.value),
+    output: createdTable(
+      Router.selfLink(router.value),
+      Router.toRecord(router.value),
+      RouterColumns,
     ),
-    (world) => ({
-      world,
-      output: createdTable(
-        Router.selfLink(router.value),
-        Router.toRecord(router.value),
-        RouterColumns,
-      ),
-    }),
-  );
+  });
 };
 
 /** `--peer-network` の相手。`--peer-project` が無ければ同じプロジェクト。相手のネットワークが無ければ E-005。 */
@@ -538,25 +541,22 @@ const createPeering = (ctx: ProjectContext, args: ParsedArgs): CommandResult => 
     invalidName,
   );
   if (!Result.isOk(peering)) return peering;
-  const added = Result.mapErr(
-    World.withNamed(
-      ctx.world,
-      "peerings",
-      peering.value,
-      `projects/${ctx.project.projectId}/global/networks/${networkName}/peerings/${peering.value.name}`,
-    ),
-    alreadyExists,
-  );
-  if (!Result.isOk(added)) return added;
-  const world =
-    peerSide === undefined
-      ? added.value
-      : World.replaceNamed(added.value, "peerings", NetworkPeering.withState(peerSide, "ACTIVE"));
-  return Result.ok({
-    world,
-    output: CommandOutput.table([peeringRecord(peering.value)], PeeringColumns, [
-      OutputMessage.plain(`Updated [${Network.selfLink(network.value)}].`),
-    ]),
+  return createNamed(ctx.world, {
+    collection: "peerings",
+    item: peering.value,
+    resource: `projects/${ctx.project.projectId}/global/networks/${networkName}/peerings/${peering.value.name}`,
+    output: (created) => {
+      const world =
+        peerSide === undefined
+          ? created
+          : World.replaceNamed(created, "peerings", NetworkPeering.withState(peerSide, "ACTIVE"));
+      return Result.ok({
+        world,
+        output: CommandOutput.table([peeringRecord(peering.value)], PeeringColumns, [
+          OutputMessage.plain(`Updated [${Network.selfLink(network.value)}].`),
+        ]),
+      });
+    },
   });
 };
 
@@ -918,8 +918,8 @@ const NetworkSpecs: readonly CommandSpec[] = [
     summary: "List addresses.",
     permission: "compute.addresses.list",
     columns: AddressColumns,
-    records: (ctx) =>
-      World.namedOf(ctx.world, "addresses", ctx.project.projectId).map(Address.toRecord),
+    collection: "addresses",
+    record: Address.toRecord,
   }),
   describeNamedCommand({
     path: ["gcloud", "compute", "addresses", "describe"],
@@ -964,8 +964,8 @@ const NetworkSpecs: readonly CommandSpec[] = [
     summary: "List Compute Engine routers.",
     permission: "compute.routers.list",
     columns: RouterColumns,
-    records: (ctx) =>
-      World.namedOf(ctx.world, "routers", ctx.project.projectId).map(Router.toRecord),
+    collection: "routers",
+    record: Router.toRecord,
   }),
   describeNamedCommand({
     path: ["gcloud", "compute", "routers", "describe"],
@@ -1002,7 +1002,7 @@ export const NetworkingCommands: readonly CommandSpec[] = NetworkSpecs.map((spec
                   .filter(
                     (a) =>
                       a.projectId === ctx.project.projectId &&
-                      includes(Option.isSome(a.region) ? `regions/${a.region.value}` : "global"),
+                      includes(ResourceLocation.toPath(a.scope)),
                   )
                   .map(Address.toRecord),
                 AddressColumns,

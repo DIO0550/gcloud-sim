@@ -56,7 +56,7 @@ export type ShellInput = Readonly<{
  * 1 行の実行がどう終わったか。Console ビューはこれを見て「一覧へ戻る」「赤帯を出す」「API を
  * 有効にするボタンを出す」を決める（出力行の綴りは判定に使わない）。
  */
-export type ExecutionOutcome =
+export type ExecutionStatus =
   | Readonly<{ kind: "succeeded" }>
   | Readonly<{ kind: "failed"; failure: CommandFailure }>
   | Readonly<{ kind: "confirming" }>
@@ -68,7 +68,7 @@ export type ShellResult = Readonly<{
   lines: readonly OutputLine[];
   /** `clear` が打たれた。UI は画面を消す */
   clearsScreen: boolean;
-  outcome: ExecutionOutcome;
+  outcome: ExecutionStatus;
 }>;
 
 const Ready: ShellState = Object.freeze({ kind: "ready" });
@@ -131,15 +131,15 @@ const failureLines = (
   return [...head, ...hints];
 };
 
-const Succeeded: ExecutionOutcome = Object.freeze({ kind: "succeeded" as const });
-const NoOutcome: ExecutionOutcome = Object.freeze({ kind: "none" as const });
-const failed = (failure: CommandFailure): ExecutionOutcome => ({ kind: "failed", failure });
+const Succeeded: ExecutionStatus = Object.freeze({ kind: "succeeded" as const });
+const NoOutcome: ExecutionStatus = Object.freeze({ kind: "none" as const });
+const failed = (failure: CommandFailure): ExecutionStatus => ({ kind: "failed", failure });
 
 const result = (
   world: World,
   state: ShellState,
   output: readonly OutputLine[],
-  outcome: ExecutionOutcome = NoOutcome,
+  outcome: ExecutionStatus = NoOutcome,
 ): ShellResult => ({ world, state, lines: output, clearsScreen: false, outcome });
 
 const listOptions = (args: ParsedArgs): Result<ListOptions, CommandFailure> => {

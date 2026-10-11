@@ -11,7 +11,7 @@ import {
   type ProjectContext,
 } from "@/engine/cli/command-spec";
 import { ComputeApi } from "@/engine/commands/compute/shared";
-import { alreadyExists, Candidates, CommonFlags, projectCommand } from "@/engine/commands/shared";
+import { Candidates, CommonFlags, createNamed, projectCommand } from "@/engine/commands/shared";
 import { ResourceName } from "@/engine/domains/compute";
 import { LbScope } from "@/engine/domains/load-balancing";
 import {
@@ -23,7 +23,6 @@ import {
   validLbPath,
   validPort,
 } from "@/engine/domains/load-balancing/graph";
-import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 import {
@@ -89,13 +88,12 @@ const create =
     }
     const base = { projectId: ctx.project.projectId, name: name.value, location };
     const save = (resource: LbResource): CommandResult =>
-      Result.flatMap(
-        Result.mapErr(
-          World.withNamed(ctx.world, "lbResources", resource, lbLink(resource)),
-          alreadyExists,
-        ),
-        (world) => finish(world, lbRecord(resource)),
-      );
+      createNamed(ctx.world, {
+        collection: "lbResources",
+        item: resource,
+        resource: lbLink(resource),
+        output: (world) => finish(world, lbRecord(resource)),
+      });
     if (kind === "urlMaps") {
       const service = ParsedArgs.string(args, "default-service");
       const bucket = ParsedArgs.string(args, "default-backend-bucket");

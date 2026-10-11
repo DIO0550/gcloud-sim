@@ -1,27 +1,17 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-
 import { run, session } from "@/engine/__tests__/setup";
 import {
   BindingRow,
   type ResourceGroup,
   ResourceGroups,
-  type TreeLabel,
   TreeNode,
   TreeSelection,
 } from "@/engine/resource-tree";
 import { Option } from "@/utils/Option";
+import { find, labels } from "./setup";
 
 /** ラベルを比べやすい 1 つの綴りにする（グループは種別の値）。 */
-const labelKey = (label: TreeLabel): string =>
-  label.kind === "text" ? label.text : `group:${label.group}`;
-const labels = (nodes: readonly TreeNode[]): readonly string[] =>
-  nodes.map((n) => labelKey(n.label));
-const find = (nodes: readonly TreeNode[], key: string): TreeNode | undefined =>
-  nodes.reduce<TreeNode | undefined>(
-    (found, n) => found ?? (labelKey(n.label) === key ? n : find(n.children, key)),
-    undefined,
-  );
 const groupKey = (group: ResourceGroup): string => `group:${group}`;
 
 test("組織 → フォルダ → プロジェクトの順に並び、請求アカウントは組織と並ぶ", () => {
@@ -66,7 +56,7 @@ test("削除要求済みのプロジェクトはツリーに出ない", () => {
 
 test("ファイアウォールはネットワークの下に fw: 付きで出る", () => {
   const network = find(TreeNode.fromWorld(session().world), "default");
-  expect(labels(network?.children ?? [])).toContain("fw: default-allow-ssh");
+  expect(labels(network?.children ?? [])).toContain("default-allow-ssh");
 });
 
 test("入れ子のフォルダは親フォルダの下に出る", () => {

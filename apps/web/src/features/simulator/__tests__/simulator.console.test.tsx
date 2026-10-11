@@ -7,15 +7,8 @@ import {
   renderSimulator,
   resourceTree,
   screenText,
+  typeLine,
 } from "@/features/simulator/__tests__/setup";
-
-const typeLine = async (
-  terminal: ReturnType<typeof renderSimulator>["terminal"],
-  line: string,
-): Promise<void> => {
-  await waitFor(() => expect(terminal.written.length).toBeGreaterThan(0));
-  terminal.type(`${line}\r`);
-};
 
 const openConsole = async (user: ReturnType<typeof userEvent.setup>): Promise<void> => {
   await user.click(screen.getByRole("button", { name: "Console" }));

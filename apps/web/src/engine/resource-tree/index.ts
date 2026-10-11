@@ -6,6 +6,7 @@ import { KubeStorage } from "@/engine/domains/kube-storage";
 import type { GkeCluster } from "@/engine/domains/managed-services";
 import { observeResources } from "@/engine/domains/observability-lab/resources";
 import { type ParentRef, PolicyTarget, type Project } from "@/engine/domains/resource-hierarchy";
+import { MigLocation } from "@/engine/domains/resource-location";
 import { World } from "@/engine/domains/world";
 import { TreeSelection } from "@/engine/resource-tree/selection";
 import type { ValueOf } from "@/types/ValueOf";
@@ -60,8 +61,33 @@ export const ResourceGroups = {
 export type ResourceGroup = ValueOf<typeof ResourceGroups>;
 
 /** ノードの見出し。リソース名はそのまま、グループは種別で持つ。 */
+export type ResourceLabelKind =
+  | "snapshot"
+  | "instance-template"
+  | "instance-group"
+  | "health-check"
+  | "backend-service"
+  | "forwarding-rule"
+  | "address"
+  | "firewall"
+  | "subnet"
+  | "router"
+  | "node-pool"
+  | "kube-statefulset"
+  | "kube-deployment"
+  | "kube-service"
+  | "kube-hpa"
+  | "pvc"
+  | "kube-ingress"
+  | "kube-network-policy"
+  | "kube-namespace"
+  | "storageclass"
+  | "pv"
+  | "subscription"
+  | "budget";
+
 export type TreeLabel =
-  | Readonly<{ kind: "text"; text: string }>
+  | Readonly<{ kind: "text"; text: string; resource?: ResourceLabelKind }>
   | Readonly<{ kind: "group"; group: ResourceGroup }>;
 
 export type TreeNode = Readonly<{
@@ -91,6 +117,11 @@ const node = (
 });
 
 const text = (value: string): TreeLabel => ({ kind: "text", text: value });
+const resourceText = (resource: ResourceLabelKind, value: string): TreeLabel => ({
+  kind: "text",
+  text: value,
+  resource,
+});
 
 /** 中身が無いグループは出さない（件数 0 の見出しが並ぶと本当にあるものが埋もれる）。 */
 const group = (
@@ -110,8 +141,12 @@ const group = (
 
 type LeafFields = Partial<Pick<TreeNode, "children" | "status">>;
 
-const leaf = (selection: TreeSelection, label: string, fields: LeafFields = {}): TreeNode =>
-  node(TreeSelection.key(selection), text(label), {
+const leaf = (
+  selection: TreeSelection,
+  label: string | TreeLabel,
+  fields: LeafFields = {},
+): TreeNode =>
+  node(TreeSelection.key(selection), typeof label === "string" ? text(label) : label, {
     selection: Option.some(selection),
     ...fields,
   });
@@ -141,18 +176,26 @@ const diskNodes = (world: World, id: string): readonly TreeNode[] => [
     leaf({ kind: "disk", projectId: id, zone: d.zone, name: d.name }, d.name),
   ),
   ...World.diskSnapshotsOf(world, id).map((s) =>
-    leaf({ kind: "snapshot", projectId: id, name: s.name }, `snapshot: ${s.name}`),
+    leaf({ kind: "snapshot", projectId: id, name: s.name }, resourceText("snapshot", `${s.name}`)),
   ),
 ];
 
 const instanceGroupNodes = (world: World, id: string): readonly TreeNode[] => [
   ...World.namedOf(world, "instanceTemplates", id).map((t) =>
-    leaf({ kind: "instance-template", projectId: id, name: t.name }, `template: ${t.name}`),
+    leaf(
+      { kind: "instance-template", projectId: id, name: t.name },
+      resourceText("instance-template", `${t.name}`),
+    ),
   ),
   ...World.namedOf(world, "instanceGroups", id).map((g) =>
     leaf(
-      { kind: "instance-group", projectId: id, location: g.location, name: g.name },
-      `mig: ${g.name}`,
+      {
+        kind: "instance-group",
+        projectId: id,
+        location: MigLocation.name(g.location),
+        name: g.name,
+      },
+      resourceText("instance-group", `${g.name}`),
     ),
   ),
 ];
@@ -173,19 +216,33 @@ const loadBalancingNodes = (world: World, id: string): readonly TreeNode[] => [
       ),
     ),
   ...World.namedOf(world, "healthChecks", id).map((h) =>
-    leaf({ kind: "health-check", projectId: id, name: h.name, scope: h.scope }, `hc: ${h.name}`),
+    leaf(
+      { kind: "health-check", projectId: id, name: h.name, scope: h.scope },
+      resourceText("health-check", `${h.name}`),
+    ),
   ),
   ...World.namedOf(world, "backendServices", id).map((b) =>
     leaf(
       { kind: "backend-service", projectId: id, scope: b.scope, name: b.name },
-      `bes: ${b.name}`,
+      resourceText("backend-service", `${b.name}`),
     ),
   ),
   ...World.namedOf(world, "forwardingRules", id).map((r) =>
-    leaf({ kind: "forwarding-rule", projectId: id, scope: r.scope, name: r.name }, `fr: ${r.name}`),
+    leaf(
+      { kind: "forwarding-rule", projectId: id, scope: r.scope, name: r.name },
+      resourceText("forwarding-rule", `${r.name}`),
+    ),
   ),
   ...World.namedOf(world, "addresses", id).map((a) =>
-    leaf({ kind: "address", projectId: id, region: a.region, name: a.name }, `ip: ${a.name}`),
+    leaf(
+      {
+        kind: "address",
+        projectId: id,
+        region: a.scope.kind === "region" ? Option.some(a.scope.region) : Option.none,
+        name: a.name,
+      },
+      resourceText("address", `${a.name}`),
+    ),
   ),
 ];
 
@@ -194,12 +251,17 @@ const networkNodes = (world: World, id: string): readonly TreeNode[] =>
   World.networksOf(world, id).map((n) => {
     const firewalls = World.firewallRulesOf(world, id)
       .filter((r) => r.network === n.name)
-      .map((r) => leaf({ kind: "firewall", projectId: id, name: r.name }, `fw: ${r.name}`));
+      .map((r) =>
+        leaf(
+          { kind: "firewall", projectId: id, name: r.name },
+          resourceText("firewall", `${r.name}`),
+        ),
+      );
     const subnets = byName(World.subnetsOf(world, id).filter((s) => s.network === n.name)).map(
       (s) =>
         leaf(
           { kind: "subnet", projectId: id, region: s.region, name: s.name },
-          `subnet: ${s.name} (${s.region})`,
+          resourceText("subnet", `${s.name} (${s.region})`),
         ),
     );
     const routers = World.namedOf(world, "routers", id)
@@ -207,7 +269,7 @@ const networkNodes = (world: World, id: string): readonly TreeNode[] =>
       .map((r) =>
         leaf(
           { kind: "router", projectId: id, region: r.region, name: r.name },
-          `router: ${r.name}`,
+          resourceText("router", `${r.name}`),
         ),
       );
     return leaf({ kind: "network", projectId: id, name: n.name }, n.name, {
@@ -221,7 +283,7 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
   const pools = World.nodePoolsOf(world, cluster).map((p) =>
     leaf(
       { kind: "node-pool", projectId: id, cluster: cluster.name, name: p.name },
-      `pool: ${p.name}`,
+      resourceText("node-pool", `${p.name}`),
     ),
   );
   const resources = (namespace: string): readonly TreeNode[] => {
@@ -234,7 +296,7 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
           ...(namespace !== "default" ? { namespace } : {}),
           name: s.name,
         },
-        `sts: ${s.name}`,
+        resourceText("kube-statefulset", `${s.name}`),
       ),
     );
     const deployments = World.kubeDeploymentsOf(world, cluster, namespace).map((d) =>
@@ -246,7 +308,7 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
           ...(namespace !== "default" ? { namespace } : {}),
           name: d.name,
         },
-        `deploy: ${d.name}`,
+        resourceText("kube-deployment", `${d.name}`),
       ),
     );
     const services = World.kubeServicesOf(world, cluster, namespace).map((s) =>
@@ -258,7 +320,7 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
           ...(namespace !== "default" ? { namespace } : {}),
           name: s.name,
         },
-        `svc: ${s.name}`,
+        resourceText("kube-service", `${s.name}`),
       ),
     );
     const configs = world.kubeConfigs
@@ -305,7 +367,7 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
             ...(namespace !== "default" ? { namespace } : {}),
             name: h.name,
           },
-          `hpa: ${h.name}`,
+          resourceText("kube-hpa", `${h.name}`),
         ),
       );
     const claims = world.kubePvcs
@@ -320,7 +382,7 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
             namespace,
             name: c.name,
           },
-          `pvc: ${c.name}`,
+          resourceText("pvc", `${c.name}`),
         ),
       );
     const ingresses = world.kubeIngresses
@@ -334,7 +396,7 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
             namespace,
             name: p.name,
           },
-          `ing: ${p.name}`,
+          resourceText("kube-ingress", `${p.name}`),
         ),
       );
     const policies = world.kubeNetworkPolicies
@@ -348,7 +410,7 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
             namespace,
             name: p.name,
           },
-          `netpol: ${p.name}`,
+          resourceText("kube-network-policy", `${p.name}`),
         ),
       );
     return [
@@ -368,7 +430,7 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
     .map((n) =>
       leaf(
         { kind: "kube-namespace", projectId: id, cluster: cluster.name, name: n.name },
-        `namespace: ${n.name}`,
+        resourceText("kube-namespace", `${n.name}`),
         { children: resources(n.name) },
       ),
     );
@@ -379,7 +441,7 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
         ? [
             leaf(
               { kind: "kube-namespace", projectId: id, cluster: cluster.name, name: namespace },
-              `namespace: ${namespace}`,
+              resourceText("kube-namespace", `${namespace}`),
               { children },
             ),
           ]
@@ -395,7 +457,7 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
         cluster: cluster.name,
         name: c.name,
       },
-      `sc: ${c.name}`,
+      resourceText("storageclass", `${c.name}`),
     ),
   );
   const volumes = world.kubePvs
@@ -409,7 +471,7 @@ const clusterChildren = (world: World, cluster: GkeCluster): readonly TreeNode[]
           cluster: cluster.name,
           name: p.name,
         },
-        `pv: ${p.name}`,
+        resourceText("pv", `${p.name}`),
       ),
     );
   return [
@@ -455,7 +517,12 @@ const pubsubNodes = (world: World, id: string): readonly TreeNode[] =>
     leaf({ kind: "topic", projectId: id, name: t.name }, t.name, {
       children: World.namedOf(world, "pubsubSubscriptions", id)
         .filter((s) => s.topic === t.name)
-        .map((s) => leaf({ kind: "subscription", projectId: id, name: s.name }, `sub: ${s.name}`)),
+        .map((s) =>
+          leaf(
+            { kind: "subscription", projectId: id, name: s.name },
+            resourceText("subscription", `${s.name}`),
+          ),
+        ),
     }),
   );
 
@@ -949,7 +1016,10 @@ const billingNode = (world: World, id: string): TreeNode =>
     badge: TreeBadges.Billing,
     selection: Option.some({ kind: "billing", id }),
     children: World.budgetsOf(world, id).map((b) =>
-      leaf({ kind: "budget", billingAccountId: id, id: Budget.id(b) }, `budget: ${b.displayName}`),
+      leaf(
+        { kind: "budget", billingAccountId: id, id: Budget.id(b) },
+        resourceText("budget", `${b.displayName}`),
+      ),
     ),
   });
 

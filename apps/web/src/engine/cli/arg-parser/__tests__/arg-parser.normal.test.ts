@@ -116,3 +116,40 @@ test("余分な位置引数は unrecognized arguments になる", () => {
   expect(Result.isOk(result)).toBe(false);
   if (!Result.isOk(result)) expect(result.error.message).toBe("unrecognized arguments: web-2");
 });
+
+test("補完と実行は boolean の否定・別名・区切りを同じように解釈する", () => {
+  const tokens = ["--no-address", "-q", "--member=x", "--", "--zone=literal"];
+  const parsed = Result.unwrap(ArgParser.parse(tokens, flags, positionals));
+  const cursor = Result.unwrap(ArgParser.completion(tokens, "next", flags));
+  expect(cursor.args).toEqual(parsed);
+  expect(parsed.positionals).toEqual(["--zone=literal"]);
+  expect(ParsedArgs.booleanChoice(parsed, "address")).toEqual(Option.some(false));
+  expect(ParsedArgs.boolean(parsed, "quiet")).toBe(true);
+  expect(cursor.target).toEqual({ kind: "positional", index: 1 });
+});
+
+test("大量の可変長引数でも補完位置と実行の引数順を保持する", () => {
+  const names = Array.from({ length: 20000 }, (_, index) => `item-${index}`);
+  const cursor = Result.unwrap(ArgParser.completion(names, "next", []));
+  const parsed = Result.unwrap(ArgParser.parse(names, [], [Positional.variadic("NAME", "names")]));
+  expect(cursor.args).toEqual(parsed);
+  expect(parsed.positionals).toEqual(names);
+  expect(cursor.target).toEqual({ kind: "positional", index: names.length });
+});
+
+test.each(["__proto__", "constructor", "prototype"])(
+  "keyvalue は Snapshot で復元できないキー %s を拒否する",
+  (key) => {
+    const result = ArgParser.parse(
+      ["web-1", `--metadata=${key}=x`, "--member=x"],
+      flags,
+      positionals,
+    );
+    expect(Result.isOk(result)).toBe(false);
+    if (Result.isOk(result)) {
+      return;
+    }
+    expect(result.error.code).toBe("E-003");
+    expect(result.error.message).toContain(`Forbidden dictionary key: ${key}`);
+  },
+);

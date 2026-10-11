@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { Pill } from "@/components/Pill";
+import { Badge } from "@/components/Badge";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { Instance } from "@/engine/domains/compute";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
@@ -497,12 +497,12 @@ export const PropertiesPanel = ({
             {titleOf(selection.value)}
           </h3>
           {Option.isSome(status) && (
-            <Pill
+            <Badge
               tone={status.value === "RUNNING" ? "ok" : "muted"}
               className="font-mono font-semibold"
             >
               {status.value}
-            </Pill>
+            </Badge>
           )}
           {Option.isSome(createdAt) && (
             <span className="ml-auto shrink-0 text-sm text-warn-ink">作成 · {createdAt.value}</span>

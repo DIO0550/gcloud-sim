@@ -5,6 +5,7 @@ import {
   Region as RegionCatalog,
   Zone,
 } from "@/engine/domains/catalog";
+import { IpAllocation } from "@/engine/domains/ip-allocation";
 import type { JsonRecord } from "@/types/Json";
 import type { ValueOf } from "@/types/ValueOf";
 import { Option } from "@/utils/Option";
@@ -564,10 +565,7 @@ export const Subnet = {
    * @returns `10.146.0.2` のようなアドレス
    */
   hostAddress(subnet: Subnet, index: number): string {
-    const octets = subnet.ipCidrRange.split("/")[0]?.split(".").map(Number) ?? [];
-    const host = 2 + index;
-    const third = (octets[2] ?? 0) + Math.floor(host / 256);
-    return `${octets[0] ?? 0}.${octets[1] ?? 0}.${third}.${host % 256}`;
+    return IpAllocation.subnet(subnet.ipCidrRange, index);
   },
 
   selfLink(subnet: Subnet): string {

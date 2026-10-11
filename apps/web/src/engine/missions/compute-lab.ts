@@ -1,4 +1,5 @@
 import { diskData, vmConfig, vmRef } from "@/engine/domains/compute-lab/model";
+import { MigLocation } from "@/engine/domains/resource-location";
 import { allows } from "@/engine/domains/serverless-lab/runtime";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
@@ -358,7 +359,9 @@ export const computeSatisfied = (w: World, lesson: ComputeLesson): boolean => {
     );
   }
   const n = { rolling: "release", autoheal: "healing", autoscaling: "scaling" }[lesson];
-  const g = w.instanceGroups.find((g) => g.projectId === p && g.location === z && g.name === n);
+  const g = w.instanceGroups.find(
+    (g) => g.projectId === p && MigLocation.name(g.location) === z && g.name === n,
+  );
   const m = l.migs.find((m) => m.projectId === p && m.location === z && m.name === n);
   if (!g || !m) {
     return false;

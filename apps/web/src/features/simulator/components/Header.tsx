@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
-
 import { GhostButton } from "@/components/GhostButton";
+import { SegmentedControl } from "@/components/SegmentedControl";
 import { Select } from "@/components/Select";
 import { ToggleButton } from "@/components/ToggleButton";
 import type { World } from "@/engine/domains/world";
@@ -51,19 +51,13 @@ export const Header = ({
       <span className="whitespace-nowrap rounded border border-line px-2 py-0.5 text-muted text-xs">
         非公式・学習用
       </span>
-      <fieldset className="flex rounded-lg lg:ml-4 border border-line bg-canvas p-0.5 text-sm">
-        <legend className="sr-only">表示</legend>
-        {Object.values(Views).map((v) => (
-          <ToggleButton
-            key={v}
-            variant="segment"
-            pressed={view === v}
-            onClick={() => onViewChange(v)}
-          >
-            {viewText(v)}
-          </ToggleButton>
-        ))}
-      </fieldset>
+      <SegmentedControl
+        label="表示"
+        value={view}
+        options={Object.values(Views).map((v) => ({ value: v, label: viewText(v) }))}
+        onChange={onViewChange}
+        className="lg:ml-4"
+      />
       <div className="flex w-full flex-wrap items-center gap-2 text-sm lg:ml-auto lg:w-auto lg:gap-3">
         {view === "console" && (
           <ToggleButton variant="ghost" pressed={isTerminalOpen} onClick={onTerminalToggle}>

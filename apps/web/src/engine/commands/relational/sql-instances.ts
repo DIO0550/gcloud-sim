@@ -15,6 +15,7 @@ import {
 } from "@/engine/domains/catalog";
 import { SqlBackup, SqlInstance } from "@/engine/domains/data";
 import { Ipv4 } from "@/engine/domains/gke-control-plane";
+import { IpAllocation } from "@/engine/domains/ip-allocation";
 import {
   type Copy,
   databasesOf,
@@ -181,7 +182,7 @@ const createInstance = (ctx: ProjectContext, args: ParsedArgs): CommandResult =>
     region: region.value,
     databaseVersion: version.value,
     tier: machine.value,
-    ipAddress: `35.243.${(numbered.number >> 8) % 256}.${numbered.number % 256}`,
+    ipAddress: IpAllocation.sql(numbered.number),
     createTime: ctx.now,
   });
   if (!instance.ok) {
@@ -467,7 +468,7 @@ const clone = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
           ...base,
           name,
           gceZone: `${next.region}-a`,
-          ipAddress: `35.243.${(numbered.number >> 8) % 256}.${numbered.number % 256}`,
+          ipAddress: IpAllocation.sql(numbered.number),
           createTime: ctx.now,
         },
       ],

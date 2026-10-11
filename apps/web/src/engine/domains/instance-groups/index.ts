@@ -12,6 +12,7 @@ import {
   type ProvisioningModel,
   ResourceName,
 } from "@/engine/domains/compute";
+import { MigLocation } from "@/engine/domains/resource-location";
 import type { JsonRecord } from "@/types/Json";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -194,7 +195,7 @@ export const Autoscaling = {
 export type ManagedInstanceGroup = Readonly<{
   projectId: string;
   name: string;
-  location: Zone | Region;
+  location: MigLocation;
   template: string;
   targetSize: number;
   baseInstanceName: string;
@@ -224,17 +225,22 @@ export const ManagedInstanceGroup = {
       creationTimestamp: string;
     }>,
   ): Result<ManagedInstanceGroup, string> {
-    return Result.map(ResourceName.parse(seed.name), (name) => ({
-      projectId: seed.projectId,
-      name,
-      location: seed.location,
-      template: seed.template,
-      targetSize: seed.targetSize,
-      baseInstanceName: Option.unwrapOr(seed.baseInstanceName, name),
-      instanceNames: seed.instanceNames,
-      autoscaling: Option.none,
-      creationTimestamp: seed.creationTimestamp,
-    }));
+    return Result.flatMap(ResourceName.parse(seed.name), (name) =>
+      Result.map(
+        Option.toResult(MigLocation.parse(seed.location), () => "Unknown MIG location."),
+        (location) => ({
+          projectId: seed.projectId,
+          name,
+          location,
+          template: seed.template,
+          targetSize: seed.targetSize,
+          baseInstanceName: Option.unwrapOr(seed.baseInstanceName, name),
+          instanceNames: seed.instanceNames,
+          autoscaling: Option.none,
+          creationTimestamp: seed.creationTimestamp,
+        }),
+      ),
+    );
   },
 
   /**
@@ -259,11 +265,18 @@ export const ManagedInstanceGroup = {
    * @param index 0 始まり
    * @returns ゾーン
    */
-  zoneFor(location: Zone | Region, index: number): Zone {
-    const zones = ZoneCatalog.all().filter((z) => ZoneCatalog.region(z) === location);
-    const zoned = ZoneCatalog.parse(location);
-    if (Option.isSome(zoned)) return zoned.value;
-    return zones[index % zones.length] ?? (location as Zone);
+  zoneFor(location: MigLocation | Zone | Region, index: number): Zone {
+    const parsed =
+      typeof location === "string" ? MigLocation.parse(location) : Option.some(location);
+    if (!parsed.some) {
+      throw new Error("Unknown MIG location.");
+    }
+    const scope = parsed.value;
+    if (scope.kind === "zone") {
+      return scope.zone;
+    }
+    const zones = ZoneCatalog.all().filter((z) => ZoneCatalog.region(z) === scope.region);
+    return zones[index % zones.length] as Zone;
   },
 
   withAutoscaling(group: ManagedInstanceGroup, autoscaling: Autoscaling): ManagedInstanceGroup {
@@ -271,23 +284,23 @@ export const ManagedInstanceGroup = {
   },
 
   selfLink(group: ManagedInstanceGroup): string {
-    const zoned = Option.isSome(ZoneCatalog.parse(group.location));
-    const scope = zoned ? `zones/${group.location}` : `regions/${group.location}`;
+    const scope = MigLocation.toPath(group.location);
     return `${projectBase(group.projectId)}/${scope}/instanceGroupManagers/${group.name}`;
   },
 
   toRecord(group: ManagedInstanceGroup): JsonRecord {
     const base = projectBase(group.projectId);
-    const zoned = Option.isSome(ZoneCatalog.parse(group.location));
+    const zoned = group.location.kind === "zone";
+    const location = MigLocation.name(group.location);
     return {
       name: group.name,
       baseInstanceName: group.baseInstanceName,
       instanceTemplate: `${base}/global/instanceTemplates/${group.template}`,
       targetSize: group.targetSize,
       namedPorts: group.namedPorts ?? [],
-      zone: zoned ? `${base}/zones/${group.location}` : undefined,
-      region: zoned ? undefined : `${base}/regions/${group.location}`,
-      instanceGroup: `${base}/${zoned ? "zones" : "regions"}/${group.location}/instanceGroups/${group.name}`,
+      zone: zoned ? `${base}/zones/${location}` : undefined,
+      region: zoned ? undefined : `${base}/regions/${location}`,
+      instanceGroup: `${base}/${MigLocation.toPath(group.location)}/instanceGroups/${group.name}`,
       autoscaled: Option.isSome(group.autoscaling) ? "yes" : "no",
       autoscaling: Option.isSome(group.autoscaling)
         ? {

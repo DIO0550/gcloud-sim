@@ -1,6 +1,6 @@
 import { useReducer } from "react";
 
-import { Engine, type ExecutionOutcome, type OutputLine, Shell, type ShellState } from "@/engine";
+import { Engine, type ExecutionStatus, type OutputLine, Shell, type ShellState } from "@/engine";
 import type { World } from "@/engine/domains/world";
 import type { Mission } from "@/engine/missions";
 import type { TreeSelection } from "@/engine/resource-tree";
@@ -29,7 +29,7 @@ export type View = ValueOf<typeof Views>;
  * Console のフォームから流したコマンドの結果。成功なら一覧へ戻り、失敗ならフォームに赤帯を出す
  * （UC-008 例外フロー）。`line` は何を流したか。
  */
-export type ConsoleOutcome = Readonly<{ line: string; outcome: ExecutionOutcome }>;
+export type ConsoleOutcome = Readonly<{ line: string; outcome: ExecutionStatus }>;
 
 /** 保存しておく行数の上限。超えた分は古いものから捨てる（端末側は id で差分を取るので消えても困らない）。 */
 export const TranscriptLimit = 2000;
@@ -170,7 +170,7 @@ const executed = (
     origin: TranscriptLine["origin"];
     note: Option<string>;
   }>,
-): Readonly<{ state: SimulatorState; outcome: ExecutionOutcome }> => {
+): Readonly<{ state: SimulatorState; outcome: ExecutionStatus }> => {
   const result = Engine.execute({
     world: state.world,
     shell: state.shell,

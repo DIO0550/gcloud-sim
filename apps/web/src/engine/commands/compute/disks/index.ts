@@ -33,8 +33,8 @@ import {
 } from "@/engine/commands/compute-lab/disks";
 import { location, rf } from "@/engine/commands/compute-lab/shared";
 import {
-  alreadyExists,
   Candidates,
+  createNamed,
   describeNamedCommand,
   instanceOperationSeed,
   projectCommand,
@@ -114,13 +114,16 @@ const createDisk = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
       ),
     );
   }
-  return Result.map(
-    Result.mapErr(World.withDisk(numbered.world, disk.value), alreadyExists),
-    (world) => ({
-      world,
-      output: createdTable(Disk.selfLink(disk.value), Disk.toRecord(disk.value), DiskColumns),
-    }),
-  );
+  return createNamed(numbered.world, {
+    collection: "disks",
+    item: disk.value,
+    resource: Disk.selfLink(disk.value),
+    output: (world) =>
+      Result.ok({
+        world,
+        output: createdTable(Disk.selfLink(disk.value), Disk.toRecord(disk.value), DiskColumns),
+      }),
+  });
 };
 
 const resizeDisk = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {

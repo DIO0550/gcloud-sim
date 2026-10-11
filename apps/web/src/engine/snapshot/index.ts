@@ -32,12 +32,6 @@ import {
   SubnetModes,
 } from "@/engine/domains/compute";
 import { computeLabDecoder, emptyComputeLab } from "@/engine/domains/compute-lab/model";
-import {
-  type Address,
-  AddressType,
-  type NetworkPeering,
-  type Router,
-} from "@/engine/domains/compute-networking";
 import { ContainerLab } from "@/engine/domains/container-lab";
 import type { OsLoginSshKey, ServiceAccountKey } from "@/engine/domains/credentials";
 import type {
@@ -49,6 +43,12 @@ import type {
 import { dataProcessingDecoder, emptyDataProcessing } from "@/engine/domains/data-processing/model";
 import type { DmDeployment } from "@/engine/domains/deployment-manager";
 import type { DnsManagedZone } from "@/engine/domains/dns";
+import type {
+  AppEngineApp,
+  AppVersion,
+  CloudFunction,
+  FunctionTrigger,
+} from "@/engine/domains/functions-app-engine";
 import {
   ConfigProperty,
   type ConfigValues,
@@ -113,6 +113,12 @@ import type { CloudRunService, GkeCluster, NodePool } from "@/engine/domains/man
 import { type MissionProgress, MissionStatuses } from "@/engine/domains/mission-progress";
 import { AlertPolicy, Dashboard, LogMetric, UptimeCheck } from "@/engine/domains/monitoring";
 import { emptyNetworkLab, networkLabDecoder } from "@/engine/domains/network-lab/model";
+import {
+  type Address,
+  AddressType,
+  type NetworkPeering,
+  type Router,
+} from "@/engine/domains/network-resources";
 import type { LogSink } from "@/engine/domains/observability";
 import {
   emptyObservabilityLab,
@@ -129,13 +135,8 @@ import type {
   Project,
 } from "@/engine/domains/resource-hierarchy";
 import { ProjectStates } from "@/engine/domains/resource-hierarchy";
+import { MigLocation, ResourceLocation } from "@/engine/domains/resource-location";
 import type { CustomRole } from "@/engine/domains/role-catalog";
-import type {
-  AppEngineApp,
-  AppVersion,
-  CloudFunction,
-  FunctionTrigger,
-} from "@/engine/domains/serverless";
 import { labDecoder } from "@/engine/domains/serverless-lab/model";
 import { migrateServerless } from "@/engine/domains/serverless-lab/runtime";
 import type { ServiceAccount } from "@/engine/domains/service-account";
@@ -187,12 +188,12 @@ import { migrateTerraform } from "./terraform-migration";
  * v34 は索引・Spanner・Bigtable・Redisデータと明示的な読取/復旧履歴を持つ。
  * v35 はBigQueryの表/入力・Pub/Sub配送・処理ジョブ・Kafka・exportの教材状態を持つ。
  */
-export const SchemaVersion = 43;
+export const SchemaVersion = 44;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
 const MigratableVersions = [
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-  28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42,
+  28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43,
 ] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
@@ -540,7 +541,7 @@ const address = D.object<Address>({
   networkTier: optional(D.literal(["PREMIUM", "STANDARD"])),
   projectId: string,
   name: string,
-  region: D.option(region),
+  scope: (value, path) => lbScope(value, path),
   address: string,
   addressType: D.parsed(AddressType.parse, "address type"),
   status: D.literal(["RESERVED", "IN_USE"]),
@@ -734,13 +735,28 @@ const autoscaling = D.object<Autoscaling>({
   coolDownPeriodSec: D.number,
 });
 
+const migLocation: Decoder<MigLocation> = (value, path) =>
+  Result.flatMap(
+    D.object<{ kind: "zone" | "region" }>({ kind: D.literal(["zone", "region"]) })(value, path),
+    (head): Result<MigLocation, string> => {
+      if (head.kind === "zone") {
+        return Result.map(D.object<{ zone: Zone }>({ zone })(value, path), (body) =>
+          ResourceLocation.zone(body.zone),
+        );
+      }
+      return Result.map(D.object<{ region: Region }>({ region })(value, path), (body) =>
+        ResourceLocation.region(body.region),
+      );
+    },
+  );
+
 const instanceGroup = D.object<ManagedInstanceGroup>({
   namedPorts: optional(
     D.array(D.object<{ name: string; port: number }>({ name: string, port: D.number })),
   ),
   projectId: string,
   name: string,
-  location,
+  location: migLocation,
   template: string,
   targetSize: D.number,
   baseInstanceName: string,
@@ -1864,7 +1880,37 @@ const migrate = (version: number, value: unknown): unknown => {
     version >= 41 ? release : { ...release, observabilityLab: emptyObservabilityLab() };
   const terraform =
     version >= 42 || !isRecord(observable.terraform) ? observable : migrateTerraform(observable);
-  return version >= 43 ? terraform : { ...terraform, aceSupport: emptyAceSupport() };
+  const ace = version >= 43 ? terraform : { ...terraform, aceSupport: emptyAceSupport() };
+  if (version >= 44) {
+    return ace;
+  }
+  return {
+    ...ace,
+    instanceGroups: Array.isArray(ace.instanceGroups)
+      ? ace.instanceGroups.map((group) => {
+          if (!isRecord(group) || typeof group.location !== "string") {
+            return group;
+          }
+          const location = MigLocation.parse(group.location);
+          return location.some ? { ...group, location: location.value } : group;
+        })
+      : ace.instanceGroups,
+    addresses: Array.isArray(ace.addresses)
+      ? ace.addresses.map((address) => {
+          if (!isRecord(address) || address.scope !== undefined || !isRecord(address.region)) {
+            return address;
+          }
+          const { region, ...rest } = address;
+          if (region.some === false) {
+            return { ...rest, scope: ResourceLocation.Global };
+          }
+          if (region.some !== true) {
+            return address;
+          }
+          return { ...rest, scope: { kind: "region", region: region.value } };
+        })
+      : ace.addresses,
+  };
 };
 
 export const Snapshot = {

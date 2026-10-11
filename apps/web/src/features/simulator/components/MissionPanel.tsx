@@ -1,6 +1,6 @@
 import { type ReactElement, useState } from "react";
+import { Badge } from "@/components/Badge";
 import { NavItemButton } from "@/components/NavItemButton";
-import { Pill } from "@/components/Pill";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SectionHeading } from "@/components/SectionHeading";
@@ -24,21 +24,21 @@ const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElem
   switch (status) {
     case MissionStatuses.Completed:
       return (
-        <Pill className="shrink-0 whitespace-nowrap" tone="ok">
+        <Badge className="shrink-0 whitespace-nowrap" tone="ok">
           クリア
-        </Pill>
+        </Badge>
       );
     case MissionStatuses.InProgress:
       return (
-        <Pill className="shrink-0 whitespace-nowrap" tone="accent">
+        <Badge className="shrink-0 whitespace-nowrap" tone="accent">
           挑戦中
-        </Pill>
+        </Badge>
       );
     case MissionStatuses.Available:
       return (
-        <Pill className="shrink-0 whitespace-nowrap" tone="muted">
+        <Badge className="shrink-0 whitespace-nowrap" tone="muted">
           未着手
-        </Pill>
+        </Badge>
       );
   }
 };

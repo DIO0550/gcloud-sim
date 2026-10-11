@@ -2,6 +2,7 @@
 import { expect, test } from "vitest";
 
 import { Now, run, session } from "@/engine/__tests__/setup";
+import { MigLocation } from "@/engine/domains/resource-location";
 import { SchemaVersion, Snapshot } from "@/engine/snapshot";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -68,7 +69,7 @@ test("v1 の Snapshot を import すると、足した集合が空で復元さ�
   expect(imported.buckets[0]?.objects[0]?.name).toBe("a.log");
 });
 
-test("現行の Snapshot は v43 で、export → import が同一になる", () => {
+test("現行の Snapshot は v44 で、export → import が同一になる", () => {
   const s = run(
     session(),
     "gcloud compute disks create d --zone=asia-northeast1-a",
@@ -78,7 +79,7 @@ test("現行の Snapshot は v43 で、export → import が同一になる", ()
   );
   const snapshot = Snapshot.create(s.world, Now);
   expect(snapshot.schemaVersion).toBe(SchemaVersion);
-  expect(SchemaVersion).toBe(43);
+  expect(SchemaVersion).toBe(44);
   const imported = Result.unwrap(Snapshot.fromUnknown(JSON.parse(JSON.stringify(snapshot))));
   expect(imported).toEqual(s.world);
 });
@@ -95,4 +96,72 @@ test("v1 でも形が壊れていれば malformed になる（マイグレーシ
   const result = Snapshot.fromUnknown(JSON.parse(JSON.stringify(broken)));
   expect(Result.isOk(result)).toBe(false);
   if (!Result.isOk(result)) expect(result.error.kind).toBe("malformed");
+});
+
+const v43Locations = () => {
+  const s = run(
+    session(),
+    "gcloud compute instance-templates create web-tpl",
+    "gcloud compute instance-groups managed create web-mig --zone=asia-northeast1-a --template=web-tpl --size=1",
+    "gcloud compute instance-groups managed create web-mig --region=asia-northeast1 --template=web-tpl --size=2",
+    "gcloud compute addresses create endpoint --global",
+    "gcloud compute addresses create endpoint --region=asia-northeast1",
+  );
+  const legacy = {
+    schemaVersion: 43,
+    exportedAt: Now,
+    world: {
+      ...s.world,
+      instanceGroups: s.world.instanceGroups.map(({ location, ...group }) => ({
+        ...group,
+        location: MigLocation.name(location),
+      })),
+      addresses: s.world.addresses.map(({ scope, ...address }) => ({
+        ...address,
+        region: scope.kind === "global" ? Option.none : Option.some(scope.region),
+      })),
+    },
+  };
+  return { s, legacy };
+};
+
+test("v43 の MIG と Address はロケーションの形を移行し、同名の別スコープを保持する", () => {
+  const { s, legacy } = v43Locations();
+  expect(s.world.instanceGroups).toHaveLength(2);
+  expect(s.world.addresses).toHaveLength(2);
+  const imported = Result.unwrap(Snapshot.fromUnknown(JSON.parse(JSON.stringify(legacy))));
+  expect(imported).toEqual(s.world);
+  for (const line of [
+    "gcloud compute instance-groups managed list",
+    "gcloud compute instance-groups managed describe web-mig --region=asia-northeast1",
+    "gcloud compute instance-groups managed describe web-mig --zone=asia-northeast1-a",
+    "gcloud compute addresses list",
+    "gcloud compute addresses describe endpoint --global",
+    "gcloud compute addresses describe endpoint --region=asia-northeast1",
+  ]) {
+    expect(run(session(imported), line).text).toBe(run(s, line).text);
+  }
+  const duplicate = run(session(imported), "gcloud compute addresses create endpoint --global");
+  expect(duplicate.text).toContain("already exists");
+  expect(duplicate.world).toBe(imported);
+});
+
+test("v43 の不正な Address.region.some は移行で正常値に変換されない", () => {
+  const { legacy } = v43Locations();
+  const broken = {
+    ...legacy,
+    world: {
+      ...legacy.world,
+      addresses: legacy.world.addresses.map((address) => ({
+        ...address,
+        region: { some: "true", value: "asia-northeast1" },
+      })),
+    },
+  };
+  const result = Snapshot.fromUnknown(broken);
+  expect(Result.isOk(result)).toBe(false);
+  if (Result.isOk(result)) {
+    return;
+  }
+  expect(result.error.kind).toBe("malformed");
 });

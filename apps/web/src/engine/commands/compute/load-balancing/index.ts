@@ -10,7 +10,7 @@ import {
   type ProjectContext,
 } from "@/engine/cli/command-spec";
 import { ComputeApi } from "@/engine/commands/compute/shared";
-import { alreadyExists, Candidates, projectCommand } from "@/engine/commands/shared";
+import { Candidates, createNamed, projectCommand } from "@/engine/commands/shared";
 import { Zone } from "@/engine/domains/catalog";
 import {
   BackendProtocols,
@@ -29,6 +29,7 @@ import {
   lbLink,
   validPort,
 } from "@/engine/domains/load-balancing/graph";
+import { MigLocation } from "@/engine/domains/resource-location";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -141,13 +142,12 @@ const createCheck =
     ) {
       return invalid("Invalid health-check port, path or interval/timeout.");
     }
-    return Result.flatMap(
-      Result.mapErr(
-        World.withNamed(ctx.world, "healthChecks", check, HealthCheck.selfLink(check)),
-        alreadyExists,
-      ),
-      (world) => finish(world, HealthCheck.toRecord(check)),
-    );
+    return createNamed(ctx.world, {
+      collection: "healthChecks",
+      item: check,
+      resource: HealthCheck.selfLink(check),
+      output: (world) => finish(world, HealthCheck.toRecord(check)),
+    });
   };
 export const backendArg = (
   ctx: ProjectContext,
@@ -226,13 +226,12 @@ const createBackend = (ctx: ProjectContext, args: ParsedArgs): CommandResult => 
   ) {
     return invalid("Invalid timeout/port-name, or CDN requires global external Application LB.");
   }
-  return Result.flatMap(
-    Result.mapErr(
-      World.withNamed(ctx.world, "backendServices", b, BackendService.selfLink(b)),
-      alreadyExists,
-    ),
-    (world) => finish(world, BackendService.toRecord(b)),
-  );
+  return createNamed(ctx.world, {
+    collection: "backendServices",
+    item: b,
+    resource: BackendService.selfLink(b),
+    output: (world) => finish(world, BackendService.toRecord(b)),
+  });
 };
 const modifyBackend =
   (action: "add" | "remove") =>
@@ -260,7 +259,7 @@ const modifyBackend =
         (g) =>
           g.projectId === ctx.project.projectId &&
           g.name === groupName.value &&
-          g.location === location,
+          MigLocation.name(g.location) === location,
       );
       if (g === undefined) {
         return Result.err(CommandFailure.notFound(`instanceGroups/${groupName.value}/${location}`));
