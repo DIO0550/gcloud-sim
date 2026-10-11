@@ -1,0 +1,1104 @@
+{
+  "reportVersion": "66a4595ee1c54ebeb93094de3b2684c010a3a7bd",
+  "pr": "46",
+  "changed": 39,
+  "new": 4,
+  "deleted": 0,
+  "passed": 25,
+  "maxImages": 48,
+  "maxDiffRatio": 0.0001,
+  "tolerance": 8,
+  "results": [
+    {
+      "name": "console-iam__desktop",
+      "label": "Console: IAM（継承されたロールを含む）",
+      "viewport": "desktop",
+      "status": "passed",
+      "ratio": 0,
+      "changedPixels": 0,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      }
+    },
+    {
+      "name": "console-iam__mobile",
+      "label": "Console: IAM（継承されたロールを含む）",
+      "viewport": "mobile",
+      "status": "passed",
+      "ratio": 0,
+      "changedPixels": 0,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      }
+    },
+    {
+      "name": "console-vm-create__desktop",
+      "label": "Console: インスタンスを作成（名前とタグを入れた状態）",
+      "viewport": "desktop",
+      "status": "passed",
+      "ratio": 0,
+      "changedPixels": 0,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      }
+    },
+    {
+      "name": "console-vm-create__mobile",
+      "label": "Console: インスタンスを作成（名前とタグを入れた状態）",
+      "viewport": "mobile",
+      "status": "passed",
+      "ratio": 0,
+      "changedPixels": 0,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      }
+    },
+    {
+      "name": "console-vm-list__desktop",
+      "label": "Console: VM インスタンス一覧（VM を 2 台作った状態）",
+      "viewport": "desktop",
+      "status": "passed",
+      "ratio": 0,
+      "changedPixels": 0,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      }
+    },
+    {
+      "name": "console-vm-list__mobile",
+      "label": "Console: VM インスタンス一覧（VM を 2 台作った状態）",
+      "viewport": "mobile",
+      "status": "passed",
+      "ratio": 0,
+      "changedPixels": 0,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      }
+    },
+    {
+      "name": "gke-env-properties__desktop",
+      "label": "GKE: 環境変数と更新履歴",
+      "viewport": "desktop",
+      "status": "changed",
+      "ratio": 0.015249,
+      "changedPixels": 35133,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "published": true
+    },
+    {
+      "name": "gke-env-properties__mobile",
+      "label": "GKE: 環境変数と更新履歴",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.031734,
+      "changedPixels": 16375,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "gke-hpa-manifest-properties__desktop",
+      "label": "GKE: HPAファイル変更後の未評価状態",
+      "viewport": "desktop",
+      "status": "changed",
+      "ratio": 0.010478,
+      "changedPixels": 24142,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "published": true
+    },
+    {
+      "name": "gke-hpa-manifest-properties__mobile",
+      "label": "GKE: HPAファイル変更後の未評価状態",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.046994,
+      "changedPixels": 24249,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "gke-hpa-properties__desktop",
+      "label": "GKE: HPAの設定と教材評価",
+      "viewport": "desktop",
+      "status": "changed",
+      "ratio": 0.012347,
+      "changedPixels": 28448,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "published": true
+    },
+    {
+      "name": "gke-hpa-properties__mobile",
+      "label": "GKE: HPAの設定と教材評価",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.055198,
+      "changedPixels": 28482,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "gke-label-routing__desktop",
+      "label": "GKE: greenへの公開先切り替え",
+      "viewport": "desktop",
+      "status": "changed",
+      "ratio": 0.008865,
+      "changedPixels": 20424,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "published": true
+    },
+    {
+      "name": "gke-label-routing__mobile",
+      "label": "GKE: greenへの公開先切り替え",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.039357,
+      "changedPixels": 20308,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "gke-liveness-properties__desktop",
+      "label": "GKE: コンテナ再起動後にreadinessを再評価するPod",
+      "viewport": "desktop",
+      "status": "changed",
+      "ratio": 0.032423,
+      "changedPixels": 74703,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "published": true
+    },
+    {
+      "name": "gke-liveness-properties__mobile",
+      "label": "GKE: コンテナ再起動後にreadinessを再評価するPod",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.052585,
+      "changedPixels": 27134,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "gke-namespace-properties__desktop",
+      "label": "GKE: 同名Deploymentをnamespace別に表示",
+      "viewport": "desktop",
+      "status": "new",
+      "published": true
+    },
+    {
+      "name": "gke-namespace-properties__mobile",
+      "label": "GKE: 同名Deploymentをnamespace別に表示",
+      "viewport": "mobile",
+      "status": "new",
+      "published": true
+    },
+    {
+      "name": "gke-qos-properties__desktop",
+      "label": "GKE: Guaranteed PodのQoSとresources",
+      "viewport": "desktop",
+      "status": "changed",
+      "ratio": 0.012091,
+      "changedPixels": 27857,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "published": true
+    },
+    {
+      "name": "gke-qos-properties__mobile",
+      "label": "GKE: Guaranteed PodのQoSとresources",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.038415,
+      "changedPixels": 19822,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "gke-readiness-properties__desktop",
+      "label": "GKE: Runningのままreadinessが失敗したPod",
+      "viewport": "desktop",
+      "status": "changed",
+      "ratio": 0.022844,
+      "changedPixels": 52632,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "published": true
+    },
+    {
+      "name": "gke-readiness-properties__mobile",
+      "label": "GKE: Runningのままreadinessが失敗したPod",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.048795,
+      "changedPixels": 25178,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "gke-resource-properties__desktop",
+      "label": "GKE: CPU・メモリの設定と履歴",
+      "viewport": "desktop",
+      "status": "changed",
+      "ratio": 0.013675,
+      "changedPixels": 31508,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "published": true
+    },
+    {
+      "name": "gke-resource-properties__mobile",
+      "label": "GKE: CPU・メモリの設定と履歴",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.038236,
+      "changedPixels": 19730,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "gke-secret-properties__desktop",
+      "label": "GKE: Secretの値を隠したプロパティ",
+      "viewport": "desktop",
+      "status": "passed",
+      "ratio": 0.000033,
+      "changedPixels": 75,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      }
+    },
+    {
+      "name": "gke-secret-properties__mobile",
+      "label": "GKE: Secretの値を隠したプロパティ",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.000145,
+      "changedPixels": 75,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "gke-service-routing__desktop",
+      "label": "GKE: Serviceのselectorと接続先",
+      "viewport": "desktop",
+      "status": "changed",
+      "ratio": 0.008767,
+      "changedPixels": 20199,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "published": true
+    },
+    {
+      "name": "gke-service-routing__mobile",
+      "label": "GKE: Serviceのselectorと接続先",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.039318,
+      "changedPixels": 20288,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "gke-startup-properties__desktop",
+      "label": "GKE: 起動確認が成功するまでprobeを待機するPod",
+      "viewport": "desktop",
+      "status": "changed",
+      "ratio": 0.042191,
+      "changedPixels": 97207,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "published": true
+    },
+    {
+      "name": "gke-startup-properties__mobile",
+      "label": "GKE: 起動確認が成功するまでprobeを待機するPod",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.051833,
+      "changedPixels": 26746,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "home__desktop",
+      "label": "CLI 画面（初期 World）",
+      "viewport": "desktop",
+      "status": "passed",
+      "ratio": 0.000033,
+      "changedPixels": 75,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      }
+    },
+    {
+      "name": "home__mobile",
+      "label": "CLI 画面（初期 World）",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.000145,
+      "changedPixels": 75,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "mission-categories__desktop",
+      "label": "ミッション: カテゴリ選択",
+      "viewport": "desktop",
+      "status": "passed",
+      "ratio": 0.000058,
+      "changedPixels": 134,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      }
+    },
+    {
+      "name": "mission-categories__mobile",
+      "label": "ミッション: カテゴリ選択",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.00026,
+      "changedPixels": 134,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "mission-cleanup__desktop",
+      "label": "ミッション: コンテナ教材の片付け",
+      "viewport": "desktop",
+      "status": "passed",
+      "ratio": 0.000035,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      }
+    },
+    {
+      "name": "mission-cleanup__mobile",
+      "label": "ミッション: コンテナ教材の片付け",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.000157,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "mission-gke-config__desktop",
+      "label": "ミッション: ConfigMap変更を再起動で反映",
+      "viewport": "desktop",
+      "status": "passed",
+      "ratio": 0.000035,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      }
+    },
+    {
+      "name": "mission-gke-config__mobile",
+      "label": "ミッション: ConfigMap変更を再起動で反映",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.000157,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "mission-gke-hpa-manifest__desktop",
+      "label": "ミッション: HPA設定ファイルの変更と再評価",
+      "viewport": "desktop",
+      "status": "passed",
+      "ratio": 0.000035,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      }
+    },
+    {
+      "name": "mission-gke-hpa-manifest__mobile",
+      "label": "ミッション: HPA設定ファイルの変更と再評価",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.000157,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "mission-gke-hpa__desktop",
+      "label": "ミッション: CPU使用率によるPodの増加",
+      "viewport": "desktop",
+      "status": "passed",
+      "ratio": 0.000035,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      }
+    },
+    {
+      "name": "mission-gke-hpa__mobile",
+      "label": "ミッション: CPU使用率によるPodの増加",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.000157,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "mission-gke-labels__desktop",
+      "label": "ミッション: 複数ラベルで公開先を切り替え",
+      "viewport": "desktop",
+      "status": "passed",
+      "ratio": 0.000035,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      }
+    },
+    {
+      "name": "mission-gke-labels__mobile",
+      "label": "ミッション: 複数ラベルで公開先を切り替え",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.000157,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "mission-gke-liveness__desktop",
+      "label": "ミッション: livenessでコンテナ再起動",
+      "viewport": "desktop",
+      "status": "passed",
+      "ratio": 0.000035,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      }
+    },
+    {
+      "name": "mission-gke-liveness__mobile",
+      "label": "ミッション: livenessでコンテナ再起動",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.000157,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "mission-gke-manifest__desktop",
+      "label": "ミッション: 設定ファイルをapplyして反映",
+      "viewport": "desktop",
+      "status": "passed",
+      "ratio": 0.000035,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      }
+    },
+    {
+      "name": "mission-gke-manifest__mobile",
+      "label": "ミッション: 設定ファイルをapplyして反映",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.000157,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "mission-gke-namespace__desktop",
+      "label": "ミッション: namespaceで検証と本番を分離",
+      "viewport": "desktop",
+      "status": "new",
+      "published": true
+    },
+    {
+      "name": "mission-gke-namespace__mobile",
+      "label": "ミッション: namespaceで検証と本番を分離",
+      "viewport": "mobile",
+      "status": "new",
+      "published": true
+    },
+    {
+      "name": "mission-gke-qos__desktop",
+      "label": "ミッション: PodのQoSを比較する",
+      "viewport": "desktop",
+      "status": "passed",
+      "ratio": 0.000035,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      }
+    },
+    {
+      "name": "mission-gke-qos__mobile",
+      "label": "ミッション: PodのQoSを比較する",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.000157,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "mission-gke-readiness__desktop",
+      "label": "ミッション: 未準備PodをServiceから外す",
+      "viewport": "desktop",
+      "status": "passed",
+      "ratio": 0.000035,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      }
+    },
+    {
+      "name": "mission-gke-readiness__mobile",
+      "label": "ミッション: 未準備PodをServiceから外す",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.000157,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "mission-gke-resources__desktop",
+      "label": "ミッション: CPU・メモリの必要量と上限",
+      "viewport": "desktop",
+      "status": "passed",
+      "ratio": 0.000035,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      }
+    },
+    {
+      "name": "mission-gke-resources__mobile",
+      "label": "ミッション: CPU・メモリの必要量と上限",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.000157,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "mission-gke-rollback__desktop",
+      "label": "ミッション: GKE更新失敗からの復旧",
+      "viewport": "desktop",
+      "status": "passed",
+      "ratio": 0.000035,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      }
+    },
+    {
+      "name": "mission-gke-rollback__mobile",
+      "label": "ミッション: GKE更新失敗からの復旧",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.000157,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "mission-gke-startup__desktop",
+      "label": "ミッション: startupでコンテナ再起動",
+      "viewport": "desktop",
+      "status": "passed",
+      "ratio": 0.000035,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      }
+    },
+    {
+      "name": "mission-gke-startup__mobile",
+      "label": "ミッション: startupでコンテナ再起動",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.000157,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "mission-gke-workload__desktop",
+      "label": "ミッション: マニフェスト更新とService接続先",
+      "viewport": "desktop",
+      "status": "passed",
+      "ratio": 0.000035,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      }
+    },
+    {
+      "name": "mission-gke-workload__mobile",
+      "label": "ミッション: マニフェスト更新とService接続先",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.000157,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "mission-list__desktop",
+      "label": "ミッション: カテゴリ内の一覧",
+      "viewport": "desktop",
+      "status": "passed",
+      "ratio": 0.000035,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      }
+    },
+    {
+      "name": "mission-list__mobile",
+      "label": "ミッション: カテゴリ内の一覧",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.000157,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "mission-steps__desktop",
+      "label": "ミッション: 選んだ1件の手順",
+      "viewport": "desktop",
+      "status": "passed",
+      "ratio": 0.000035,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      }
+    },
+    {
+      "name": "mission-steps__mobile",
+      "label": "ミッション: 選んだ1件の手順",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.000157,
+      "changedPixels": 81,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "settings__desktop",
+      "label": "設定ダイアログ",
+      "viewport": "desktop",
+      "status": "passed",
+      "ratio": 0.000063,
+      "changedPixels": 146,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      }
+    },
+    {
+      "name": "settings__mobile",
+      "label": "設定ダイアログ",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.000161,
+      "changedPixels": 83,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    }
+  ]
+}
