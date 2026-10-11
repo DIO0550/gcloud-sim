@@ -21,7 +21,24 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（846）
+## 実装済み（856）
+
+### ACE選定・AI構成教材
+
+| コマンド | 内容 |
+|---|---|
+| `sim ace scenarios list` | 固定の選定シナリオ一覧。 |
+| `sim ace scenarios describe` | 要件・選択肢・解説と現在の回答。 |
+| `sim ace scenarios choose` | `--choice` / `--reason`で選択と理由を保存。 |
+| `sim ai resources create` | kind/platform・regional subnet・専用SAの教材構成を作成。 |
+| `sim ai resources update` | 停止中のaccess・idle・SA・subnetを変更。 |
+| `sim ai resources start` | API・IAM・actAs・subnetを検証して教材状態をRUNNINGにする。 |
+| `sim ai resources stop` | 停止して構成revisionの履歴を保存。 |
+| `sim ai resources delete` | 停止済み、または未開始の教材構成を削除。 |
+| `sim ai resources describe` | 指定project/regionの構成と履歴を表示。 |
+| `sim ai resources list` | 指定projectの構成一覧。 |
+
+実行するのは構成教材の状態遷移です。実AI・VM・IDEの起動や課金は行いません。詳細は[ACE_AI_SUPPORT.md](ACE_AI_SUPPORT.md)を参照してください。
 
 ### コンテナ教材の公開検証
 
@@ -1193,3 +1210,9 @@ PodのQoSは`kubectl get pods -o json` / `-o yaml` / `kubectl describe pods`の`
 | `sim terraform backend restore` | 版管理したGCS backendの既知世代を確認付きで復旧 |
 | `sim terraform plan-json` | 保存planを仮想JSONへ書き出す |
 | `gcloud terraform vet` | 保存plan JSONと限定policy.jsonの検証。Regoは非対応 |
+
+## ACE判断・AI構成教材（Issue #25）
+
+`sim ace scenarios list|describe|choose` と `sim ai resources list|describe|create|update|start|stop|delete`。
+`choose`はNAME、`--choice`、`--reason`を要求する。AIリソースの変更とdescribeにはNAMEと`--region`を要求する。
+CLI helpとTab補完、project別のツリー/プロパティを提供する。[再現範囲](ACE_AI_SUPPORT.md)と[48資料の対応表](ACE_SOURCE_MAP.md)を参照。

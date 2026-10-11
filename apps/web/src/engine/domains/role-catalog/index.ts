@@ -1,3 +1,13 @@
+import {
+  AgentRead,
+  AgentWrite,
+  AiRead,
+  AiWrite,
+  NotebookRead,
+  NotebookWrite,
+  WorkstationRead,
+  WorkstationWrite,
+} from "@/engine/domains/ace-support/permissions";
 import { AdminPermissions } from "@/engine/domains/admin-lab/permissions";
 import { ComputeLabPermissions } from "@/engine/domains/compute-lab/permissions";
 import type { RoleName } from "@/engine/domains/iam-policy";
@@ -658,6 +668,7 @@ const ArtifactAdminPermissions = [
 ] as const;
 
 const ViewerPermissions = [
+  ...AiRead,
   ...AdminPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
   ...StorageLabPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
   ...NetworkLabPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
@@ -746,6 +757,7 @@ const ViewerPermissions = [
 ] as const;
 
 const EditorPermissions = [
+  ...AiWrite,
   ...StorageLabPermissions,
   ...ComputeSecurityPermissions,
   ...NetworkLabPermissions.filter((p) => !p.startsWith("compute.organizations.")),
@@ -805,6 +817,12 @@ const role = (name: RoleName, title: string, permissions: readonly string[]): Ro
 
 /** ACE 頻出の事前定義ロール（TBD-006: 約 30 個から開始）。 */
 const Roles: readonly Role[] = [
+  role("roles/aiplatform.admin", "Vertex AI Administrator (lesson subset)", AgentWrite),
+  role("roles/aiplatform.viewer", "Vertex AI Viewer (lesson subset)", AgentRead),
+  role("roles/notebooks.admin", "Notebooks Administrator (lesson subset)", NotebookWrite),
+  role("roles/notebooks.viewer", "Notebooks Viewer (lesson subset)", NotebookRead),
+  role("roles/workstations.admin", "Workstations Administrator (lesson subset)", WorkstationWrite),
+  role("roles/workstations.viewer", "Workstations Viewer (lesson subset)", WorkstationRead),
   role(
     "roles/storagetransfer.admin",
     "Storage Transfer Admin",

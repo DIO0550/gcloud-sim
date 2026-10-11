@@ -1,6 +1,8 @@
-# ACE 資料とシミュレーターの対応計画
+# ACE 資料とシミュレーターの対応範囲
 
-2026-10-03 添付 `Associate Cloud Engineer.zip` の48 PDFを、mainの215コマンド・18ミッションと照合。資料の本文・図・設問そのものはリポジトリへ転載しない。以下は学習目標から作る独自演習の実装計画であり、完了済みの機能一覧ではない。
+2026-10-03に添付 `Associate Cloud Engineer.zip` の48 PDFを、当時のmainの215コマンド・18ミッションと照合した。以下は学習目標に基づく独自演習の実装範囲。資料の本文・図・設問そのものはリポジトリへ転載しない。
+
+全48資料の学習目標・実在ミッション・CLI/判断の入口は[資料対応表](ACE_SOURCE_MAP.md)を参照。
 
 ## 完了の定義
 
@@ -12,26 +14,26 @@
 - ミッションは操作文字列ではなく結果の状態を判定する。初期状態から解け、途中/誤設定ではクリアしないことをテストする。
 - 分野ごとのPRで実装とミッションを組にする。部分対応を分野全体の完了と数えない。
 
-## 分野別の差分
+## 分野別の対応範囲
 
-| 分野 | 既存の対応 | 追加する操作・判断とミッション | 状態 |
+| 分野 | 当初の対応 | 追加した操作・判断とミッション | 状態 |
 |---|---|---|---|
-| Logging / Monitoring | Compute監査ログ、sink作成。dashboard/policyは空一覧のみ | positional log filter・昇順、ログ指標、sink更新/削除、dashboard・alert policy・uptime・通知、metrics scope、ログバケット/保持/除外、ログルーター、SLI/SLO/予算、監査ログ種類と有効化 | 部分実装: 指標/sink変更・監視3種と5ミッション。通知・metrics scope・ログbucket・SLI/SLO・監査設定は残作業 |
-| Terraform | 初回未対応（Deployment Managerのみ） | HCL/変数/式/出力、plan/apply、World共有、module/moved、state/import、GCS保護・復旧、vet | #13の教材範囲を実装: 14ミッション、Snapshot v42。count/for_each、CLI変数、provider制約/alias、限定公開module、Auto VPCと2VM、ポリシー検証、機密state保護と既知世代復旧。実Terraform完全互換・workspace/並行処理は再現対象外。詳細は[TERRAFORM.md](TERRAFORM.md)。CI/画面確認とPRマージ後にIssueを完了する |
-| Docker / Artifact Registry | ローカルDocker・Artifact Registry・Cloud BuildとGKE pull | ビルド→ローカル検証→push→GKE公開→専用教材の片付け | #14の6項目を限定教材モデルで実装。8独立ミッション、Snapshot v40。ローカル/GKE検証履歴を保存し、初期の空状態や検証前削除は不合格。実コード/通信・任意build設定・キャッシュは再現対象外。[CONTAINERS.md](CONTAINERS.md)に対応/拒否範囲を記載。CI通過とPRマージ後にIssueを完了する |
-| GKE / Kubernetes | Standard/Autopilot、Deployment/Service/Pod、scale/restart、固定manifest | namespace・ConfigMap/Secret・環境/ファイル、更新/undo、probe/resources/HPA/VPA、StatefulSet/PVC、Ingress/NetworkPolicy、private/regional・node pool・Workload Identity・最小権限 | #15の教材モデルを実装: 複数コンテナの個別runtimeと全体Ready、WIのKSA/IAM連携・閲覧だけの権限、Standard metadata、VPA Off/Initial/Recreate、単一Autopilot resource補正、regional zone別ノード数、既存の保存/表示/CLI/復旧教材を統合。GKE関連42ミッション・Snapshot v30。高度なStatefulSet/Service・実scheduler/HA・通信/実測・定期controllerは対象外。具体的な対応と拒否範囲は[KUBERNETES.md](KUBERNETES.md)。PRマージ後にIssueを完了する |
-| Load Balancing | health check/backend/forwarding ruleを単独作成 | 正式なHC構文、MIG/named ports、backend add/remove/get-health、URL map/proxy、外部passthrough・global外部/region内部Application LB、proxy-only subnet、HC/data通信障害、managed SSL/CDN/zonal NEG/backend bucket・Tier選択と片付け | #16の教材モデルを実装: 7ミッション、Snapshot v31、CLI/権限/参照/保存/表示。IPv4・TCP passthrough・global managed TLS等に限定。具体的な対応・拒否範囲は[LOAD_BALANCING.md](LOAD_BALANCING.md)。PRマージ後にIssueを完了する |
-| Cloud Run / Functions | deploy/list/describe、HTTP/PubSub trigger、単純call | 環境変数・min/max/concurrency・timeout・revision/traffic・jobs、runtime SAとinvoker IAM、認証付き呼出し、Storage/Eventarc、retry、VPC connector/ingress/egress、Workflows、Secret Manager/CMEK、Firestore/Redis接続 | 未完了 |
-| Cloud SQL / AlloyDB / DMS | SQL instance作成・backup作成/一覧 | DB/user/接続、SQL評価、HA/replica/failover、backup restore/PITR、import/export、AlloyDB cluster/instance、DMS migration | #18の6項目を教材モデルで実装: 11ミッション、Snapshot v33、CLI/API/IAM/参照/保存/表示。仮想PITR checkpoint・明示CDC・人工vectorを評価。詳細は[RELATIONAL_DATABASES.md](RELATIONAL_DATABASES.md)。PRマージ後にIssueを完了する |
-| Firestore / Spanner / Bigtable / Memorystore | Functions連携用のFirestore/Redis最小構成 | 選定・作成・読書き/照会・バックアップ/復元、整合性・可用性・容量の構成、Redis接続 | #19の6項目を教材モデルで実装: 14ミッション、61コマンド、Snapshot v34、CLI/API/IAM/参照/保存/表示。複合索引・単一ドキュメントのversion条件更新・人工vector・明示GC/複製・仮想TTL・Functionsから実データを評価。詳細は[MANAGED_DATABASES.md](MANAGED_DATABASES.md)。PRマージ後にIssueを完了する |
-| BigQuery / データ処理 | Pub/Sub topic/subscription作成のみ | bq dataset/table/load/query/job、Pub/Sub publish/pull/ack、Dataflow jobとDataproc、Kafkaの選定・構成、課金export/ログ分析 | #20の6項目を教材モデルで実装: 15ミッション、45コマンド、Snapshot v35、CLI/API/IAM/プロジェクト/location/参照/保存/表示。実データSQL、配送・期限・隔離、明示ジョブ進行/復旧、private Kafka、課金/監査ログ分析。詳細は[DATA_PROCESSING.md](DATA_PROCESSING.md)。PRマージ後にIssueを完了する |
-| Compute / ディスク | VM lifecycle/metadata/SSH、disk/snapshot、MIG autoscaling | カスタムmachine/GPU/TPU、可用性/Spot、image・snapshot schedule/restore、regional disk/Hyperdisk、OS Login・VM Manager、MIG更新/autohealing | #21の6項目を限定教材モデルで実装: 15ミッション、42追加コマンド、Snapshot v36。custom/Spot/GPU/TPU、regional PD/Hyperdisk、データコピー/復旧・image/schedule、明示SA/OS管理、MIG段階更新/修復/CPU条件。公式カタログ根拠・非対応範囲は[COMPUTE.md](COMPUTE.md)。CI通過とPRマージ後にIssueを完了する |
-| VPC / 接続 | subnet/firewall/address/router/peering | subnet拡張、Private Google Access・flow logs、静的route、Shared VPC、VPN/Interconnect/BGP、DNS record、firewall SA/secure tag/NGFW、接続不良の診断 | #22の6項目を限定教材モデルで実装: 10ミッション、62追加コマンド、Snapshot v37。CIDR・両側peering/非推移性・Shared VPC/host権限・明示VPN/BGP/Partner接続・DNS可視範囲/更新・NAT・SAとsecure tag/優先順位/ログを構成判定。L7検査・実パケット/暗号/物理回線は再現しない。詳細は[NETWORKING.md](NETWORKING.md)。CI通過とPRマージ後にIssueを完了する |
-| Storage | bucket/object/class/versioning/lifecycle/ACL/IAM | 世代復元・保持/lock/soft delete、CMEK、署名URL、transfer、Filestore/NetApp/Lustreの選定・構成、既存操作の独立したミッション | #23の限定教材モデルを実装: 34追加コマンド、17独立ミッション、Snapshot v38。保護・復旧・最小IAM・期限・CMEK・転送結果・ファイル選定を現在状態から判定。固定プロファイル、メタデータだけのコピー、実通信/課金なし。詳細は[STORAGE.md](STORAGE.md)。CI通過とPRマージ後にIssueを完了する |
-| IAM / 組織 / 課金 | 階層/IAM継承/SA/custom role、API/budget | org policy、Cloud Identity、impersonation/短期credentials、Workforce/Workload Identity、quota、asset inventory、billing export、最小権限トラブルシュート | #24の6項目を限定教材モデルで実装: 50追加コマンド、15独立ミッション、Snapshot v39。階層制約、グループIAM、鍵なし認証と期限、actAs/token、GKE連携、申請/承認/容量、資産検索、合成課金export、通常予算通知と配置判断を検証。実SCIM管理者・請求権限の投影と未対応は[ADMINISTRATION.md](ADMINISTRATION.md)。CI通過とPRマージ後にIssueを完了する |
-| AI / 運用支援 / 設計判断 | 未対応 | GPU対TPU、GCE/GKE/Vertex AIの選定、agent runtime/notebook/workstation、Gemini/Active Assist/Cloud Hub・診断のシナリオ、費用/ロケーション/冗長性判断 | 未完了 |
+| Logging / Monitoring | Compute監査ログと監視教材 | 通知・欠測・scope・収集・log bucket/view/analytics・監査ログ・SLI/SLO | #12対応済み: 17ミッション、Snapshot v41。[OBSERVABILITY.md](OBSERVABILITY.md)の限定教材。PR #69マージ済み |
+| Terraform | 初回未対応（Deployment Managerのみ） | HCL/変数/式/出力、plan/apply、World共有、module/moved、state/import、GCS保護・復旧、vet | #13の教材範囲を実装: 14ミッション、Snapshot v42。count/for_each、CLI変数、provider制約/alias、限定公開module、Auto VPCと2VM、ポリシー検証、機密state保護と既知世代復旧。実Terraform完全互換・workspace/並行処理は再現対象外。詳細は[TERRAFORM.md](TERRAFORM.md)。PR #70マージ済み |
+| Docker / Artifact Registry | ローカルDocker・Artifact Registry・Cloud BuildとGKE pull | ビルド→ローカル検証→push→GKE公開→専用教材の片付け | #14の6項目を限定教材モデルで実装。8独立ミッション、Snapshot v40。ローカル/GKE検証履歴を保存し、初期の空状態や検証前削除は不合格。実コード/通信・任意build設定・キャッシュは再現対象外。[CONTAINERS.md](CONTAINERS.md)に対応/拒否範囲を記載。当該分野のPRマージ済み |
+| GKE / Kubernetes | Standard/Autopilot、Deployment/Service/Pod、scale/restart、固定manifest | namespace・ConfigMap/Secret・環境/ファイル、更新/undo、probe/resources/HPA/VPA、StatefulSet/PVC、Ingress/NetworkPolicy、private/regional・node pool・Workload Identity・最小権限 | #15の教材モデルを実装: 複数コンテナの個別runtimeと全体Ready、WIのKSA/IAM連携・閲覧だけの権限、Standard metadata、VPA Off/Initial/Recreate、単一Autopilot resource補正、regional zone別ノード数、既存の保存/表示/CLI/復旧教材を統合。GKE関連42ミッション・Snapshot v30。高度なStatefulSet/Service・実scheduler/HA・通信/実測・定期controllerは対象外。具体的な対応と拒否範囲は[KUBERNETES.md](KUBERNETES.md)。当該分野のPRマージ済み |
+| Load Balancing | health check/backend/forwarding ruleを単独作成 | 正式なHC構文、MIG/named ports、backend add/remove/get-health、URL map/proxy、外部passthrough・global外部/region内部Application LB、proxy-only subnet、HC/data通信障害、managed SSL/CDN/zonal NEG/backend bucket・Tier選択と片付け | #16の教材モデルを実装: 7ミッション、Snapshot v31、CLI/権限/参照/保存/表示。IPv4・TCP passthrough・global managed TLS等に限定。具体的な対応・拒否範囲は[LOAD_BALANCING.md](LOAD_BALANCING.md)。当該分野のPRマージ済み |
+| Cloud Run / Functions | 固定ハンドラ・設定と実行評価 | IAM/ingress、revision/traffic、jobs、Eventarc/retry、DB/Secret/CMEK、Workflows | #17対応済み: 10独立ミッション、Snapshot v32。[SERVERLESS.md](SERVERLESS.md)の限定教材。実コード・通信・課金は対象外 |
+| Cloud SQL / AlloyDB / DMS | SQL instance作成・backup作成/一覧 | DB/user/接続、SQL評価、HA/replica/failover、backup restore/PITR、import/export、AlloyDB cluster/instance、DMS migration | #18の6項目を教材モデルで実装: 11ミッション、Snapshot v33、CLI/API/IAM/参照/保存/表示。仮想PITR checkpoint・明示CDC・人工vectorを評価。詳細は[RELATIONAL_DATABASES.md](RELATIONAL_DATABASES.md)。当該分野のPRマージ済み |
+| Firestore / Spanner / Bigtable / Memorystore | Functions連携用のFirestore/Redis最小構成 | 選定・作成・読書き/照会・バックアップ/復元、整合性・可用性・容量の構成、Redis接続 | #19の6項目を教材モデルで実装: 14ミッション、61コマンド、Snapshot v34、CLI/API/IAM/参照/保存/表示。複合索引・単一ドキュメントのversion条件更新・人工vector・明示GC/複製・仮想TTL・Functionsから実データを評価。詳細は[MANAGED_DATABASES.md](MANAGED_DATABASES.md)。当該分野のPRマージ済み |
+| BigQuery / データ処理 | Pub/Sub topic/subscription作成のみ | bq dataset/table/load/query/job、Pub/Sub publish/pull/ack、Dataflow jobとDataproc、Kafkaの選定・構成、課金export/ログ分析 | #20の6項目を教材モデルで実装: 15ミッション、45コマンド、Snapshot v35、CLI/API/IAM/プロジェクト/location/参照/保存/表示。実データSQL、配送・期限・隔離、明示ジョブ進行/復旧、private Kafka、課金/監査ログ分析。詳細は[DATA_PROCESSING.md](DATA_PROCESSING.md)。当該分野のPRマージ済み |
+| Compute / ディスク | VM lifecycle/metadata/SSH、disk/snapshot、MIG autoscaling | カスタムmachine/GPU/TPU、可用性/Spot、image・snapshot schedule/restore、regional disk/Hyperdisk、OS Login・VM Manager、MIG更新/autohealing | #21の6項目を限定教材モデルで実装: 15ミッション、42追加コマンド、Snapshot v36。custom/Spot/GPU/TPU、regional PD/Hyperdisk、データコピー/復旧・image/schedule、明示SA/OS管理、MIG段階更新/修復/CPU条件。公式カタログ根拠・非対応範囲は[COMPUTE.md](COMPUTE.md)。当該分野のPRマージ済み |
+| VPC / 接続 | subnet/firewall/address/router/peering | subnet拡張、Private Google Access・flow logs、静的route、Shared VPC、VPN/Interconnect/BGP、DNS record、firewall SA/secure tag/NGFW、接続不良の診断 | #22の6項目を限定教材モデルで実装: 10ミッション、62追加コマンド、Snapshot v37。CIDR・両側peering/非推移性・Shared VPC/host権限・明示VPN/BGP/Partner接続・DNS可視範囲/更新・NAT・SAとsecure tag/優先順位/ログを構成判定。L7検査・実パケット/暗号/物理回線は再現しない。詳細は[NETWORKING.md](NETWORKING.md)。当該分野のPRマージ済み |
+| Storage | bucket/object/class/versioning/lifecycle/ACL/IAM | 世代復元・保持/lock/soft delete、CMEK、署名URL、transfer、Filestore/NetApp/Lustreの選定・構成、既存操作の独立したミッション | #23の限定教材モデルを実装: 34追加コマンド、17独立ミッション、Snapshot v38。保護・復旧・最小IAM・期限・CMEK・転送結果・ファイル選定を現在状態から判定。固定プロファイル、メタデータだけのコピー、実通信/課金なし。詳細は[STORAGE.md](STORAGE.md)。当該分野のPRマージ済み |
+| IAM / 組織 / 課金 | 階層/IAM継承/SA/custom role、API/budget | org policy、Cloud Identity、impersonation/短期credentials、Workforce/Workload Identity、quota、asset inventory、billing export、最小権限トラブルシュート | #24の6項目を限定教材モデルで実装: 50追加コマンド、15独立ミッション、Snapshot v39。階層制約、グループIAM、鍵なし認証と期限、actAs/token、GKE連携、申請/承認/容量、資産検索、合成課金export、通常予算通知と配置判断を検証。実SCIM管理者・請求権限の投影と未対応は[ADMINISTRATION.md](ADMINISTRATION.md)。当該分野のPRマージ済み |
+| AI / 運用支援 / 設計判断 | 固定要件の選定・教材構成 | AI/accelerator/容量/開発/assist/診断/IaC/配置/費用の判断、agent/notebook/workstation構成、4セクション分類 | #25: 判断46本・構成3本、Snapshot v43。[ACE_AI_SUPPORT.md](ACE_AI_SUPPORT.md)に範囲を記載。既存進捗を維持し、未対応操作を拒否する |
 
-CLIを持たない管理手続きや性能測定、AI推論/外部API、公式ラボの採点、実課金は再現しない。これらの学習目標は設定・障害・選定シナリオとして扱う。教材に登場するサービスの現行名称/可用性は実装時に公式資料で再確認する。既存の「ACEの5ドメイン」は添付試験ガイドの4セクションと別分類なので、教材分類も更新対象。
+CLIを持たない管理手続きや性能測定、AI推論/外部API、公式ラボの採点、実課金は再現しない。これらの学習目標は設定・障害・選定シナリオとして扱う。教材に登場するサービスの現行名称/可用性は実装時に公式資料で再確認する。分類は添付試験ガイドの4セクションを既定表示し、操作学習用の5カテゴリにも切り替えられる。同じミッションIDと進捗を共有する。
 
 ## 資料台帳
 
@@ -87,6 +89,10 @@ CLIを持たない管理手続きや性能測定、AI推論/外部API、公式�
 | 基礎コース/T-ESSCICS-I-4-l1-ja-file-54.ja.pdf | 1 |
 | 基礎コース/T-ESSCIF-I-4-l1-ja-file-45.ja.pdf | 1 |
 | 基礎コース/T-ESSCIF-I-Locales-0-l2-file-ja-2.pdf.ja | 1 |
+
+## 過去の段階別記録
+
+以下の残作業の記述は各段階時点の記録。現在の対応範囲は上表と各分野のドキュメントを参照。
 
 Phase 21（#15）: 限定IngressのHTTPホスト・最長パス・Exact/Prefix・defaultBackend、NodePort Service参照/ポート/Ready接続先の診断、namespace、CLI/ツリー/プロパティ、Snapshot v26と2ミッションを追加。実LB・IP・DNS・TLS・NEG・BackendConfig・外部クライアントのNetworkPolicyやStatefulSet等は残作業です。
 

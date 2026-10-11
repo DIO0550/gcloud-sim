@@ -8,6 +8,7 @@ test("カテゴリ→ミッション→手順だけを表示し、戻っても�
   const user = userEvent.setup();
   renderSimulator();
   await user.click(screen.getByRole("tab", { name: /ミッション/ }));
+  await user.selectOptions(screen.getByRole("combobox", { name: "ミッション分類" }), "practice");
   const categories = screen.getByRole("region", { name: "ミッションカテゴリ" });
   expect(within(categories).getAllByRole("button")).toHaveLength(5);
   expect(screen.queryByRole("button", { name: /本番用の configuration/ })).not.toBeInTheDocument();
@@ -33,6 +34,7 @@ test("全ミッションがカテゴリから選択できる", async () => {
   const user = userEvent.setup();
   renderSimulator();
   await user.click(screen.getByRole("tab", { name: /ミッション/ }));
+  await user.selectOptions(screen.getByRole("combobox", { name: "ミッション分類" }), "practice");
   for (const domain of Object.values(MissionDomains)) {
     await user.click(screen.getByRole("button", { name: new RegExp(domain) }));
     const list = screen.getByRole("region", { name: domain });
@@ -42,4 +44,25 @@ test("全ミッションがカテゴリから選択できる", async () => {
     }
     await user.click(screen.getByRole("button", { name: "カテゴリへ" }));
   }
+});
+
+test("試験ガイド4セクションと操作カテゴリは進捗を共有し、状態で絞り込める", async () => {
+  const user = userEvent.setup();
+  renderSimulator();
+  await user.click(screen.getByRole("tab", { name: /ミッション/ }));
+  expect(
+    within(screen.getByRole("region", { name: "ミッションカテゴリ" })).getAllByRole("button"),
+  ).toHaveLength(4);
+  await user.click(screen.getByRole("button", { name: /2\. クラウド ソリューションの計画と実装/ }));
+  await user.click(screen.getByRole("button", { name: /OSと独自ドライバを制御するAI基盤/ }));
+  await user.click(screen.getByRole("button", { name: "開始" }));
+  await user.click(screen.getByRole("button", { name: "一覧へ戻る" }));
+  await user.selectOptions(screen.getByRole("combobox", { name: "ミッション進捗" }), "in_progress");
+  expect(screen.getByRole("button", { name: /OSと独自ドライバ.*挑戦中/ })).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /管理された学習ジョブを選ぶ/ }),
+  ).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "カテゴリへ" }));
+  await user.selectOptions(screen.getByRole("combobox", { name: "ミッション分類" }), "practice");
+  expect(screen.getByRole("button", { name: /計画と構成.*1件 挑戦中/ })).toBeInTheDocument();
 });

@@ -1,3 +1,4 @@
+import { aceSupportDecoder, emptyAceSupport } from "@/engine/domains/ace-support/model";
 import { adminLabDecoder, emptyAdminLab } from "@/engine/domains/admin-lab/model";
 import type { Budget } from "@/engine/domains/billing-budget";
 import {
@@ -186,12 +187,12 @@ import { migrateTerraform } from "./terraform-migration";
  * v34 は索引・Spanner・Bigtable・Redisデータと明示的な読取/復旧履歴を持つ。
  * v35 はBigQueryの表/入力・Pub/Sub配送・処理ジョブ・Kafka・exportの教材状態を持つ。
  */
-export const SchemaVersion = 42;
+export const SchemaVersion = 43;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
 const MigratableVersions = [
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-  28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41,
+  28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42,
 ] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
@@ -1309,6 +1310,7 @@ const world = D.object<World>({
   adminLab: adminLabDecoder,
   computeLab: computeLabDecoder,
   dataProcessing: dataProcessingDecoder,
+  aceSupport: aceSupportDecoder,
   observabilityLab: observabilityLabDecoder,
   containerLab: D.map(ContainerLab.decoder, ContainerLab.validate),
   terraform: D.map(TerraformState.decoder, TerraformState.validate),
@@ -1860,10 +1862,9 @@ const migrate = (version: number, value: unknown): unknown => {
       : admin;
   const observable =
     version >= 41 ? release : { ...release, observabilityLab: emptyObservabilityLab() };
-  if (version >= 42 || !isRecord(observable.terraform)) {
-    return observable;
-  }
-  return migrateTerraform(observable);
+  const terraform =
+    version >= 42 || !isRecord(observable.terraform) ? observable : migrateTerraform(observable);
+  return version >= 43 ? terraform : { ...terraform, aceSupport: emptyAceSupport() };
 };
 
 export const Snapshot = {

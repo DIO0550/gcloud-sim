@@ -9,6 +9,13 @@ import { Option } from "@/utils/Option";
 /** ツリーで選べるもの。プロパティパネルはこれを見て World から中身を引く。 */
 export type TreeSelection =
   | Readonly<{
+      kind: "ace-support";
+      projectId: string;
+      collection: "resources" | "decisions";
+      name: string;
+      region: string;
+    }>
+  | Readonly<{
       kind: "terraform";
       collection: "workspace" | "files" | "resources" | "plans";
       name: string;
@@ -271,6 +278,8 @@ export const TreeSelection = {
   /** ツリーのノード id にもなる一意なキー。 */
   key(selection: TreeSelection): string {
     switch (selection.kind) {
+      case "ace-support":
+        return `ace:${selection.projectId}/${selection.collection}/${selection.region}/${selection.name}`;
       case "terraform":
         return `terraform:${selection.collection}/${selection.name}`;
       case "observability-lab":
@@ -399,6 +408,15 @@ export const TreeSelection = {
    */
   describeCommand(selection: TreeSelection): Option<string> {
     switch (selection.kind) {
+      case "ace-support":
+        if (selection.collection === "decisions") {
+          return Option.some(
+            `sim ace scenarios describe ${selection.name} --project=${selection.projectId}`,
+          );
+        }
+        return Option.some(
+          `sim ai resources describe ${selection.name} --region=${selection.region} --project=${selection.projectId}`,
+        );
       case "terraform": {
         if (selection.collection === "files") {
           return Option.some(`sim files read ${selection.name}`);

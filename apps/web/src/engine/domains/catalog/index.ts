@@ -218,6 +218,9 @@ export const BucketLocation = {
 } as const;
 
 const ApiServices = [
+  { name: "aiplatform.googleapis.com", title: "Vertex AI API", billingRequired: true },
+  { name: "notebooks.googleapis.com", title: "Notebooks API", billingRequired: true },
+  { name: "workstations.googleapis.com", title: "Cloud Workstations API", billingRequired: true },
   { name: "orgpolicy.googleapis.com", title: "Organization Policy API", billingRequired: false },
   { name: "cloudidentity.googleapis.com", title: "Cloud Identity API", billingRequired: false },
   {

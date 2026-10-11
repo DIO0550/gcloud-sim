@@ -57,6 +57,7 @@ import {
 } from "@/features/simulator/components/ServiceProperties";
 import { type ConsoleScreen, ConsoleScreens } from "@/features/simulator/features/console";
 import { Option } from "@/utils/Option";
+import { AceSupportProperties } from "./AceSupportProperties";
 import { AdminLabProperties } from "./AdminLabProperties";
 import { ComputeLabProperties } from "./ComputeLabProperties";
 import { DataProcessingProperties } from "./DataProcessingProperties";
@@ -85,6 +86,8 @@ const Body = ({
   selection,
 }: Readonly<{ world: World; selection: TreeSelection }>): ReactElement => {
   switch (selection.kind) {
+    case "ace-support":
+      return <AceSupportProperties world={world} selection={selection} />;
     case "terraform":
       return <TerraformProperties world={world} selection={selection} />;
     case "organization":
@@ -207,6 +210,7 @@ const Body = ({
 /** 見出し。名前を持つものは名前、持たないものは種別の綴り。 */
 const titleOf = (selection: TreeSelection): string => {
   switch (selection.kind) {
+    case "ace-support":
     case "terraform":
       return selection.name;
     case "observability-lab":
@@ -283,6 +287,8 @@ const titleOf = (selection: TreeSelection): string => {
 /** 見出しの下に出す API の種別（`compute#instance` の形）と置き場。 */
 const kindLabel = (selection: TreeSelection): string => {
   switch (selection.kind) {
+    case "ace-support":
+      return `教材 ${selection.collection} · ${selection.projectId}/${selection.region}`;
     case "terraform":
       return `Terraform · ${selection.collection}`;
     case "observability-lab":
