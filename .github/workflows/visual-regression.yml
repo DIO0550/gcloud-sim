@@ -155,7 +155,10 @@ jobs:
           for attempt in 1 2 3 4 5; do
             git worktree remove --force /tmp/pages 2>/dev/null || true
 
+            # 読み込んだ版を覚え、別ジョブが先に公開した場合は取り直す。
+            pages_expected_sha=""
             if git fetch --depth 1 origin "+refs/heads/${PAGES_BRANCH}:refs/remotes/origin/${PAGES_BRANCH}" 2>/dev/null; then
+              pages_expected_sha=$(git rev-parse "origin/${PAGES_BRANCH}")
               git worktree add --detach /tmp/pages "origin/${PAGES_BRANCH}"
             else
               git worktree add --detach /tmp/pages
@@ -178,7 +181,7 @@ jobs:
             git checkout --quiet --orphan pages
             git add -A
             git commit --quiet -m "visual report (PR #${PR})" || true
-            if git push --force origin "HEAD:${PAGES_BRANCH}"; then
+            if git push "--force-with-lease=refs/heads/${PAGES_BRANCH}:${pages_expected_sha}" origin "HEAD:${PAGES_BRANCH}"; then
               published=true
               break
             fi
