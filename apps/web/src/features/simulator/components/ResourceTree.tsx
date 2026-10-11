@@ -190,6 +190,7 @@ const Node = ({
     Option.isSome(currentProjectId) &&
     node.selection.value.projectId === currentProjectId.value;
   const hasChildren = node.children.length > 0;
+  const badgeColor = isCurrentProject ? "text-accent" : "text-muted";
   // 組織・フォルダ・種別グループは名前（プロポーショナル）、プロジェクトとリソースは ID（等幅）で書く。
   const isName =
     node.label.kind === "group" || node.badge === "organization" || node.badge === "folder";
@@ -228,7 +229,7 @@ const Node = ({
         >
           {badge !== "" && (
             <span
-              className={`rounded border px-1.5 py-px text-xs ${isSelected ? "border-white/60" : "border-line text-muted"}`}
+              className={`shrink-0 rounded border px-1 py-px text-sm leading-5 ${isSelected ? "border-white/60 text-white" : `border-line bg-surface ${badgeColor}`}`}
             >
               {badge}
             </span>
