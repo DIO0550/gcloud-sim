@@ -40,6 +40,29 @@
   color-scheme: light;
 }
 
+@layer base {
+  /* 操作できる要素と、チェック・ラジオのラベルは指のカーソルで示す。 */
+  :where(
+    button,
+    a[href],
+    summary,
+    select,
+    input[type="button"],
+    input[type="submit"],
+    input[type="reset"],
+    input[type="checkbox"],
+    input[type="radio"],
+    [role="button"]
+  ):not(:disabled):not([aria-disabled="true"]),
+  label:has(input:is([type="checkbox"], [type="radio"]):enabled) {
+    cursor: pointer;
+  }
+
+  :where(button, select, input, [role="button"]):is(:disabled, [aria-disabled="true"]) {
+    cursor: not-allowed;
+  }
+}
+
 /* 同等のコマンドライン（UI 案 s1）: 1 語 1 行で並べ、行末の継続記号は見た目だけに置く
    （文字としては 1 行のまま。コピーや読み上げに `\` を混ぜない）。 */
 .command-line:not(:last-child)::after {
