@@ -4,7 +4,6 @@ import { GhostButton } from "@/components/GhostButton";
 import { Select } from "@/components/Select";
 import { type DotStatus, StatusDot } from "@/components/StatusDot";
 import { TextButton } from "@/components/TextButton";
-import { ToggleButton } from "@/components/ToggleButton";
 
 import { MachineType, PublicImage, Region, Zone } from "@/engine/domains/catalog";
 import {
@@ -23,7 +22,6 @@ import {
   Field,
   PrimaryButton,
   RadioGroup,
-  ScreenTitle,
   SecondaryButton,
   TextInput,
 } from "@/features/simulator/features/console/components/ConsoleParts";
@@ -136,10 +134,10 @@ export const VmListScreen = ({ world, project, handlers }: ScreenProps): ReactEl
     selected.length > 0 && selected.every((i) => Option.isSome(resolveAction(action, i)));
   return (
     <div>
-      <div className="mb-5 flex flex-wrap items-center gap-x-6 gap-y-2">
+      <div className="-mx-5 -mt-5 mb-0 flex min-h-14 flex-wrap items-center gap-x-6 gap-y-2 border-line border-b px-5 py-3">
         <div>
-          <p className="mb-1 text-muted text-sm">Compute Engine</p>
-          <h2 className="font-bold text-[28px] leading-tight">VM インスタンス</h2>
+          <p className="sr-only">Compute Engine</p>
+          <h2 className="font-medium text-2xl leading-tight">VM インスタンス</h2>
         </div>
         <div className="flex items-center gap-1 self-end pb-1 text-[15px]">
           <GhostButton
@@ -148,6 +146,18 @@ export const VmListScreen = ({ world, project, handlers }: ScreenProps): ReactEl
             onClick={() => handlers.changeScreen(ConsoleScreens.VmCreate)}
           >
             <span aria-hidden="true">＋ </span>インスタンスを作成
+          </GhostButton>
+          <GhostButton
+            tone="accent"
+            onClick={() =>
+              handlers.submit({
+                line: `gcloud compute instances list --project=${project.projectId}`,
+                note: "VM インスタンス一覧を更新",
+                next: Option.none,
+              })
+            }
+          >
+            <span aria-hidden="true">↻ </span>更新
           </GhostButton>
           <span aria-hidden="true" className="mx-2 h-5 border-line border-l" />
           {ToolbarActions.map((action) => (
@@ -161,6 +171,11 @@ export const VmListScreen = ({ world, project, handlers }: ScreenProps): ReactEl
             </GhostButton>
           ))}
         </div>
+      </div>
+      <div className="-mx-5 mb-4 border-line border-b px-5">
+        <span className="inline-block border-accent border-b-2 px-4 py-3 text-accent text-sm">
+          インスタンス
+        </span>
       </div>
       <label
         htmlFor={filterId}
@@ -178,8 +193,8 @@ export const VmListScreen = ({ world, project, handlers }: ScreenProps): ReactEl
         />
         <span className="font-mono text-muted text-sm">= --filter</span>
       </label>
-      <div className="overflow-hidden rounded-lg border border-line bg-surface">
-        <table className="w-full text-[15px]" aria-label="VM インスタンス">
+      <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+        <table className="w-full min-w-[760px] text-sm" aria-label="VM インスタンス">
           <thead className="bg-canvas text-left">
             <tr>
               <th className="w-12 py-3 pl-4">
@@ -363,13 +378,28 @@ const TagInput = ({
   );
 };
 
+/** このシミュレータに収録されたマシンタイプの範囲。 */
+const seriesRange = (series: string, readValue: (type: MachineType) => number): string => {
+  const values = MachineType.all()
+    .filter((type) => seriesOf(type.name) === series)
+    .map(readValue);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  return min === max ? String(min) : `${min}〜${max}`;
+};
+
 const NameRuleText = "小文字英字で始め、小文字・数字・ハイフンのみ使用できます";
 
-/** Compute Engine › インスタンスを作成（UI 案 s1）。入力のたびに同等のコマンドを出す。 */
-export const VmCreateScreen = ({ world, project, handlers }: ScreenProps): ReactElement => {
+/** Compute Engine › インスタンスを作成（UI 案 2c）。入力のたびに同等のコマンドを出す。 */
+export const VmCreateScreen = ({
+  world,
+  project,
+  handlers,
+  navigationOpen = true,
+}: ScreenProps): ReactElement => {
   const projectId = project.projectId;
   const defaultAccount = ServiceAccount.defaultComputeEmail(project.projectNumber);
-  const [isDiskOpen, setDiskOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState("machine");
   const editor = useCreateForm(
     VmCreateForm,
     () => VmCreateForm.create({ zone: zoneOf(world), serviceAccount: defaultAccount }),
@@ -395,6 +425,19 @@ export const VmCreateScreen = ({ world, project, handlers }: ScreenProps): React
   const region = Zone.region(form.zone);
   const series = seriesOf(form.machineType);
   const allSeries = [...new Set(MachineType.all().map((m) => seriesOf(m.name)))];
+  const provisioningField = (
+    <RadioGroup
+      label="プロビジョニング モデル"
+      name="provisioning-model"
+      inline
+      value={form.provisioningModel}
+      onChange={(model) => set("provisioningModel", model)}
+      options={[
+        { value: ProvisioningModels.Standard, label: "標準" },
+        { value: ProvisioningModels.Spot, label: "Spot" },
+      ]}
+    />
+  );
   const create = (): void => {
     const valid = editor.submit();
     if (!Option.isSome(valid)) return;
@@ -406,7 +449,60 @@ export const VmCreateScreen = ({ world, project, handlers }: ScreenProps): React
   };
   return (
     <CreatePage
-      header={<ScreenTitle eyebrow="VM インスタンス /" title="インスタンスを作成" />}
+      header={
+        <>
+          <GhostButton
+            ariaLabel="VM インスタンスに戻る"
+            onClick={() => handlers.changeScreen(ConsoleScreens.VmList)}
+          >
+            ←
+          </GhostButton>
+          <h2 className="font-medium text-2xl">インスタンスを作成</h2>
+        </>
+      }
+      navigationOpen={navigationOpen}
+      navigation={[
+        { id: "machine", title: "マシンの構成", detail: form.machineType },
+        {
+          id: "storage",
+          title: "OS とストレージ",
+          detail: `${form.imageFamily} · ${form.bootDiskSize}`,
+        },
+        {
+          id: "network",
+          title: "ネットワーキング",
+          detail: form.tags === "" ? "default" : `default · ${form.tags}`,
+        },
+        { id: "security", title: "セキュリティ", detail: "サービスアカウント、スコープ" },
+        { id: "advanced", title: "詳細設定", detail: form.provisioningModel },
+      ].map((item) => (
+        <button
+          type="button"
+          key={item.id}
+          aria-label={item.title}
+          aria-pressed={activeSection === item.id}
+          className={`min-w-40 shrink-0 border-l-2 px-5 py-4 text-left lg:w-full ${activeSection === item.id ? "border-accent bg-accent-soft text-accent" : "border-transparent hover:bg-canvas"}`}
+          onClick={() => setActiveSection(item.id)}
+        >
+          <span className="block font-medium text-sm">{item.title}</span>
+          <span className="mt-1 block break-all text-muted text-xs">{item.detail}</span>
+        </button>
+      ))}
+      summary={
+        <>
+          <h3 className="mb-4 font-medium text-xl">構成の概要</h3>
+          <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm">
+            <dt className="text-muted">マシンタイプ</dt>
+            <dd className="font-mono">{form.machineType}</dd>
+            <dt className="text-muted">ブートディスク</dt>
+            <dd>
+              {form.imageFamily} · {form.bootDiskSize.replace(/GB$/, " GB")}
+            </dd>
+            <dt className="text-muted">ゾーン</dt>
+            <dd className="font-mono">{form.zone}</dd>
+          </dl>
+        </>
+      }
       parts={parts}
       onCopy={handlers.copy}
       onInsert={handlers.insert}
@@ -430,21 +526,23 @@ export const VmCreateScreen = ({ world, project, handlers }: ScreenProps): React
       }
     >
       <div className="flex flex-col gap-6">
-        <Field label="名前" required error={errors.name}>
-          {(id) => (
-            <TextInput
-              id={id}
-              invalid={errors.name !== undefined}
-              value={form.name}
-              onChange={(v) => set("name", v)}
-            />
-          )}
-        </Field>
-        <div className="grid grid-cols-2 gap-5">
-          <Field label="リージョン">
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+          <Field label="名前" required outlined error={errors.name}>
+            {(id) => (
+              <TextInput
+                id={id}
+                variant="outlined"
+                invalid={errors.name !== undefined}
+                value={form.name}
+                onChange={(v) => set("name", v)}
+              />
+            )}
+          </Field>
+          <Field label="リージョン" required outlined>
             {(id) => (
               <Select
                 id={id}
+                variant="outlined"
                 font="sans"
                 value={region}
                 onChange={(r) => set("zone", `${r}-a`)}
@@ -452,10 +550,11 @@ export const VmCreateScreen = ({ world, project, handlers }: ScreenProps): React
               />
             )}
           </Field>
-          <Field label="ゾーン">
+          <Field label="ゾーン" required outlined>
             {(id) => (
               <Select
                 id={id}
+                variant="outlined"
                 font="sans"
                 value={form.zone}
                 onChange={(zone) => set("zone", zone)}
@@ -466,140 +565,181 @@ export const VmCreateScreen = ({ world, project, handlers }: ScreenProps): React
             )}
           </Field>
         </div>
-        <Field label="マシンの構成">
-          {(id) => (
-            <div className="flex flex-col gap-3">
-              <fieldset className="flex gap-2">
-                <legend className="sr-only">シリーズ</legend>
-                {allSeries.map((s) => (
-                  <ToggleButton
-                    key={s}
-                    variant="chip"
-                    pressed={s === series}
-                    onClick={() => {
-                      const first = MachineType.all().find((m) => seriesOf(m.name) === s);
-                      if (first !== undefined && s !== series) set("machineType", first.name);
-                    }}
-                  >
-                    {s}
-                  </ToggleButton>
-                ))}
-              </fieldset>
-              <Select
-                id={id}
-                value={form.machineType}
-                onChange={(machineType) => set("machineType", machineType)}
-                options={MachineType.all()
-                  .filter((m) => seriesOf(m.name) === series)
-                  .map((m) => ({ value: m.name, label: machineTypeText(m) }))}
-              />
+        {activeSection === "machine" && (
+          <section>
+            <h3 className="mb-4 font-medium text-xl">マシンの構成</h3>
+            <fieldset>
+              <legend className="mb-2 text-muted text-sm">シリーズ</legend>
+              <div className="mb-5 overflow-hidden rounded border border-line">
+                <table className="w-full text-sm">
+                  <thead className="bg-canvas text-left text-muted">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">シリーズ</th>
+                      <th className="px-3 py-2 font-medium">vCPU</th>
+                      <th className="px-3 py-2 font-medium">メモリ (GB)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allSeries.map((item) => (
+                      <tr
+                        key={item}
+                        className={`border-line border-t ${item === series ? "bg-accent-soft" : ""}`}
+                      >
+                        <td className="px-3 py-2">
+                          <label className="flex items-center gap-3">
+                            <input
+                              type="radio"
+                              name="machine-series"
+                              value={item}
+                              checked={item === series}
+                              className="h-4 w-4 accent-accent"
+                              onChange={() => {
+                                const first = MachineType.all().find(
+                                  (m) => seriesOf(m.name) === item,
+                                );
+                                if (first !== undefined) set("machineType", first.name);
+                              }}
+                            />
+                            {item}
+                          </label>
+                        </td>
+                        <td className="px-3 py-2 text-muted">
+                          {seriesRange(item, (type) => type.guestCpus)}
+                        </td>
+                        <td className="px-3 py-2 text-muted">
+                          {seriesRange(item, (type) => type.memoryMb / 1024)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </fieldset>
+            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+              <Field label="マシンタイプ" outlined>
+                {(id) => (
+                  <Select
+                    id={id}
+                    variant="outlined"
+                    value={form.machineType}
+                    onChange={(machineType) => set("machineType", machineType)}
+                    options={MachineType.all()
+                      .filter((m) => seriesOf(m.name) === series)
+                      .map((m) => ({ value: m.name, label: machineTypeText(m) }))}
+                  />
+                )}
+              </Field>
+              {provisioningField}
             </div>
-          )}
-        </Field>
-        <div className="grid grid-cols-2 gap-5">
-          <RadioGroup
-            label="プロビジョニング モデル"
-            name="provisioning-model"
-            inline
-            value={form.provisioningModel}
-            onChange={(model) => set("provisioningModel", model)}
-            options={[
-              { value: ProvisioningModels.Standard, label: "標準" },
-              { value: ProvisioningModels.Spot, label: "Spot" },
-            ]}
-          />
-          <div>
-            <p className="mb-2 font-bold text-sm">ブートディスク</p>
-            <div className="flex h-9 items-center justify-between rounded-md border border-line bg-surface px-3 text-[15px]">
-              <span>
-                {form.imageFamily} · {form.bootDiskSize.replace(/GB$/, " GB")} ·{" "}
-                {diskTypeText(form.bootDiskType)}
-              </span>
-              <TextButton ariaExpanded={isDiskOpen} onClick={() => setDiskOpen((v) => !v)}>
-                {isDiskOpen ? "閉じる" : "変更"}
-              </TextButton>
-            </div>
-          </div>
-        </div>
-        {isDiskOpen && (
-          <div className="grid grid-cols-[2fr_1fr_1fr] gap-3 rounded-lg border border-line bg-surface p-4">
-            <Field label="イメージ">
-              {(id) => (
-                <Select
-                  id={id}
-                  value={`${form.imageProject}/${form.imageFamily}`}
-                  onChange={(value) => {
-                    const image = images.find((i) => `${i.project}/${i.family}` === value);
-                    if (image !== undefined) {
-                      set("imageFamily", image.family);
-                      set("imageProject", image.project);
-                    }
-                  }}
-                  options={images.map((i) => ({
-                    value: `${i.project}/${i.family}`,
-                    label: `${i.family}（${i.project}）`,
-                  }))}
-                />
-              )}
-            </Field>
-            <Field label="サイズ" error={errors.bootDiskSize}>
-              {(id) => (
-                <TextInput
-                  id={id}
-                  invalid={errors.bootDiskSize !== undefined}
-                  value={form.bootDiskSize}
-                  onChange={(v) => set("bootDiskSize", v)}
-                />
-              )}
-            </Field>
-            <Field label="種類">
-              {(id) => (
-                <Select
-                  id={id}
-                  value={form.bootDiskType}
-                  onChange={(type) => set("bootDiskType", type)}
-                  options={Object.values(BootDiskTypes).map((t) => ({ value: t, label: t }))}
-                />
-              )}
-            </Field>
-          </div>
+          </section>
         )}
-        <div className="grid grid-cols-2 gap-5">
-          <Field label="サービスアカウント">
-            {(id) => (
-              <Select
-                id={id}
-                value={form.serviceAccount}
-                onChange={(account) => set("serviceAccount", account)}
-                options={accounts.map((a) => ({ value: a, label: a }))}
+        {activeSection === "advanced" && (
+          <section>
+            <h3 className="mb-4 font-medium text-xl">詳細設定</h3>
+            {provisioningField}
+          </section>
+        )}
+        {activeSection === "storage" && (
+          <section>
+            <h3 className="mb-4 font-medium text-xl">OS とストレージ</h3>
+            <p className="mb-4 text-muted text-sm">
+              {form.imageFamily} · {form.bootDiskSize.replace(/GB$/, " GB")} ·{" "}
+              {diskTypeText(form.bootDiskType)}
+            </p>
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-[2fr_1fr_1fr] rounded-lg border border-line bg-surface p-4">
+              <Field label="イメージ">
+                {(id) => (
+                  <Select
+                    id={id}
+                    value={`${form.imageProject}/${form.imageFamily}`}
+                    onChange={(value) => {
+                      const image = images.find((i) => `${i.project}/${i.family}` === value);
+                      if (image !== undefined) {
+                        set("imageFamily", image.family);
+                        set("imageProject", image.project);
+                      }
+                    }}
+                    options={images.map((i) => ({
+                      value: `${i.project}/${i.family}`,
+                      label: `${i.family}（${i.project}）`,
+                    }))}
+                  />
+                )}
+              </Field>
+              <Field label="サイズ" error={errors.bootDiskSize}>
+                {(id) => (
+                  <TextInput
+                    id={id}
+                    invalid={errors.bootDiskSize !== undefined}
+                    value={form.bootDiskSize}
+                    onChange={(v) => set("bootDiskSize", v)}
+                  />
+                )}
+              </Field>
+              <Field label="種類">
+                {(id) => (
+                  <Select
+                    id={id}
+                    value={form.bootDiskType}
+                    onChange={(type) => set("bootDiskType", type)}
+                    options={Object.values(BootDiskTypes).map((t) => ({ value: t, label: t }))}
+                  />
+                )}
+              </Field>
+            </div>
+          </section>
+        )}
+        {(activeSection === "machine" || activeSection === "security") && (
+          <section className="border-line border-t pt-5">
+            <h3 className="mb-4 font-medium text-xl">セキュリティ</h3>
+            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+              <Field label="サービスアカウント" outlined>
+                {(id) => (
+                  <Select
+                    id={id}
+                    variant="outlined"
+                    value={form.serviceAccount}
+                    onChange={(account) => set("serviceAccount", account)}
+                    options={accounts.map((a) => ({ value: a, label: a }))}
+                  />
+                )}
+              </Field>
+              <RadioGroup
+                label="アクセス スコープ"
+                name="scopes"
+                value={form.scopes}
+                onChange={(scopes) => set("scopes", scopes)}
+                options={[
+                  { value: "default", label: "デフォルトのアクセス権を許可" },
+                  { value: "cloud-platform", label: "すべての Cloud API に完全アクセス権を許可" },
+                ]}
               />
-            )}
-          </Field>
-          <RadioGroup
-            label="アクセス スコープ"
-            name="scopes"
-            value={form.scopes}
-            onChange={(scopes) => set("scopes", scopes)}
-            options={[
-              { value: "default", label: "デフォルトのアクセス権を許可" },
-              { value: "cloud-platform", label: "すべての Cloud API に完全アクセス権を許可" },
-            ]}
-          />
-        </div>
-        <Field label="ネットワーク タグ">
-          {(id) => <TagInput id={id} value={form.tags} onChange={(tags) => set("tags", tags)} />}
-        </Field>
-        <RadioGroup
-          label="外部 IP"
-          name="external-ip"
-          inline
-          value={form.externalIp ? "ephemeral" : "none"}
-          onChange={(v) => set("externalIp", v === "ephemeral")}
-          options={[
-            { value: "ephemeral", label: "エフェメラル" },
-            { value: "none", label: "なし" },
-          ]}
-        />
+            </div>
+          </section>
+        )}
+        {activeSection === "network" && (
+          <section>
+            <h3 className="mb-4 font-medium text-xl">ネットワーキング</h3>
+            <Field label="ネットワーク タグ">
+              {(id) => (
+                <TagInput id={id} value={form.tags} onChange={(tags) => set("tags", tags)} />
+              )}
+            </Field>
+            <div className="mt-4">
+              <RadioGroup
+                label="外部 IP"
+                name="external-ip"
+                inline
+                value={form.externalIp ? "ephemeral" : "none"}
+                onChange={(v) => set("externalIp", v === "ephemeral")}
+                options={[
+                  { value: "ephemeral", label: "エフェメラル" },
+                  { value: "none", label: "なし" },
+                ]}
+              />
+            </div>
+          </section>
+        )}
       </div>
     </CreatePage>
   );

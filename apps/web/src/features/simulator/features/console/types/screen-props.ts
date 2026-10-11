@@ -19,4 +19,5 @@ export type ScreenProps = Readonly<{
   world: World;
   project: Project;
   handlers: ConsoleHandlers;
+  navigationOpen?: boolean;
 }>;

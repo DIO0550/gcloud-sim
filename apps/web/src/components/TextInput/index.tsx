@@ -6,6 +6,8 @@ export const TextInputClass =
 
 const VariantClass = {
   field: TextInputClass,
+  outlined:
+    "h-12 w-full rounded border border-muted/60 bg-surface px-3 text-sm focus:border-accent focus:outline-none aria-invalid:border-danger",
   bare: "bg-transparent text-[15px] placeholder:text-muted focus:outline-none",
 } as const;
 
@@ -21,8 +23,8 @@ type TextInputProps = Readonly<{
   /** 値が不正か。field では枠が赤くなる */
   invalid?: boolean;
   onKeyDown?: (event: KeyboardEvent<HTMLInputElement>) => void;
-  /** field = フォームの入力欄の枠、bare = 枠の中に置く素の形（検索欄・タグ入力） */
-  variant?: "field" | "bare";
+  /** field = 通常のフォーム、outlined = 浮動ラベル用、bare = 検索欄・タグ入力の中身 */
+  variant?: "field" | "bare" | "outlined";
   /** 値の書体。ID や綴りは等幅（既定）、名前や検索語はプロポーショナル */
   font?: "mono" | "sans";
   /** 置き場の都合の幅や余白（`flex-1` 等） */

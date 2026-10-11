@@ -11,6 +11,7 @@ import {
 import { ScreenRouter } from "@/features/simulator/features/console/components/ScreenRouter";
 import {
   ConsoleScreen,
+  ConsoleScreens,
   type ConsoleScreen as Screen,
 } from "@/features/simulator/features/console/domains/console-screen";
 import { enableApiCommand } from "@/features/simulator/features/console/domains/equivalent-command";
@@ -24,6 +25,8 @@ type ConsoleViewProps = Readonly<{
   outcome: Option<ExecutionStatus>;
   handlers: ConsoleHandlers;
   onOutcomeDismiss: () => void;
+  navigationOpen: boolean;
+  terminalOpen: boolean;
 }>;
 
 /**
@@ -36,6 +39,8 @@ export const ConsoleView = ({
   outcome,
   handlers,
   onOutcomeDismiss,
+  navigationOpen,
+  terminalOpen,
 }: ConsoleViewProps): ReactElement => {
   const project = Option.flatMap(World.currentProjectId(world), (id) =>
     World.findActiveProject(world, id),
@@ -73,14 +78,25 @@ export const ConsoleView = ({
           onEnableApi={() => enableApi(projectId)}
           onDismiss={onOutcomeDismiss}
         />
-        <ScreenRouter screen={screen} props={{ world, project: project.value, handlers }} />
+        <ScreenRouter
+          screen={screen}
+          props={{ world, project: project.value, handlers, navigationOpen }}
+        />
       </>
     );
   };
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-[15rem_minmax(0,1fr)]" data-testid="console-view">
-      <ConsoleNav screen={screen} onChange={handlers.changeScreen} />
-      <main className="min-h-0 overflow-auto bg-canvas px-8 py-7" aria-label="Console">
+    <div
+      className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] md:grid-cols-[var(--console-nav-width)_minmax(0,1fr)]"
+      data-testid="console-view"
+    >
+      {navigationOpen && screen !== ConsoleScreens.VmCreate && (
+        <ConsoleNav screen={screen} onChange={handlers.changeScreen} onInsert={handlers.insert} />
+      )}
+      <main
+        className={`min-h-0 min-w-0 overflow-auto bg-surface md:col-start-2 ${screen === ConsoleScreens.VmCreate ? "xl:overflow-hidden" : "px-5 py-5"} ${terminalOpen ? "pb-[var(--console-terminal-height)]" : ""}`}
+        aria-label="Console"
+      >
         {body()}
       </main>
     </div>

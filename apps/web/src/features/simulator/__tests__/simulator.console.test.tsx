@@ -17,15 +17,79 @@ const openConsole = async (user: ReturnType<typeof userEvent.setup>): Promise<vo
 
 const consoleNav = () => screen.getByRole("navigation", { name: "Console ナビゲーション" });
 
-/** 左ナビの「VM インスタンス」から一覧の「インスタンスを作成」へ（作成画面はナビ項目ではない: UI 案 s1）。 */
-const openVmCreate = async (user: ReturnType<typeof userEvent.setup>): Promise<void> => {
-  await user.click(within(consoleNav()).getByRole("button", { name: "VM インスタンス" }));
-  await user.click(screen.getByRole("button", { name: "インスタンスを作成" }));
-  expect(within(consoleNav()).getByRole("button", { name: "VM インスタンス" })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
+/** Compute の専用ナビから別のプロダクトへ移る場合は、全プロダクト一覧を開く。 */
+const navigateConsole = async (
+  user: ReturnType<typeof userEvent.setup>,
+  name: string,
+): Promise<void> => {
+  const nav = within(consoleNav());
+  if (nav.queryByRole("button", { name }) === null) {
+    await user.click(nav.getByRole("button", { name: "すべてのプロダクト" }));
+  }
+  await user.click(within(consoleNav()).getByRole("button", { name }));
 };
+
+/** VM 一覧から専用の作成ページ（UI 案 2c）へ。 */
+const openVmCreate = async (user: ReturnType<typeof userEvent.setup>): Promise<void> => {
+  await navigateConsole(user, "VM インスタンス");
+  await user.click(screen.getByRole("button", { name: "インスタンスを作成" }));
+  expect(screen.getByRole("navigation", { name: "VM 作成の設定" })).toBeInTheDocument();
+};
+
+test("ヘッダーの検索は候補を確定して画面を切り替え、閉じた左ナビも再度開ける", async () => {
+  const user = userEvent.setup();
+  renderSimulator();
+  await openConsole(user);
+  const search = screen.getByRole("combobox", { name: "プロダクト、画面を検索" });
+  await user.type(search, "IAM");
+  expect(screen.getByRole("table", { name: "VM インスタンス" })).toBeInTheDocument();
+  await user.keyboard("{ArrowDown}{Enter}");
+  expect(screen.getByRole("table", { name: "IAM ポリシー" })).toBeInTheDocument();
+  const toggle = screen.getByRole("button", { name: "Console ナビゲーションを切り替え" });
+  await user.click(toggle);
+  expect(
+    screen.queryByRole("navigation", { name: "Console ナビゲーション" }),
+  ).not.toBeInTheDocument();
+  await user.click(toggle);
+  expect(consoleNav()).toBeInTheDocument();
+});
+
+test("IAM は選択するまで詳細を開かず、フィルタと継承の表示を切り替えられる", async () => {
+  const user = userEvent.setup();
+  renderSimulator();
+  await openConsole(user);
+  await navigateConsole(user, "IAM");
+  expect(screen.queryByRole("region", { name: /に効いているロール$/ })).not.toBeInTheDocument();
+  await user.type(screen.getByRole("textbox", { name: "フィルタ" }), "owner@example.com");
+  const table = screen.getByRole("table", { name: "IAM ポリシー" });
+  expect(table).toHaveTextContent("owner@example.com");
+  expect(table).not.toHaveTextContent("dev@example.com");
+  await user.click(screen.getByRole("checkbox", { name: "継承されたロールを表示" }));
+  expect(table).not.toHaveTextContent("owner@example.com");
+  await user.clear(screen.getByRole("textbox", { name: "フィルタ" }));
+  expect(table).toHaveTextContent("dev@example.com");
+  await user.click(screen.getByRole("checkbox", { name: "dev@example.com を選択" }));
+  expect(
+    screen.getByRole("region", { name: "dev@example.com に効いているロール" }),
+  ).toBeInTheDocument();
+});
+
+test("Console の端末は閉じて再度開いても履歴を保ち、CLI と同じ端末を使う", async () => {
+  const user = userEvent.setup();
+  const { terminal } = renderSimulator();
+  await typeLine(terminal, "gcloud config list");
+  await openConsole(user);
+  await user.click(screen.getByRole("button", { name: ">_ ターミナル" }));
+  const before = [...terminal.written];
+  await user.click(screen.getByRole("button", { name: "ターミナルを拡大" }));
+  await user.click(screen.getByRole("button", { name: "ターミナルを元のサイズに戻す" }));
+  await user.click(screen.getByRole("button", { name: "ターミナルを閉じる" }));
+  await user.click(screen.getByRole("button", { name: ">_ ターミナル" }));
+  await user.click(screen.getByRole("button", { name: "CLI" }));
+  expect(terminal.written).toEqual(before);
+  await typeLine(terminal, "gcloud config get-value project");
+  await waitFor(() => expect(screenText(terminal)).toContain("ace-dev-01"));
+});
 
 test("Console に切り替えて VM 作成を送信すると、一覧に VM が出て端末に # Console: の行と灰色のコマンドが記録される", async () => {
   const user = userEvent.setup();
@@ -33,6 +97,7 @@ test("Console に切り替えて VM 作成を送信すると、一覧に VM が�
   await openConsole(user);
   await openVmCreate(user);
   await user.type(screen.getByLabelText("名前"), "web-2");
+  await user.click(screen.getByRole("button", { name: /ネットワーキング/ }));
   await user.type(screen.getByLabelText("ネットワーク タグ"), "http-server");
   const panel = screen.getByRole("region", { name: "同等のコマンドライン" });
   expect(panel).toHaveTextContent(
@@ -86,7 +151,7 @@ test("サービスアカウントの作成フォームは送信すると一覧�
   const user = userEvent.setup();
   renderSimulator();
   await openConsole(user);
-  await user.click(within(consoleNav()).getByRole("button", { name: "サービスアカウント" }));
+  await navigateConsole(user, "サービスアカウント");
   await user.click(screen.getByRole("button", { name: "サービスアカウントを作成" }));
   await user.type(screen.getByLabelText("サービスアカウント ID"), "batch-sa");
   await user.click(screen.getByRole("button", { name: "作成" }));
@@ -119,7 +184,7 @@ test("API が無効なプロジェクトの VM 一覧は「API を有効にす�
   const { terminal } = renderSimulator();
   await chooseOption(user, "プロジェクト", "ace-prod-01");
   await openConsole(user);
-  await user.click(within(consoleNav()).getByRole("button", { name: "VM インスタンス" }));
+  await navigateConsole(user, "VM インスタンス");
   await user.click(screen.getByRole("button", { name: "Compute Engine API を有効にする" }));
   await waitFor(() =>
     expect(screenText(terminal)).toContain(
@@ -136,7 +201,7 @@ test("IAM 画面でアクセス権を付与すると継承元付きの表に出�
   const user = userEvent.setup();
   const { terminal } = renderSimulator();
   await openConsole(user);
-  await user.click(within(consoleNav()).getByRole("button", { name: "IAM" }));
+  await navigateConsole(user, "IAM");
   await user.click(screen.getByRole("button", { name: "アクセス権を付与" }));
   await user.type(screen.getByLabelText("新しいプリンシパル"), "user:alice@example.com");
   await user.clear(screen.getByLabelText("ロール"));
@@ -170,7 +235,7 @@ test("VM 一覧で選んで停止すると状態が TERMINATED になり、削�
   await typeLine(terminal, "gcloud compute instances create batch-1 --zone=asia-northeast1-b");
   await waitFor(() => expect(screenText(terminal)).toContain("Created ["));
   await openConsole(user);
-  await user.click(within(consoleNav()).getByRole("button", { name: "VM インスタンス" }));
+  await navigateConsole(user, "VM インスタンス");
   await user.click(screen.getByRole("checkbox", { name: "batch-1 を選択" }));
   await user.click(screen.getByRole("button", { name: "停止" }));
   const table = screen.getByRole("table", { name: "VM インスタンス" });
@@ -191,7 +256,7 @@ test("ファイアウォール・バケット・予算の作成も同じ経路�
   const user = userEvent.setup();
   const { terminal } = renderSimulator();
   await openConsole(user);
-  await user.click(within(consoleNav()).getByRole("button", { name: "ファイアウォール" }));
+  await navigateConsole(user, "ファイアウォール");
   await user.click(screen.getByRole("button", { name: "ファイアウォール ルールを作成" }));
   await user.type(screen.getByLabelText("名前"), "allow-http");
   await user.type(screen.getByLabelText("ターゲットタグ"), "http-server");
@@ -203,7 +268,7 @@ test("ファイアウォール・バケット・予算の作成も同じ経路�
       ),
     ).toBeInTheDocument(),
   );
-  await user.click(within(consoleNav()).getByRole("button", { name: "バケット" }));
+  await navigateConsole(user, "バケット");
   await user.click(screen.getByRole("button", { name: "作成" }));
   await user.type(screen.getByLabelText("名前"), "ace-dev-01-logs");
   await user.click(screen.getAllByRole("button", { name: "作成" })[1] as HTMLElement);
@@ -212,7 +277,7 @@ test("ファイアウォール・バケット・予算の作成も同じ経路�
       within(screen.getByRole("table", { name: "バケット" })).getByText("ace-dev-01-logs"),
     ).toBeInTheDocument(),
   );
-  await user.click(within(consoleNav()).getByRole("button", { name: "予算とアラート" }));
+  await navigateConsole(user, "予算とアラート");
   await user.click(screen.getByRole("button", { name: "予算を作成" }));
   await user.type(screen.getByLabelText("名前"), "Dev budget");
   await user.click(screen.getByRole("button", { name: "作成" }));
@@ -252,22 +317,37 @@ test("Console に切り替えても端末は消えず、CLI に戻ると同じ�
   expect(terminal.written.length).toBe(before);
 });
 
-test("作成画面にいる間も左ナビは VM インスタンスが現在地になり、ナビに作成の項目は無い", async () => {
+test("作成ページの設定ナビと開閉では入力が残り、戻る操作で VM 一覧に戻る", async () => {
   const user = userEvent.setup();
   renderSimulator();
   await openConsole(user);
   await openVmCreate(user);
-  expect(screen.getByRole("heading", { name: "インスタンスを作成" })).toBeInTheDocument();
-  expect(
-    within(consoleNav()).queryByRole("button", { name: "インスタンスを作成" }),
-  ).not.toBeInTheDocument();
+  await user.type(screen.getByLabelText("名前"), "web-sections");
+  await user.click(screen.getByRole("button", { name: /ネットワーキング/ }));
+  await user.type(screen.getByLabelText("ネットワーク タグ"), "http-server");
+  await user.click(screen.getByRole("button", { name: /OS とストレージ/ }));
+  await user.clear(screen.getByLabelText("サイズ"));
+  await user.type(screen.getByLabelText("サイズ"), "20GB");
+  await user.click(screen.getByRole("button", { name: /マシンの構成/ }));
+  expect(screen.queryByLabelText("ネットワーク タグ")).not.toBeInTheDocument();
+  const command = screen.getByRole("region", { name: "同等のコマンドライン" });
+  expect(command).toHaveTextContent("--tags=http-server");
+  expect(command).toHaveTextContent("--boot-disk-size=20GB");
+  await user.click(screen.getByRole("button", { name: "Console ナビゲーションを切り替え" }));
+  expect(screen.queryByRole("navigation", { name: "VM 作成の設定" })).not.toBeInTheDocument();
+  expect(screen.getByLabelText("名前")).toHaveValue("web-sections");
+  expect(screen.getByRole("region", { name: "同等のコマンドライン" })).toHaveTextContent(
+    "web-sections",
+  );
+  await user.click(screen.getByRole("button", { name: "VM インスタンスに戻る" }));
+  expect(screen.getByRole("table", { name: "VM インスタンス" })).toBeInTheDocument();
 });
 
 test("送信を試みる前は空の名前にもエラーを出さず、送信を試みると出る", async () => {
   const user = userEvent.setup();
   renderSimulator();
   await openConsole(user);
-  await user.click(within(consoleNav()).getByRole("button", { name: "ファイアウォール" }));
+  await navigateConsole(user, "ファイアウォール");
   await user.click(screen.getByRole("button", { name: "ファイアウォール ルールを作成" }));
   expect(screen.queryAllByRole("alert")).toHaveLength(0);
   await user.click(screen.getByRole("button", { name: "作成" }));
@@ -278,7 +358,7 @@ test("キャンセルで作成フォームが閉じる", async () => {
   const user = userEvent.setup();
   renderSimulator();
   await openConsole(user);
-  await user.click(within(consoleNav()).getByRole("button", { name: "バケット" }));
+  await navigateConsole(user, "バケット");
   await user.click(screen.getByRole("button", { name: "作成" }));
   expect(screen.getByLabelText("名前")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "キャンセル" }));
@@ -294,7 +374,7 @@ test.each([
   renderSimulator();
   await chooseOption(user, "プロジェクト", "ace-prod-01");
   await openConsole(user);
-  await user.click(within(consoleNav()).getByRole("button", { name: item }));
+  await navigateConsole(user, item);
   expect(screen.getByRole("button", { name: button })).toBeInTheDocument();
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
 });

@@ -1,7 +1,8 @@
-import { type ReactElement, useState } from "react";
+import { type ReactElement, useId, useState } from "react";
+import { Checkbox } from "@/components/Checkbox";
+import { GhostButton } from "@/components/GhostButton";
 import { SegmentedControl } from "@/components/SegmentedControl";
 import { SuggestInput } from "@/components/SuggestInput";
-import { Switch } from "@/components/Switch";
 import { TextButton } from "@/components/TextButton";
 import type { IamMember, RoleName } from "@/engine/domains/iam-policy";
 import type { PolicyTarget } from "@/engine/domains/resource-hierarchy";
@@ -131,27 +132,33 @@ const removeLines = (words: readonly string[]): string => {
   return [head, `  ${sub} ${target}`, ...flags.map((f) => `  ${f}`)].join(" \\\n");
 };
 
-/** IAM と管理 › IAM（UI 案 s2）: 継承元付きの一覧（プリンシパル別 / ロール別）と、選んだ人の階層。 */
+/** IAM 一覧（UI 案 2d）。編集を選ぶと、継承元の詳細（s2）を開く。 */
 export const IamScreen = ({ world, project, handlers }: ScreenProps): ReactElement => {
   const projectId = project.projectId;
   const projectTarget: PolicyTarget = { type: "project", id: projectId };
+  const [filter, setFilter] = useState("");
+  const filterId = useId();
   const [groupKey, setGroupKey] = useState<GroupKey>("member");
   const [includeInherited, setIncludeInherited] = useState(true);
   const [picked, setPicked] = useState<Option<IamMember>>(Option.none);
   const editor = useCreateForm(IamGrantForm, IamGrantForm.create);
   const allRows = BindingRow.fromWorld(world, projectTarget);
-  const rows = allRows.filter((r) => includeInherited || !BindingRow.isInherited(r));
+  const needle = filter.trim().toLowerCase();
+  const rows = allRows.filter((row) => {
+    if (!includeInherited && BindingRow.isInherited(row)) return false;
+    return [
+      memberText(row.member),
+      memberName(world, row.member),
+      row.role,
+      roleTitleJa(world, row.role),
+      originText(row.origin),
+    ]
+      .join(" ")
+      .toLowerCase()
+      .includes(needle);
+  });
   const groups = groupBy(rows, groupKey);
-  // 既定で選ぶのは、継承したロールと自分に付いたロールの両方を持つ人（継承の見本になる）。
-  const byMember = groupBy(allRows, "member");
-  const sample =
-    byMember.find(
-      (g) => g.rows.some(BindingRow.isInherited) && g.rows.some((r) => !BindingRow.isInherited(r)),
-    ) ?? byMember[0];
-  const fallback = Option.fromNullable(sample?.rows[0]?.member);
-  const selected = Option.filter(Option.or(picked, fallback), (m) =>
-    allRows.some((r) => r.member === m),
-  );
+  const selected = Option.filter(picked, (member) => allRows.some((row) => row.member === member));
   const grant = (): void => {
     const valid = editor.submit();
     if (!Option.isSome(valid)) return;
@@ -176,11 +183,15 @@ export const IamScreen = ({ world, project, handlers }: ScreenProps): ReactEleme
         eyebrow={`プロジェクト「${projectId}」の権限`}
         title="IAM"
         trailing={
-          <PrimaryButton onClick={editor.open}>
+          <GhostButton tone="accent" onClick={editor.open}>
             <span aria-hidden="true">＋ </span>アクセス権を付与
-          </PrimaryButton>
+          </GhostButton>
         }
       />
+      <h3 className="mb-2 font-medium text-lg">プロジェクト「{projectId}」の権限</h3>
+      <p className="mb-5 text-muted text-sm">
+        このプロジェクトと、組織・フォルダから継承されたロールを表示します。
+      </p>
       {Option.isSome(editor.form) && (
         <CreateFormSection
           label="アクセス権を付与"
@@ -223,19 +234,19 @@ export const IamScreen = ({ world, project, handlers }: ScreenProps): ReactEleme
           </Field>
         </CreateFormSection>
       )}
-      <div className="mb-6 flex items-end justify-between">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3 border-line border-b">
         <SegmentedControl
           label="表示の単位"
           value={groupKey}
           options={[
-            { value: "member", label: "プリンシパル別" },
-            { value: "role", label: "ロール別" },
+            { value: "member", label: "プリンシパル別に表示" },
+            { value: "role", label: "ロール別に表示" },
           ]}
           onChange={setGroupKey}
           variant="tabs"
         />
         <div className="flex items-center gap-2.5 text-[15px]">
-          <Switch
+          <Checkbox
             checked={includeInherited}
             ariaLabel="継承されたロールを表示"
             onChange={setIncludeInherited}
@@ -243,17 +254,36 @@ export const IamScreen = ({ world, project, handlers }: ScreenProps): ReactEleme
           <span aria-hidden="true">継承されたロールを表示</span>
         </div>
       </div>
-      <div className="overflow-hidden rounded-lg border border-line bg-surface">
-        <table className="w-full table-fixed text-[15px]" aria-label="IAM ポリシー">
+      <label
+        htmlFor={filterId}
+        className="mb-4 flex h-11 items-center gap-3 rounded-lg border border-line px-4"
+      >
+        <span className="text-sm">フィルタ</span>
+        <TextInput
+          id={filterId}
+          variant="bare"
+          font="sans"
+          className="min-w-0 flex-1"
+          placeholder="プリンシパル、ロール、継承元を検索"
+          value={filter}
+          onChange={setFilter}
+        />
+      </label>
+      <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+        <table className="w-full min-w-[760px] table-fixed text-sm" aria-label="IAM ポリシー">
           <colgroup>
+            <col className="w-[4%]" />
             <col className="w-[25%]" />
             <col className="w-[20%]" />
-            <col className="w-[28%]" />
+            <col className="w-[25%]" />
             <col className="w-[20%]" />
-            <col className="w-[7%]" />
+            <col className="w-[6%]" />
           </colgroup>
           <thead className="bg-canvas text-left text-muted">
             <tr>
+              <th>
+                <span className="sr-only">選択</span>
+              </th>
               <th className="px-6 py-3 font-medium">
                 {groupKey === "member" ? "プリンシパル" : "ロール"}
               </th>
@@ -270,7 +300,7 @@ export const IamScreen = ({ world, project, handlers }: ScreenProps): ReactEleme
           <tbody>
             {groups.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-6 py-6 text-center text-muted">
+                <td colSpan={6} className="px-6 py-6 text-center text-muted">
                   バインディングはありません。
                 </td>
               </tr>
@@ -286,8 +316,19 @@ export const IamScreen = ({ world, project, handlers }: ScreenProps): ReactEleme
               return (
                 <tr
                   key={group.key}
-                  className={`border-line border-t align-top ${isPicked ? "bg-[#fffaf0]" : ""}`}
+                  className={`border-line border-t align-top ${isPicked ? "bg-accent-soft" : ""}`}
                 >
+                  <td className="py-4 pl-3">
+                    {groupKey === "member" && first !== undefined && (
+                      <Checkbox
+                        ariaLabel={`${memberText(group.key)} を選択`}
+                        checked={isPicked}
+                        onChange={(checked) =>
+                          setPicked(checked ? Option.some(first.member) : Option.none)
+                        }
+                      />
+                    )}
+                  </td>
                   {groupKey === "member" ? (
                     <>
                       <td className="break-all px-6 py-4 font-mono text-sm">

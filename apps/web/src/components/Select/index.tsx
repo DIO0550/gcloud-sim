@@ -10,8 +10,8 @@ type SelectProps<T extends string> = Readonly<{
   id?: string;
   /** 見えるラベルが無いときの名前 */
   ariaLabel?: string;
-  /** field = フォームの入力欄と同じ枠、bare = 枠の中に置く素の形（ヘッダー） */
-  variant?: "field" | "bare";
+  /** field = 通常のフォーム、outlined = 浮動ラベル用、bare = ヘッダー、avatar = アカウントの頭文字 */
+  variant?: "field" | "bare" | "avatar" | "outlined";
   /** 一覧をボタンのどちら側に揃えるか（画面の右端に置くなら end） */
   align?: "start" | "end";
   /** 文字色など、置き場の都合の見た目 */
@@ -21,6 +21,10 @@ type SelectProps<T extends string> = Readonly<{
 }>;
 
 const TriggerClass = {
+  avatar:
+    "flex h-8 w-8 items-center justify-center rounded-full bg-ink font-bold text-surface focus-visible:outline-2 focus-visible:outline-accent",
+  outlined:
+    "flex h-12 w-full items-center justify-between gap-2 rounded border border-muted/60 bg-surface px-3 text-left text-sm focus:border-accent focus:outline-none",
   field:
     "flex h-9 w-full items-center justify-between gap-2 rounded-md border border-line bg-surface px-3 text-left text-[15px] focus:border-accent focus:outline-none",
   bare: "flex items-center gap-2 rounded bg-transparent text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent",
@@ -120,12 +124,15 @@ export const Select = <T extends string>({
   };
 
   return (
-    <div className={`relative ${variant === "field" ? "w-full" : "inline-block"}`}>
+    <div
+      className={`relative ${variant === "bare" || variant === "avatar" ? "inline-block" : "w-full"}`}
+    >
       <button
         id={id}
         type="button"
         role="combobox"
         aria-label={ariaLabel}
+        title={variant === "avatar" ? selected?.label : undefined}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
@@ -135,14 +142,18 @@ export const Select = <T extends string>({
         onKeyDown={onKeyDown}
         onBlur={() => setOpen(false)}
       >
-        <span className="truncate">{selected?.label ?? ""}</span>
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 16 16"
-          className={`h-3 w-3 shrink-0 text-muted transition-transform ${open ? "rotate-180" : ""}`}
-        >
-          <path d="M3.5 5.5h9L8 11z" fill="currentColor" />
-        </svg>
+        <span className="truncate">
+          {variant === "avatar" ? selected?.label.charAt(0).toUpperCase() : (selected?.label ?? "")}
+        </span>
+        {variant !== "avatar" && (
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 16 16"
+            className={`h-3 w-3 shrink-0 text-muted transition-transform ${open ? "rotate-180" : ""}`}
+          >
+            <path d="M3.5 5.5h9L8 11z" fill="currentColor" />
+          </svg>
+        )}
       </button>
       {open && (
         <div

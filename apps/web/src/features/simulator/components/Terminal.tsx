@@ -3,7 +3,7 @@
 import "@xterm/xterm/css/xterm.css";
 
 import { type ReactElement, type ReactNode, useEffect, useRef, useState } from "react";
-
+import { GhostButton } from "@/components/GhostButton";
 import type { OutputLine } from "@/engine";
 import { type DrawnInput, InputLayout } from "@/features/simulator/domains/input-layout";
 import { LineEditor } from "@/features/simulator/domains/line-editor";
@@ -28,6 +28,11 @@ type TerminalProps = Readonly<{
   caption: string;
   /** 下端の帯の右側に出すもの（自動保存の状態）。無ければ出さない */
   status?: ReactNode;
+  consoleMode?: boolean;
+  projectId?: string;
+  isMaximized?: boolean;
+  onMaximizeToggle?: () => void;
+  onClose?: () => void;
 }>;
 
 const Banner: readonly OutputLine[] = [
@@ -126,6 +131,11 @@ export const Terminal = (props: TerminalProps): ReactElement => {
     createView,
     caption,
     status,
+    consoleMode = false,
+    projectId,
+    isMaximized = false,
+    onMaximizeToggle,
+    onClose,
   } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<Option<TerminalHandle>>(Option.none);
@@ -225,8 +235,36 @@ export const Terminal = (props: TerminalProps): ReactElement => {
   return (
     <section aria-label="ターミナル" className="flex min-h-0 flex-1 flex-col bg-[#fafcfe]">
       <div className="flex items-center justify-between gap-4 border-line border-b bg-surface px-4 py-2.5 text-muted text-sm">
-        <span className="shrink-0 font-mono">bash — gcloud-sim</span>
-        <span className="min-w-0 break-all text-right">{caption}</span>
+        {consoleMode ? (
+          <>
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="font-mono text-accent">&gt;_</span>
+              <span className="text-ink">ターミナル</span>
+              <span className="truncate text-xs">({projectId})</span>
+            </div>
+            <div className="flex items-center gap-3 text-xs">
+              {status}
+              {onMaximizeToggle !== undefined && (
+                <GhostButton
+                  ariaLabel={isMaximized ? "ターミナルを元のサイズに戻す" : "ターミナルを拡大"}
+                  onClick={onMaximizeToggle}
+                >
+                  ↗
+                </GhostButton>
+              )}
+              {onClose !== undefined && (
+                <GhostButton ariaLabel="ターミナルを閉じる" onClick={onClose}>
+                  ×
+                </GhostButton>
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            <span className="shrink-0 font-mono">bash — gcloud-sim</span>
+            <span className="min-w-0 break-all text-right">{caption}</span>
+          </>
+        )}
       </div>
       {/* overflow-hidden: xterm は入力用の textarea をカーソル行の位置に絶対配置で置く。置き場が縮んだ直後は
           前の行数の位置に残るので、はみ出しを切らないと文書の高さが伸びて画面全体がスクロールする。 */}
@@ -241,10 +279,12 @@ export const Terminal = (props: TerminalProps): ReactElement => {
           </p>
         )}
       </div>
-      <div className="flex items-center justify-between border-line border-t bg-surface px-4 py-2.5 text-muted text-sm">
-        <span>↑↓ 履歴　Tab 補完　Ctrl+L クリア</span>
-        {status}
-      </div>
+      {!consoleMode && (
+        <div className="flex items-center justify-between border-line border-t bg-surface px-4 py-2.5 text-muted text-sm">
+          <span>↑↓ 履歴　Tab 補完　Ctrl+L クリア</span>
+          {status}
+        </div>
+      )}
     </section>
   );
 };

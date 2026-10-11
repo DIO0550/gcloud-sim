@@ -20,10 +20,10 @@ export const ScreenTitle = ({
   title,
   trailing,
 }: Readonly<{ eyebrow: string; title: string; trailing?: ReactNode }>): ReactElement => (
-  <div className="mb-5 flex items-end justify-between gap-4">
+  <div className="-mx-5 -mt-5 mb-5 flex min-h-14 flex-wrap items-center gap-x-6 gap-y-2 border-line border-b px-5 py-3">
     <div>
-      <p className="mb-1 text-muted text-sm">{eyebrow}</p>
-      <h2 className="font-bold text-[28px] leading-tight">{title}</h2>
+      <p className="sr-only">{eyebrow}</p>
+      <h2 className="font-medium text-2xl leading-tight">{title}</h2>
     </div>
     {trailing !== undefined && <div className="flex gap-2">{trailing}</div>}
   </div>
@@ -37,6 +37,7 @@ export const ScreenTitle = ({
 export const Field = ({
   label,
   required = false,
+  outlined = false,
   error,
   hint,
   children,
@@ -44,16 +45,17 @@ export const Field = ({
   label: string;
   /** 必須の印（` *`）を付けるか。印は見た目だけで、項目名には含めない */
   required?: boolean;
+  outlined?: boolean;
   error?: string;
   hint?: string;
   children: (id: string) => ReactNode;
 }>): ReactElement => {
   const id = useId();
   return (
-    <div>
+    <div className={outlined ? "relative" : ""}>
       <label
         htmlFor={id}
-        className={`mb-2 block font-bold text-sm ${required ? "after:content-['_*']" : ""}`}
+        className={`${outlined ? "absolute -top-2 left-3 z-10 bg-surface px-1 text-muted text-xs" : "mb-2 block font-bold text-sm"} ${required ? "after:content-['_*']" : ""}`}
       >
         {label}
       </label>
@@ -160,7 +162,7 @@ export const FormWithCommand = ({
   actions: ReactNode;
   children: ReactNode;
 }>): ReactElement => (
-  <div className="grid grid-cols-[minmax(0,1fr)_22rem] items-start gap-6">
+  <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
     <div>
       {children}
       <div className="mt-4 flex gap-2">{actions}</div>
@@ -197,12 +199,12 @@ const CommandLines = ({ parts }: Readonly<{ parts: readonly CommandPart[] }>): R
   </code>
 );
 
-/**
- * 1 画面を使う作成ページ（UI 案 s1）。左に見出し・項目・作成とキャンセル、右の列に
- * 同等のコマンドライン（変えた値をハイライト）と試験メモを置く。右の列は画面の高さいっぱいに伸ばす。
- */
+/** VM 作成ページ（UI 案 2c）。設定ナビ・フォーム・構成概要とコマンドを並べる。 */
 export const CreatePage = ({
   header,
+  navigation,
+  navigationOpen,
+  summary,
   parts,
   onCopy,
   onInsert,
@@ -211,43 +213,63 @@ export const CreatePage = ({
   children,
 }: Readonly<{
   header: ReactNode;
+  navigation: ReactNode;
+  navigationOpen: boolean;
+  summary: ReactNode;
   parts: readonly CommandPart[];
   onCopy: (text: string) => void;
   onInsert: (text: string) => void;
   actions: ReactNode;
-  /** 右の列の下に出す試験メモ */
   note?: ReactNode;
   children: ReactNode;
 }>): ReactElement => {
   const command = CommandPart.join(parts);
   return (
-    <div className="-mx-8 -my-7 grid min-h-full grid-cols-[minmax(0,1fr)_29rem]">
-      <div className="flex flex-col px-8 py-7">
+    <div className="flex min-h-full flex-col xl:h-full xl:min-h-0">
+      <div className="flex min-h-14 shrink-0 items-center gap-4 border-line border-b px-5 py-3">
         {header}
-        {children}
-        <div className="mt-auto flex gap-3 pt-8">{actions}</div>
       </div>
-      <section
-        className="flex flex-col border-line border-l bg-surface px-6 py-7"
-        aria-label="同等のコマンドライン"
+      <div
+        className={`grid flex-1 grid-cols-1 xl:min-h-0 ${navigationOpen ? "lg:grid-cols-[13.75rem_minmax(0,1fr)] xl:grid-cols-[13.75rem_minmax(0,1fr)_26rem]" : "xl:grid-cols-[minmax(0,1fr)_26rem]"}`}
       >
-        <h3 className="mb-1.5 font-bold text-xl">同等のコマンドライン</h3>
-        <p className="mb-5 text-muted text-sm">
-          フォームの入力に合わせて更新。変更した箇所をハイライト。
-        </p>
-        <div className="rounded-lg border border-line bg-[#fafcfe] px-4 py-5">
-          <CommandLines parts={parts} />
-        </div>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <SecondaryButton onClick={() => onCopy(command)}>コピー</SecondaryButton>
-          <SecondaryButton onClick={() => onInsert(command)}>ターミナルに貼り付け</SecondaryButton>
-        </div>
-        {note !== undefined && (
-          <div className="mt-auto rounded-lg bg-code px-4 py-3.5 text-sm leading-relaxed">
-            {note}
-          </div>
+        {navigationOpen && (
+          <nav
+            aria-label="VM 作成の設定"
+            className="flex overflow-x-auto border-line border-b py-4 lg:block lg:border-r lg:border-b-0 xl:min-h-0 xl:overflow-auto"
+          >
+            {navigation}
+          </nav>
         )}
-      </section>
+        <div className="flex min-w-0 flex-col px-6 py-7 xl:min-h-0 xl:px-9">
+          <div className="pb-8 xl:min-h-0 xl:flex-1 xl:overflow-auto">{children}</div>
+          <div className="mt-auto flex shrink-0 gap-3 border-line border-t pt-4">{actions}</div>
+        </div>
+        <section
+          className={`flex min-w-0 flex-col border-line border-t bg-canvas px-6 py-6 xl:min-h-0 xl:overflow-auto xl:border-t-0 xl:border-l ${navigationOpen ? "lg:col-span-2 xl:col-span-1" : ""}`}
+          aria-label="同等のコマンドライン"
+        >
+          <div className="mb-7 border-line border-b pb-5">{summary}</div>
+          <h3 className="mb-1.5 font-medium text-xl">同等のコマンドライン</h3>
+          <p className="text-muted text-xs">フォームの入力に合わせて更新。変更箇所をハイライト。</p>
+          <div className="my-4 border-line border-b">
+            <span className="inline-block border-accent border-b-2 px-4 py-2.5 text-accent text-sm">
+              gcloud
+            </span>
+          </div>
+          <div className="rounded-lg border border-line bg-surface px-4 py-5">
+            <CommandLines parts={parts} />
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <SecondaryButton onClick={() => onCopy(command)}>コピー</SecondaryButton>
+            <SecondaryButton onClick={() => onInsert(command)}>
+              ターミナルに貼り付け
+            </SecondaryButton>
+          </div>
+          {note !== undefined && (
+            <div className="mt-auto pt-8 text-muted text-xs leading-relaxed">{note}</div>
+          )}
+        </section>
+      </div>
     </div>
   );
 };
@@ -289,7 +311,13 @@ export const CreateFormSection = ({
         </>
       }
     >
-      <div className={columns === 2 ? "grid grid-cols-2 gap-4" : "grid grid-cols-3 gap-4"}>
+      <div
+        className={
+          columns === 2
+            ? "grid grid-cols-1 gap-4 sm:grid-cols-2"
+            : "grid grid-cols-1 gap-4 sm:grid-cols-3"
+        }
+      >
         {children}
       </div>
     </FormWithCommand>
