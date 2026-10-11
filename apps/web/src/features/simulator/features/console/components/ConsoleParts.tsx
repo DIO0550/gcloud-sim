@@ -186,7 +186,7 @@ const markClass = (mark: CommandPart["mark"]): string => {
 
 /** 同等のコマンドラインを 1 語 1 行で並べる。文字としては空白区切りの 1 行のまま。 */
 const CommandLines = ({ parts }: Readonly<{ parts: readonly CommandPart[] }>): ReactElement => (
-  <code className="block break-all font-mono text-sm leading-[1.9]">
+  <code className="block break-all font-mono text-[13px] leading-[1.9]">
     {parts.map((part, index) => (
       <span key={part.lead} className={`command-line block ${index === 0 ? "" : "pl-6"}`}>
         {index === 0 ? "" : " "}
@@ -241,7 +241,7 @@ export const CreatePage = ({
           </nav>
         )}
         <div className="flex min-w-0 flex-col px-6 py-7 xl:min-h-0 xl:px-9">
-          <div className="pb-8 xl:min-h-0 xl:flex-1 xl:overflow-auto">{children}</div>
+          <div className="pt-2 pb-8 xl:min-h-0 xl:flex-1 xl:overflow-auto">{children}</div>
           <div className="mt-auto flex shrink-0 gap-3 border-line border-t pt-4">{actions}</div>
         </div>
         <section
