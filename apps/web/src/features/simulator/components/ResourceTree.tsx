@@ -204,7 +204,7 @@ const Node = ({
   return (
     <li>
       <div
-        className={`flex items-center gap-1.5 rounded-md py-1 pr-2 text-[15px] ${isSelected ? "bg-accent text-white" : "hover:bg-canvas"}`}
+        className={`flex items-center gap-1.5 rounded-md py-1 pr-2 text-[15px] ${isSelected ? "bg-accent-soft text-accent" : "hover:bg-canvas"}`}
         style={{ paddingLeft: `${6 + depth * 18}px` }}
       >
         {hasChildren ? (
@@ -229,19 +229,19 @@ const Node = ({
         >
           {badge !== "" && (
             <span
-              className={`shrink-0 rounded border px-1 py-px text-sm leading-5 ${isSelected ? "border-white/60 text-white" : `border-line bg-surface ${badgeColor}`}`}
+              className={`shrink-0 rounded-md px-2 py-0.5 text-sm leading-5 ${isSelected ? "bg-surface text-accent" : `bg-canvas ${badgeColor}`}`}
             >
               {badge}
             </span>
           )}
           <StatusDot status={node.status} />
           <span
-            className={`truncate ${isName ? "" : "font-mono"} ${isCurrentProject ? "font-bold text-accent" : ""} ${isSelected ? "font-medium text-white" : ""}`}
+            className={`truncate ${isName ? "" : "font-mono"} ${isCurrentProject ? "font-bold text-accent" : ""} ${isSelected ? "font-medium text-accent" : ""}`}
           >
             {label}
           </span>
           {Option.isSome(node.count) && (
-            <span className={isSelected ? "text-white/80" : "text-muted/70"}>
+            <span className={isSelected ? "text-accent/80" : "text-muted/70"}>
               {node.count.value}
             </span>
           )}
