@@ -91,9 +91,11 @@ import { ObjectStorageCommands } from "@/engine/commands/storage-lab/objects";
 import { StorageTransferCommands } from "@/engine/commands/storage-lab/transfers";
 import { TerraformCommands } from "@/engine/commands/terraform";
 import { TerraformStateLessonCommands } from "@/engine/commands/terraform/state-lessons";
+import { AceSupportCommands } from "./ace-support";
 import { ObserveResourceCommands } from "./observability-lab/resources";
 
 const implemented: readonly CommandSpec[] = [
+  ...AceSupportCommands,
   ...DiskLabCommands,
   ...MigCommands,
   ...VmCommands,

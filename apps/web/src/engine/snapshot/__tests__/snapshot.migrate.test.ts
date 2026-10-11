@@ -68,7 +68,7 @@ test("v1 の Snapshot を import すると、足した集合が空で復元さ�
   expect(imported.buckets[0]?.objects[0]?.name).toBe("a.log");
 });
 
-test("現行の Snapshot は v42 で、export → import が同一になる", () => {
+test("現行の Snapshot は v43 で、export → import が同一になる", () => {
   const s = run(
     session(),
     "gcloud compute disks create d --zone=asia-northeast1-a",
@@ -78,7 +78,7 @@ test("現行の Snapshot は v42 で、export → import が同一になる", ()
   );
   const snapshot = Snapshot.create(s.world, Now);
   expect(snapshot.schemaVersion).toBe(SchemaVersion);
-  expect(SchemaVersion).toBe(42);
+  expect(SchemaVersion).toBe(43);
   const imported = Result.unwrap(Snapshot.fromUnknown(JSON.parse(JSON.stringify(snapshot))));
   expect(imported).toEqual(s.world);
 });

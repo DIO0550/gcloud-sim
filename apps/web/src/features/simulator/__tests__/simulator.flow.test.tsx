@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
-
+import { Mission } from "@/engine/missions";
 import {
   chooseOption,
   renderSimulator,
@@ -120,6 +120,7 @@ test("ミッションを開始して条件を満たすとクリアの通知が�
   const user = userEvent.setup();
   const { terminal } = renderSimulator();
   await user.click(screen.getByRole("tab", { name: /ミッション/ }));
+  await user.selectOptions(screen.getByRole("combobox", { name: "ミッション分類" }), "practice");
   await user.click(screen.getByRole("button", { name: /環境セットアップ/ }));
   await user.click(
     screen.getByRole("button", { name: /ace-prod-01 で Compute Engine を使えるようにする/ }),
@@ -140,13 +141,16 @@ test("ミッションを開始して条件を満たすとクリアの通知が�
     },
     { timeout: 4000 },
   );
-  expect(screen.getByRole("tab", { name: "ミッション 1/213" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("tab", { name: `ミッション 1/${Mission.all().length}` }),
+  ).toBeInTheDocument();
 });
 
 test("ヒントは押すたびに 1 つ開く", async () => {
   const user = userEvent.setup();
   renderSimulator();
   await user.click(screen.getByRole("tab", { name: /ミッション/ }));
+  await user.selectOptions(screen.getByRole("combobox", { name: "ミッション分類" }), "practice");
   await user.click(screen.getByRole("button", { name: /環境セットアップ/ }));
   await user.click(screen.getByRole("button", { name: /本番用の configuration を用意する/ }));
   await user.click(screen.getByRole("button", { name: "開始" }));

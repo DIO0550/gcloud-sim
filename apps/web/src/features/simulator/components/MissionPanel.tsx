@@ -7,6 +7,7 @@ import { SectionHeading } from "@/components/SectionHeading";
 import { type MissionStatus, MissionStatuses } from "@/engine/domains/mission-progress";
 import { World } from "@/engine/domains/world";
 import { Mission, MissionDomains } from "@/engine/missions";
+import { ExamSections, examSectionOf } from "@/engine/missions/exam-sections";
 import { Option } from "@/utils/Option";
 
 type MissionPanelProps = Readonly<{
@@ -44,6 +45,10 @@ const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElem
 
 const assertionLabel = (assertion: Mission["assertions"][number]): string => {
   switch (assertion.kind) {
+    case "aceDecision":
+      return "固定された要件に適した選択を記録する（自由文の意味は採点しない）";
+    case "aiLesson":
+      return "専用SA・private接続と停止→構成修正→再開の履歴を確認する";
     case "observationLesson":
       return "設定・権限とサンプル・評価・転送の結果を確認する";
     case "adminLesson":
@@ -293,6 +298,29 @@ export const MissionPanel = ({
   onAbandon,
   onHint,
 }: MissionPanelProps): ReactElement => {
+  const [classification, setClassification] = useState<"exam" | "practice">("exam");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const categoryOf = (mission: Mission): string =>
+    classification === "exam" ? examSectionOf(mission) : mission.domain;
+  const categories =
+    classification === "exam" ? Object.values(ExamSections) : Object.values(MissionDomains);
+  const classificationSelector = (
+    <label className="mb-3 block text-sm">
+      分類
+      <select
+        aria-label="ミッション分類"
+        className="ml-2 rounded border border-line bg-surface p-2"
+        value={classification}
+        onChange={(event) => {
+          setClassification(event.target.value as "exam" | "practice");
+          setView({ kind: "categories" });
+        }}
+      >
+        <option value="exam">添付試験ガイドの4セクション</option>
+        <option value="practice">操作学習の5カテゴリ</option>
+      </select>
+    </label>
+  );
   const [view, setView] = useState<
     { kind: "categories" } | { kind: "list"; domain: string } | { kind: "detail" }
   >(() => (Option.isSome(selectedId) ? { kind: "detail" } : { kind: "categories" }));
@@ -311,11 +339,11 @@ export const MissionPanel = ({
           <SecondaryButton onClick={() => setView({ kind: "categories" })}>
             カテゴリへ
           </SecondaryButton>
-          <SecondaryButton onClick={() => setView({ kind: "list", domain: selected.domain })}>
+          <SecondaryButton onClick={() => setView({ kind: "list", domain: categoryOf(selected) })}>
             一覧へ戻る
           </SecondaryButton>
         </nav>
-        <p className="px-4 text-sm text-muted">{selected.domain}</p>
+        <p className="px-4 text-sm text-muted">{categoryOf(selected)}</p>
         <MissionBrief
           world={world}
           mission={selected}
@@ -332,12 +360,27 @@ export const MissionPanel = ({
           カテゴリへ
         </SecondaryButton>
         <SectionHeading className="pt-4 pb-2">{view.domain}</SectionHeading>
+        <label className="mb-3 block text-sm">
+          進捗で絞り込み
+          <select
+            aria-label="ミッション進捗"
+            className="ml-2 rounded border border-line bg-surface p-2"
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+          >
+            <option value="all">すべて</option>
+            <option value="available">未着手</option>
+            <option value="in_progress">挑戦中</option>
+            <option value="completed">クリア</option>
+          </select>
+        </label>
         <p className="mb-3 text-sm text-muted">
           ミッションを1つ選ぶと、達成条件と手順を確認できます。
         </p>
         <ul className="space-y-2">
           {missions
-            .filter((m) => m.domain === view.domain)
+            .filter((m) => categoryOf(m) === view.domain)
+            .filter((m) => statusFilter === "all" || statusOf(m.id) === statusFilter)
             .map((mission) => (
               <li key={mission.id}>
                 <NavItemButton
@@ -359,10 +402,11 @@ export const MissionPanel = ({
   return (
     <section aria-label="ミッションカテゴリ" className="p-3">
       <SectionHeading className="pb-2">カテゴリを選択</SectionHeading>
+      {classificationSelector}
       <p className="mb-3 text-sm text-muted">学習したい分野から、ミッションを選んで進めます。</p>
       <ul className="space-y-2">
-        {Object.values(MissionDomains).map((domain) => {
-          const items = missions.filter((m) => m.domain === domain);
+        {categories.map((domain) => {
+          const items = missions.filter((m) => categoryOf(m) === domain);
           if (!items.length) return null;
           const completed = items.filter(
             (m) => statusOf(m.id) === MissionStatuses.Completed,

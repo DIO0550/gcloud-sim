@@ -30,6 +30,7 @@ export const ResourceGroups = {
   Builds: "builds",
   LocalDocker: "local-docker",
   Terraform: "terraform",
+  AceSupport: "ace-support",
   Disks: "disks",
   InstanceGroups: "instance-groups",
   LoadBalancing: "load-balancing",
@@ -859,6 +860,36 @@ const projectNode = (world: World, project: Project): TreeNode => {
             ),
           ),
       ),
+      ...group(id, ResourceGroups.AceSupport, [
+        ...world.aceSupport.resources
+          .filter((r) => r.projectId === id)
+          .map((r) =>
+            leaf(
+              {
+                kind: "ace-support",
+                projectId: id,
+                collection: "resources",
+                name: r.name,
+                region: r.region,
+              },
+              `${r.kind}: ${r.name} (${r.region} · ${r.status})`,
+            ),
+          ),
+        ...world.aceSupport.decisions
+          .filter((d) => d.projectId === id)
+          .map((d) =>
+            leaf(
+              {
+                kind: "ace-support",
+                projectId: id,
+                collection: "decisions",
+                name: d.scenario,
+                region: "",
+              },
+              `判断: ${d.scenario} → ${d.choice}`,
+            ),
+          ),
+      ]),
       ...group(id, ResourceGroups.Compute, computeNodes(world, id)),
       ...group(id, ResourceGroups.Disks, diskNodes(world, id)),
       ...group(id, ResourceGroups.InstanceGroups, instanceGroupNodes(world, id)),

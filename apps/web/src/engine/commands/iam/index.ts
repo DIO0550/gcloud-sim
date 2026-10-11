@@ -263,11 +263,12 @@ export const IamCommands: readonly CommandSpec[] = [
           (t) => t.serviceAccount.some && t.serviceAccount.value === email,
         ) ||
         ctx.world.dataProcessing.clusters.some((c) => c.serviceAccount === email) ||
-        ctx.world.dataProcessing.processingJobs.some((j) => j.serviceAccount === email)
+        ctx.world.dataProcessing.processingJobs.some((j) => j.serviceAccount === email) ||
+        ctx.world.aceSupport.resources.some((r) => r.serviceAccount === email)
       ) {
         return Result.err(
           CommandFailure.invalidArgumentWith(
-            "A retained VM, TPU, template or data processing cluster/job uses this service account.",
+            "A retained VM, TPU, template, data processing cluster/job or AI lesson uses this service account.",
           ),
         );
       }

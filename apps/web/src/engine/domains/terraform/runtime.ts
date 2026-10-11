@@ -153,7 +153,18 @@ const mutate = (world: World, change: TfChange, checkWrites: boolean, now = ""):
       if (
         dependents.some((s) => s.projectId === r.project && s.network === r.name) ||
         nics.some((n) => n.network === r.name) ||
-        world.peerings.some((p) => p.peerProjectId === r.project && p.peerNetwork === r.name)
+        world.peerings.some((p) => p.peerProjectId === r.project && p.peerNetwork === r.name) ||
+        world.aceSupport.resources.some(
+          (a) =>
+            a.projectId === r.project &&
+            world.subnets.some(
+              (s) =>
+                s.projectId === r.project &&
+                s.network === r.name &&
+                s.region === a.region &&
+                s.name === a.subnet,
+            ),
+        )
       )
         fail(`Network ${r.name} is still in use. Remove dependent resources first.`);
       return {
@@ -173,6 +184,9 @@ const mutate = (world: World, change: TfChange, checkWrites: boolean, now = ""):
       ) ||
       world.instanceTemplates.some(
         (t) => t.projectId === r.project && Option.isSome(t.subnet) && t.subnet.value === r.name,
+      ) ||
+      world.aceSupport.resources.some(
+        (a) => a.projectId === r.project && a.region === r.region && a.subnet === r.name,
       )
     )
       fail(`Subnetwork ${r.name} is still in use.`);

@@ -1,3 +1,4 @@
+import { emptyAceSupport } from "@/engine/domains/ace-support/model";
 import { emptyAdminLab } from "@/engine/domains/admin-lab/model";
 import { Region } from "@/engine/domains/catalog";
 import {
@@ -252,6 +253,7 @@ export const InitialWorld = {
       serviceAccounts,
       instances: [],
       terraform: TerraformState.empty(),
+      aceSupport: emptyAceSupport(),
       observabilityLab: emptyObservabilityLab(),
       containerLab: ContainerLab.empty(),
       networks: [dev.network, prod.network],

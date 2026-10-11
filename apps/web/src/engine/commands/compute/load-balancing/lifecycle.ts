@@ -371,6 +371,13 @@ export const LifecycleCommands: readonly CommandSpec[] = [
             return Result.err(CommandFailure.notFound("subnetworks"));
           }
           if (
+            ctx.world.aceSupport.resources.some(
+              (r) => r.projectId === s.projectId && r.region === s.region && r.subnet === s.name,
+            )
+          ) {
+            return invalid("Subnet is still in use by an AI lesson.");
+          }
+          if (
             ctx.world.dataProcessing.kafkaClusters.some(
               (c) => c.projectId === s.projectId && c.region === s.region && c.subnet === s.name,
             )

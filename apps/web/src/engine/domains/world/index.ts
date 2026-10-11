@@ -104,6 +104,7 @@ export type Session = Readonly<{
   components: readonly string[];
 }>;
 
+import { type AceSupport, validateAceSupport } from "@/engine/domains/ace-support/model";
 /**
  * エミュレータが保持する全リソースの集合（設計書 6.2 World）。
  * リソースはフラットな集合で持ち、階層は `projectId` / `parent` で結ぶ。
@@ -113,7 +114,6 @@ import {
   type ManagedDatabases,
   validateManagedDatabases,
 } from "@/engine/domains/managed-databases/model";
-
 import { type NetworkLab, validateNetworkLab } from "@/engine/domains/network-lab/model";
 import {
   type ObservabilityLab,
@@ -122,6 +122,7 @@ import {
 import { type StorageLab, validateStorageLab } from "@/engine/domains/storage-lab/model";
 
 export type World = Readonly<{
+  aceSupport: AceSupport;
   observabilityLab: ObservabilityLab;
   networkLab: NetworkLab;
   storageLab: StorageLab;
@@ -1616,6 +1617,8 @@ export const World = {
    * @returns 満たしていれば同じ World。満たさなければ最初に見つけた違反
    */
   validate(world: World): Result<World, string> {
+    const ace = validateAceSupport(world);
+    if (!ace.ok) return ace;
     const observability = validateObservabilityLab(world);
     if (!observability.ok) {
       return observability;

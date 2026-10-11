@@ -74,6 +74,11 @@ export const papEnforced = (world: World, bucket: Bucket): boolean =>
 
 type Located = Readonly<{ id: string; projectId: string; location: string }>;
 const located = (world: World): readonly Located[] => [
+  ...world.aceSupport.resources.map((r) => ({
+    id: `ai/${r.projectId}/${r.region}/${r.name}`,
+    projectId: r.projectId,
+    location: r.region,
+  })),
   ...world.buckets.map((b) => ({
     id: `bucket/${b.name}`,
     projectId: b.projectId,

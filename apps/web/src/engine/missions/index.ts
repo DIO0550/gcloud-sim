@@ -108,6 +108,7 @@ import {
 import type { ValueOf } from "@/types/ValueOf";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
+import { type AceAssertion, AceDecisionMissions, AiMissions, aceSatisfied } from "./ace-support";
 import { type AdminAssertion, AdminMissions, adminSatisfied } from "./admin-lab";
 import { type ComputeAssertion, ComputeMissions, computeSatisfied } from "./compute-lab";
 import {
@@ -186,6 +187,7 @@ import {
   terraformLessonSatisfied,
 } from "./terraform-lessons";
 
+/** 操作学習用の5カテゴリ（添付試験ガイドの4セクションとは別分類）。旧進捗IDは維持する。 */
 /** ACE の 5 ドメイン（設計書 6.2 Mission.domain）。 */
 export const MissionDomains = {
   Setup: "環境セットアップ",
@@ -198,6 +200,7 @@ export type MissionDomain = ValueOf<typeof MissionDomains>;
 
 /** World に対する述語（DJ-010: コマンド文字列ではなく状態で判定する）。値の語彙はドメインの型で閉じる。 */
 export type MissionAssertion =
+  | AceAssertion
   | TerraformLessonAssertion
   | ObserveAssertion
   | AdminAssertion
@@ -373,6 +376,8 @@ const devFolder: PolicyTarget = { type: "folder", id: F.devFolderId };
 const organization: PolicyTarget = { type: "organization", id: F.organizationId };
 
 const Missions: readonly Mission[] = [
+  ...AceDecisionMissions,
+  ...AiMissions,
   ...ObserveMissions,
   ...ObservabilityMissions,
   ...TerraformMissions,
@@ -867,6 +872,9 @@ const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: 
 
 const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
+    case "aceDecision":
+    case "aiLesson":
+      return aceSatisfied(world, assertion);
     case "observationLesson":
       return observeSatisfied(world, assertion.lesson);
     case "adminLesson":
