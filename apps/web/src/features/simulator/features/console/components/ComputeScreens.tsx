@@ -399,9 +399,7 @@ export const VmCreateScreen = ({
 }: ScreenProps): ReactElement => {
   const projectId = project.projectId;
   const defaultAccount = ServiceAccount.defaultComputeEmail(project.projectNumber);
-  const [isDiskOpen, setDiskOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("machine");
-  const sectionId = useId();
   const editor = useCreateForm(
     VmCreateForm,
     () => VmCreateForm.create({ zone: zoneOf(world), serviceAccount: defaultAccount }),
@@ -427,6 +425,19 @@ export const VmCreateScreen = ({
   const region = Zone.region(form.zone);
   const series = seriesOf(form.machineType);
   const allSeries = [...new Set(MachineType.all().map((m) => seriesOf(m.name)))];
+  const provisioningField = (
+    <RadioGroup
+      label="プロビジョニング モデル"
+      name="provisioning-model"
+      inline
+      value={form.provisioningModel}
+      onChange={(model) => set("provisioningModel", model)}
+      options={[
+        { value: ProvisioningModels.Standard, label: "標準" },
+        { value: ProvisioningModels.Spot, label: "Spot" },
+      ]}
+    />
+  );
   const create = (): void => {
     const valid = editor.submit();
     if (!Option.isSome(valid)) return;
@@ -465,16 +476,16 @@ export const VmCreateScreen = ({
         { id: "security", title: "セキュリティ", detail: "サービスアカウント、スコープ" },
         { id: "advanced", title: "詳細設定", detail: form.provisioningModel },
       ].map((item) => (
-        <a
+        <button
+          type="button"
           key={item.id}
-          href={`#${sectionId}-${item.id}`}
-          aria-current={activeSection === item.id ? "location" : undefined}
-          className={`block border-l-2 px-5 py-4 ${activeSection === item.id ? "border-accent bg-accent-soft text-accent" : "border-transparent hover:bg-canvas"}`}
+          aria-pressed={activeSection === item.id}
+          className={`min-w-40 shrink-0 border-l-2 px-5 py-4 text-left lg:w-full ${activeSection === item.id ? "border-accent bg-accent-soft text-accent" : "border-transparent hover:bg-canvas"}`}
           onClick={() => setActiveSection(item.id)}
         >
           <span className="block font-medium text-sm">{item.title}</span>
           <span className="mt-1 block break-all text-muted text-xs">{item.detail}</span>
-        </a>
+        </button>
       ))}
       summary={
         <>
@@ -553,182 +564,181 @@ export const VmCreateScreen = ({
             )}
           </Field>
         </div>
-        <section id={`${sectionId}-machine`} className="scroll-mt-5">
-          <h3 className="mb-4 font-medium text-xl">マシンの構成</h3>
-          <fieldset>
-            <legend className="mb-2 text-muted text-sm">シリーズ</legend>
-            <div className="mb-5 overflow-hidden rounded border border-line">
-              <table className="w-full text-sm">
-                <thead className="bg-canvas text-left text-muted">
-                  <tr>
-                    <th className="px-3 py-2 font-medium">シリーズ</th>
-                    <th className="px-3 py-2 font-medium">vCPU</th>
-                    <th className="px-3 py-2 font-medium">メモリ (GB)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {allSeries.map((item) => (
-                    <tr
-                      key={item}
-                      className={`border-line border-t ${item === series ? "bg-accent-soft" : ""}`}
-                    >
-                      <td className="px-3 py-2">
-                        <label className="flex items-center gap-3">
-                          <input
-                            type="radio"
-                            name="machine-series"
-                            value={item}
-                            checked={item === series}
-                            className="h-4 w-4 accent-accent"
-                            onChange={() => {
-                              const first = MachineType.all().find(
-                                (m) => seriesOf(m.name) === item,
-                              );
-                              if (first !== undefined) set("machineType", first.name);
-                            }}
-                          />
-                          {item}
-                        </label>
-                      </td>
-                      <td className="px-3 py-2 text-muted">
-                        {seriesRange(item, (type) => type.guestCpus)}
-                      </td>
-                      <td className="px-3 py-2 text-muted">
-                        {seriesRange(item, (type) => type.memoryMb / 1024)}
-                      </td>
+        {activeSection === "machine" && (
+          <section>
+            <h3 className="mb-4 font-medium text-xl">マシンの構成</h3>
+            <fieldset>
+              <legend className="mb-2 text-muted text-sm">シリーズ</legend>
+              <div className="mb-5 overflow-hidden rounded border border-line">
+                <table className="w-full text-sm">
+                  <thead className="bg-canvas text-left text-muted">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">シリーズ</th>
+                      <th className="px-3 py-2 font-medium">vCPU</th>
+                      <th className="px-3 py-2 font-medium">メモリ (GB)</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </fieldset>
-          <Field label="マシンタイプ">
-            {(id) => (
-              <Select
-                id={id}
-                value={form.machineType}
-                onChange={(machineType) => set("machineType", machineType)}
-                options={MachineType.all()
-                  .filter((m) => seriesOf(m.name) === series)
-                  .map((m) => ({ value: m.name, label: machineTypeText(m) }))}
-              />
-            )}
-          </Field>
-        </section>
-        <section id={`${sectionId}-advanced`} className="scroll-mt-5">
-          <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-            <RadioGroup
-              label="プロビジョニング モデル"
-              name="provisioning-model"
-              inline
-              value={form.provisioningModel}
-              onChange={(model) => set("provisioningModel", model)}
-              options={[
-                { value: ProvisioningModels.Standard, label: "標準" },
-                { value: ProvisioningModels.Spot, label: "Spot" },
-              ]}
-            />
-            <div id={`${sectionId}-storage`} className="scroll-mt-5">
-              <p className="mb-2 font-bold text-sm">ブートディスク</p>
-              <div className="flex h-9 items-center justify-between rounded-md border border-line bg-surface px-3 text-[15px]">
-                <span>
-                  {form.imageFamily} · {form.bootDiskSize.replace(/GB$/, " GB")} ·{" "}
-                  {diskTypeText(form.bootDiskType)}
-                </span>
-                <TextButton ariaExpanded={isDiskOpen} onClick={() => setDiskOpen((v) => !v)}>
-                  {isDiskOpen ? "閉じる" : "変更"}
-                </TextButton>
+                  </thead>
+                  <tbody>
+                    {allSeries.map((item) => (
+                      <tr
+                        key={item}
+                        className={`border-line border-t ${item === series ? "bg-accent-soft" : ""}`}
+                      >
+                        <td className="px-3 py-2">
+                          <label className="flex items-center gap-3">
+                            <input
+                              type="radio"
+                              name="machine-series"
+                              value={item}
+                              checked={item === series}
+                              className="h-4 w-4 accent-accent"
+                              onChange={() => {
+                                const first = MachineType.all().find(
+                                  (m) => seriesOf(m.name) === item,
+                                );
+                                if (first !== undefined) set("machineType", first.name);
+                              }}
+                            />
+                            {item}
+                          </label>
+                        </td>
+                        <td className="px-3 py-2 text-muted">
+                          {seriesRange(item, (type) => type.guestCpus)}
+                        </td>
+                        <td className="px-3 py-2 text-muted">
+                          {seriesRange(item, (type) => type.memoryMb / 1024)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
+            </fieldset>
+            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+              <Field label="マシンタイプ" outlined>
+                {(id) => (
+                  <Select
+                    id={id}
+                    variant="outlined"
+                    value={form.machineType}
+                    onChange={(machineType) => set("machineType", machineType)}
+                    options={MachineType.all()
+                      .filter((m) => seriesOf(m.name) === series)
+                      .map((m) => ({ value: m.name, label: machineTypeText(m) }))}
+                  />
+                )}
+              </Field>
+              {provisioningField}
             </div>
-          </div>
-        </section>
-        {isDiskOpen && (
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-[2fr_1fr_1fr] rounded-lg border border-line bg-surface p-4">
-            <Field label="イメージ">
-              {(id) => (
-                <Select
-                  id={id}
-                  value={`${form.imageProject}/${form.imageFamily}`}
-                  onChange={(value) => {
-                    const image = images.find((i) => `${i.project}/${i.family}` === value);
-                    if (image !== undefined) {
-                      set("imageFamily", image.family);
-                      set("imageProject", image.project);
-                    }
-                  }}
-                  options={images.map((i) => ({
-                    value: `${i.project}/${i.family}`,
-                    label: `${i.family}（${i.project}）`,
-                  }))}
-                />
-              )}
-            </Field>
-            <Field label="サイズ" error={errors.bootDiskSize}>
-              {(id) => (
-                <TextInput
-                  id={id}
-                  invalid={errors.bootDiskSize !== undefined}
-                  value={form.bootDiskSize}
-                  onChange={(v) => set("bootDiskSize", v)}
-                />
-              )}
-            </Field>
-            <Field label="種類">
-              {(id) => (
-                <Select
-                  id={id}
-                  value={form.bootDiskType}
-                  onChange={(type) => set("bootDiskType", type)}
-                  options={Object.values(BootDiskTypes).map((t) => ({ value: t, label: t }))}
-                />
-              )}
-            </Field>
-          </div>
+          </section>
         )}
-        <section id={`${sectionId}-security`} className="scroll-mt-5">
-          <h3 className="mb-4 font-medium text-xl">セキュリティ</h3>
-          <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-            <Field label="サービスアカウント">
+        {activeSection === "advanced" && (
+          <section>
+            <h3 className="mb-4 font-medium text-xl">詳細設定</h3>
+            {provisioningField}
+          </section>
+        )}
+        {activeSection === "storage" && (
+          <section>
+            <h3 className="mb-4 font-medium text-xl">OS とストレージ</h3>
+            <p className="mb-4 text-muted text-sm">
+              {form.imageFamily} · {form.bootDiskSize.replace(/GB$/, " GB")} ·{" "}
+              {diskTypeText(form.bootDiskType)}
+            </p>
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-[2fr_1fr_1fr] rounded-lg border border-line bg-surface p-4">
+              <Field label="イメージ">
+                {(id) => (
+                  <Select
+                    id={id}
+                    value={`${form.imageProject}/${form.imageFamily}`}
+                    onChange={(value) => {
+                      const image = images.find((i) => `${i.project}/${i.family}` === value);
+                      if (image !== undefined) {
+                        set("imageFamily", image.family);
+                        set("imageProject", image.project);
+                      }
+                    }}
+                    options={images.map((i) => ({
+                      value: `${i.project}/${i.family}`,
+                      label: `${i.family}（${i.project}）`,
+                    }))}
+                  />
+                )}
+              </Field>
+              <Field label="サイズ" error={errors.bootDiskSize}>
+                {(id) => (
+                  <TextInput
+                    id={id}
+                    invalid={errors.bootDiskSize !== undefined}
+                    value={form.bootDiskSize}
+                    onChange={(v) => set("bootDiskSize", v)}
+                  />
+                )}
+              </Field>
+              <Field label="種類">
+                {(id) => (
+                  <Select
+                    id={id}
+                    value={form.bootDiskType}
+                    onChange={(type) => set("bootDiskType", type)}
+                    options={Object.values(BootDiskTypes).map((t) => ({ value: t, label: t }))}
+                  />
+                )}
+              </Field>
+            </div>
+          </section>
+        )}
+        {(activeSection === "machine" || activeSection === "security") && (
+          <section className="border-line border-t pt-5">
+            <h3 className="mb-4 font-medium text-xl">セキュリティ</h3>
+            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+              <Field label="サービスアカウント" outlined>
+                {(id) => (
+                  <Select
+                    id={id}
+                    variant="outlined"
+                    value={form.serviceAccount}
+                    onChange={(account) => set("serviceAccount", account)}
+                    options={accounts.map((a) => ({ value: a, label: a }))}
+                  />
+                )}
+              </Field>
+              <RadioGroup
+                label="アクセス スコープ"
+                name="scopes"
+                value={form.scopes}
+                onChange={(scopes) => set("scopes", scopes)}
+                options={[
+                  { value: "default", label: "デフォルトのアクセス権を許可" },
+                  { value: "cloud-platform", label: "すべての Cloud API に完全アクセス権を許可" },
+                ]}
+              />
+            </div>
+          </section>
+        )}
+        {activeSection === "network" && (
+          <section>
+            <h3 className="mb-4 font-medium text-xl">ネットワーキング</h3>
+            <Field label="ネットワーク タグ">
               {(id) => (
-                <Select
-                  id={id}
-                  value={form.serviceAccount}
-                  onChange={(account) => set("serviceAccount", account)}
-                  options={accounts.map((a) => ({ value: a, label: a }))}
-                />
+                <TagInput id={id} value={form.tags} onChange={(tags) => set("tags", tags)} />
               )}
             </Field>
-            <RadioGroup
-              label="アクセス スコープ"
-              name="scopes"
-              value={form.scopes}
-              onChange={(scopes) => set("scopes", scopes)}
-              options={[
-                { value: "default", label: "デフォルトのアクセス権を許可" },
-                { value: "cloud-platform", label: "すべての Cloud API に完全アクセス権を許可" },
-              ]}
-            />
-          </div>
-        </section>
-        <section id={`${sectionId}-network`} className="scroll-mt-5">
-          <h3 className="mb-4 font-medium text-xl">ネットワーキング</h3>
-          <Field label="ネットワーク タグ">
-            {(id) => <TagInput id={id} value={form.tags} onChange={(tags) => set("tags", tags)} />}
-          </Field>
-          <div className="mt-4">
-            <RadioGroup
-              label="外部 IP"
-              name="external-ip"
-              inline
-              value={form.externalIp ? "ephemeral" : "none"}
-              onChange={(v) => set("externalIp", v === "ephemeral")}
-              options={[
-                { value: "ephemeral", label: "エフェメラル" },
-                { value: "none", label: "なし" },
-              ]}
-            />
-          </div>
-        </section>
+            <div className="mt-4">
+              <RadioGroup
+                label="外部 IP"
+                name="external-ip"
+                inline
+                value={form.externalIp ? "ephemeral" : "none"}
+                onChange={(v) => set("externalIp", v === "ephemeral")}
+                options={[
+                  { value: "ephemeral", label: "エフェメラル" },
+                  { value: "none", label: "なし" },
+                ]}
+              />
+            </div>
+          </section>
+        )}
       </div>
     </CreatePage>
   );

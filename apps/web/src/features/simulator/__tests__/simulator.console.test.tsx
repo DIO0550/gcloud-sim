@@ -68,6 +68,10 @@ test("IAM は選択するまで詳細を開かず、フィルタと継承の表�
   expect(table).not.toHaveTextContent("owner@example.com");
   await user.clear(screen.getByRole("textbox", { name: "フィルタ" }));
   expect(table).toHaveTextContent("dev@example.com");
+  await user.click(screen.getByRole("checkbox", { name: "dev@example.com を選択" }));
+  expect(
+    screen.getByRole("region", { name: "dev@example.com に効いているロール" }),
+  ).toBeInTheDocument();
 });
 
 test("Console の端末は閉じて再度開いても履歴を保ち、CLI と同じ端末を使う", async () => {
@@ -93,6 +97,7 @@ test("Console に切り替えて VM 作成を送信すると、一覧に VM が�
   await openConsole(user);
   await openVmCreate(user);
   await user.type(screen.getByLabelText("名前"), "web-2");
+  await user.click(screen.getByRole("button", { name: /ネットワーキング/ }));
   await user.type(screen.getByLabelText("ネットワーク タグ"), "http-server");
   const panel = screen.getByRole("region", { name: "同等のコマンドライン" });
   expect(panel).toHaveTextContent(
@@ -318,7 +323,16 @@ test("作成ページの設定ナビと開閉では入力が残り、戻る操�
   await openConsole(user);
   await openVmCreate(user);
   await user.type(screen.getByLabelText("名前"), "web-sections");
-  await user.click(screen.getByRole("link", { name: /ネットワーキング/ }));
+  await user.click(screen.getByRole("button", { name: /ネットワーキング/ }));
+  await user.type(screen.getByLabelText("ネットワーク タグ"), "http-server");
+  await user.click(screen.getByRole("button", { name: /OS とストレージ/ }));
+  await user.clear(screen.getByLabelText("サイズ"));
+  await user.type(screen.getByLabelText("サイズ"), "20GB");
+  await user.click(screen.getByRole("button", { name: /マシンの構成/ }));
+  expect(screen.queryByLabelText("ネットワーク タグ")).not.toBeInTheDocument();
+  const command = screen.getByRole("region", { name: "同等のコマンドライン" });
+  expect(command).toHaveTextContent("--tags=http-server");
+  expect(command).toHaveTextContent("--boot-disk-size=20GB");
   await user.click(screen.getByRole("button", { name: "Console ナビゲーションを切り替え" }));
   expect(screen.queryByRole("navigation", { name: "VM 作成の設定" })).not.toBeInTheDocument();
   expect(screen.getByLabelText("名前")).toHaveValue("web-sections");

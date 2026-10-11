@@ -272,14 +272,18 @@ export const IamScreen = ({ world, project, handlers }: ScreenProps): ReactEleme
       <div className="overflow-x-auto rounded-lg border border-line bg-surface">
         <table className="w-full min-w-[760px] table-fixed text-sm" aria-label="IAM ポリシー">
           <colgroup>
+            <col className="w-[4%]" />
             <col className="w-[25%]" />
             <col className="w-[20%]" />
-            <col className="w-[28%]" />
+            <col className="w-[25%]" />
             <col className="w-[20%]" />
-            <col className="w-[7%]" />
+            <col className="w-[6%]" />
           </colgroup>
           <thead className="bg-canvas text-left text-muted">
             <tr>
+              <th>
+                <span className="sr-only">選択</span>
+              </th>
               <th className="px-6 py-3 font-medium">
                 {groupKey === "member" ? "プリンシパル" : "ロール"}
               </th>
@@ -296,7 +300,7 @@ export const IamScreen = ({ world, project, handlers }: ScreenProps): ReactEleme
           <tbody>
             {groups.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-6 py-6 text-center text-muted">
+                <td colSpan={6} className="px-6 py-6 text-center text-muted">
                   バインディングはありません。
                 </td>
               </tr>
@@ -314,6 +318,17 @@ export const IamScreen = ({ world, project, handlers }: ScreenProps): ReactEleme
                   key={group.key}
                   className={`border-line border-t align-top ${isPicked ? "bg-accent-soft" : ""}`}
                 >
+                  <td className="py-4 pl-3">
+                    {groupKey === "member" && first !== undefined && (
+                      <Checkbox
+                        ariaLabel={`${memberText(group.key)} を選択`}
+                        checked={isPicked}
+                        onChange={(checked) =>
+                          setPicked(checked ? Option.some(first.member) : Option.none)
+                        }
+                      />
+                    )}
+                  </td>
                   {groupKey === "member" ? (
                     <>
                       <td className="break-all px-6 py-4 font-mono text-sm">

@@ -233,13 +233,16 @@ export const CreatePage = ({
         className={`grid flex-1 grid-cols-1 ${navigationOpen ? "lg:grid-cols-[13.75rem_minmax(0,1fr)] xl:grid-cols-[13.75rem_minmax(0,1fr)_26rem]" : "xl:grid-cols-[minmax(0,1fr)_26rem]"}`}
       >
         {navigationOpen && (
-          <nav aria-label="VM 作成の設定" className="hidden border-line border-r py-4 lg:block">
+          <nav
+            aria-label="VM 作成の設定"
+            className="flex overflow-x-auto border-line border-b py-4 lg:block lg:border-r lg:border-b-0"
+          >
             {navigation}
           </nav>
         )}
         <div className="flex min-w-0 flex-col px-6 py-7 xl:px-9">
-          {children}
-          <div className="mt-auto flex gap-3 pt-8">{actions}</div>
+          <div className="pb-8">{children}</div>
+          <div className="mt-auto flex gap-3 border-line border-t pt-4">{actions}</div>
         </div>
         <section
           className="flex min-w-0 flex-col border-line border-t bg-canvas px-6 py-6 xl:border-t-0 xl:border-l"

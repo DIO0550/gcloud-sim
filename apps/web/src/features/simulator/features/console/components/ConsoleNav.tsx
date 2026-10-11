@@ -104,7 +104,7 @@ export const ConsoleNav = ({ screen, onChange, onInsert }: ConsoleNavProps): Rea
   return (
     <nav
       aria-label="Console ナビゲーション"
-      className="hidden min-h-0 flex-col overflow-auto border-line border-r bg-surface py-4 md:flex"
+      className="absolute top-0 bottom-0 left-0 z-30 flex min-h-0 w-64 flex-col overflow-auto border-line border-r bg-surface py-4 md:relative md:w-auto"
     >
       {compute ? (
         <>
@@ -116,14 +116,16 @@ export const ConsoleNav = ({ screen, onChange, onInsert }: ConsoleNavProps): Rea
             <div key={group.heading} className="mb-4">
               <h4 className="px-5 pb-2 font-medium text-muted text-xs">{group.heading}</h4>
               {index === 0 && (
-                <NavItemButton
-                  current
-                  currentKind="page"
-                  className="mr-3 rounded-r-full px-6 py-2.5 font-medium text-accent text-sm"
-                  onClick={() => navigate(current)}
-                >
-                  {screenText(current)}
-                </NavItemButton>
+                <div className="pr-3">
+                  <NavItemButton
+                    current
+                    currentKind="page"
+                    className="rounded-r-full px-6 py-2.5 font-medium text-accent text-sm"
+                    onClick={() => navigate(current)}
+                  >
+                    {screenText(current)}
+                  </NavItemButton>
+                </div>
               )}
               {group.items.map((item) => (
                 <button

@@ -85,7 +85,7 @@ export const Header = ({
           </svg>
         </GhostButton>
         <h1 className="shrink-0 font-bold font-mono text-lg tracking-tight">gcloud-sim</h1>
-        <span className="hidden whitespace-nowrap rounded bg-code px-2 py-1 text-muted text-xs sm:block">
+        <span className="hidden whitespace-nowrap rounded border border-line px-2 py-1 text-muted text-xs sm:block">
           Console ビュー
         </span>
         <div className="flex shrink-0 items-center gap-2 rounded border border-line px-3 py-1.5">
