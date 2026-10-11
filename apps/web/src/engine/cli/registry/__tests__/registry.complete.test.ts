@@ -198,3 +198,33 @@ test("別名（-i）でも、そのフラグの値の候補を引く", () => {
     "--instance=db1",
   ]);
 });
+
+test("-- の後ではフラグを補完せず、位置引数の候補を出す", () => {
+  const s = withVms();
+  expect(Engine.completionCandidates(s.world, "gcloud compute instances describe -- web")).toEqual([
+    "web-1",
+    "web-2",
+  ]);
+  expect(Engine.completionCandidates(s.world, "gcloud compute instances describe -- --zo")).toEqual(
+    [],
+  );
+});
+
+test("繰り返した --project は実行と同じく最後の指定で補完する", () => {
+  const s = run(
+    withVms(),
+    "gcloud billing projects link ace-prod-01 --billing-account=01AB2C-DEF345-6789AB",
+    "gcloud services enable compute.googleapis.com --project=ace-prod-01",
+    "gcloud compute instances create prod-1 --zone=asia-northeast1-a --project=ace-prod-01",
+  );
+  const line = "gcloud compute instances describe --project=ace-dev-01 --project ace-prod-01";
+  expect(Engine.completionCandidates(s.world, `${line} `)).toEqual(["prod-1"]);
+  expect(run(s, `${line} prod-1 --zone=asia-northeast1-a`).text).toContain("name: prod-1");
+});
+
+test("別名の inline 値も補完する", () => {
+  const s = withDeployment();
+  expect(Engine.completionCandidates(s.world, "kubectl get deployment -n=def")).toEqual([
+    "-n=default",
+  ]);
+});

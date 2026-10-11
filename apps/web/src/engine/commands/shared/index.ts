@@ -2,6 +2,7 @@ import { CommandFailure } from "@/engine/cli/command-failure";
 import {
   type AuthorizedContext,
   type CandidateSource,
+  type Column,
   type CommandContext,
   CommandOutput,
   type CommandResult,
@@ -291,6 +292,67 @@ export const CommonFlags = {
 /** `AlreadyExists` を E-008 に写す。 */
 export const alreadyExists = (failure: AlreadyExists): CommandFailure =>
   CommandFailure.alreadyExists(failure.resource);
+
+/** ドメインが検証した1件を集合へ追加し、重複エラーと作成結果を組み立てる。 */
+export const createNamed = <K extends NamedCollection>(
+  world: World,
+  seed: Readonly<{
+    collection: K;
+    item: NamedItem<K>;
+    resource: string;
+    output: CommandOutput | ((world: World) => CommandResult);
+    /** Networkの自動subnetやSubnetの関連状態更新など、集合固有の追加処理。 */
+    insert?: (world: World, item: NamedItem<K>) => Result<World, AlreadyExists>;
+  }>,
+): CommandResult =>
+  Result.flatMap(
+    Result.mapErr(
+      seed.insert === undefined
+        ? World.withNamed(world, seed.collection, seed.item, seed.resource)
+        : seed.insert(world, seed.item),
+      alreadyExists,
+    ),
+    (next) =>
+      typeof seed.output === "function"
+        ? seed.output(next)
+        : Result.ok({ world: next, output: seed.output }),
+  );
+
+type ListCommandBase = Readonly<{
+  path: readonly string[];
+  summary: string;
+  permission: string;
+  columns: readonly Column[];
+  flags?: readonly FlagSpec[];
+  requiredApis?: readonly ApiName[];
+}>;
+
+/** 名前付き集合の一覧と、合成レコードを返す一覧を同じコマンド定義で扱う。 */
+export const listCommand = <K extends NamedCollection>(
+  seed: ListCommandBase &
+    (
+      | Readonly<{ collection: K; record: (item: NamedItem<K>) => JsonRecord; records?: never }>
+      | Readonly<{
+          records: (ctx: ProjectContext, args: ParsedArgs) => readonly JsonRecord[];
+          collection?: never;
+          record?: never;
+        }>
+    ),
+): CommandSpec =>
+  projectCommand({
+    path: seed.path,
+    summary: seed.summary,
+    flags: seed.flags,
+    permission: seed.permission,
+    requiredApis: seed.requiredApis,
+    run: (ctx, args) => {
+      const records =
+        seed.records === undefined
+          ? World.namedOf(ctx.world, seed.collection, ctx.project.projectId).map(seed.record)
+          : seed.records(ctx, args);
+      return Result.ok({ world: ctx.world, output: CommandOutput.table(records, seed.columns) });
+    },
+  });
 
 /** `PolicyRejected` を E-005 / E-012 に写す。 */
 const policyRejected = (rejected: PolicyRejected): CommandFailure => {

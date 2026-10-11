@@ -35,9 +35,9 @@ import {
   SchedulingFlags,
 } from "@/engine/commands/compute-lab/vms";
 import {
-  alreadyExists,
   Candidates,
   CommonFlags,
+  createNamed,
   instanceOperationSeed,
   projectCommand,
   recordOperation,
@@ -148,18 +148,24 @@ const createInstance = (ctx: ProjectContext, args: ParsedArgs): CommandResult =>
   if (customImage) {
     configuredWorld = saveDiskData(configuredWorld, vmRef(instance.value), customImage.data);
   }
-  const added = Result.mapErr(World.withInstance(configuredWorld, instance.value), alreadyExists);
-  if (!Result.isOk(added)) return added;
-  const { world, operation } = recordOperation(
-    added.value,
-    instanceOperationSeed(instance.value, OperationTypes.Insert, ctx),
-  );
-  const output = ParsedArgs.boolean(args, "async")
-    ? asyncOutput(operation, "creation", instance.value.name)
-    : CommandOutput.table([Instance.toRecord(instance.value)], InstanceColumns, [
-        OutputMessage.plain(`Created [${Instance.selfLink(instance.value)}].`),
-      ]);
-  return Result.ok({ world, output });
+  return createNamed(configuredWorld, {
+    collection: "instances",
+    item: instance.value,
+    resource: Instance.selfLink(instance.value),
+    insert: World.withInstance,
+    output: (added) => {
+      const { world, operation } = recordOperation(
+        added,
+        instanceOperationSeed(instance.value, OperationTypes.Insert, ctx),
+      );
+      const output = ParsedArgs.boolean(args, "async")
+        ? asyncOutput(operation, "creation", instance.value.name)
+        : CommandOutput.table([Instance.toRecord(instance.value)], InstanceColumns, [
+            OutputMessage.plain(`Created [${Instance.selfLink(instance.value)}].`),
+          ]);
+      return Result.ok({ world, output });
+    },
+  });
 };
 
 /** `--machine-type`。無指定は e2-medium、カタログに無ければ E-005。 */

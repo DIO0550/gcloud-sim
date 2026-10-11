@@ -7,16 +7,9 @@ import {
   renderSimulator,
   resourceTree,
   screenText,
+  typeLine,
 } from "@/features/simulator/__tests__/setup";
 import { Result } from "@/utils/Result";
-
-const typeLine = async (
-  terminal: ReturnType<typeof renderSimulator>["terminal"],
-  line: string,
-): Promise<void> => {
-  await waitFor(() => expect(terminal.written.length).toBeGreaterThan(0));
-  terminal.type(`${line}\r`);
-};
 
 test("コマンドを打つと出力が端末に出て、リソースツリーが更新される", async () => {
   const { terminal } = renderSimulator();

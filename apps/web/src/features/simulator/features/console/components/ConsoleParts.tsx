@@ -4,7 +4,7 @@ import { PrimaryButton } from "@/components/PrimaryButton";
 import { RadioGroup } from "@/components/RadioGroup";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { TextInput } from "@/components/TextInput";
-import { ErrorCodes, type ExecutionOutcome } from "@/engine";
+import { ErrorCodes, type ExecutionStatus } from "@/engine";
 import { CommandPart } from "@/features/simulator/features/console/domains/equivalent-command";
 import { Option } from "@/utils/Option";
 
@@ -306,7 +306,7 @@ export const FailureBanner = ({
   onEnableApi,
   onDismiss,
 }: Readonly<{
-  outcome: Option<ExecutionOutcome>;
+  outcome: Option<ExecutionStatus>;
   onEnableApi: () => void;
   onDismiss: () => void;
 }>): ReactElement => {

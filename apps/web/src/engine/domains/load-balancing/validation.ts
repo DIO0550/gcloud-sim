@@ -12,6 +12,7 @@ import {
   validLbPath,
   validPort,
 } from "@/engine/domains/load-balancing/graph";
+import { ResourceLocation } from "@/engine/domains/resource-location";
 import type { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -367,8 +368,7 @@ export const validateLbGraph = (world: World): string | undefined => {
         (a) =>
           a.projectId === f.projectId &&
           a.name === f.addressName &&
-          (Option.isSome(a.region) ? `regions/${a.region.value}` : "global") ===
-            LbScope.toPath(f.scope),
+          ResourceLocation.toPath(a.scope) === LbScope.toPath(f.scope),
       );
       const type = f.loadBalancingScheme === "INTERNAL_MANAGED" ? "INTERNAL" : "EXTERNAL";
       if (

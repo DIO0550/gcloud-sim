@@ -14,7 +14,7 @@ import { Filter } from "@/engine/cli/formatter";
 import { LogFilter } from "@/engine/commands/observability/filter";
 import { createPolicyFromFile } from "@/engine/commands/observability-lab/policies";
 import { readJson } from "@/engine/commands/observability-lab/shared";
-import { alreadyExists, Candidates, projectCommand } from "@/engine/commands/shared";
+import { Candidates, createNamed, projectCommand } from "@/engine/commands/shared";
 import { AlertPolicy, Dashboard, LogMetric, UptimeCheck } from "@/engine/domains/monitoring";
 import { SampleFile } from "@/engine/domains/sample-files";
 import { type NamedItem, World } from "@/engine/domains/world";
@@ -114,13 +114,12 @@ const save = <K extends Collection>(
   item: NamedItem<K>,
   record: (item: NamedItem<K>) => JsonRecord,
 ): CommandResult =>
-  Result.map(
-    Result.mapErr(World.withNamed(ctx.world, collection, item, item.name), alreadyExists),
-    (world) => ({
-      world,
-      output: CommandOutput.yaml(record(item)),
-    }),
-  );
+  createNamed(ctx.world, {
+    collection: collection,
+    item: item,
+    resource: item.name,
+    output: CommandOutput.yaml(record(item)),
+  });
 
 /** Only counter metrics are modeled; unsupported filters fail rather than being silently ignored. */
 export const LogMetricCommands: readonly CommandSpec[] = [

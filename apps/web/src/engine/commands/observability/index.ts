@@ -12,7 +12,12 @@ import {
 } from "@/engine/cli/command-spec";
 import type { FilterExpr } from "@/engine/cli/formatter";
 import { LogFilter } from "@/engine/commands/observability/filter";
-import { alreadyExists, describeNamedCommand, projectCommand } from "@/engine/commands/shared";
+import {
+  createNamed,
+  describeNamedCommand,
+  listCommand,
+  projectCommand,
+} from "@/engine/commands/shared";
 import { EffectivePermissions } from "@/engine/domains/effective-permissions";
 import { Freshness, LogEntry, LogNames, LogSink } from "@/engine/domains/observability";
 import { observeLogRecord, storedLogs } from "@/engine/domains/observability-lab/logging";
@@ -110,31 +115,22 @@ const createSink = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
     (m) => CommandFailure.invalidValue("SINK", m),
   );
   if (!Result.isOk(sink)) return sink;
-  return Result.map(
-    Result.mapErr(
-      World.withNamed(
-        numbered.world,
-        "logSinks",
-        sink.value,
-        `projects/${ctx.project.projectId}/sinks/${sink.value.name}`,
+  return createNamed(numbered.world, {
+    collection: "logSinks",
+    item: sink.value,
+    resource: `projects/${ctx.project.projectId}/sinks/${sink.value.name}`,
+    output: CommandOutput.messages(
+      OutputMessage.plain(
+        `Created [https://logging.googleapis.com/v2/projects/${ctx.project.projectId}/sinks/${sink.value.name}].`,
       ),
-      alreadyExists,
+      OutputMessage.plain(
+        `Please remember to grant \`${sink.value.writerIdentity}\` the Storage Object Creator role on the bucket (or the equivalent role on the destination).`,
+      ),
+      OutputMessage.plain(
+        "More information about sinks can be found at https://cloud.google.com/logging/docs/export/configure_export",
+      ),
     ),
-    (world) => ({
-      world,
-      output: CommandOutput.messages(
-        OutputMessage.plain(
-          `Created [https://logging.googleapis.com/v2/projects/${ctx.project.projectId}/sinks/${sink.value.name}].`,
-        ),
-        OutputMessage.plain(
-          `Please remember to grant \`${sink.value.writerIdentity}\` the Storage Object Creator role on the bucket (or the equivalent role on the destination).`,
-        ),
-        OutputMessage.plain(
-          "More information about sinks can be found at https://cloud.google.com/logging/docs/export/configure_export",
-        ),
-      ),
-    }),
-  );
+  });
 };
 
 const sinkMutations: readonly CommandSpec[] = (["update", "delete"] as const).map((action) =>
@@ -257,19 +253,14 @@ export const LoggingCommands: readonly CommandSpec[] = [
     requiredApis: [LoggingApi],
     run: createSink,
   }),
-  projectCommand({
+  listCommand({
     path: ["gcloud", "logging", "sinks", "list"],
     summary: "List the defined sinks.",
     permission: "logging.sinks.list",
     requiredApis: [LoggingApi],
-    run: (ctx) =>
-      Result.ok({
-        world: ctx.world,
-        output: CommandOutput.table(
-          World.namedOf(ctx.world, "logSinks", ctx.project.projectId).map(LogSink.toRecord),
-          SinkColumns,
-        ),
-      }),
+    collection: "logSinks",
+    record: LogSink.toRecord,
+    columns: SinkColumns,
   }),
   describeNamedCommand({
     path: ["gcloud", "logging", "sinks", "describe"],

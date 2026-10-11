@@ -4,13 +4,12 @@ import {
   CommandContext,
   CommandOutput,
   type CommandSpec,
-  type FlagSpec,
   type JsonRecord,
   OutputMessage,
   ParsedArgs,
   type ProjectContext,
 } from "@/engine/cli/command-spec";
-import { projectCommand } from "@/engine/commands/shared";
+import { listCommand as sharedListCommand } from "@/engine/commands/shared";
 import { DefaultImage, PublicImage, Region, Zone } from "@/engine/domains/catalog";
 import {
   type AttachedDisk,
@@ -26,9 +25,11 @@ import {
   ProtocolRule,
   Subnet,
 } from "@/engine/domains/compute";
+import { IpAllocation } from "@/engine/domains/ip-allocation";
 import { Operation } from "@/engine/domains/operation";
 import { allows } from "@/engine/domains/serverless-lab/runtime";
 import { ServiceAccount } from "@/engine/domains/service-account";
+import type { NamedCollection } from "@/engine/domains/world";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -51,8 +52,7 @@ export const invalidName = (message: string): CommandFailure =>
   CommandFailure.invalidValue("NAME", message);
 
 /** 外部 IP の採番。通し番号から決めるので同じ World なら同じ値になる。 */
-export const externalIp = (sequence: number): string =>
-  `34.84.${(sequence >> 8) % 256}.${sequence % 256}`;
+export const externalIp = IpAllocation.external;
 
 /** `--image-family` / `--image-project` からイメージを引く。無指定なら Debian 12。 */
 export const resolveImage = (
@@ -291,29 +291,10 @@ export const diskRecords = (ctx: ProjectContext): readonly JsonRecord[] => {
   ].toSorted((a, b) => String(a.name).localeCompare(String(b.name)));
 };
 
-export type ListCommandSeed = Readonly<{
-  path: readonly string[];
-  summary: string;
-  permission: string;
-  columns: readonly Column[];
-  records: (ctx: ProjectContext, args: ParsedArgs) => readonly JsonRecord[];
-  flags?: readonly FlagSpec[];
-}>;
-
-/** table を出すだけの `list` を同じ形で作る。 */
-export const listCommand = (seed: ListCommandSeed): CommandSpec =>
-  projectCommand({
-    path: seed.path,
-    summary: seed.summary,
-    flags: seed.flags,
-    permission: seed.permission,
-    requiredApis: [ComputeApi],
-    run: (ctx, args) =>
-      Result.ok({
-        world: ctx.world,
-        output: CommandOutput.table(seed.records(ctx, args), seed.columns),
-      }),
-  });
+/** Computeの一覧は共通の一覧定義にCompute APIを要求する。 */
+export const listCommand = <K extends NamedCollection>(
+  seed: Parameters<typeof sharedListCommand<K>>[0],
+): CommandSpec => sharedListCommand({ ...seed, requiredApis: [ComputeApi] });
 
 export const requireNetwork = (
   ctx: ProjectContext,

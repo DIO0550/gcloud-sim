@@ -80,8 +80,7 @@ export const validPort = (n: number): boolean => Number.isInteger(n) && n >= 1 &
 export const groupLink = (g: ManagedInstanceGroup): string =>
   ManagedInstanceGroup.selfLink(g).replace("instanceGroupManagers/", "instanceGroups/");
 export const groupRegion = (g: ManagedInstanceGroup): string => {
-  const zone = Zone.parse(g.location);
-  return Option.isSome(zone) ? Zone.region(zone.value) : g.location;
+  return g.location.kind === "zone" ? Zone.region(g.location.zone) : g.location.region;
 };
 
 /** Evaluate the entire source CIDR, including narrower deny rules and allow/deny priority ties. */

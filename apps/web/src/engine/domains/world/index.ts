@@ -12,7 +12,6 @@ import type {
   Subnet,
 } from "@/engine/domains/compute";
 import { type ComputeLab, validateComputeLab } from "@/engine/domains/compute-lab/model";
-import type { Address, NetworkPeering, Router } from "@/engine/domains/compute-networking";
 import { ContainerLab } from "@/engine/domains/container-lab";
 import type { OsLoginSshKey, ServiceAccountKey } from "@/engine/domains/credentials";
 import type {
@@ -27,6 +26,11 @@ import {
 } from "@/engine/domains/data-processing/model";
 import type { DmDeployment } from "@/engine/domains/deployment-manager";
 import type { DnsManagedZone } from "@/engine/domains/dns";
+import type {
+  AppEngineApp,
+  AppVersion,
+  CloudFunction,
+} from "@/engine/domains/functions-app-engine";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import {
   GkePlacement,
@@ -72,6 +76,7 @@ import {
 } from "@/engine/domains/managed-services";
 import { MissionProgress } from "@/engine/domains/mission-progress";
 import type { AlertPolicy, Dashboard, LogMetric, UptimeCheck } from "@/engine/domains/monitoring";
+import type { Address, NetworkPeering, Router } from "@/engine/domains/network-resources";
 import type { LogSink } from "@/engine/domains/observability";
 import { type Operation, OperationHistoryLimit } from "@/engine/domains/operation";
 import { Principal } from "@/engine/domains/principal";
@@ -84,8 +89,8 @@ import {
   PolicyTarget,
   Project,
 } from "@/engine/domains/resource-hierarchy";
+import { MigLocation, ResourceLocation } from "@/engine/domains/resource-location";
 import { CustomRole, RoleCatalog } from "@/engine/domains/role-catalog";
-import type { AppEngineApp, AppVersion, CloudFunction } from "@/engine/domains/serverless";
 import { type ServerlessLab, validateLab } from "@/engine/domains/serverless-lab/model";
 import { ServiceAccount } from "@/engine/domains/service-account";
 import { Bucket } from "@/engine/domains/storage";
@@ -294,13 +299,13 @@ export type LocatedCollection =
 const LocationOf: { readonly [K in LocatedCollection]: (item: NamedItem<K>) => string } = {
   disks: (d) => d.zone,
   subnets: (s) => s.region,
-  addresses: (a) => Option.unwrapOr(a.region, "global"),
+  addresses: (a) => ResourceLocation.name(a.scope),
   routers: (r) => r.region,
   healthChecks: (h) => LbScope.toPath(h.scope ?? LbScope.Global),
   lbResources: lbLocation,
   backendServices: (b) => LbScope.toPath(b.scope),
   forwardingRules: (r) => LbScope.toPath(r.scope),
-  instanceGroups: (g) => g.location,
+  instanceGroups: (g) => MigLocation.name(g.location),
   runServices: (s) => s.region,
   functions: (f) => f.region,
   kmsKeyRings: (r) => r.location,

@@ -1,7 +1,7 @@
 import { type ReactElement, useState } from "react";
+import { SegmentedControl } from "@/components/SegmentedControl";
 import { SuggestInput } from "@/components/SuggestInput";
 import { Switch } from "@/components/Switch";
-import { Tab } from "@/components/Tab";
 import { TextButton } from "@/components/TextButton";
 import type { IamMember, RoleName } from "@/engine/domains/iam-policy";
 import type { PolicyTarget } from "@/engine/domains/resource-hierarchy";
@@ -224,18 +224,16 @@ export const IamScreen = ({ world, project, handlers }: ScreenProps): ReactEleme
         </CreateFormSection>
       )}
       <div className="mb-6 flex items-end justify-between">
-        <div className="flex border-line border-b" role="tablist" aria-label="表示の単位">
-          {(["member", "role"] as const).map((key) => (
-            <Tab
-              key={key}
-              selected={groupKey === key}
-              className="px-5 py-2.5 text-[15px]"
-              onClick={() => setGroupKey(key)}
-            >
-              {key === "member" ? "プリンシパル別" : "ロール別"}
-            </Tab>
-          ))}
-        </div>
+        <SegmentedControl
+          label="表示の単位"
+          value={groupKey}
+          options={[
+            { value: "member", label: "プリンシパル別" },
+            { value: "role", label: "ロール別" },
+          ]}
+          onChange={setGroupKey}
+          variant="tabs"
+        />
         <div className="flex items-center gap-2.5 text-[15px]">
           <Switch
             checked={includeInherited}

@@ -12,10 +12,11 @@ import { removeVmLab } from "@/engine/commands/compute-lab/vms";
 import { Candidates, CommonFlags, projectCommand } from "@/engine/commands/shared";
 import { Zone } from "@/engine/domains/catalog";
 import { patchCompute, sameRef } from "@/engine/domains/compute-lab/model";
-import { Address } from "@/engine/domains/compute-networking";
 import { ManagedInstanceGroup } from "@/engine/domains/instance-groups";
 import { BackendService, HealthCheck, LbScope } from "@/engine/domains/load-balancing";
 import { groupLink, lbLink, lbReferences, validPort } from "@/engine/domains/load-balancing/graph";
+import { Address } from "@/engine/domains/network-resources";
+import { MigLocation } from "@/engine/domains/resource-location";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -313,7 +314,9 @@ export const LifecycleCommands: readonly CommandSpec[] = [
           World.withoutNamed(ctx.world, "instanceGroups", g),
         );
         const cleaned = patchCompute(world, {
-          migs: world.computeLab.migs.filter((m) => !sameRef(m, g)),
+          migs: world.computeLab.migs.filter(
+            (m) => !sameRef(m, { ...g, location: MigLocation.name(g.location) }),
+          ),
         });
         return finish(cleaned, { deleted: g.name, members: members.map((v) => v.name) });
       }),
@@ -403,8 +406,8 @@ export const LifecycleCommands: readonly CommandSpec[] = [
               (a) =>
                 a.projectId === s.projectId &&
                 a.subnet === s.name &&
-                Option.isSome(a.region) &&
-                a.region.value === region,
+                a.scope.kind === "region" &&
+                a.scope.region === region,
             ) ||
             ctx.world.lbResources.some(
               (r) =>

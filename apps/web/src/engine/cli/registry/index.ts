@@ -1,9 +1,11 @@
+import { ArgParser } from "@/engine/cli/arg-parser";
 import { CommandFailure } from "@/engine/cli/command-failure";
 import {
   type CandidateSource,
   type CommandSpec,
   Flag,
   type FlagSpec,
+  ParsedArgs,
   type PositionalSpec,
 } from "@/engine/cli/command-spec";
 import { World } from "@/engine/domains/world";
@@ -65,45 +67,6 @@ export type CompletionRequest = Readonly<{
   partial: string;
   world: World;
 }>;
-
-/** `--name` か別名（`-o` 等）で定義を引く。`token` は `-` を含む打たれたままの綴り。 */
-const findFlag = (flags: readonly FlagSpec[], token: string): Option<FlagSpec> =>
-  Option.fromNullable(flags.find((f) => `--${f.name}` === token || f.aliases.includes(token)));
-
-/** `--project=P` / `--project P` の値。 */
-const flagValueIn = (tokens: readonly string[], name: string): Option<string> => {
-  const index = tokens.findIndex((t) => t === `--${name}` || t.startsWith(`--${name}=`));
-  const token = tokens[index];
-  if (token === undefined) return Option.none;
-  return token.includes("=")
-    ? Option.some(token.slice(token.indexOf("=") + 1))
-    : Option.fromNullable(tokens[index + 1]);
-};
-
-/**
- * 確定した位置引数。`--flag value` の value は含めない
- * （boolean 以外のフラグの直後で `=` の無いものは値）。
- */
-const positionalValues = (
-  rest: readonly string[],
-  flags: readonly FlagSpec[],
-): readonly string[] => {
-  const values: string[] = [];
-  let expectsValue = false;
-  for (const token of rest) {
-    if (expectsValue) {
-      expectsValue = false;
-      continue;
-    }
-    if (token.startsWith("-")) {
-      const flag = findFlag(flags, token.replace(/=.*$/, ""));
-      expectsValue = Option.isSome(flag) && flag.value.kind !== "boolean" && !token.includes("=");
-      continue;
-    }
-    values.push(token);
-  }
-  return values;
-};
 
 /** n 番目の位置引数の定義。末尾が可変長ならそれ以降はすべて末尾。 */
 const positionalAt = (
@@ -266,36 +229,31 @@ export const CommandRegistry = {
     }
     const spec = resolved.value.spec;
     const flags = [...spec.flags, ...globalFlags];
-    const projectId = Option.or(flagValueIn(tokens, "project"), World.currentProjectId(world));
+    const cursor = ArgParser.completion(resolved.value.rest, partial, flags);
+    if (!cursor.ok) {
+      return [];
+    }
+    const { args, target } = cursor.value;
+    const projectId = Option.or(ParsedArgs.string(args, "project"), World.currentProjectId(world));
     const evaluate = (candidates: Option<CandidateSource>, prefix: string): readonly string[] =>
       Option.isSome(candidates)
         ? candidates
-            .value(world, projectId, positionalValues(resolved.value.rest, flags))
+            .value(world, projectId, args.positionals)
             .filter((c) => c.startsWith(prefix))
             .toSorted()
         : [];
-    const eq = partial.indexOf("=");
-    if (partial.startsWith("-") && eq !== -1) {
-      const candidates = Option.flatMap(findFlag(flags, partial.slice(0, eq)), Flag.candidatesOf);
-      return evaluate(candidates, partial.slice(eq + 1)).map(
-        (c) => `${partial.slice(0, eq + 1)}${c}`,
+    if (target.kind === "flag-value") {
+      return evaluate(Flag.candidatesOf(target.flag), target.prefix).map(
+        (value) => `${target.spelling}${value}`,
       );
     }
-    if (partial.startsWith("-")) {
+    if (target.kind === "flag-name") {
       return flags
-        .flatMap((f) => [`--${f.name}`, ...f.aliases])
-        .filter((f) => f.startsWith(partial))
+        .flatMap((flag) => [`--${flag.name}`, ...flag.aliases])
+        .filter((flag) => flag.startsWith(partial))
         .toSorted();
     }
-    const previous = resolved.value.rest.at(-1);
-    const awaitingValueOf =
-      previous?.startsWith("-") && !previous.includes("=")
-        ? findFlag(flags, previous)
-        : Option.none;
-    if (Option.isSome(awaitingValueOf) && awaitingValueOf.value.kind !== "boolean") {
-      return evaluate(Flag.candidatesOf(awaitingValueOf.value), partial);
-    }
-    const index = positionalValues(resolved.value.rest, flags).length;
+    const index = target.index;
     const positional = positionalAt(spec.positionals, index);
     return [
       ...new Set([

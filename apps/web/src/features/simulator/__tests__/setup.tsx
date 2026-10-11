@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import type userEvent from "@testing-library/user-event";
 
 import { Engine, type OutputLine } from "@/engine";
@@ -118,4 +118,14 @@ export const chooseOption = async (
 ): Promise<void> => {
   await user.click(screen.getByRole("combobox", { name }));
   await user.click(screen.getByRole("option", { name: label }));
+};
+
+/** 端末の初期化後、1行をユーザーの打鍵として送る。 */
+export const typeLine = async (terminal: FakeTerminal, line: string): Promise<void> => {
+  await waitFor(() => {
+    if (terminal.written.length === 0) {
+      throw new Error("Terminal is not initialized yet");
+    }
+  });
+  terminal.type(`${line}\r`);
 };

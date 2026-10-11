@@ -12,9 +12,9 @@ import {
 import { Candidates, parseBinding, projectCommand } from "@/engine/commands/shared";
 import { FunctionRuntime, FunctionRuntimes } from "@/engine/domains/catalog";
 import { ResourceName } from "@/engine/domains/compute";
+import { CloudFunction } from "@/engine/domains/functions-app-engine";
 import { IamPolicy } from "@/engine/domains/iam-policy";
 import { CloudRunService } from "@/engine/domains/managed-services";
-import { CloudFunction } from "@/engine/domains/serverless";
 import {
   type Deployment,
   type EventFilter,

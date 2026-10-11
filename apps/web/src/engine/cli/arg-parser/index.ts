@@ -13,6 +13,7 @@ type Scan = Readonly<{
   flags: Readonly<Record<string, FlagValue>>;
   unrecognized: readonly string[];
   onlyPositionals: boolean;
+  awaiting: Option<FlagSpec>;
 }>;
 
 const findSpec = (specs: readonly FlagSpec[], token: string): Option<FlagSpec> =>
@@ -51,7 +52,11 @@ const convert = (spec: FlagSpec, raw: string): Result<FlagValue, CommandFailure>
             CommandFailure.invalidValue(flag, `Bad syntax for dict arg: [${pair}]`),
           );
         }
-        entries.push([pair.slice(0, eq), pair.slice(eq + 1)]);
+        const key = pair.slice(0, eq);
+        if (["__proto__", "constructor", "prototype"].includes(key)) {
+          return Result.err(CommandFailure.invalidValue(flag, `Forbidden dictionary key: ${key}`));
+        }
+        entries.push([key, pair.slice(eq + 1)]);
       }
       return Result.ok({ kind: "keyvalue", value: Object.fromEntries(entries) });
     }
@@ -88,6 +93,7 @@ const stepFlag = (
   specs: readonly FlagSpec[],
   token: string,
   next: string | undefined,
+  incomplete: boolean,
 ): Result<Step, CommandFailure> => {
   const eq = token.indexOf("=");
   const name = eq === -1 ? token : token.slice(0, eq);
@@ -129,6 +135,9 @@ const stepFlag = (
     return Result.map(converted, (value) => ({ scan: withFlag(scan, spec, value), consumed: 1 }));
   }
   const raw = inline ?? next;
+  if (raw === undefined && incomplete) {
+    return Result.ok({ scan: { ...scan, awaiting: Option.some(spec) }, consumed: 1 });
+  }
   const missingValue = raw === undefined || (inline === undefined && raw.startsWith("--"));
   if (missingValue) return Result.err(CommandFailure.expectedOneArgument(`--${spec.name}`));
   return Result.map(convert(spec, raw), (value) => ({
@@ -140,8 +149,16 @@ const stepFlag = (
 const scanTokens = (
   tokens: readonly string[],
   specs: readonly FlagSpec[],
+  incomplete = false,
 ): Result<Scan, CommandFailure> => {
-  let scan: Scan = { positionals: [], flags: {}, unrecognized: [], onlyPositionals: false };
+  const positionals: string[] = [];
+  let scan: Scan = {
+    positionals,
+    flags: {},
+    unrecognized: [],
+    onlyPositionals: false,
+    awaiting: Option.none,
+  };
   let index = 0;
   while (index < tokens.length) {
     const token = tokens[index] as string;
@@ -149,18 +166,28 @@ const scanTokens = (
     if (token === "--" && !scan.onlyPositionals) {
       scan = { ...scan, onlyPositionals: true };
       index += 1;
-    } else if (isFlag) {
-      const stepped = stepFlag(scan, specs, token, tokens[index + 1]);
+      continue;
+    }
+    if (isFlag) {
+      const stepped = stepFlag(scan, specs, token, tokens[index + 1], incomplete);
       if (!Result.isOk(stepped)) return stepped;
       scan = stepped.value.scan;
       index += stepped.value.consumed;
-    } else {
-      scan = { ...scan, positionals: [...scan.positionals, token] };
-      index += 1;
+      continue;
     }
+    positionals.push(token);
+    index += 1;
   }
   return Result.ok(scan);
 };
+
+export type CompletionCursor = Readonly<{
+  args: ParsedArgs;
+  target:
+    | Readonly<{ kind: "flag-name" }>
+    | Readonly<{ kind: "flag-value"; flag: FlagSpec; prefix: string; spelling: string }>
+    | Readonly<{ kind: "positional"; index: number }>;
+}>;
 
 const checkPositionals = (
   scan: Scan,
@@ -185,6 +212,56 @@ const checkRequiredFlags = (
 };
 
 export const ArgParser = {
+  /** parseと同じ走査で、打ちかけの値・位置引数と解釈済みのフラグを返す。必須検査は行わない。 */
+  completion(
+    tokens: readonly string[],
+    partial: string,
+    flags: readonly FlagSpec[],
+  ): Result<CompletionCursor, CommandFailure> {
+    return Result.flatMap(
+      scanTokens(tokens, flags, true),
+      (scan): Result<CompletionCursor, CommandFailure> => {
+        const args = { positionals: scan.positionals, flags: scan.flags };
+        if (scan.onlyPositionals) {
+          return Result.ok({
+            args,
+            target: { kind: "positional", index: scan.positionals.length },
+          });
+        }
+        const eq = partial.indexOf("=");
+        if (partial.startsWith("-") && eq !== -1) {
+          const flag = findSpec(flags, partial.slice(0, eq));
+          if (!flag.some) {
+            return Result.err(CommandFailure.unrecognizedArguments([partial.slice(0, eq)]));
+          }
+          return Result.ok({
+            args,
+            target: {
+              kind: "flag-value",
+              flag: flag.value,
+              prefix: partial.slice(eq + 1),
+              spelling: partial.slice(0, eq + 1),
+            },
+          });
+        }
+        if (scan.awaiting.some && !partial.startsWith("--")) {
+          return Result.ok({
+            args,
+            target: {
+              kind: "flag-value",
+              flag: scan.awaiting.value,
+              prefix: partial,
+              spelling: "",
+            },
+          });
+        }
+        if (partial.startsWith("-")) {
+          return Result.ok({ args, target: { kind: "flag-name" } });
+        }
+        return Result.ok({ args, target: { kind: "positional", index: scan.positionals.length } });
+      },
+    );
+  },
   /**
    * コマンドパスの後ろのトークンを、フラグ定義と位置引数定義に照らして解釈する（設計書 9.2）。
    * `--k=v` と `--k v` は同じ、`--no-k` は boolean を false にする。

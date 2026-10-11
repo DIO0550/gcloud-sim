@@ -17,6 +17,7 @@ import { applyGkeLesson, lessonRows } from "@/engine/commands/gke-lessons";
 import { Candidates, projectCommand } from "@/engine/commands/shared";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { GkePlacement } from "@/engine/domains/gke-completion";
+import { IpAllocation } from "@/engine/domains/ip-allocation";
 import { KubeConfig, KubeRuntime } from "@/engine/domains/kube-config";
 import { KubeContainer } from "@/engine/domains/kube-container";
 import { KubeContext } from "@/engine/domains/kube-context";
@@ -195,9 +196,8 @@ const parseResource = (type: string, name: Option<string>): Result<ResourceRef, 
 };
 
 /** クラスタ内の IP の採番。ClusterIP は 10.20、外部 IP は 34.85 系。 */
-const clusterIp = (sequence: number): string => `10.20.${(sequence >> 8) % 256}.${sequence % 256}`;
-const loadBalancerIp = (sequence: number): string =>
-  `34.85.${(sequence >> 8) % 256}.${sequence % 256}`;
+const clusterIp = IpAllocation.cluster;
+const loadBalancerIp = IpAllocation.loadBalancer;
 
 const DeploymentColumns = [
   Column.create("NAME", "name"),

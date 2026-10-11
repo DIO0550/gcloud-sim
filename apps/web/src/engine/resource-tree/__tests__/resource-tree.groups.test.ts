@@ -1,25 +1,15 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-
 import { run, session } from "@/engine/__tests__/setup";
 import {
   type ResourceGroup,
   ResourceGroups,
-  type TreeLabel,
   TreeNode,
   TreeSelection,
 } from "@/engine/resource-tree";
 import { Option } from "@/utils/Option";
+import { find, labels } from "./setup";
 
-const labelKey = (label: TreeLabel): string =>
-  label.kind === "text" ? label.text : `group:${label.group}`;
-const labels = (nodes: readonly TreeNode[]): readonly string[] =>
-  nodes.map((n) => labelKey(n.label));
-const find = (nodes: readonly TreeNode[], key: string): TreeNode | undefined =>
-  nodes.reduce<TreeNode | undefined>(
-    (found, n) => found ?? (labelKey(n.label) === key ? n : find(n.children, key)),
-    undefined,
-  );
 const groupKey = (group: ResourceGroup): string => `group:${group}`;
 const projectGroups = (nodes: readonly TreeNode[]): readonly string[] =>
   labels(find(nodes, "ace-dev-01")?.children ?? []);
@@ -34,7 +24,7 @@ test("独立ディスクとスナップショットはディスクのグルー�
     `gcloud compute disks snapshot web-1 ${zone} --snapshot-names=snap-1`,
   );
   const disks = find(TreeNode.fromWorld(s.world), groupKey(ResourceGroups.Disks));
-  expect(labels(disks?.children ?? [])).toEqual(["data-1", "snapshot: snap-1"]);
+  expect(labels(disks?.children ?? [])).toEqual(["data-1", "snap-1"]);
 });
 
 test("ロードバランサの部品と予約アドレスは 1 つのグループに種別の接頭辞付きで並ぶ", () => {
@@ -51,10 +41,10 @@ test("ロードバランサの部品と予約アドレスは 1 つのグルー�
   expect(labels(lb?.children ?? [])).toEqual([
     "urlMaps: web-map",
     "targetHttpProxies: web-proxy",
-    "hc: hc",
-    "bes: web-bes",
-    "fr: web-fr",
-    "ip: lb-ip",
+    "hc",
+    "web-bes",
+    "web-fr",
+    "lb-ip",
   ]);
 });
 
@@ -68,9 +58,9 @@ test("ネットワークの下にはファイアウォール・サブネット�
   );
   const network = find(TreeNode.fromWorld(s.world), "vpc-a");
   expect(labels(network?.children ?? [])).toEqual([
-    "fw: vpc-a-ssh",
-    "subnet: sub-a (asia-northeast1)",
-    "router: nat-a",
+    "vpc-a-ssh",
+    "sub-a (asia-northeast1)",
+    "nat-a",
   ]);
 });
 
@@ -85,11 +75,11 @@ test("クラスタの下にはノードプールと kubectl で作った Deploym
   );
   const cluster = find(TreeNode.fromWorld(s.world), "app");
   expect(labels(cluster?.children ?? [])).toEqual([
-    "pool: default-pool",
-    "sc: standard-rwo",
-    "sc: premium-rwo",
-    "deploy: web",
-    "svc: web",
+    "default-pool",
+    "standard-rwo",
+    "premium-rwo",
+    "web",
+    "web",
   ]);
   const autopilot = run(
     session(),
@@ -97,8 +87,8 @@ test("クラスタの下にはノードプールと kubectl で作った Deploym
     "gcloud container clusters create-auto ap --region=asia-northeast1 --quiet",
   );
   expect(labels(find(TreeNode.fromWorld(autopilot.world), "ap")?.children ?? [])).toEqual([
-    "sc: standard-rwo",
-    "sc: premium-rwo",
+    "standard-rwo",
+    "premium-rwo",
   ]);
 });
 
@@ -111,8 +101,8 @@ test("Pub/Sub のトピックの下にサブスクリプションが、請求ア
     "gcloud billing budgets create --billing-account=01AB2C-DEF345-6789AB --display-name=dev --budget-amount=100000JPY",
   );
   const tree = TreeNode.fromWorld(s.world);
-  expect(labels(find(tree, "orders")?.children ?? [])).toEqual(["sub: orders-sub"]);
-  expect(labels(find(tree, "01AB2C-DEF345-6789AB")?.children ?? [])).toEqual(["budget: dev"]);
+  expect(labels(find(tree, "orders")?.children ?? [])).toEqual(["orders-sub"]);
+  expect(labels(find(tree, "01AB2C-DEF345-6789AB")?.children ?? [])).toEqual(["dev"]);
 });
 
 test("App Engine はアプリ 1 つの下にサービス/バージョンが並び、無いプロジェクトにはグループが無い", () => {

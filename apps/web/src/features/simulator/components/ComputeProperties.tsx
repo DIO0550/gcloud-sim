@@ -11,6 +11,7 @@ import {
 import { vmConfig } from "@/engine/domains/compute-lab/model";
 import { LbScope } from "@/engine/domains/load-balancing";
 import { lbHealth } from "@/engine/domains/load-balancing/graph";
+import { MigLocation, ResourceLocation } from "@/engine/domains/resource-location";
 import { World } from "@/engine/domains/world";
 import {
   Absent,
@@ -269,7 +270,7 @@ export const InstanceGroupProperties = ({
 }: SelectionProps<"instance-group">): ReactElement => {
   const group = Option.filter(
     World.findLocated(world, "instanceGroups", selection),
-    (g) => g.location === selection.location,
+    (g) => MigLocation.name(g.location) === selection.location,
   );
   if (!Option.isSome(group)) return <NotFound what="マネージドインスタンスグループ" />;
   const g = group.value;
@@ -285,7 +286,7 @@ export const InstanceGroupProperties = ({
     <Section
       title="基本"
       rows={[
-        { label: "location", value: g.location },
+        { label: "location", value: MigLocation.name(g.location) },
         { label: "template", value: g.template },
         { label: "targetSize", value: String(g.targetSize) },
         {
@@ -409,7 +410,7 @@ export const AddressProperties = ({
         { label: "addressType", value: a.addressType },
         { label: "networkTier", value: a.networkTier ?? "PREMIUM" },
         { label: "subnet", value: a.subnet ?? "-" },
-        { label: "scope", value: Option.unwrapOr(a.region, "global") },
+        { label: "scope", value: ResourceLocation.name(a.scope) },
         { label: "status", value: a.status },
         { label: "creationTimestamp", value: a.creationTimestamp },
       ]}

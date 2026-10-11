@@ -1,6 +1,6 @@
 import { ErrorCodes } from "@/engine/cli/command-failure";
 import { CommandRegistry } from "@/engine/cli/registry";
-import { type ExecutionOutcome, type OutputLine, Shell, type ShellState } from "@/engine/cli/shell";
+import { type ExecutionStatus, type OutputLine, Shell, type ShellState } from "@/engine/cli/shell";
 import { Tokenizer } from "@/engine/cli/tokenizer";
 import { AllCommands } from "@/engine/commands";
 import { observationEvents } from "@/engine/domains/observability-lab/events";
@@ -30,7 +30,7 @@ export type ExecuteResult = Readonly<{
   /** 今回の実行でクリアしたミッション（UC-006 ステップ 3 の祝福に使う） */
   completed: readonly Mission[];
   /** 成否。Console ビューが赤帯や一覧への遷移を決めるのに使う */
-  outcome: ExecutionOutcome;
+  outcome: ExecutionStatus;
 }>;
 
 export const Engine = {
@@ -114,4 +114,4 @@ export const Engine = {
   },
 } as const;
 
-export { ErrorCodes, type ExecutionOutcome, type OutputLine, Shell, type ShellState };
+export { ErrorCodes, type ExecutionStatus, type OutputLine, Shell, type ShellState };

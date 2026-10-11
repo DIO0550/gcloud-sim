@@ -1,6 +1,7 @@
 import { CommandFailure } from "@/engine/cli/command-failure";
 import { CommandOutput, type CommandResult, OutputMessage } from "@/engine/cli/command-spec";
 import { KubeIdentity } from "@/engine/domains/gke-completion";
+import { IpAllocation } from "@/engine/domains/ip-allocation";
 import { KubeLabels } from "@/engine/domains/kube-labels";
 import type { WorkloadManifest } from "@/engine/domains/kube-manifest/workloads";
 import { KubeMulti } from "@/engine/domains/kube-multi";
@@ -165,10 +166,8 @@ export const applyWorkload = (
     cluster: cluster.name,
     namespace: ctx.namespace,
     targetPort: Option.some(manifest.targetPort),
-    clusterIp: manifest.headless
-      ? "None"
-      : `10.20.${(numbered.number >> 8) % 256}.${numbered.number % 256}`,
-    externalIp: `34.85.${(numbered.number >> 8) % 256}.${numbered.number % 256}`,
+    clusterIp: manifest.headless ? "None" : IpAllocation.cluster(numbered.number),
+    externalIp: IpAllocation.loadBalancer(numbered.number),
     createdAt: ctx.now,
   });
   if (!Result.isOk(created)) return Result.err(CommandFailure.invalidArgumentWith(created.error));

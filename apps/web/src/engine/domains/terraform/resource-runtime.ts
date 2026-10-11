@@ -1,5 +1,7 @@
 import { BucketLocation, MachineType, StorageClass, Zone } from "@/engine/domains/catalog";
 import { BootDiskType, ExternalIp, Instance } from "@/engine/domains/compute";
+import { IpAllocation } from "@/engine/domains/ip-allocation";
+import { MigLocation } from "@/engine/domains/resource-location";
 import { ServiceAccount } from "@/engine/domains/service-account";
 import { Bucket } from "@/engine/domains/storage";
 import { protectionFor, retentionAllows } from "@/engine/domains/storage-lab/model";
@@ -69,7 +71,8 @@ const read = (world: World, r: TfInstance | TfFirewall | TfBucket): TfResource |
       (g) =>
         g.projectId === r.project &&
         g.instanceNames.includes(r.name) &&
-        (g.location === r.zone || r.zone.startsWith(`${g.location}-`)),
+        (MigLocation.name(g.location) === r.zone ||
+          r.zone.startsWith(`${MigLocation.name(g.location)}-`)),
     )
   )
     fail("MIG-managed instances cannot be managed by this Terraform subset.");
@@ -296,7 +299,7 @@ const mutateInstance = (
         subnetwork: r.subnet,
         networkIP: address(start + host),
         externalIP: r.externalIp
-          ? ExternalIp.ephemeral(`34.84.${(numbered.number >> 8) % 256}.${numbered.number % 256}`)
+          ? ExternalIp.ephemeral(IpAllocation.external(numbered.number))
           : ExternalIp.None,
       },
       image: TfResources.image(r.image),

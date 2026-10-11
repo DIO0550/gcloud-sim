@@ -11,9 +11,10 @@ import {
   type ProjectContext,
 } from "@/engine/cli/command-spec";
 import {
-  alreadyExists,
   Candidates,
+  createNamed,
   describeNamedCommand,
+  listCommand,
   projectCommand,
 } from "@/engine/commands/shared";
 import { PubsubSubscription, PubsubTopic } from "@/engine/domains/data";
@@ -40,18 +41,14 @@ const createTopic = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
     (m) => CommandFailure.invalidValue("TOPIC", m),
   );
   if (!Result.isOk(topic)) return topic;
-  return Result.map(
-    Result.mapErr(
-      World.withNamed(ctx.world, "pubsubTopics", topic.value, PubsubTopic.fullName(topic.value)),
-      alreadyExists,
+  return createNamed(ctx.world, {
+    collection: "pubsubTopics",
+    item: topic.value,
+    resource: PubsubTopic.fullName(topic.value),
+    output: CommandOutput.messages(
+      OutputMessage.plain(`Created topic [${PubsubTopic.fullName(topic.value)}].`),
     ),
-    (world) => ({
-      world,
-      output: CommandOutput.messages(
-        OutputMessage.plain(`Created topic [${PubsubTopic.fullName(topic.value)}].`),
-      ),
-    }),
-  );
+  });
 };
 
 const createSubscription = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
@@ -77,25 +74,16 @@ const createSubscription = (ctx: ProjectContext, args: ParsedArgs): CommandResul
     (m) => CommandFailure.invalidValue("SUBSCRIPTION", m),
   );
   if (!Result.isOk(subscription)) return subscription;
-  return Result.map(
-    Result.mapErr(
-      World.withNamed(
-        ctx.world,
-        "pubsubSubscriptions",
-        subscription.value,
-        PubsubSubscription.fullName(subscription.value),
+  return createNamed(ctx.world, {
+    collection: "pubsubSubscriptions",
+    item: subscription.value,
+    resource: PubsubSubscription.fullName(subscription.value),
+    output: CommandOutput.messages(
+      OutputMessage.plain(
+        `Created subscription [${PubsubSubscription.fullName(subscription.value)}].`,
       ),
-      alreadyExists,
     ),
-    (world) => ({
-      world,
-      output: CommandOutput.messages(
-        OutputMessage.plain(
-          `Created subscription [${PubsubSubscription.fullName(subscription.value)}].`,
-        ),
-      ),
-    }),
-  );
+  });
 };
 
 export const PubsubCommands: readonly CommandSpec[] = [
@@ -107,19 +95,14 @@ export const PubsubCommands: readonly CommandSpec[] = [
     requiredApis: [PubsubApi],
     run: createTopic,
   }),
-  projectCommand({
+  listCommand({
     path: ["gcloud", "pubsub", "topics", "list"],
     summary: "List Cloud Pub/Sub topics.",
     permission: "pubsub.topics.list",
     requiredApis: [PubsubApi],
-    run: (ctx) =>
-      Result.ok({
-        world: ctx.world,
-        output: CommandOutput.table(
-          World.namedOf(ctx.world, "pubsubTopics", ctx.project.projectId).map(PubsubTopic.toRecord),
-          TopicColumns,
-        ),
-      }),
+    collection: "pubsubTopics",
+    record: PubsubTopic.toRecord,
+    columns: TopicColumns,
   }),
   describeNamedCommand({
     path: ["gcloud", "pubsub", "topics", "describe"],
@@ -154,22 +137,17 @@ export const PubsubCommands: readonly CommandSpec[] = [
     requiredApis: [PubsubApi],
     run: createSubscription,
   }),
-  projectCommand({
+  listCommand({
     path: ["gcloud", "pubsub", "subscriptions", "list"],
     summary: "List Cloud Pub/Sub subscriptions.",
     permission: "pubsub.subscriptions.list",
     requiredApis: [PubsubApi],
-    run: (ctx) =>
-      Result.ok({
-        world: ctx.world,
-        output: CommandOutput.table(
-          World.namedOf(ctx.world, "pubsubSubscriptions", ctx.project.projectId).map((s) => ({
-            ...PubsubSubscription.toRecord(s),
-            type: Option.isSome(s.pushEndpoint) ? "PUSH" : "PULL",
-          })),
-          SubscriptionColumns,
-        ),
-      }),
+    collection: "pubsubSubscriptions",
+    record: (s) => ({
+      ...PubsubSubscription.toRecord(s),
+      type: Option.isSome(s.pushEndpoint) ? "PUSH" : "PULL",
+    }),
+    columns: SubscriptionColumns,
   }),
   projectCommand({
     path: ["gcloud", "pubsub", "subscriptions", "describe"],

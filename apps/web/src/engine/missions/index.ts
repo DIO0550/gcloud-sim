@@ -22,6 +22,7 @@ import {
   SubnetModes,
 } from "@/engine/domains/compute";
 import { EffectivePermissions } from "@/engine/domains/effective-permissions";
+import type { FunctionTrigger } from "@/engine/domains/functions-app-engine";
 import { type ConfigProperty, GcloudConfig } from "@/engine/domains/gcloud-config";
 import { type IamMember, IamPolicy, type RoleName } from "@/engine/domains/iam-policy";
 import { ImagePull } from "@/engine/domains/image-pull";
@@ -29,7 +30,6 @@ import { type KubeServiceType, KubeServiceTypes } from "@/engine/domains/kuberne
 import { MissionProgress, MissionStatuses } from "@/engine/domains/mission-progress";
 import type { Principal } from "@/engine/domains/principal";
 import type { PolicyTarget } from "@/engine/domains/resource-hierarchy";
-import type { FunctionTrigger } from "@/engine/domains/serverless";
 import { ServiceAccount } from "@/engine/domains/service-account";
 import { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";

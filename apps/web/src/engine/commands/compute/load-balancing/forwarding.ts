@@ -10,10 +10,10 @@ import {
   type ProjectContext,
 } from "@/engine/cli/command-spec";
 import { ComputeApi } from "@/engine/commands/compute/shared";
-import { alreadyExists, Candidates, projectCommand } from "@/engine/commands/shared";
+import { Candidates, createNamed, projectCommand } from "@/engine/commands/shared";
 import { Subnet } from "@/engine/domains/compute";
-import { Address } from "@/engine/domains/compute-networking";
 import { Ipv4 } from "@/engine/domains/gke-control-plane";
+import { IpAllocation } from "@/engine/domains/ip-allocation";
 import {
   type BackendService,
   ForwardingRule,
@@ -28,6 +28,7 @@ import {
   validPort,
 } from "@/engine/domains/load-balancing/graph";
 import { backendNetwork } from "@/engine/domains/load-balancing/validation";
+import { Address } from "@/engine/domains/network-resources";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -248,7 +249,7 @@ const create = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   const ip =
     address?.address ??
     (subnet === undefined
-      ? `34.110.${Math.floor(numbered.number / 256) % 256}.${numbered.number % 256}`
+      ? IpAllocation.frontend(numbered.number)
       : Subnet.hostAddress(subnet, 100 + numbered.number));
   if (internal && (subnet === undefined || !Ipv4.contains(subnet.ipCidrRange, ip))) {
     return invalid("No available internal frontend address in subnet.");
@@ -286,13 +287,12 @@ const create = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
     address === undefined
       ? numbered.world
       : World.replaceNamed(numbered.world, "addresses", { ...address, status: "IN_USE" });
-  return Result.flatMap(
-    Result.mapErr(
-      World.withNamed(world, "forwardingRules", rule, ForwardingRule.selfLink(rule)),
-      alreadyExists,
-    ),
-    (w) => finish(w, ForwardingRule.toRecord(rule)),
-  );
+  return createNamed(world, {
+    collection: "forwardingRules",
+    item: rule,
+    resource: ForwardingRule.selfLink(rule),
+    output: (w) => finish(w, ForwardingRule.toRecord(rule)),
+  });
 };
 export const ForwardingCommands: readonly CommandSpec[] = [
   projectCommand({

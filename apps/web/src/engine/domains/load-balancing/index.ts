@@ -1,5 +1,6 @@
 import type { Region } from "@/engine/domains/catalog";
 import { ResourceName } from "@/engine/domains/compute";
+import { type RegionalScope, ResourceLocation } from "@/engine/domains/resource-location";
 import type { JsonRecord } from "@/types/Json";
 import type { ValueOf } from "@/types/ValueOf";
 import { Option } from "@/utils/Option";
@@ -9,22 +10,22 @@ const projectBase = (projectId: string): string =>
   `https://www.googleapis.com/compute/v1/projects/${projectId}`;
 
 /** グローバルかリージョンか。ロードバランサの 3 リソースが共有する。 */
-export type LbScope = Readonly<{ kind: "global" }> | Readonly<{ kind: "region"; region: Region }>;
+export type LbScope = RegionalScope;
 
 export const LbScope = {
-  Global: Object.freeze({ kind: "global" as const }),
+  Global: ResourceLocation.Global,
 
   region(region: Region): LbScope {
-    return { kind: "region", region };
+    return ResourceLocation.region(region);
   },
 
   /** selfLink の `global` / `regions/R` の部分。 */
   toPath(scope: LbScope): string {
-    return scope.kind === "global" ? "global" : `regions/${scope.region}`;
+    return ResourceLocation.toPath(scope);
   },
 
   equals(a: LbScope, b: LbScope): boolean {
-    return a.kind === "global" ? b.kind === "global" : b.kind === "region" && a.region === b.region;
+    return ResourceLocation.equals(a, b);
   },
 } as const;
 

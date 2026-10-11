@@ -1,3 +1,4 @@
+import { IpAllocation } from "@/engine/domains/ip-allocation";
 import { KubeEnv, type PodEnvironment } from "@/engine/domains/kube-config";
 import { KubeContainer, type PodRestart } from "@/engine/domains/kube-container";
 import { KubeLabels } from "@/engine/domains/kube-labels";
@@ -693,7 +694,7 @@ export const KubePod = {
         image: deployment.image,
         status: "Running",
         restarts: KubeContainer.restarts(deployment, name),
-        ip: `10.${deployment.podNetwork >> 6}.${(deployment.podNetwork % 64) * 4 + ((i + 2) >> 8)}.${(i + 2) % 256}`,
+        ip: IpAllocation.pod(deployment.podNetwork, i),
       };
     });
   },

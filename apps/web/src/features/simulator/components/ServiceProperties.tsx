@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import { Zone } from "@/engine/domains/catalog";
+import { AppEngineApp, CloudFunction } from "@/engine/domains/functions-app-engine";
 import { GkePlacement } from "@/engine/domains/gke-completion";
 import { GkeControlPlane } from "@/engine/domains/gke-control-plane";
 import { KubeEnv } from "@/engine/domains/kube-config";
@@ -19,7 +20,6 @@ import { KubeStorage } from "@/engine/domains/kube-storage";
 import { KubePod, KubeService } from "@/engine/domains/kubernetes";
 import { CloudRunService, GkeCluster } from "@/engine/domains/managed-services";
 import { findServer } from "@/engine/domains/relational/model";
-import { AppEngineApp, CloudFunction } from "@/engine/domains/serverless";
 import { protectionFor } from "@/engine/domains/storage-lab/model";
 import { World } from "@/engine/domains/world";
 import {
