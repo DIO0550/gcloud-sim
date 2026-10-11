@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans_JP } from "next/font/google";
 import type { ReactNode } from "react";
+import { assetUrl } from "@/base-path";
 
 import "./globals.css";
 
@@ -21,9 +22,13 @@ const plexMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: "gcloud-sim",
-  // ファビコンを足すときは app/ に icon.svg / apple-icon.png を置く（Next が拾う）。
-  // favicon.ico は icons で assetUrl("/favicon.ico") を明示的に指す。プロジェクトページは
-  // /gcloud-sim/ 配下なので、ブラウザ任せの「サイト直下の /favicon.ico」には落ちてこない。
+  icons: {
+    icon: {
+      url: assetUrl("/favicon.ico"),
+      type: "image/x-icon",
+      sizes: "16x16 32x32 48x48 256x256",
+    },
+  },
 };
 
 type RootLayoutProps = {
