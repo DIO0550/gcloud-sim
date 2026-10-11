@@ -17,18 +17,27 @@ import { Option } from "@/utils/Option";
 
 /** 組織・フォルダ・プロジェクト・請求・IAM まわりのプロパティ（UC-007）。 */
 
-export const OrganizationProperties = ({ world }: SelectionProps<"organization">): ReactElement => (
-  <>
-    <Section
-      title="基本"
-      rows={[
-        { label: "id", value: world.organization.id },
-        { label: "displayName", value: world.organization.displayName },
-      ]}
-    />
-    <IamSection world={world} target={{ type: "organization", id: world.organization.id }} />
-  </>
-);
+export const OrganizationProperties = ({
+  world,
+  selection,
+}: SelectionProps<"organization">): ReactElement => {
+  const organization = World.findOrganization(world, selection.id);
+  if (!Option.isSome(organization)) {
+    return <NotFound what="組織" />;
+  }
+  return (
+    <>
+      <Section
+        title="基本"
+        rows={[
+          { label: "id", value: organization.value.id },
+          { label: "displayName", value: organization.value.displayName },
+        ]}
+      />
+      <IamSection world={world} target={{ type: "organization", id: organization.value.id }} />
+    </>
+  );
+};
 
 export const FolderProperties = ({ world, selection }: SelectionProps<"folder">): ReactElement => {
   const folder = World.findFolder(world, selection.id);

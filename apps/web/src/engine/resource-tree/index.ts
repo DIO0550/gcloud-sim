@@ -1032,17 +1032,19 @@ export const TreeNode = {
    * @returns ルート（組織と請求アカウント）
    */
   fromWorld(world: World): readonly TreeNode[] {
-    const organization = node(
-      TreeSelection.key({ kind: "organization" }),
-      text(world.organization.displayName),
-      {
-        badge: TreeBadges.Organization,
-        selection: Option.some({ kind: "organization" }),
-        children: [
-          ...adminNodes(world, `organizations/${world.organization.id}`),
-          ...childrenUnder(world, { type: "organization", id: world.organization.id }),
-        ],
-      },
+    const organizations = World.organizations(world).map((organization) =>
+      node(
+        TreeSelection.key({ kind: "organization", id: organization.id }),
+        text(organization.displayName),
+        {
+          badge: TreeBadges.Organization,
+          selection: Option.some({ kind: "organization", id: organization.id }),
+          children: [
+            ...adminNodes(world, `organizations/${organization.id}`),
+            ...childrenUnder(world, { type: "organization", id: organization.id }),
+          ],
+        },
+      ),
     );
     const billing = world.billingAccounts.map((b) => billingNode(world, b.id));
     const localDocker = group("local", ResourceGroups.LocalDocker, [
@@ -1080,7 +1082,7 @@ export const TreeNode = {
         .sort()
         .map((name) => leaf({ kind: "terraform", collection: "plans", name }, `Plan: ${name}`)),
     ]);
-    return [organization, ...billing, ...localDocker, ...terraform];
+    return [...organizations, ...billing, ...localDocker, ...terraform];
   },
 } as const;
 
@@ -1104,7 +1106,16 @@ const originOf = (world: World, target: PolicyTarget, grantedAt: PolicyTarget): 
   if (PolicyTarget.equals(grantedAt, target)) return { kind: "self", target };
   switch (grantedAt.type) {
     case "organization":
-      return { kind: "organization", displayName: world.organization.displayName };
+      return {
+        kind: "organization",
+        displayName: Option.unwrapOr(
+          Option.map(
+            World.findOrganization(world, grantedAt.id),
+            (organization) => organization.displayName,
+          ),
+          grantedAt.id,
+        ),
+      };
     case "folder": {
       const folder = World.findFolder(world, grantedAt.id);
       return {

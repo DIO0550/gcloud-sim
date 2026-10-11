@@ -9,11 +9,13 @@ import { World as WorldOps } from "@/engine/domains/world";
 import { Mission } from "@/engine/missions";
 import { ChangeLog } from "@/features/simulator/components/ChangeLog";
 import { Header } from "@/features/simulator/components/Header";
+import { HierarchyCreateDialog } from "@/features/simulator/components/HierarchyCreateDialog";
 import { MissionPanel } from "@/features/simulator/components/MissionPanel";
 import { PropertiesPanel } from "@/features/simulator/components/PropertiesPanel";
 import { ResourceTree } from "@/features/simulator/components/ResourceTree";
 import { SettingsDialog } from "@/features/simulator/components/SettingsDialog";
 import { Terminal } from "@/features/simulator/components/Terminal";
+import { HierarchyCreate } from "@/features/simulator/domains/hierarchy-create";
 import { type ConsoleHandlers, ConsoleView } from "@/features/simulator/features/console";
 import {
   ConsoleScreen,
@@ -146,6 +148,7 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
         onProjectChange={(projectId) => submitFromUi(`gcloud config set project ${projectId}`)}
         onPrincipalChange={(principal) => submitFromUi(`gcloud config set account ${principal}`)}
         onOpenSettings={() => dispatch({ type: "settingsToggled", open: true })}
+        onCreateResource={() => dispatch({ type: "hierarchyToggled", open: true })}
         isTerminalOpen={state.consoleTerminalOpen}
         onTerminalToggle={() =>
           dispatch({ type: "consoleTerminalToggled", open: !state.consoleTerminalOpen })
@@ -154,6 +157,31 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
         onNavigationToggle={() => setNavigationOpen((open) => !open)}
         onNavigate={consoleHandlers.changeScreen}
       />
+      {Option.isSome(state.hierarchyNotice) && (
+        <div
+          role="status"
+          className="flex shrink-0 items-center justify-between gap-3 border-line border-b bg-ok-soft px-4 py-2 text-ok-ink text-sm"
+        >
+          <span>{state.hierarchyNotice.value}</span>
+          <div className="flex shrink-0 gap-4">
+            {isConsole && (
+              <TextButton
+                tone="inherit"
+                onClick={() => dispatch({ type: "viewChanged", view: Views.Cli })}
+              >
+                階層で確認
+              </TextButton>
+            )}
+            <TextButton
+              tone="inherit"
+              ariaLabel="作成通知を閉じる"
+              onClick={() => dispatch({ type: "hierarchyNoticeCleared" })}
+            >
+              閉じる
+            </TextButton>
+          </div>
+        </div>
+      )}
       <div
         className={`grid min-h-0 flex-1 ${isConsole ? "grid-cols-[minmax(0,1fr)]" : "grid-cols-1 content-start overflow-y-auto lg:grid-cols-[17.5rem_minmax(0,1fr)_26rem] lg:content-normal lg:overflow-hidden"}`}
       >
@@ -164,6 +192,7 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
             currentProjectId={WorldOps.currentProjectId(world)}
             onSelect={(selection) => dispatch({ type: "selected", selection })}
             onInsertDescribe={(command) => dispatch({ type: "insertRequested", text: command })}
+            onCreate={() => dispatch({ type: "hierarchyToggled", open: true })}
           />
         )}
         <div
@@ -275,6 +304,15 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
           </aside>
         )}
       </div>
+      {state.hierarchyOpen && (
+        <HierarchyCreateDialog
+          world={world}
+          initialParent={HierarchyCreate.defaultParent(world, state.selection)}
+          error={state.hierarchyError}
+          onSubmit={(input) => dispatch({ type: "hierarchySubmitted", input, now: io.now() })}
+          onClose={() => dispatch({ type: "hierarchyToggled", open: false })}
+        />
+      )}
       {state.settingsOpen && (
         <SettingsDialog
           world={world}

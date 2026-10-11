@@ -1,4 +1,4 @@
-import { type ReactElement, useMemo, useState } from "react";
+import { type ReactElement, useEffect, useMemo, useState } from "react";
 import { StatusDot } from "@/components/StatusDot";
 
 import { TextButton } from "@/components/TextButton";
@@ -20,6 +20,7 @@ type ResourceTreeProps = Readonly<{
   currentProjectId: Option<string>;
   onSelect: (selection: TreeSelection) => void;
   onInsertDescribe: (command: string) => void;
+  onCreate: () => void;
 }>;
 
 type NodeProps = Readonly<{
@@ -152,6 +153,13 @@ const labelText = (label: TreeLabel): string => {
   }
 };
 
+const containsSelection = (node: TreeNode, selection: TreeSelection): boolean => {
+  if (Option.isSome(node.selection) && TreeSelection.equals(node.selection.value, selection)) {
+    return true;
+  }
+  return node.children.some((child) => containsSelection(child, selection));
+};
+
 const Node = ({
   node,
   depth,
@@ -162,6 +170,14 @@ const Node = ({
 }: NodeProps): ReactElement => {
   // 組織 → フォルダ → プロジェクト → 種別グループ → リソースまでは開いておき、ネットワーク配下（fw）だけ畳む。
   const [isOpen, setOpen] = useState(depth < 4);
+  const selectedDescendant =
+    Option.isSome(selection) &&
+    node.children.some((child) => containsSelection(child, selection.value));
+  useEffect(() => {
+    if (selectedDescendant) {
+      setOpen(true);
+    }
+  }, [selectedDescendant]);
   const label = labelText(node.label);
   const badge = badgeText(node.badge);
   const isSelected =
@@ -257,6 +273,7 @@ export const ResourceTree = ({
   currentProjectId,
   onSelect,
   onInsertDescribe,
+  onCreate,
 }: ResourceTreeProps): ReactElement => {
   // 選択やタブの切り替えでは World が変わらないので、ツリーの組み立ては World が変わったときだけ。
   const roots = useMemo(() => TreeNode.fromWorld(world), [world]);
@@ -265,7 +282,12 @@ export const ResourceTree = ({
       aria-label="リソース階層"
       className="order-3 flex h-64 min-w-0 flex-col border-line border-r bg-surface lg:order-none lg:h-auto lg:min-h-0"
     >
-      <h2 className="px-4 pt-5 pb-3 font-bold text-[15px] text-muted">リソース階層</h2>
+      <div className="flex items-center justify-between px-4 pt-5 pb-3">
+        <h2 className="font-bold text-[15px] text-muted">リソース階層</h2>
+        <TextButton onClick={onCreate} ariaLabel="階層にリソースを追加">
+          ＋ 作成
+        </TextButton>
+      </div>
       <ul className="min-h-0 flex-1 overflow-auto px-2 pb-2">
         {roots.map((node) => (
           <Node

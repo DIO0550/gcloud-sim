@@ -97,7 +97,7 @@ test("バケットの継承元にはプロジェクト由来の行がプロジ�
   expect(rows.every(BindingRow.isInherited)).toBe(true);
 });
 
-test("describe コマンドはリソースごとに組み立てられ、組織には無い", () => {
+test("describe コマンドは組織を含むリソースごとに組み立てられる", () => {
   expect(
     TreeSelection.describeCommand({
       kind: "instance",
@@ -106,5 +106,7 @@ test("describe コマンドはリソースごとに組み立てられ、組織�
       name: "web-1",
     }),
   ).toEqual(Option.some("gcloud compute instances describe web-1 --zone=asia-northeast1-a"));
-  expect(TreeSelection.describeCommand({ kind: "organization" })).toEqual(Option.none);
+  expect(TreeSelection.describeCommand({ kind: "organization", id: "123456789012" })).toEqual(
+    Option.some("gcloud organizations describe 123456789012"),
+  );
 });

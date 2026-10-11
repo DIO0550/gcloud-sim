@@ -104,6 +104,7 @@ const defaultNetwork = (
  * 同じ値で埋める（`engine/snapshot`）。
  */
 export const EmptyCollections = {
+  additionalOrganizations: [],
   serverlessLab: emptyLab(),
   relational: emptyRelational(),
   managedDatabases: emptyManagedDatabases(),

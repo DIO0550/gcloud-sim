@@ -130,7 +130,7 @@ test("World を置き換えると選択と shell 状態がリセットされ設�
   const dirty: SimulatorState = {
     ...submit(start(), "gcloud compute instances delete x --zone=asia-northeast1-a"),
     settingsOpen: true,
-    selection: Option.some({ kind: "organization" }),
+    selection: Option.some({ kind: "organization", id: "123456789012" }),
   };
   const fresh = initialWorld();
   const s = simulatorReducer(dirty, { type: "worldReplaced", world: fresh, reason: "reset" });

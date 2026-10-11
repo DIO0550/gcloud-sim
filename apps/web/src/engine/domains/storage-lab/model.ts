@@ -130,6 +130,10 @@ export const storageAllows = (
   const secured = {
     ...world,
     organization: { ...world.organization, iamPolicy: privatePolicy(world.organization.iamPolicy) },
+    additionalOrganizations: world.additionalOrganizations.map((organization) => ({
+      ...organization,
+      iamPolicy: privatePolicy(organization.iamPolicy),
+    })),
     folders: world.folders.map((f) => ({ ...f, iamPolicy: privatePolicy(f.iamPolicy) })),
     projects: world.projects.map((p) => ({ ...p, iamPolicy: privatePolicy(p.iamPolicy) })),
   };
