@@ -136,7 +136,7 @@ export type TreeSelection =
       name: string;
       collection: "logMetrics" | "dashboards" | "alertPolicies" | "uptimeChecks";
     }>
-  | Readonly<{ kind: "organization" }>
+  | Readonly<{ kind: "organization"; id: string }>
   | Readonly<{ kind: "folder"; id: string }>
   | Readonly<{ kind: "project"; projectId: string }>
   | Readonly<{ kind: "billing"; id: string }>
@@ -305,7 +305,7 @@ export const TreeSelection = {
       case "observability":
         return `${selection.collection}:${selection.projectId}/${selection.name}`;
       case "organization":
-        return "organization";
+        return `organization:${selection.id}`;
       case "folder":
         return `folder:${selection.id}`;
       case "project":
@@ -625,6 +625,7 @@ export const TreeSelection = {
         );
       }
       case "organization":
+        return Option.some(`gcloud organizations describe ${selection.id}`);
       case "app-version":
         return Option.none;
       case "folder":

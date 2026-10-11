@@ -1,9 +1,13 @@
 import { useReducer } from "react";
 
 import { Engine, type ExecutionStatus, type OutputLine, Shell, type ShellState } from "@/engine";
-import type { World } from "@/engine/domains/world";
+import { World } from "@/engine/domains/world";
 import type { Mission } from "@/engine/missions";
 import type { TreeSelection } from "@/engine/resource-tree";
+import {
+  HierarchyCreate,
+  type HierarchyCreation,
+} from "@/features/simulator/domains/hierarchy-create";
 import { type ConsoleScreen, ConsoleScreens } from "@/features/simulator/features/console";
 import type { ValueOf } from "@/types/ValueOf";
 import { Option } from "@/utils/Option";
@@ -54,6 +58,9 @@ export type SimulatorState = Readonly<{
   selection: Option<TreeSelection>;
   panelTab: PanelTab;
   settingsOpen: boolean;
+  hierarchyOpen: boolean;
+  hierarchyError: Option<string>;
+  hierarchyNotice: Option<string>;
   /** ツリーのダブルクリックで入力行に入れる文字列。端末が取り込んだら `insertConsumed` で消す */
   pendingInsert: Option<string>;
   selectedMissionId: Option<string>;
@@ -71,6 +78,9 @@ export type SimulatorState = Readonly<{
 }>;
 
 export type SimulatorAction =
+  | Readonly<{ type: "hierarchyToggled"; open: boolean }>
+  | Readonly<{ type: "hierarchyNoticeCleared" }>
+  | Readonly<{ type: "hierarchySubmitted"; input: HierarchyCreation; now: string }>
   | Readonly<{ type: "submitted"; line: string; now: string; origin: "cli" | "ui" }>
   | Readonly<{
       type: "consoleSubmitted";
@@ -144,6 +154,9 @@ export const initialSimulatorState = (start: SimulatorStart): SimulatorState => 
     selection: Option.none,
     panelTab: PanelTabs.Properties,
     settingsOpen: false,
+    hierarchyOpen: false,
+    hierarchyError: Option.none,
+    hierarchyNotice: Option.none,
     pendingInsert: Option.none,
     selectedMissionId: Option.none,
     importError: Option.none,
@@ -230,6 +243,68 @@ const consoleSubmitted = (
   };
 };
 
+const hierarchySubmitted = (
+  state: SimulatorState,
+  action: Extract<SimulatorAction, { type: "hierarchySubmitted" }>,
+): SimulatorState => {
+  const { input } = action;
+  if (state.shell.kind !== "ready") {
+    return {
+      ...state,
+      hierarchyError: Option.some("ターミナルの入力・確認を完了してから作成してください。"),
+    };
+  }
+  if (input.kind === "organization") {
+    const created = World.createOrganization(state.world, input.name);
+    if (!Result.isOk(created)) {
+      return { ...state, hierarchyError: Option.some(created.error) };
+    }
+    const organization = created.value.additionalOrganizations.at(-1);
+    if (organization === undefined) {
+      return state;
+    }
+    return {
+      ...append(state, [
+        uiLine(`gcloud-sim: 学習用組織「${organization.displayName}」を作成しました。`, "success"),
+      ]),
+      world: created.value,
+      selection: Option.some({ kind: "organization", id: organization.id }),
+      hierarchyNotice: Option.some(`組織「${organization.displayName}」を作成しました。`),
+      panelTab: PanelTabs.Properties,
+      hierarchyOpen: false,
+      hierarchyError: Option.none,
+    };
+  }
+  const { state: next, outcome } = executed(state, {
+    line: HierarchyCreate.command(input),
+    now: action.now,
+    origin: "ui",
+    note: Option.none,
+  });
+  if (outcome.kind !== "succeeded") {
+    const error =
+      outcome.kind === "failed" ? outcome.failure.message : "作成を完了できませんでした。";
+    return { ...next, hierarchyError: Option.some(error) };
+  }
+  const folder = next.world.folders.find(
+    (item) => !state.world.folders.some((existing) => existing.id === item.id),
+  );
+  const selection: Option<TreeSelection> =
+    input.kind === "project"
+      ? Option.some({ kind: "project", projectId: input.projectId.trim() })
+      : Option.map(Option.fromNullable(folder), (item) => ({ kind: "folder", id: item.id }));
+  return {
+    ...next,
+    selection,
+    hierarchyNotice: Option.some(
+      `${input.kind === "project" ? "プロジェクト" : "フォルダ"}「${input.kind === "project" ? input.projectId.trim() : input.name.trim()}」を作成しました。`,
+    ),
+    panelTab: PanelTabs.Properties,
+    hierarchyOpen: false,
+    hierarchyError: Option.none,
+  };
+};
+
 const missionStarted = (state: SimulatorState, id: string): SimulatorState => {
   const started = Engine.startMission(state.world, id);
   if (Result.isOk(started)) {
@@ -262,6 +337,17 @@ export const simulatorReducer = (
   action: SimulatorAction,
 ): SimulatorState => {
   switch (action.type) {
+    case "hierarchyToggled":
+      return {
+        ...state,
+        hierarchyOpen: action.open,
+        hierarchyError: Option.none,
+        hierarchyNotice: Option.none,
+      };
+    case "hierarchyNoticeCleared":
+      return { ...state, hierarchyNotice: Option.none };
+    case "hierarchySubmitted":
+      return hierarchySubmitted(state, action);
     case "submitted":
       return submitted(state, action);
     case "consoleSubmitted":
@@ -313,6 +399,9 @@ export const simulatorReducer = (
         selection: Option.none,
         importError: Option.none,
         settingsOpen: false,
+        hierarchyOpen: false,
+        hierarchyError: Option.none,
+        hierarchyNotice: Option.none,
         consoleOutcome: Option.none,
       };
     }

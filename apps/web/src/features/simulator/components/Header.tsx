@@ -21,6 +21,7 @@ type HeaderProps = Readonly<{
   onProjectChange: (projectId: string) => void;
   onPrincipalChange: (principal: string) => void;
   onOpenSettings: () => void;
+  onCreateResource: () => void;
   /** Console の下の端末（ドロワー）を開いているか */
   isTerminalOpen: boolean;
   onTerminalToggle: () => void;
@@ -46,6 +47,7 @@ export const Header = ({
   onProjectChange,
   onPrincipalChange,
   onOpenSettings,
+  onCreateResource,
   isTerminalOpen,
   onTerminalToggle,
   isNavigationOpen,
@@ -133,6 +135,9 @@ export const Header = ({
         <GhostButton ariaLabel="設定" onClick={onOpenSettings}>
           ⚙
         </GhostButton>
+        <GhostButton ariaLabel="リソースを作成" onClick={onCreateResource}>
+          ＋ 作成
+        </GhostButton>
         <Select
           variant="avatar"
           font="sans"
@@ -196,6 +201,9 @@ export const Header = ({
           />
         </div>
         <GhostButton onClick={onOpenSettings}>設定</GhostButton>
+        <GhostButton ariaLabel="リソースを作成" onClick={onCreateResource}>
+          ＋ 作成
+        </GhostButton>
       </div>
     </header>
   );

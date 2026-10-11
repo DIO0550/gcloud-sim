@@ -140,6 +140,8 @@ export type World = Readonly<{
   terraform: TerraformState;
   containerLab: ContainerLab;
   organization: Organization;
+  /** 既定組織は organization に保持し、追加した学習用組織をここに保存する。 */
+  additionalOrganizations: readonly Organization[];
   folders: readonly Folder[];
   projects: readonly Project[];
   billingAccounts: readonly BillingAccount[];
@@ -406,10 +408,65 @@ const foldersToOrganization = (
     if (!Option.isSome(folder)) return Option.none;
     current = folder.value.parent;
   }
-  return current.id === world.organization.id ? Option.some(folders) : Option.none;
+  return Option.isSome(World.findOrganization(world, current.id))
+    ? Option.some(folders)
+    : Option.none;
 };
 
 export const World = {
+  organizations(world: World): readonly Organization[] {
+    return [world.organization, ...world.additionalOrganizations];
+  },
+
+  findOrganization(world: World, id: string): Option<Organization> {
+    return Option.fromNullable(
+      World.organizations(world).find((organization) => organization.id === id),
+    );
+  },
+
+  /** 組織の追加は学習環境のセットアップ。gcloud コマンドとしては公開しない。 */
+  createOrganization(world: World, displayName: string): Result<World, string> {
+    const name = displayName.trim();
+    if (name.length === 0 || name.length > 255) {
+      return Result.err("組織名は1〜255文字で入力してください。");
+    }
+
+    const organizations = World.organizations(world);
+    if (
+      organizations.some(
+        (organization) => organization.displayName.toLowerCase() === name.toLowerCase(),
+      )
+    ) {
+      return Result.err("同じ名前の組織がすでに存在します。");
+    }
+
+    const principal = World.currentPrincipal(world);
+    if (!Option.isSome(principal)) {
+      return Result.err("プリンシパルを選択してください。");
+    }
+
+    let sequence = world.sequence;
+    while (
+      organizations.some((organization) => organization.id === String(123456789000 + sequence))
+    ) {
+      sequence += 1;
+    }
+    const organization: Organization = {
+      id: String(123456789000 + sequence),
+      displayName: name,
+      iamPolicy: IamPolicy.addBinding(
+        IamPolicy.Empty,
+        "roles/owner",
+        Principal.toMember(principal.value),
+      ),
+    };
+    return Result.ok({
+      ...world,
+      sequence: sequence + 1,
+      additionalOrganizations: [...world.additionalOrganizations, organization],
+    });
+  },
+
   /**
    * 通し番号を 1 つ払い出す。id・projectNumber・オペレーション名の採番に使う。
    *
@@ -594,12 +651,16 @@ export const World = {
     );
   },
 
+  canCreateFolderUnder(world: World, parent: ParentRef): boolean {
+    return Option.isSome(foldersToOrganization(world, parent, FolderNestLimit - 1));
+  },
+
   replaceFolder(world: World, folder: Folder): World {
     return { ...world, folders: replaceBy(world.folders, (f) => f.id === folder.id, folder) };
   },
 
   /**
-   * 親が存在するか。組織は 1 つしか無いので id が一致するかを見る。
+   * 親の組織またはフォルダが存在するか。
    *
    * @param world 元
    * @param parent 親の指定
@@ -607,7 +668,7 @@ export const World = {
    */
   hasParent(world: World, parent: ParentRef): boolean {
     return parent.type === "organization"
-      ? world.organization.id === parent.id
+      ? Option.isSome(World.findOrganization(world, parent.id))
       : Option.isSome(World.findFolder(world, parent.id));
   },
 
@@ -668,9 +729,10 @@ export const World = {
   findPolicy(world: World, target: PolicyTarget): Option<IamPolicy> {
     switch (target.type) {
       case "organization":
-        return world.organization.id === target.id
-          ? Option.some(world.organization.iamPolicy)
-          : Option.none;
+        return Option.map(
+          World.findOrganization(world, target.id),
+          (organization) => organization.iamPolicy,
+        );
       case "folder":
         return Option.map(World.findFolder(world, target.id), (f) => f.iamPolicy);
       case "project":
@@ -699,11 +761,24 @@ export const World = {
     const notFound: PolicyRejected = { kind: "not-found", target };
     switch (target.type) {
       case "organization": {
-        if (world.organization.id !== target.id) return Result.err(notFound);
-        if (!World.keepsOrganizationOwner(policy)) return Result.err({ kind: "last-owner" });
+        const organization = World.findOrganization(world, target.id);
+        if (!Option.isSome(organization)) {
+          return Result.err(notFound);
+        }
+        if (!World.keepsOrganizationOwner(policy)) {
+          return Result.err({ kind: "last-owner" });
+        }
+        const updated = Organization.withPolicy(organization.value, policy);
+        if (world.organization.id === target.id) {
+          return Result.ok({ ...world, organization: updated });
+        }
         return Result.ok({
           ...world,
-          organization: Organization.withPolicy(world.organization, policy),
+          additionalOrganizations: replaceBy(
+            world.additionalOrganizations,
+            (item) => item.id === target.id,
+            updated,
+          ),
         });
       }
       case "folder":
@@ -776,8 +851,18 @@ export const World = {
 
   /** 主体が組織の `roles/owner` を直接持っているか。ヘッダーの「Owner 以外で操作中」の判定に使う。 */
   isOrganizationOwner(world: World, principal: Principal): boolean {
+    const project = World.currentProjectId(world);
+    const ancestor = Option.isSome(project)
+      ? World.ancestry(world, { type: "project", id: project.value }).find(
+          (target) => target.type === "organization",
+        )
+      : undefined;
+    const organization = Option.unwrapOr(
+      World.findOrganization(world, ancestor?.id ?? world.organization.id),
+      world.organization,
+    );
     return IamPolicy.hasBinding(
-      world.organization.iamPolicy,
+      organization.iamPolicy,
       "roles/owner",
       Principal.toMember(principal),
     );
@@ -1799,8 +1884,16 @@ export const World = {
         `active configuration [${world.config.activeConfiguration}] does not exist`,
       );
     }
-    if (!World.keepsOrganizationOwner(world.organization.iamPolicy)) {
+    const organizations = World.organizations(world);
+    if (
+      organizations.some((organization) => !World.keepsOrganizationOwner(organization.iamPolicy))
+    ) {
       return Result.err("the organization has no roles/owner member");
+    }
+    if (
+      new Set(organizations.map((organization) => organization.id)).size !== organizations.length
+    ) {
+      return Result.err("organization IDs are not unique");
     }
     const projectIds = world.projects.map((p) => p.projectId);
     if (new Set(projectIds).size !== projectIds.length) {

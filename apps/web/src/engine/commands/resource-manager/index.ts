@@ -259,7 +259,7 @@ const organizationTarget = (
   args: ParsedArgs,
 ): Result<PolicyTarget, CommandFailure> => {
   const id = ParsedArgs.requiredPositional(args, 0);
-  return id === ctx.world.organization.id
+  return Option.isSome(World.findOrganization(ctx.world, id))
     ? Result.ok({ type: "organization", id })
     : Result.err(CommandFailure.notFound(`organizations/${id}`));
 };
@@ -272,7 +272,10 @@ export const OrganizationCommands: readonly CommandSpec[] = [
       Result.ok({
         world: ctx.world,
         output: CommandOutput.table(
-          [{ ...Organization.toRecord(ctx.world.organization), ID: ctx.world.organization.id }],
+          World.organizations(ctx.world).map((organization) => ({
+            ...Organization.toRecord(organization),
+            ID: organization.id,
+          })),
           [
             Column.create("DISPLAY_NAME", "displayName"),
             Column.create("ID", "ID"),
@@ -287,11 +290,17 @@ export const OrganizationCommands: readonly CommandSpec[] = [
     positionals: [Positional.required("ORGANIZATION_ID", "ID of the organization.")],
     permission: "resourcemanager.organizations.get",
     resolveTarget: organizationTarget,
-    run: (ctx) =>
-      Result.ok({
-        world: ctx.world,
-        output: CommandOutput.yaml(Organization.toRecord(ctx.world.organization)),
-      }),
+    run: (ctx, args) =>
+      Result.map(
+        Option.toResult(
+          World.findOrganization(ctx.world, ParsedArgs.requiredPositional(args, 0)),
+          () => CommandFailure.notFound("organization"),
+        ),
+        (organization) => ({
+          world: ctx.world,
+          output: CommandOutput.yaml(Organization.toRecord(organization)),
+        }),
+      ),
   }),
   ...iamBindingCommands({
     group: ["gcloud", "organizations"],
@@ -362,11 +371,29 @@ export const FolderCommands: readonly CommandSpec[] = [
     resolveTarget: parentFromFlags,
     run: (ctx, args) => {
       const parent = parentFromFlags(ctx, args);
-      if (!Result.isOk(parent)) return parent;
+      if (!Result.isOk(parent)) {
+        return parent;
+      }
+      if (!World.canCreateFolderUnder(ctx.world, parent.value)) {
+        return Result.err(CommandFailure.invalidValue("parent", "Folder nesting limit exceeded."));
+      }
+      const displayName = ParsedArgs.requiredString(args, "display-name").trim();
+      if (
+        World.foldersUnder(ctx.world, parent.value).some(
+          (folder) => folder.displayName === displayName,
+        )
+      ) {
+        return Result.err(
+          CommandFailure.invalidValue(
+            "--display-name",
+            "A folder with this display name already exists under the selected parent.",
+          ),
+        );
+      }
       const numbered = World.nextNumber(ctx.world);
       const folder = Result.mapErr(
         Folder.create({
-          displayName: ParsedArgs.requiredString(args, "display-name"),
+          displayName,
           parent: parent.value,
           sequence: numbered.number,
         }),

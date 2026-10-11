@@ -148,7 +148,9 @@ export const validScope = (world: World, scope: string): boolean => {
     return false;
   }
   if (kind === "organizations") {
-    return id === world.organization.id;
+    return [world.organization, ...world.additionalOrganizations].some(
+      (organization) => organization.id === id,
+    );
   }
   if (kind === "folders") {
     return world.folders.some((f) => f.id === id);
