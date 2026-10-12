@@ -108,6 +108,11 @@ import {
 import type { ValueOf } from "@/types/ValueOf";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
+import {
+  type AceChallengeAssertion,
+  AceChallengeMissions,
+  aceNetworkChallengeSatisfied,
+} from "./ace-challenges";
 import { type AceAssertion, AceDecisionMissions, AiMissions, aceSatisfied } from "./ace-support";
 import { type AdminAssertion, AdminMissions, adminSatisfied } from "./admin-lab";
 import { type ComputeAssertion, ComputeMissions, computeSatisfied } from "./compute-lab";
@@ -201,6 +206,7 @@ export type MissionDomain = ValueOf<typeof MissionDomains>;
 /** World に対する述語（DJ-010: コマンド文字列ではなく状態で判定する）。値の語彙はドメインの型で閉じる。 */
 export type MissionAssertion =
   | AceAssertion
+  | AceChallengeAssertion
   | TerraformLessonAssertion
   | ObserveAssertion
   | AdminAssertion
@@ -376,6 +382,7 @@ const devFolder: PolicyTarget = { type: "folder", id: F.devFolderId };
 const organization: PolicyTarget = { type: "organization", id: F.organizationId };
 
 const Missions: readonly Mission[] = [
+  ...AceChallengeMissions,
   ...AceDecisionMissions,
   ...AiMissions,
   ...ObserveMissions,
@@ -872,6 +879,8 @@ const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: 
 
 const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
   switch (assertion.kind) {
+    case "aceNetworkChallenge":
+      return aceNetworkChallengeSatisfied(world);
     case "aceDecision":
     case "aiLesson":
       return aceSatisfied(world, assertion);

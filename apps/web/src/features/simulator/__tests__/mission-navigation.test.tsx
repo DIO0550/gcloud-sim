@@ -66,3 +66,26 @@ test("試験ガイド4セクションと操作カテゴリは進捗を共有し�
   await user.selectOptions(screen.getByRole("combobox", { name: "ミッション分類" }), "practice");
   expect(screen.getByRole("button", { name: /計画と構成.*1件 挑戦中/ })).toBeInTheDocument();
 });
+
+test("Cloud Shellの判断演習とsimコマンドを公式CLIの操作と区別して表示する", async () => {
+  const user = userEvent.setup();
+  renderSimulator();
+  await user.click(screen.getByRole("tab", { name: /ミッション/ }));
+  await user.selectOptions(screen.getByRole("combobox", { name: "ミッション分類" }), "practice");
+  await user.click(screen.getByRole("button", { name: /環境セットアップ/ }));
+  await user.click(screen.getByRole("button", { name: /ローカル導入なしでCLIを使う.*判断演習/ }));
+  expect(screen.getByText(/Google Cloud CLIには存在しません/)).toBeInTheDocument();
+  expect(screen.getByText(/Cloud Shellなどの実操作は行いません/)).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "開始" }));
+  await user.click(screen.getByRole("button", { name: /ヒント（0\/2）/ }));
+  expect(screen.getByText("シミュレーター専用操作を含む")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "カテゴリへ" }));
+  await user.selectOptions(screen.getByRole("combobox", { name: "ミッション形式" }), "operation");
+  await user.click(screen.getByRole("button", { name: /環境セットアップ/ }));
+  expect(
+    screen.queryByRole("button", { name: /ローカル導入なしでCLIを使う/ }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: /本番用の configuration.*操作演習/ }),
+  ).toBeInTheDocument();
+});

@@ -23,8 +23,10 @@
   試行錯誤できる。エラーの下に `gcloud-sim: hint:` で「その権限を含むロール」を出す
 - **リソースツリー**: 組織 → フォルダ → プロジェクト → リソース。クリックでプロパティと
   IAM の継承元、ダブルクリックで `describe` を入力行に挿入
-- **ミッション**: 136 本（ACE の 5 ドメインからカテゴリ→ミッション→手順を選択）。状態に対するアサーションでクリア判定する
+- **ミッション**: ACE の分野からカテゴリ→ミッション→手順を選択。操作演習・判断演習・教材構成で絞り込める。状態に対するアサーションでクリア判定する
   （コマンドの文字列一致ではない）
+- **総合演習**: VPC・GKE・Cloud SQL・IAM・ログの構成、およびTerraformの構築・import・module化・GCSへのstate移行をまとめて練習できる
+- **専用操作の区別**: `sim` で始まるコマンドはアプリ独自の教材操作で、Google Cloud CLIには存在しない。`sim ace scenarios` は選択問題の確認・回答記録であり、Cloud Shellなどの操作ハンズオンではない
 - **Cloud SQL / AlloyDB / DMS**: SQLの実データ、private接続・HA・replica、backup/PITR・Storage転送、AlloyDB read pool、DMSの初期コピー/CDC/切替を学習できる（[対応範囲](docs/RELATIONAL_DATABASES.md)）
 - **保存**: コマンドごとに localStorage へ自動保存。設定から JSON の export / import / リセット
 - **kubectl**: `gcloud container clusters get-credentials` したクラスタに対して、Deployment / Service / Pod を

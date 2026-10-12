@@ -20,6 +20,22 @@ type MissionPanelProps = Readonly<{
   onHint: (id: string) => void;
 }>;
 
+type ExerciseKind = "operation" | "decision" | "configuration";
+const exerciseKindOf = (mission: Mission): ExerciseKind => {
+  if (mission.assertions.some((a) => a.kind === "aceDecision")) {
+    return "decision";
+  }
+  if (mission.assertions.some((a) => a.kind === "aiLesson")) {
+    return "configuration";
+  }
+  return "operation";
+};
+const exerciseLabels: Record<ExerciseKind, string> = {
+  operation: "操作演習",
+  decision: "判断演習",
+  configuration: "教材構成",
+};
+
 const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElement => {
   switch (status) {
     case MissionStatuses.Completed:
@@ -45,6 +61,8 @@ const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElem
 
 const assertionLabel = (assertion: Mission["assertions"][number]): string => {
   switch (assertion.kind) {
+    case "aceNetworkChallenge":
+      return "同じVPCの踏み台・private GKE・Cloud SQL・アプリ公開とSQL接続だけのSA権限をそろえる";
     case "aceDecision":
       return "固定された要件に適した選択を記録する（自由文の意味は採点しない）";
     case "aiLesson":
@@ -241,9 +259,15 @@ const MissionBrief = ({
     <section aria-label={mission.title} className="border-line border-t p-4">
       <div className="mb-2 flex items-center gap-2">
         <h4 className="font-semibold">{mission.title}</h4>
+        <Badge tone="muted">{exerciseLabels[exerciseKindOf(mission)]}</Badge>
         <StatusBadge status={status} />
       </div>
       <p className="mb-3 text-sm">{mission.description}</p>
+      <p className="mb-3 rounded bg-canvas p-2 text-sm text-muted">
+        sim で始まるコマンドはシミュレーター専用です。Google Cloud CLIには存在しません。
+        {exerciseKindOf(mission) === "decision" &&
+          "この演習は要件に合う選択肢を答える問題です。Cloud Shellなどの実操作は行いません。"}
+      </p>
       <h5 className="mb-2 font-semibold">達成条件</h5>
       <ul className="mb-3 space-y-1 text-sm">
         {mission.assertions.map((assertion, index) => (
@@ -261,6 +285,11 @@ const MissionBrief = ({
         <ol className="mb-3 list-decimal space-y-1 rounded bg-canvas px-4 py-2 text-sm">
           {mission.hints.slice(0, revealed).map((hint) => (
             <li key={hint} className="ml-4 break-all font-mono text-xs">
+              {/(?:^|[\s（(→])sim\s/.test(hint) && (
+                <Badge tone="muted" className="mr-2 font-sans">
+                  シミュレーター専用操作を含む
+                </Badge>
+              )}
               {hint}
             </li>
           ))}
@@ -300,6 +329,10 @@ export const MissionPanel = ({
 }: MissionPanelProps): ReactElement => {
   const [classification, setClassification] = useState<"exam" | "practice">("exam");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [exerciseFilter, setExerciseFilter] = useState<ExerciseKind | "all">("all");
+  const visibleMissions = missions.filter(
+    (m) => exerciseFilter === "all" || exerciseKindOf(m) === exerciseFilter,
+  );
   const categoryOf = (mission: Mission): string =>
     classification === "exam" ? examSectionOf(mission) : mission.domain;
   const categories =
@@ -317,7 +350,7 @@ export const MissionPanel = ({
         }}
       >
         <option value="exam">添付試験ガイドの4セクション</option>
-        <option value="practice">操作学習の5カテゴリ</option>
+        <option value="practice">学習分野の5カテゴリ</option>
       </select>
     </label>
   );
@@ -378,7 +411,7 @@ export const MissionPanel = ({
           ミッションを1つ選ぶと、達成条件と手順を確認できます。
         </p>
         <ul className="space-y-2">
-          {missions
+          {visibleMissions
             .filter((m) => categoryOf(m) === view.domain)
             .filter((m) => statusFilter === "all" || statusOf(m.id) === statusFilter)
             .map((mission) => (
@@ -392,6 +425,9 @@ export const MissionPanel = ({
                   }}
                 >
                   <span className="min-w-0 flex-1 text-left">{mission.title}</span>
+                  <Badge tone="muted" className="shrink-0 whitespace-nowrap">
+                    {exerciseLabels[exerciseKindOf(mission)]}
+                  </Badge>
                   <StatusBadge status={statusOf(mission.id)} />
                 </NavItemButton>
               </li>
@@ -403,10 +439,24 @@ export const MissionPanel = ({
     <section aria-label="ミッションカテゴリ" className="p-3">
       <SectionHeading className="pb-2">カテゴリを選択</SectionHeading>
       {classificationSelector}
+      <label className="mb-3 block text-sm">
+        演習形式
+        <select
+          aria-label="ミッション形式"
+          className="ml-2 rounded border border-line bg-surface p-2"
+          value={exerciseFilter}
+          onChange={(event) => setExerciseFilter(event.target.value as ExerciseKind | "all")}
+        >
+          <option value="all">すべて</option>
+          <option value="operation">操作演習</option>
+          <option value="decision">判断演習</option>
+          <option value="configuration">教材構成</option>
+        </select>
+      </label>
       <p className="mb-3 text-sm text-muted">学習したい分野から、ミッションを選んで進めます。</p>
       <ul className="space-y-2">
         {categories.map((domain) => {
-          const items = missions.filter((m) => categoryOf(m) === domain);
+          const items = visibleMissions.filter((m) => categoryOf(m) === domain);
           if (!items.length) return null;
           const completed = items.filter(
             (m) => statusOf(m.id) === MissionStatuses.Completed,
