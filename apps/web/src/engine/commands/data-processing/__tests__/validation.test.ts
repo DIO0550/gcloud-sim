@@ -1,11 +1,11 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { Engine } from "@/engine";
-import { Now, run, type Session, session } from "@/engine/__tests__/setup";
+import { Engine } from "@/engine/__tests__/fixture-engine";
+import { Now, run, type Session, session } from "@/engine/__tests__/fixture-setup";
+import { Snapshot } from "@/engine/__tests__/fixture-snapshot";
 import { emptyDataProcessing, patch } from "@/engine/domains/data-processing/model";
 import { parseRows, parseSchema, select } from "@/engine/domains/data-processing/tabular";
 import { DataPrelude, DataSolutions, dataSatisfied } from "@/engine/missions/data-processing";
-import { Snapshot } from "@/engine/snapshot";
 
 const setup = (...lines: readonly string[]) => run(session(), ...DataPrelude, ...lines);
 const denied = (s: Session, line: string) => {

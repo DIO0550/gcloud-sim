@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { Now, run, type Session, session } from "@/engine/__tests__/setup";
+import { Now, run, type Session, session } from "@/engine/__tests__/fixture-setup";
 import { Snapshot } from "@/engine/snapshot";
 
 const prelude =

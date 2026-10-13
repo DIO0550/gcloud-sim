@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { run, type Session, session } from "@/engine/__tests__/setup";
+import { run, type Session, session } from "@/engine/__tests__/fixture-setup";
 import { collectorStatus } from "@/engine/domains/observability-lab/collectors";
 import { evaluateAlert, objectiveResult } from "@/engine/domains/observability-lab/evaluation";
 import { storedLogs } from "@/engine/domains/observability-lab/logging";

@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { expect, test } from "vitest";
-import { run, session } from "@/engine/__tests__/setup";
+import { run, session } from "@/engine/__tests__/fixture-setup";
 import { NetworkPrelude, NetworkSolutions } from "@/engine/missions/network-lab";
 import { TreeNode, TreeSelection } from "@/engine/resource-tree";
 import { NetworkLabProperties } from "@/features/simulator/components/NetworkLabProperties";

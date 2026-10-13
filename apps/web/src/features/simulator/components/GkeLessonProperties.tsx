@@ -47,7 +47,7 @@ export const GkeLessonProperties = ({
           },
           {
             label: "認証方式",
-            value: "鍵ファイルなし。sim kubernetes check-accessで教材上の許可を評価",
+            value: "鍵ファイルなし。IAMの連携設定",
           },
         ]}
       />

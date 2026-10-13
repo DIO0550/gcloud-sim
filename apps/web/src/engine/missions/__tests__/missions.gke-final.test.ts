@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { Engine } from "@/engine";
+import { Engine } from "@/engine/__tests__/fixture-engine";
+import { initialWorld, session } from "@/engine/__tests__/fixture-setup";
 import {
   auto,
   deployment,
@@ -14,7 +15,6 @@ import {
   recommendation,
   vpa,
 } from "@/engine/__tests__/gke-final.setup";
-import { initialWorld, session } from "@/engine/__tests__/setup";
 import { World } from "@/engine/domains/world";
 import { gkeCompletionSatisfied } from "@/engine/missions/gke-completion";
 import { Option } from "@/utils/Option";

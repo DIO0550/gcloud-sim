@@ -1,14 +1,14 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { Engine } from "@/engine";
-import { Now, run, type Session, session } from "@/engine/__tests__/setup";
-import { Mission } from "@/engine/missions";
+import { Engine } from "@/engine/__tests__/fixture-engine";
+import { Mission } from "@/engine/__tests__/fixture-missions";
+import { Now, run, type Session, session } from "@/engine/__tests__/fixture-setup";
+import { Snapshot } from "@/engine/__tests__/fixture-snapshot";
 import {
   AceChallengeMissions,
   NetworkChallengeSteps,
   TerraformChallengeSteps,
 } from "@/engine/missions/ace-challenges";
-import { Snapshot } from "@/engine/snapshot";
 
 const start = (id: string): Session => {
   const result = Engine.startMission(session().world, id);

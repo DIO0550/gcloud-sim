@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { expect, test } from "vitest";
-import { run, session } from "@/engine/__tests__/setup";
+import { run, session } from "@/engine/__tests__/fixture-setup";
 import { ComputePrelude, ComputeSolutions } from "@/engine/missions/compute-lab";
 import { TreeNode, TreeSelection } from "@/engine/resource-tree";
 import { ComputeLabProperties } from "@/features/simulator/components/ComputeLabProperties";
@@ -58,10 +58,7 @@ test("rolling update displays pending member and both applied versions, then com
   const done = run(s, ComputeSolutions.rolling.at(-1) ?? "");
   view.rerender(<ComputeLabProperties world={done.world} selection={selection} />);
   expect(screen.getByText("pending").nextElementSibling).toHaveTextContent("[]");
-  const cmd = TreeSelection.describeCommand(selection);
-  if (cmd.some) {
-    expect(run(done, cmd.value).text).toContain("desiredTemplate: release-v2");
-  }
+  expect(TreeSelection.describeCommand(selection).some).toBe(false);
 });
 test("VM properties show accelerator, maintenance and Spot restart policy", () => {
   const s = run(session(), ...ComputePrelude, ...ComputeSolutions.gpu);

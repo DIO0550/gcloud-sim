@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { initialWorld, Now, run, type Session, session } from "@/engine/__tests__/setup";
+import { initialWorld, Now, run, type Session, session } from "@/engine/__tests__/fixture-setup";
 import { DataPrelude, DataSolutions } from "@/engine/missions/data-processing";
 import { StoragePrelude, StorageSolutions, storageSatisfied } from "@/engine/missions/storage-lab";
 import { Snapshot } from "@/engine/snapshot";

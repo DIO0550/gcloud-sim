@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { Engine } from "@/engine";
-import { Now, run, type Session, session } from "@/engine/__tests__/setup";
+import { Engine } from "@/engine/__tests__/fixture-engine";
+import { Now, run, type Session, session } from "@/engine/__tests__/fixture-setup";
+import { Snapshot } from "@/engine/__tests__/fixture-snapshot";
 import { cacheOf } from "@/engine/domains/managed-databases/cache";
 import { emptyManagedDatabases } from "@/engine/domains/managed-databases/model";
 import { RoleCatalog } from "@/engine/domains/role-catalog";
@@ -12,7 +13,6 @@ import {
   ManagedDatabaseSolutions,
   managedDatabaseSatisfied,
 } from "@/engine/missions/managed-databases";
-import { Snapshot } from "@/engine/snapshot";
 
 const p = F.devProjectId;
 const ready = (...lines: readonly string[]) => {

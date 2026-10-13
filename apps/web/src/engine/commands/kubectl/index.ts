@@ -943,7 +943,7 @@ const sampleFile = (path: string) =>
     path.replace(/^\.\//, "").includes("/") ? Option.none : SampleFile.find(path),
     () =>
       CommandFailure.notFoundWith(
-        `error: the path "${path}" does not exist\ngcloud-sim: 使えるサンプルは ${SampleFile.names().join(" / ")} です。Kubernetesリソースは sim files write/load で仮想ファイルを用意してください（docs/KUBERNETES.md）。`,
+        `error: the path "${path}" does not exist\ngcloud-sim: 使えるサンプルは ${SampleFile.names().join(" / ")} です。Kubernetesリソースはファイル画面で設定ファイルを用意してください（docs/KUBERNETES.md）。`,
       ),
   );
 

@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { Now, run, type Session, session } from "@/engine/__tests__/setup";
-import { Mission } from "@/engine/missions";
+import { Mission } from "@/engine/__tests__/fixture-missions";
+import { Now, run, type Session, session } from "@/engine/__tests__/fixture-setup";
 import { BuildMissions, buildSatisfied } from "@/engine/missions/builds";
 import { Snapshot } from "@/engine/snapshot";
 import { Result } from "@/utils/Result";
@@ -118,7 +118,7 @@ test("submit permission and serviceAccount actAs are separate", () => {
 });
 test.each([
   [submit.replace("--region=us-central1", "--region=invalid"), "region"],
-  [submit.replace("./hello-web", "./unknown"), "built-in"],
+  [submit.replace("./hello-web", "./unknown"), "build context is not available"],
   [submit.replace(builder, "missing@ace-dev-01.iam.gserviceaccount.com"), "not found"],
   [`${submit} --config=arbitrary.yaml`, "unrecognized"],
 ])("invalid build input leaves state intact: %s", (command, message) => {

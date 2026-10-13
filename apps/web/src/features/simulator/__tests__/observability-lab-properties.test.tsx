@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { expect, test } from "vitest";
 import { Engine } from "@/engine";
-import { run, session } from "@/engine/__tests__/setup";
+import { run, session } from "@/engine/__tests__/fixture-setup";
 import { observeResources } from "@/engine/domains/observability-lab/resources";
 import { ObservePrelude, ObserveSolutions } from "@/engine/missions/observability-lab";
 import { TreeNode, TreeSelection } from "@/engine/resource-tree";
@@ -44,7 +44,7 @@ test("SLO shows zero-data versus consumed error budget", () => {
   expect(screen.getByText("SLI").nextElementSibling).toHaveTextContent("0.98");
   expect(screen.getByText("バーンレート").nextElementSibling).toHaveTextContent("1.999");
 });
-test("every new collection is represented in the tree with a scoped, executable describe command", () => {
+test("保存済み内部モデルは表示できるが、独自describeを挿入しない", () => {
   for (const lesson of [
     "notification",
     "scope",
@@ -65,10 +65,7 @@ test("every new collection is represented in the tree with a scoped, executable 
       } as const;
       expect(tree).toContain(TreeSelection.key(chosen));
       const command = TreeSelection.describeCommand(chosen);
-      expect(command.some).toBe(true);
-      if (command.some) {
-        expect(run(s, command.value).text, command.value).not.toContain("ERROR:");
-      }
+      expect(command.some).toBe(false);
     }
   }
 });

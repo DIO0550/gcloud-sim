@@ -1,5 +1,5 @@
 import { expect } from "vitest";
-import { run, type Session, session } from "@/engine/__tests__/setup";
+import { run, type Session, session } from "@/engine/__tests__/fixture-setup";
 import { World } from "@/engine/domains/world";
 import { applicationLesson } from "@/engine/missions/load-balancing";
 import { Result } from "@/utils/Result";

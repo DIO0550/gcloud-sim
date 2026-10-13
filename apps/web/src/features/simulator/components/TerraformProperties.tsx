@@ -25,8 +25,7 @@ export const TerraformProperties = ({ world, selection }: SelectionProps<"terraf
             ]}
           />
           <p className="text-sm text-warn-ink">
-            stateには機密outputの値も保存されます。内容は sim files read
-            で確認できます。アクセスを制限し、Gitへ登録しないでください。
+            stateには機密outputの値も保存されます。内容はこのプロパティ画面で確認できます。アクセスを制限し、Gitへ登録しないでください。
           </p>
         </>
       );

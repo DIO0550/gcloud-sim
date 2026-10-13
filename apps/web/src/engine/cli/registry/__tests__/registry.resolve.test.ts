@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
 
-import { Engine, Shell } from "@/engine";
-import { Now, run, session } from "@/engine/__tests__/setup";
+import { Engine, Shell } from "@/engine/__tests__/fixture-engine";
+import { Now, run, session } from "@/engine/__tests__/fixture-setup";
 import { CommandRegistry } from "@/engine/cli/registry";
 import { notImplemented } from "@/engine/commands/shared";
 

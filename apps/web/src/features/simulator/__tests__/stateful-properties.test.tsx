@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { expect, test } from "vitest";
-import { run, session } from "@/engine/__tests__/setup";
+import { run, session } from "@/engine/__tests__/fixture-setup";
 import { KubeStorageProperties } from "@/features/simulator/components/ServiceProperties";
 import { StatefulSetProperties } from "@/features/simulator/components/StatefulSetProperties";
 

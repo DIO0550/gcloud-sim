@@ -1,12 +1,11 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { Engine } from "@/engine";
-import { Now, run, type Session, session } from "@/engine/__tests__/setup";
+import { Engine, FixtureCommands } from "@/engine/__tests__/fixture-engine";
+import { Now, run, type Session, session } from "@/engine/__tests__/fixture-setup";
+import { SchemaVersion, Snapshot } from "@/engine/__tests__/fixture-snapshot";
 import { CommandRegistry } from "@/engine/cli/registry";
-import { AllCommands } from "@/engine/commands";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import { AiMissions, aceSatisfied, aiSolutions } from "@/engine/missions/ace-support";
-import { SchemaVersion, Snapshot } from "@/engine/snapshot";
 
 const deny = (s: Session, line: string, reason = "ERROR:") => {
   const next = run(s, line);
@@ -130,7 +129,7 @@ test("v42 keeps progress; malformed references, lifecycle and settings cannot be
   }
 });
 test("new paths, flags, scenario names and choices are discoverable", () => {
-  const registry = CommandRegistry.create(AllCommands);
+  const registry = CommandRegistry.create(FixtureCommands);
   const s = session();
   expect(run(s, "sim ai resources create --help").text).toContain("--platform");
   const values = CommandRegistry.complete(

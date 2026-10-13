@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { expect, test } from "vitest";
-import { run, session } from "@/engine/__tests__/setup";
+import { run, session } from "@/engine/__tests__/fixture-setup";
 import { TerraformLessonSteps } from "@/engine/missions/terraform-lessons";
 import { TreeNode, TreeSelection } from "@/engine/resource-tree";
 import { TerraformProperties } from "@/features/simulator/components/TerraformProperties";

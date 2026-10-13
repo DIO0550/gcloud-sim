@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { Engine } from "@/engine";
+import { Engine } from "@/engine/__tests__/fixture-engine";
 import {
   deployment,
   execute,

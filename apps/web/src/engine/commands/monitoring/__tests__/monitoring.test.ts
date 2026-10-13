@@ -1,10 +1,9 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { Engine } from "@/engine";
-import { initialWorld, Now, run, type Session, session } from "@/engine/__tests__/setup";
+import { Engine } from "@/engine/__tests__/fixture-engine";
+import { initialWorld, Now, run, type Session, session } from "@/engine/__tests__/fixture-setup";
+import { Snapshot } from "@/engine/__tests__/fixture-snapshot";
 import { World } from "@/engine/domains/world";
-import { Mission } from "@/engine/missions";
-import { Snapshot } from "@/engine/snapshot";
 import { Result } from "@/utils/Result";
 
 const execute = (start: Session, ...commands: string[]): Session =>
@@ -221,7 +220,7 @@ test("v2 snapshots migrate observability collections and retain all mission prog
   const restored = Result.unwrap(Snapshot.fromUnknown({ schemaVersion: 2, world: v2 }));
   expect(restored.logMetrics).toEqual([]);
   expect(restored.dashboards).toEqual([]);
-  expect(restored.missions).toHaveLength(Mission.all().length);
+  expect(restored.missions).toHaveLength(Engine.initialWorld(Now).missions.length);
   const broken = {
     ...oldWorld,
     uptimeChecks: [

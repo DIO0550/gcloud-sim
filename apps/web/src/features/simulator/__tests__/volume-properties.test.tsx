@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { expect, test } from "vitest";
-import { run, session } from "@/engine/__tests__/setup";
+import { run, session } from "@/engine/__tests__/fixture-setup";
 import { KubeDeploymentProperties } from "@/features/simulator/components/ServiceProperties";
 
 test("volume properties show mount sources and decoded file sizes without revealing Secret/binary content", () => {

@@ -53,7 +53,7 @@ export const DatabaseServerSections = ({
                 label: `query ${i + 1}: ${q.database} (${q.user})`,
                 value: `${q.mode} · affected=${q.affected} · ${q.rows.length} rows · ${JSON.stringify(q.rows.slice(0, 5)).slice(0, 2000)}${q.rows.length > 5 ? "（先頭5行）" : ""}`,
               }))
-            : [{ label: "未実行", value: "sim sql execute / sim alloydb execute で確認" }]
+            : [{ label: "未実行", value: "クエリ実行は未対応です" }]
         }
       />
     </>

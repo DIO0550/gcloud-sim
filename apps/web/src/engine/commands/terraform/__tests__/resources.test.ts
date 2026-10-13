@@ -1,15 +1,15 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { Engine } from "@/engine";
-import { initialWorld, Now, run, type Session, session } from "@/engine/__tests__/setup";
+import { Engine } from "@/engine/__tests__/fixture-engine";
+import { Mission } from "@/engine/__tests__/fixture-missions";
+import { initialWorld, Now, run, type Session, session } from "@/engine/__tests__/fixture-setup";
+import { Snapshot } from "@/engine/__tests__/fixture-snapshot";
 import { TerraformInfrastructureExample as example } from "@/engine/commands/terraform/examples";
 import { TerraformState } from "@/engine/domains/terraform";
 import { TfConfiguration } from "@/engine/domains/terraform/configuration";
 import { Hcl } from "@/engine/domains/terraform/hcl";
 import { World } from "@/engine/domains/world";
-import { Mission } from "@/engine/missions";
 import { terraformSatisfied } from "@/engine/missions/terraform";
-import { Snapshot } from "@/engine/snapshot";
 import { Result } from "@/utils/Result";
 
 const execute = (s: Session, ...commands: string[]): Session =>

@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
+import { run, type Session, session } from "@/engine/__tests__/fixture-setup";
 import { applicationLb, executeLb } from "@/engine/__tests__/lb.setup";
-import { run, type Session, session } from "@/engine/__tests__/setup";
 import { type LbRequest, lbHealth, lbProbe } from "@/engine/domains/load-balancing/graph";
 import {
   bucketLesson,

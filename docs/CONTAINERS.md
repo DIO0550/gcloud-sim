@@ -1,32 +1,8 @@
 # Docker・Artifact Registry・Cloud Build 学習シミュレーター
 
+現在の操作手順は公開ミッションと[対応コマンド](COMMANDS.md)を参照してください。アプリ独自の操作に依存した旧手順は削除しました。以下は残しているCLI・ドメインモデルの仕様です。過去のミッション数・実装時点の記録は現在の公開演習数を示しません。
+
 Issue [#14](https://github.com/DIO0550/gcloud-sim/issues/14) の限定教材モデルです。ローカルイメージ・コンテナとクラウドのリポジトリ・イメージを別状態で扱い、ビルド、起動、タグ付け、push/pull、IAM、片付けを練習します。実Docker、ホスト上のファイル、クラウド、HTTPには接続しません。
-
-## ローカルでビルドして起動する
-
-```sh
-sim docker example ./hello-web
-docker build -t hello:v1 ./hello-web
-docker images
-docker run -d --name hello-local -p 8080:8080 hello:v1
-docker ps
-docker logs hello-local
-docker inspect hello-local
-sim docker request hello-local
-```
-
-`sim docker example` は組み込み教材のDockerfileとserver.jsを表示します。buildのcontextは `.` / `hello-web` / `./hello-web`（v1）、`hello-web-v2` / `./hello-web-v2`（v2）だけです。ファイルの読込やDockerfileの実行はしません。同じ教材は同じ疑似digestになり、別名のtagは同じイメージを指します。digestは実際のSHA-256計算結果ではありません。
-
-runは `-d` 必須です。名前を省くとlesson-番号を割り当てます。`-p HOST:CONTAINER` は1組、1〜65535のTCPポートに対応し、実行中コンテナ間のホストポート重複を拒否します。アプリは教材上8080で待ち受けるため、`8080:80` では `sim docker request` が失敗します。sim docker requestは状態を検査して固定HTTP応答を表示するアプリ専用コマンドです。実際のlocalhostにアクセスするものではありません。
-
-```sh
-docker stop hello-local
-docker ps -a
-docker rm hello-local
-docker rmi hello:v1
-```
-
-stopはコンテナを保持して公開ポートを解放し、rmはコンテナを削除します。実行中のrmは `-f` が必要です。rmiは1つのローカルタグ、または複数タグを持たないイメージIDを削除します。コンテナが参照するイメージの最後の参照は削除できません。レジストリ上のイメージは残ります。
 
 ## リポジトリへpushする
 
@@ -78,53 +54,6 @@ deleteはリポジトリと保存したイメージを確認後に削除しま�
 - 「Dockerイメージを作りローカルで動かす」「Artifact Registryへイメージを公開する」「イメージを読み取り専用で共有する」の3ミッションを追加しました。buildだけ、tagだけ、誤ったポート、余分な書込権限がある状態では対応するミッションを完了できません。
 - 保存量の上限はイメージ/コンテナ/リポジトリ各100、ローカル参照200、リモートバージョン200、各リモートバージョンのタグ100、認証ホスト8です。
 
-## Cloud BuildからGKEへ
-
-ミッション画面は「カテゴリ → ミッション → 達成条件・手順」の順に選択します。カテゴリ別の達成数と挑戦中件数を表示し、一覧へ戻っても進捗と開いたヒントを保持します。
-
-「Cloud Buildでイメージをビルドする」「ビルドしたイメージをGKEへデプロイする」の2ミッションを追加しました。それぞれ初期Worldから開始でき、後者には検証後の片付け手順も含みます。
-
-```sh
-gcloud services enable cloudbuild.googleapis.com artifactregistry.googleapis.com container.googleapis.com
-gcloud artifacts repositories create ace-images --repository-format=docker --location=us-central1
-gcloud iam service-accounts create ace-builder
-gcloud iam service-accounts add-iam-policy-binding ace-builder@ace-dev-01.iam.gserviceaccount.com --member=user:owner@example.com --role=roles/iam.serviceAccountUser
-gcloud artifacts repositories add-iam-policy-binding ace-images --location=us-central1 --member=serviceAccount:ace-builder@ace-dev-01.iam.gserviceaccount.com --role=roles/artifactregistry.writer
-gcloud builds submit ./hello-web --tag=us-central1-docker.pkg.dev/ace-dev-01/ace-images/hello:v1 --service-account=projects/ace-dev-01/serviceAccounts/ace-builder@ace-dev-01.iam.gserviceaccount.com --region=us-central1
-gcloud builds list --region=us-central1
-```
-
-- 呼出元の`cloudbuild.builds.create`と対象SAの`iam.serviceAccounts.actAs`を確認します。レジストリへ書くのは指定SAです。ユーザーのOwner権限やローカルDocker認証を流用しません。
-- 学習範囲を明確にするため、同じビルドプロジェクトに作成済みの`--service-account`を必須にします。既定SAの自動選択は再現しません。
-- 同期submitは即時に成功/失敗まで進めます。`--async`はQUEUEDで保存し、`sim builds advance BUILD_ID --region=us-central1`を1回実行するとWORKING、もう1回でSUCCESS/FAILUREになります。読むだけでは進みません。cancelはQUEUED/WORKINGのみ可能です。
-- describe/log/cancelはlistに表示されたBUILD_IDを使います。リージョン既定値はglobalで、別リージョン・別プロジェクトのIDは見つかりません。失敗後の履歴・固定ログを残し、再submitは別IDになります。
-- 任意のソース・cloudbuild.yaml・実際のDocker処理・ログ転送先/ソース用GCSバケット・Logging権限/サービスエージェント・自動進行は再現しません。実Cloud Buildで独自SAを使う場合にはログの保存先とその権限も設定が必要です。
-
-```sh
-gcloud iam service-accounts create ace-nodes
-gcloud iam service-accounts add-iam-policy-binding ace-nodes@ace-dev-01.iam.gserviceaccount.com --member=user:owner@example.com --role=roles/iam.serviceAccountUser
-gcloud container clusters create-auto ace-gke --region=us-central1 --service-account=ace-nodes@ace-dev-01.iam.gserviceaccount.com
-kubectl create deployment hello --image=us-central1-docker.pkg.dev/ace-dev-01/ace-images/hello:v1 --replicas=2
-kubectl get pods
-# ImagePullBackOff: ノードSAへ読み取り権限を付与する
-gcloud artifacts repositories add-iam-policy-binding ace-images --location=us-central1 --member=serviceAccount:ace-nodes@ace-dev-01.iam.gserviceaccount.com --role=roles/artifactregistry.reader
-kubectl rollout status deployment/hello
-kubectl expose deployment hello --type=LoadBalancer --port=80 --target-port=8080
-kubectl get all
-# 片付け（削除時は確認あり）
-kubectl delete service hello
-kubectl delete deployment hello
-gcloud container clusters delete ace-gke --region=us-central1
-gcloud artifacts repositories delete ace-images --location=us-central1
-```
-
-- Artifact RegistryのAPI・リポジトリ・タグ/digest・ノードSAのReader権限を現在の状態から判定します。ユーザーやビルドSAの権限は使いません。Deployment作成自体は成功してもPodは起動待ちとなり、rollout status/logsは成功扱いになりません。
-- GKEのノードキャッシュ/リトライ時間/実スケジューラを持たない簡略モデルです。権限付与後は即時に回復し、登録イメージ削除や権限削除後は既存Podも起動待ちになります。node pool個別SA・OAuth scope・既定Compute SA・imagePullSecretsは未対応で、明示指定したクラスタSAを全ノードへ適用します。
-- `.pkg.dev`以外の既存公開/教材イメージは従来の簡略動作です。Cloud Runには今回のpull検証を適用しません。
-- Snapshot v8で追加したビルド履歴（最大100件）とノードSAは、現行のv10にも保存します。v7のDocker/レジストリ/Terraformは保持し、空の履歴と既定のノードSA設定を補います。完了履歴はリポジトリ・クラスタの片付け後も残します。
-
-参照: [builds submit](https://docs.cloud.google.com/sdk/gcloud/reference/builds/submit)、[独自サービスアカウント](https://docs.cloud.google.com/build/docs/securing-builds/configure-user-specified-service-accounts)、[GKEのイメージ取得](https://docs.cloud.google.com/kubernetes-engine/docs/troubleshooting/image-pulls)。
-
 ## リモートのタグ管理・イメージ削除
 
 ```sh
@@ -156,14 +85,3 @@ Cloud Buildの任意設定・トリガー・ログ転送/ソース保存先、GK
 参照: [Docker run](https://docs.docker.com/reference/cli/docker/container/run/)、[Artifact Registry push/pull](https://docs.cloud.google.com/artifact-registry/docs/docker/pushing-and-pulling)、[Docker認証](https://docs.cloud.google.com/artifact-registry/docs/docker/authentication)、[repository作成](https://docs.cloud.google.com/sdk/gcloud/reference/artifacts/repositories/create)、[アクセス制御](https://docs.cloud.google.com/artifact-registry/docs/access-control)。
 
 GKEの更新履歴・ロールバック・Snapshot v10への移行は[KUBERNETES.md](KUBERNETES.md)を参照してください。
-
-
-## ビルドから片付けまでの採点（#14の最終項目）
-
-「コンテナを検証・公開して教材を片付ける」は初期Worldから独立して解ける8件目のコンテナミッションです。`release-local:v1`をhello-webから作り、`release-local`を8080→8080で起動します。`sim container-release validate-local`で構成を検証して固定の200応答と履歴を保存します。対象イメージを先に公開した場合は受け付けません。
-
-`release-images/hello:v1`へpushし、`release-nodes`を明示した`release-gke`に`release-web`を2レプリカで配置します。ノードにはリポジトリのReader権限を設定し、LoadBalancer Service 80→8080を公開します。`sim container-release validate-deployment --region=us-central1`は呼出元のclusters/deployments/services.get、2 API、プロジェクト、ロケーション、ノードのpull IAMとイメージ存在、全コンテナのReady、Service selector/portを検証します。未検証・ImagePullBackOff・誤ポートは記録しません。検証コマンドはアプリ専用で、実際のgcloud/Dockerにはありません。
-
-検証後、専用Service、Deployment、クラスタ、リポジトリ、ローカルコンテナ、ローカルとリモート形式のタグ、ノードSAを削除します。空の初期状態・検証前の削除・停止だけ・クラウドだけの片付けでは未達成です。他のイメージ/コンテナは残して構いません。認証helper/APIは共有設定なので削除条件に含めません。
-
-`sim container-release status`と「Docker（ローカル）」の「公開検証: ace-release」で履歴と片付け結果を確認します。Snapshot v40は検証したdigest・日時・段階を保存し、v1〜39のDocker/Cloud Build/レジストリを保って空の履歴を補います。旧データから検証済みという履歴を作りません。再挑戦では履歴だけをリセットし、既存リソースを削除しません。実コード、HTTP、クラウドAPI、課金は動かしません。

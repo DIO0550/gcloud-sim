@@ -27,9 +27,9 @@ export const ContainerMissions: readonly Mission[] = [
       "組み込みhello-webをhello:v1としてビルドし、hello-localコンテナを起動してホスト8080からコンテナ8080へ公開します。ビルドだけ、停止中、ポートの誤設定では完了しません。実際のプロセス・通信は発生しません。",
     setup,
     hints: [
-      "sim docker example ./hello-web → docker build -t hello:v1 ./hello-web → docker images",
+      "組み込みのhello-webを使用します。docker build -t hello:v1 ./hello-web → docker images",
       "docker run -d --name hello-local -p 8080:8080 hello:v1 → docker ps → docker logs hello-local",
-      "sim docker request hello-local で疑似HTTP応答を確認します。終了後はdocker stop hello-local → docker rm hello-local。",
+      "docker inspect hello-local で状態とポートを確認します。終了後はdocker stop hello-local → docker rm hello-local。",
     ],
     assertions: [{ kind: "localContainerReady", name: "hello-local", hostPort: 8080 }],
   },

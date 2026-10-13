@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { expect, test } from "vitest";
-import { run, session } from "@/engine/__tests__/setup";
+import { run, session } from "@/engine/__tests__/fixture-setup";
 import { NodePoolProperties } from "@/features/simulator/components/ServiceProperties";
 
 const args = "--cluster=ops-gke --zone=us-central1-a";

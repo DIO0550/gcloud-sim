@@ -1,14 +1,14 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { Engine } from "@/engine";
-import { Now, run, type Session, session } from "@/engine/__tests__/setup";
+import { Engine } from "@/engine/__tests__/fixture-engine";
+import { Now, run, type Session, session } from "@/engine/__tests__/fixture-setup";
+import { SchemaVersion, Snapshot } from "@/engine/__tests__/fixture-snapshot";
 import { KubeRuntime } from "@/engine/domains/kube-config";
 import { KubeNamespace } from "@/engine/domains/kube-namespace";
 import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
 import { KubePod } from "@/engine/domains/kubernetes";
 import { World } from "@/engine/domains/world";
 import { TreeSelection } from "@/engine/resource-tree/selection";
-import { SchemaVersion, Snapshot } from "@/engine/snapshot";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 

@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
 
-import { Engine } from "@/engine";
-import { initialWorld, run, session } from "@/engine/__tests__/setup";
+import { Engine } from "@/engine/__tests__/fixture-engine";
+import { initialWorld, run, session } from "@/engine/__tests__/fixture-setup";
 import { World } from "@/engine/domains/world";
 import { Result } from "@/utils/Result";
 

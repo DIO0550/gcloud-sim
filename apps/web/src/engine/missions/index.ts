@@ -183,6 +183,7 @@ import {
 } from "./managed-databases";
 import { type NetworkAssertion, NetworkMissions, networkSatisfied } from "./network-lab";
 import { type ObserveAssertion, ObserveMissions, observeSatisfied } from "./observability-lab";
+import { practiceCatalog } from "./practice-catalog";
 import { type RelationalAssertion, RelationalMissions, relationalSatisfied } from "./relational";
 import { type ServerlessAssertion, ServerlessMissions, serverlessSatisfied } from "./serverless";
 import { type StorageAssertion, StorageMissions, storageSatisfied } from "./storage-lab";
@@ -381,7 +382,7 @@ const devProject: PolicyTarget = { type: "project", id: F.devProjectId };
 const devFolder: PolicyTarget = { type: "folder", id: F.devFolderId };
 const organization: PolicyTarget = { type: "organization", id: F.organizationId };
 
-const Missions: readonly Mission[] = [
+export const ScenarioMissions: readonly Mission[] = [
   ...AceChallengeMissions,
   ...AceDecisionMissions,
   ...AiMissions,
@@ -872,6 +873,8 @@ const Missions: readonly Mission[] = [
   },
 ];
 
+const Missions = practiceCatalog(ScenarioMissions);
+
 const hasBinding = (world: World, target: PolicyTarget, role: RoleName, member: IamMember) => {
   const policy = World.findPolicy(world, target);
   return Option.isSome(policy) && IamPolicy.hasBinding(policy.value, role, member);
@@ -1328,8 +1331,11 @@ export const Mission = {
 
   /** 完了した件数と定義の総数。ヘッダーの「ミッション 2/18」表示に使う。 */
   counts(world: World): Readonly<{ completed: number; total: number }> {
+    const known = new Set(Missions.map((mission) => mission.id));
     return {
-      completed: world.missions.filter((m) => m.status === MissionStatuses.Completed).length,
+      completed: world.missions.filter(
+        (m) => known.has(m.id) && m.status === MissionStatuses.Completed,
+      ).length,
       total: Missions.length,
     };
   },

@@ -1,16 +1,16 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { Engine } from "@/engine";
-import { Now, run, session } from "@/engine/__tests__/setup";
+import { Engine } from "@/engine/__tests__/fixture-engine";
+import { Mission } from "@/engine/__tests__/fixture-missions";
+import { Now, run, session } from "@/engine/__tests__/fixture-setup";
+import { Snapshot } from "@/engine/__tests__/fixture-snapshot";
 import { AceScenarios } from "@/engine/domains/ace-support/catalog";
-import { Mission } from "@/engine/missions";
 import {
   AceDecisionMissions,
   AiMissions,
   aceSatisfied,
   aiSolutions,
 } from "@/engine/missions/ace-support";
-import { Snapshot } from "@/engine/snapshot";
 
 for (const mission of [...AceDecisionMissions, ...AiMissions]) {
   test(`${mission.title}: initial, incomplete, solution and saved state`, () => {

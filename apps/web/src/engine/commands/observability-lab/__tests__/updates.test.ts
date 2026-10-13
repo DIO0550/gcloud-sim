@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { run, session } from "@/engine/__tests__/setup";
+import { run, session } from "@/engine/__tests__/fixture-setup";
 import { Dashboard } from "@/engine/domains/monitoring";
 import { ObservePrelude, ObserveSolutions } from "@/engine/missions/observability-lab";
 

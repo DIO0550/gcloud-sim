@@ -1,9 +1,9 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { initialWorld, Now, run, type Session, session } from "@/engine/__tests__/setup";
+import { Mission } from "@/engine/__tests__/fixture-missions";
+import { initialWorld, Now, run, type Session, session } from "@/engine/__tests__/fixture-setup";
 import { TerraformState } from "@/engine/domains/terraform";
 import { TfBackend } from "@/engine/domains/terraform/backend";
-import { Mission } from "@/engine/missions";
 import { terraformSatisfied } from "@/engine/missions/terraform";
 import { Snapshot } from "@/engine/snapshot";
 import { Option } from "@/utils/Option";

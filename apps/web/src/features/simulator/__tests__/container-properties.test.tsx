@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { expect, test } from "vitest";
-import { run, session } from "@/engine/__tests__/setup";
+import { run, session } from "@/engine/__tests__/fixture-setup";
 import { ContainerLab } from "@/engine/domains/container-lab";
 import { ContainerReleaseSteps } from "@/engine/missions/container-release";
 import { ContainerLabProperties } from "@/features/simulator/components/ContainerLabProperties";

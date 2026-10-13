@@ -5,7 +5,7 @@ import { AceScenarios } from "@/engine/domains/ace-support/catalog";
 import { Mission } from "@/engine/missions";
 import { ExamSections, examSectionOf } from "@/engine/missions/exam-sections";
 
-test("all 48 source rows lead to existing missions and every mission has one of four exam sections", () => {
+test("資料台帳は公開ミッションだけを参照し、未対応の資料を明記する", () => {
   const source = readFileSync(
     new URL("../../../../../../../docs/ACE_SOURCE_MAP.md", import.meta.url),
     "utf8",
@@ -15,7 +15,9 @@ test("all 48 source rows lead to existing missions and every mission has one of 
   const ids = new Set(Mission.all().map((m) => m.id));
   for (const row of rows) {
     const referenced = [...row.matchAll(/`([^`]+)`/g)].map((match) => match[1]);
-    expect(referenced.length, row).toBeGreaterThan(0);
+    if (referenced.length === 0) {
+      expect(row).toContain("コマンド演習未対応");
+    }
     for (const id of referenced) {
       expect(ids.has(id as string), row).toBe(true);
     }

@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { Engine } from "@/engine";
-import { Now, run, type Session, session } from "@/engine/__tests__/setup";
+import { Engine } from "@/engine/__tests__/fixture-engine";
+import { Now, run, type Session, session } from "@/engine/__tests__/fixture-setup";
+import { Snapshot } from "@/engine/__tests__/fixture-snapshot";
 import { databasesOf, findServer } from "@/engine/domains/relational/model";
 import { evaluateSql } from "@/engine/domains/relational/sql";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
@@ -10,7 +11,6 @@ import {
   RelationalSolutions,
   relationalSatisfied,
 } from "@/engine/missions/relational";
-import { Snapshot } from "@/engine/snapshot";
 
 const p = F.devProjectId;
 const create =

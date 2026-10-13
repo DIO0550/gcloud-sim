@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { Engine } from "@/engine";
-import { Now, run, session } from "@/engine/__tests__/setup";
+import { Engine } from "@/engine/__tests__/fixture-engine";
+import { Now, run, session } from "@/engine/__tests__/fixture-setup";
+import { Snapshot } from "@/engine/__tests__/fixture-snapshot";
 import {
   findDeployment,
   latestRevision,
@@ -14,7 +15,6 @@ import {
   ServerlessSolutions,
   serverlessSatisfied,
 } from "@/engine/missions/serverless";
-import { Snapshot } from "@/engine/snapshot";
 import { Result } from "@/utils/Result";
 
 const base = () => run(session(), ...ServerlessPrelude);

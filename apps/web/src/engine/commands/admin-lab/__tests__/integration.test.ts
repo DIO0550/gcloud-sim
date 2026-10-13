@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { Now, run, type Session, session } from "@/engine/__tests__/setup";
+import { Now, run, type Session, session } from "@/engine/__tests__/fixture-setup";
 import { emptyAdminLab } from "@/engine/domains/admin-lab/model";
 import { AdminPrelude, AdminSolutions, adminSatisfied } from "@/engine/missions/admin-lab";
 import { Snapshot } from "@/engine/snapshot";

@@ -324,8 +324,7 @@ export const KubeDeploymentProperties = ({
             ]}
           />
           <p className="mb-3 text-sm text-muted">
-            sim kubernetes
-            probeでHTTP応答を指定して判定します。未準備のPodはServiceの接続先から外れます。
+            設定したreadiness probeを表示します。未準備のPodはServiceの接続先から外れます。
           </p>
         </>
       )}
@@ -908,9 +907,7 @@ export const KubeHpaProperties = ({
           ]}
         />
       ) : (
-        <p className="mb-3 text-sm text-muted">
-          未評価です。sim kubernetes reconcileでCPU使用量を指定してください。
-        </p>
+        <p className="mb-3 text-sm text-muted">CPU使用量の実測とHPAの自動評価は未対応です。</p>
       )}
       <p className="mb-3 text-sm text-muted">
         明示したCPU使用量を1回ずつ評価します。前回の値は実測値ではありません。定期実行・安定化待機は再現しません。

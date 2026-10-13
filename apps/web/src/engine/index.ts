@@ -3,6 +3,7 @@ import { CommandRegistry } from "@/engine/cli/registry";
 import { type ExecutionStatus, type OutputLine, Shell, type ShellState } from "@/engine/cli/shell";
 import { Tokenizer } from "@/engine/cli/tokenizer";
 import { AllCommands } from "@/engine/commands";
+import { ConfigurationFiles } from "@/engine/domains/configuration-files";
 import { observationEvents } from "@/engine/domains/observability-lab/events";
 import { storageEvents } from "@/engine/domains/serverless-lab/runtime";
 import type { World } from "@/engine/domains/world";
@@ -35,6 +36,7 @@ export type ExecuteResult = Readonly<{
 
 export const Engine = {
   registry,
+  editFiles: ConfigurationFiles.edit,
 
   /**
    * 1 行を実行し、続けてミッションを評価する（UC-001 ステップ 1〜8, 10）。保存（ステップ 9）は呼び出し側。

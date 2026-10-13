@@ -8,6 +8,7 @@ import { KubeContext } from "@/engine/domains/kube-context";
 import { World as WorldOps } from "@/engine/domains/world";
 import { Mission } from "@/engine/missions";
 import { ChangeLog } from "@/features/simulator/components/ChangeLog";
+import { FileWorkspace } from "@/features/simulator/components/FileWorkspace";
 import { Header } from "@/features/simulator/components/Header";
 import { HierarchyCreateDialog } from "@/features/simulator/components/HierarchyCreateDialog";
 import { MissionPanel } from "@/features/simulator/components/MissionPanel";
@@ -57,6 +58,7 @@ const Tabs: readonly Readonly<{ tab: PanelTab; label: (missions: string) => stri
   { tab: PanelTabs.Properties, label: () => "プロパティ" },
   { tab: PanelTabs.Missions, label: (missions) => `ミッション ${missions}` },
   { tab: PanelTabs.Log, label: () => "変更ログ" },
+  { tab: PanelTabs.Files, label: () => "ファイル" },
 ];
 
 /** CLI 画面全体（モック 2a）: ヘッダー / リソース階層 / ターミナル / 右ペイン / 設定。 */
@@ -304,6 +306,19 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
               )}
               {state.panelTab === PanelTabs.Log && (
                 <ChangeLog world={world} transcript={state.transcript} />
+              )}
+              {state.panelTab === PanelTabs.Files && (
+                <FileWorkspace
+                  world={world}
+                  onEdit={(edit) => {
+                    const result = Engine.editFiles(world, edit);
+                    if (!result.ok) {
+                      return Result.err(result.error);
+                    }
+                    dispatch({ type: "filesChanged", world: result.value });
+                    return Result.ok(undefined);
+                  }}
+                />
               )}
             </div>
           </aside>
