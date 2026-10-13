@@ -54,11 +54,11 @@ type SimulatorProps = Readonly<{
   io: SimulatorIo;
 }>;
 
-const Tabs: readonly Readonly<{ tab: PanelTab; label: (missions: string) => string }>[] = [
-  { tab: PanelTabs.Properties, label: () => "プロパティ" },
-  { tab: PanelTabs.Missions, label: (missions) => `ミッション ${missions}` },
-  { tab: PanelTabs.Log, label: () => "変更ログ" },
-  { tab: PanelTabs.Files, label: () => "ファイル" },
+const Tabs: readonly Readonly<{ tab: PanelTab; label: string }>[] = [
+  { tab: PanelTabs.Properties, label: "プロパティ" },
+  { tab: PanelTabs.Missions, label: "ミッション" },
+  { tab: PanelTabs.Log, label: "変更ログ" },
+  { tab: PanelTabs.Files, label: "ファイル" },
 ];
 
 /** CLI 画面全体（モック 2a）: ヘッダー / リソース階層 / ターミナル / 右ペイン / 設定。 */
@@ -254,15 +254,19 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
             className="order-1 flex h-[60dvh] min-h-96 min-w-0 flex-col border-line border-l bg-surface lg:order-none lg:h-auto lg:min-h-0"
             aria-label="詳細"
           >
-            <div className="flex shrink-0 overflow-x-auto border-line border-b" role="tablist">
+            <div
+              className="@container/sidebar-tabs grid shrink-0 grid-cols-4 border-line border-b"
+              role="tablist"
+              aria-label="詳細パネル"
+            >
               {Tabs.map(({ tab, label }) => (
                 <Tab
                   key={tab}
                   selected={state.panelTab === tab}
-                  className="shrink-0 whitespace-nowrap px-4 py-3.5"
+                  className="min-w-0 px-1 py-3.5 text-xs @min-[360px]/sidebar-tabs:text-sm"
                   onClick={() => dispatch({ type: "tabChanged", tab })}
                 >
-                  {label(`${counts.completed}/${counts.total}`)}
+                  {label}
                 </Tab>
               ))}
             </div>
@@ -294,15 +298,20 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
                 />
               )}
               {state.panelTab === PanelTabs.Missions && (
-                <MissionPanel
-                  world={world}
-                  missions={Engine.missions()}
-                  selectedId={state.selectedMissionId}
-                  onSelect={(id) => dispatch({ type: "missionSelected", id })}
-                  onStart={(id) => dispatch({ type: "missionStarted", id })}
-                  onAbandon={(id) => dispatch({ type: "missionAbandoned", id })}
-                  onHint={(id) => dispatch({ type: "hintRevealed", id })}
-                />
+                <>
+                  <p className="border-line border-b px-3 py-2 text-right text-xs text-muted">
+                    {counts.completed}/{counts.total} クリア
+                  </p>
+                  <MissionPanel
+                    world={world}
+                    missions={Engine.missions()}
+                    selectedId={state.selectedMissionId}
+                    onSelect={(id) => dispatch({ type: "missionSelected", id })}
+                    onStart={(id) => dispatch({ type: "missionStarted", id })}
+                    onAbandon={(id) => dispatch({ type: "missionAbandoned", id })}
+                    onHint={(id) => dispatch({ type: "hintRevealed", id })}
+                  />
+                </>
               )}
               {state.panelTab === PanelTabs.Log && (
                 <ChangeLog world={world} transcript={state.transcript} />
