@@ -151,7 +151,7 @@ const command = (
 ): CommandSpec =>
   projectCommand({
     path,
-    summary: "Bounded ACE decision or AI configuration lesson; no real cloud/AI/code execution.",
+    summary: "gcloud-sim only (not Google Cloud CLI): ACE decision or AI configuration lesson.",
     permissions: ["resourcemanager.projects.get"],
     flags: [
       ...flags,
@@ -213,6 +213,7 @@ const decisionCommands = (["list", "describe", "choose"] as const).map((action) 
       if (action === "describe") {
         return finish(ctx.world, {
           ...scenario,
+          simulation: "gcloud-sim独自の判断演習。Google Cloud CLIのコマンドではありません。",
           choices: [...scenario.choices],
           decision: previous ? { ...previous, correct: previous.choice === scenario.answer } : null,
           grading:

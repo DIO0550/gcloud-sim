@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { Engine } from "@/engine";
-import { Now, run, type Session, session } from "@/engine/__tests__/setup";
+import { Engine } from "@/engine/__tests__/fixture-engine";
+import { Now, run, type Session, session } from "@/engine/__tests__/fixture-setup";
+import { Snapshot } from "@/engine/__tests__/fixture-snapshot";
 import { emptyComputeLab } from "@/engine/domains/compute-lab/model";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import {
@@ -10,7 +11,6 @@ import {
   ComputeSolutions,
   computeSatisfied,
 } from "@/engine/missions/compute-lab";
-import { Snapshot } from "@/engine/snapshot";
 
 const ready = () => run(session(), ...ComputePrelude);
 const reject = (s: Session, line: string) => {

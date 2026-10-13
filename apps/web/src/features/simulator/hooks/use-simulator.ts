@@ -2,7 +2,7 @@ import { useReducer } from "react";
 
 import { Engine, type ExecutionStatus, type OutputLine, Shell, type ShellState } from "@/engine";
 import { World } from "@/engine/domains/world";
-import type { Mission } from "@/engine/missions";
+import { Mission } from "@/engine/missions";
 import type { TreeSelection } from "@/engine/resource-tree";
 import {
   HierarchyCreate,
@@ -42,6 +42,7 @@ export const PanelTabs = {
   Properties: "properties",
   Missions: "missions",
   Log: "log",
+  Files: "files",
 } as const;
 export type PanelTab = ValueOf<typeof PanelTabs>;
 
@@ -100,6 +101,7 @@ export type SimulatorAction =
   | Readonly<{ type: "insertRequested"; text: string }>
   | Readonly<{ type: "insertConsumed" }>
   | Readonly<{ type: "tabChanged"; tab: PanelTab }>
+  | Readonly<{ type: "filesChanged"; world: World }>
   | Readonly<{ type: "settingsToggled"; open: boolean }>
   | Readonly<{ type: "missionSelected"; id: string }>
   | Readonly<{ type: "missionStarted"; id: string }>
@@ -373,6 +375,15 @@ export const simulatorReducer = (
       return { ...state, pendingInsert: Option.none };
     case "tabChanged":
       return { ...state, panelTab: action.tab };
+    case "filesChanged": {
+      const evaluated = Mission.evaluate(action.world);
+      return {
+        ...state,
+        world: evaluated.world,
+        shell: Shell.Ready,
+        celebration: Option.fromNullable(evaluated.completed.at(-1)),
+      };
+    }
     case "settingsToggled":
       return {
         ...state,

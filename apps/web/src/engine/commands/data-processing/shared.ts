@@ -217,7 +217,9 @@ export const readInput = (ctx: ProjectContext, uri: string, principal: string = 
       (file.token !== object.updated && !object.contentType.endsWith(`;sim-token=${file.token}`)) ||
       object.size !== new TextEncoder().encode(file.data).length
     ) {
-      return invalid("Input bytes are missing/stale. Use sim storage objects write.");
+      return invalid(
+        "Input bytes are missing/stale. Check the source object. Storage data-file editing is not supported.",
+      );
     }
     const key = keyAccess(ctx.world, bucket, object.kmsKey ?? "", "Decrypt");
     if (!key.ok) {

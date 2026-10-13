@@ -232,7 +232,7 @@ export const ContainerLab = {
     if ([".", "hello-web", "./hello-web"].includes(context)) return "hello-web";
     if (["hello-web-v2", "./hello-web-v2"].includes(context)) return "hello-web-v2";
     return fail(
-      "Only built-in contexts ./hello-web (or .) and ./hello-web-v2 are supported. Run sim docker example. No host files are read.",
+      "The build context is not available. Local Docker source-file editing is not supported; no host files are read.",
     );
   },
   digest(recipe: Recipe): string {

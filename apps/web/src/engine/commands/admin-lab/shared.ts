@@ -145,7 +145,7 @@ export const scoped = (
 export const readJson = (ctx: CommandContext, name: string): Result<unknown, CommandFailure> => {
   const content = ctx.world.kubeFiles[name] ?? ctx.world.terraform.files[name];
   if (content === undefined) {
-    return missing(`Virtual file ${name} not found. Use sim files write FILE --content='JSON'.`);
+    return missing(`File ${name} not found. ファイル画面でJSONを保存してください。`);
   }
   try {
     return Result.ok(JSON.parse(content));

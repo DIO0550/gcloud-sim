@@ -1,8 +1,9 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { Engine } from "@/engine";
-import { Now, run, session } from "@/engine/__tests__/setup";
-import { Mission } from "@/engine/missions";
+import { Engine } from "@/engine/__tests__/fixture-engine";
+import { Mission } from "@/engine/__tests__/fixture-missions";
+import { Now, run, session } from "@/engine/__tests__/fixture-setup";
+import { Snapshot } from "@/engine/__tests__/fixture-snapshot";
 import {
   type ServerlessLesson,
   ServerlessMissions,
@@ -10,7 +11,6 @@ import {
   ServerlessSolutions,
   serverlessSatisfied,
 } from "@/engine/missions/serverless";
-import { Snapshot } from "@/engine/snapshot";
 import { Result } from "@/utils/Result";
 
 for (const m of ServerlessMissions) {

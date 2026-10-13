@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { initialWorld, Now, run, type Session, session } from "@/engine/__tests__/setup";
+import { initialWorld, Now, run, type Session, session } from "@/engine/__tests__/fixture-setup";
 import { TfConfiguration } from "@/engine/domains/terraform/configuration";
 import { Hcl } from "@/engine/domains/terraform/hcl";
 import { Snapshot } from "@/engine/snapshot";

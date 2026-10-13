@@ -45,6 +45,8 @@ const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElem
 
 const assertionLabel = (assertion: Mission["assertions"][number]): string => {
   switch (assertion.kind) {
+    case "aceNetworkChallenge":
+      return "同じVPCの踏み台・private GKE・Cloud SQL・アプリ公開とSQL接続だけのSA権限をそろえる";
     case "aceDecision":
       return "固定された要件に適した選択を記録する（自由文の意味は採点しない）";
     case "aiLesson":
@@ -317,7 +319,7 @@ export const MissionPanel = ({
         }}
       >
         <option value="exam">添付試験ガイドの4セクション</option>
-        <option value="practice">操作学習の5カテゴリ</option>
+        <option value="practice">学習分野の5カテゴリ</option>
       </select>
     </label>
   );

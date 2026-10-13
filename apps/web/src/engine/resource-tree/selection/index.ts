@@ -409,17 +409,10 @@ export const TreeSelection = {
   describeCommand(selection: TreeSelection): Option<string> {
     switch (selection.kind) {
       case "ace-support":
-        if (selection.collection === "decisions") {
-          return Option.some(
-            `sim ace scenarios describe ${selection.name} --project=${selection.projectId}`,
-          );
-        }
-        return Option.some(
-          `sim ai resources describe ${selection.name} --region=${selection.region} --project=${selection.projectId}`,
-        );
+        return Option.none;
       case "terraform": {
         if (selection.collection === "files") {
-          return Option.some(`sim files read ${selection.name}`);
+          return Option.none;
         }
         if (selection.collection === "resources") {
           return Option.some(`terraform state show '${selection.name}'`);
@@ -427,12 +420,10 @@ export const TreeSelection = {
         if (selection.collection === "plans") {
           return Option.some(`terraform show ${selection.name}`);
         }
-        return Option.some("sim terraform backend");
+        return Option.some("terraform state pull");
       }
       case "observability-lab":
-        return Option.some(
-          `sim monitoring resources describe ${selection.name} --collection=${selection.collection} --project=${selection.projectId}`,
-        );
+        return Option.none;
       case "admin-lab": {
         const [scope, id] = selection.scope.split("/");
         const flag = { projects: "project", folders: "folder", organizations: "organization" }[
@@ -443,14 +434,6 @@ export const TreeSelection = {
         }
         if (selection.collection === "groups") {
           return Option.some(`gcloud identity groups describe ${selection.name}`);
-        }
-        if (selection.collection === "credentials") {
-          return Option.some(`sim auth credentials check ${selection.name} --project=${id}`);
-        }
-        if (selection.collection === "exports") {
-          return Option.some(
-            `sim billing export describe --billing-account=${selection.name} --project=${id}`,
-          );
         }
         return Option.none;
       }
@@ -502,6 +485,9 @@ export const TreeSelection = {
           : Option.none;
       }
       case "compute-lab": {
+        if (selection.collection === "migs") {
+          return Option.none;
+        }
         const s = selection;
         const target = `${s.name} --project=${s.projectId}`;
         let flag = "";
@@ -516,7 +502,7 @@ export const TreeSelection = {
           schedules: "gcloud compute resource-policies",
           tpus: "gcloud compute tpus tpu-vm",
           osPolicies: "gcloud compute os-config os-policy-assignments",
-          migs: "sim compute instance-groups managed",
+          migs: "gcloud compute instance-groups managed",
         }[s.collection];
         return Option.some(`${group} describe ${target}${flag}`);
       }
@@ -541,9 +527,7 @@ export const TreeSelection = {
       }
       case "managed-database": {
         if (selection.collection === "firestoreCopies") {
-          return Option.some(
-            `sim firestore backups describe ${selection.name} --project=${selection.projectId}`,
-          );
+          return Option.none;
         }
         const group = {
           spannerInstances: "spanner instances",
@@ -605,7 +589,7 @@ export const TreeSelection = {
       }
       case "container-lab":
         if (selection.collection === "releases") {
-          return Option.some("sim container-release status");
+          return Option.none;
         }
         if (selection.collection === "builds") return Option.none;
         if (selection.collection === "repositories")

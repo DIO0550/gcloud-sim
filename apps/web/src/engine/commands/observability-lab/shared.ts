@@ -156,7 +156,7 @@ export const save = (
 export const readJson = (ctx: ProjectContext, path: string): Result<unknown, CommandFailure> => {
   const content = ctx.world.kubeFiles[path] ?? ctx.world.terraform.files[path];
   if (content === undefined) {
-    return missing(`Virtual file ${path} is missing. Use sim files write.`);
+    return missing(`File ${path} is missing. ファイル画面で設定ファイルを保存してください。`);
   }
   try {
     return Result.ok(JSON.parse(content));

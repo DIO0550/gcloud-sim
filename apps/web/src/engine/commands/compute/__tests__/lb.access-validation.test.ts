@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { Engine } from "@/engine";
+import { Engine } from "@/engine/__tests__/fixture-engine";
+import { run, type Session, session } from "@/engine/__tests__/fixture-setup";
 import { applicationLb, executeLb } from "@/engine/__tests__/lb.setup";
-import { run, type Session, session } from "@/engine/__tests__/setup";
 import { resourcePermission } from "@/engine/commands/compute/load-balancing/resources";
 import { corePermission } from "@/engine/commands/compute/load-balancing/shared";
 import { IamPolicy, type RoleName } from "@/engine/domains/iam-policy";

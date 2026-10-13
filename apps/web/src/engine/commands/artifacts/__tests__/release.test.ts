@@ -1,18 +1,18 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { Engine } from "@/engine";
-import { Now, run, type Session, session } from "@/engine/__tests__/setup";
+import { Engine } from "@/engine/__tests__/fixture-engine";
+import { Mission } from "@/engine/__tests__/fixture-missions";
+import { Now, run, type Session, session } from "@/engine/__tests__/fixture-setup";
+import { SchemaVersion, Snapshot } from "@/engine/__tests__/fixture-snapshot";
 import {
   ContainerRelease as L,
   releaseCleanupComplete,
 } from "@/engine/domains/container-lab/release";
-import { Mission } from "@/engine/missions";
 import {
   ContainerReleaseMissions,
   ContainerReleaseSteps as steps,
 } from "@/engine/missions/container-release";
 import { TreeNode } from "@/engine/resource-tree";
-import { SchemaVersion, Snapshot } from "@/engine/snapshot";
 import { Result } from "@/utils/Result";
 
 const execute = (s: Session, commands: readonly string[]): Session =>

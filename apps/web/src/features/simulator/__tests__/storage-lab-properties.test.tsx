@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { expect, test } from "vitest";
-import { run, session } from "@/engine/__tests__/setup";
+import { run, session } from "@/engine/__tests__/fixture-setup";
 import { StoragePrelude, StorageSolutions } from "@/engine/missions/storage-lab";
 import { TreeNode, TreeSelection } from "@/engine/resource-tree";
 import { BucketProperties } from "@/features/simulator/components/ServiceProperties";

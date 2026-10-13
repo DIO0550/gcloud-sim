@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { Engine } from "@/engine";
+import { Engine } from "@/engine/__tests__/fixture-engine";
+import { session } from "@/engine/__tests__/fixture-setup";
+import { Snapshot } from "@/engine/__tests__/fixture-snapshot";
 import {
   auto,
   execute,
@@ -13,8 +15,6 @@ import {
   snapshot,
   vpa,
 } from "@/engine/__tests__/gke-final.setup";
-import { session } from "@/engine/__tests__/setup";
-import { Snapshot } from "@/engine/snapshot";
 import { Result } from "@/utils/Result";
 
 test("viewer can inspect ServiceAccounts and VPAs but cannot mutate them or run recommendations", () => {

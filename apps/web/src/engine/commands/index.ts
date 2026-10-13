@@ -181,4 +181,12 @@ const implemented: readonly CommandSpec[] = [
 ];
 
 /** 登録するすべてのコマンド。実装済みが先、未実装のスタブが後（今は 0 件。機構は DJ-005 のまま残す）。 */
-export const AllCommands: readonly CommandSpec[] = [...implemented, ...NotImplementedCommands];
+export const AllCommands: readonly CommandSpec[] = [
+  ...implemented.filter((command) => command.path[0] !== "sim"),
+  ...NotImplementedCommands,
+];
+
+/** ドメインの単体テストで状態を用意するための操作。公開CLIには登録しない。 */
+export const ScenarioControls: readonly CommandSpec[] = implemented.filter(
+  (command) => command.path[0] === "sim",
+);

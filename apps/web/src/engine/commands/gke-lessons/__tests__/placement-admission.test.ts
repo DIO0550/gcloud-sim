@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
+import { session } from "@/engine/__tests__/fixture-setup";
 import {
   auto,
   deployment,
@@ -10,7 +11,6 @@ import {
   restore,
   snapshot,
 } from "@/engine/__tests__/gke-final.setup";
-import { session } from "@/engine/__tests__/setup";
 import { AutopilotAdmission } from "@/engine/domains/gke-completion";
 import { KubeResources } from "@/engine/domains/kube-resources";
 import { Snapshot } from "@/engine/snapshot";

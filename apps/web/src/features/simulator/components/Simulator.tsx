@@ -8,20 +8,19 @@ import { KubeContext } from "@/engine/domains/kube-context";
 import { World as WorldOps } from "@/engine/domains/world";
 import { Mission } from "@/engine/missions";
 import { ChangeLog } from "@/features/simulator/components/ChangeLog";
+import { FileWorkspace } from "@/features/simulator/components/FileWorkspace";
 import { Header } from "@/features/simulator/components/Header";
 import { HierarchyCreateDialog } from "@/features/simulator/components/HierarchyCreateDialog";
 import { MissionPanel } from "@/features/simulator/components/MissionPanel";
+import { PanelResizeHandle } from "@/features/simulator/components/PanelResizeHandle";
 import { PropertiesPanel } from "@/features/simulator/components/PropertiesPanel";
 import { ResourceTree } from "@/features/simulator/components/ResourceTree";
 import { SettingsDialog } from "@/features/simulator/components/SettingsDialog";
 import { Terminal } from "@/features/simulator/components/Terminal";
 import { HierarchyCreate } from "@/features/simulator/domains/hierarchy-create";
 import { type ConsoleHandlers, ConsoleView } from "@/features/simulator/features/console";
-import {
-  ConsoleScreen,
-  ConsoleScreens,
-  ConsoleSections,
-} from "@/features/simulator/features/console/domains/console-screen";
+import { ConsoleScreens } from "@/features/simulator/features/console/domains/console-screen";
+import { usePanelWidths } from "@/features/simulator/hooks/use-panel-widths";
 import {
   type PanelTab,
   PanelTabs,
@@ -59,6 +58,7 @@ const Tabs: readonly Readonly<{ tab: PanelTab; label: (missions: string) => stri
   { tab: PanelTabs.Properties, label: () => "プロパティ" },
   { tab: PanelTabs.Missions, label: (missions) => `ミッション ${missions}` },
   { tab: PanelTabs.Log, label: () => "変更ログ" },
+  { tab: PanelTabs.Files, label: () => "ファイル" },
 ];
 
 /** CLI 画面全体（モック 2a）: ヘッダー / リソース階層 / ターミナル / 右ペイン / 設定。 */
@@ -66,6 +66,7 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
   const [state, dispatch] = useSimulator(start);
   const [navigationOpen, setNavigationOpen] = useState(true);
   const [terminalMaximized, setTerminalMaximized] = useState(false);
+  const panels = usePanelWidths();
   const { world, saveState } = state;
   const namespace = Option.flatMap(WorldOps.currentProjectId(world), (projectId) =>
     Option.flatMap(KubeContext.current(world, projectId), (cluster) =>
@@ -119,11 +120,14 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
   const counts = Mission.counts(world);
   const isConsole = state.view === Views.Console;
   const isCreate = state.consoleScreen === ConsoleScreens.VmCreate;
-  const navWidth =
-    ConsoleScreen.section(state.consoleScreen) === ConsoleSections.Compute ? "14.5rem" : "16rem";
   const consoleLayout = {
-    "--console-nav-width": navigationOpen && !isCreate ? navWidth : "0px",
+    "--console-nav-width": navigationOpen && !isCreate ? `${panels.console.width}px` : "0px",
     "--console-terminal-height": terminalMaximized ? "70dvh" : "18rem",
+  } as CSSProperties;
+  const panelLayout = {
+    ...consoleLayout,
+    "--cli-left-width": `${panels.left.width}px`,
+    "--cli-right-width": `${panels.right.width}px`,
   } as CSSProperties;
   const copy = async (text: string): Promise<void> => {
     const copied = await io.copy(text);
@@ -183,7 +187,10 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
         </div>
       )}
       <div
-        className={`grid min-h-0 flex-1 ${isConsole ? "grid-cols-[minmax(0,1fr)]" : "grid-cols-1 content-start overflow-y-auto lg:grid-cols-[17.5rem_minmax(0,1fr)_26rem] lg:content-normal lg:overflow-hidden"}`}
+        ref={panels.containerRef}
+        data-testid="simulator-layout"
+        style={panelLayout}
+        className={`relative grid min-h-0 flex-1 ${isConsole ? "grid-cols-[minmax(0,1fr)]" : "grid-cols-1 content-start overflow-y-auto lg:grid-cols-[var(--cli-left-width)_minmax(0,1fr)_var(--cli-right-width)] lg:content-normal lg:overflow-hidden"}`}
       >
         {!isConsole && (
           <ResourceTree
@@ -247,12 +254,12 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
             className="order-1 flex h-[60dvh] min-h-96 min-w-0 flex-col border-line border-l bg-surface lg:order-none lg:h-auto lg:min-h-0"
             aria-label="詳細"
           >
-            <div className="flex border-line border-b" role="tablist">
+            <div className="flex shrink-0 overflow-x-auto border-line border-b" role="tablist">
               {Tabs.map(({ tab, label }) => (
                 <Tab
                   key={tab}
                   selected={state.panelTab === tab}
-                  className="px-4 py-3.5"
+                  className="shrink-0 whitespace-nowrap px-4 py-3.5"
                   onClick={() => dispatch({ type: "tabChanged", tab })}
                 >
                   {label(`${counts.completed}/${counts.total}`)}
@@ -300,8 +307,48 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
               {state.panelTab === PanelTabs.Log && (
                 <ChangeLog world={world} transcript={state.transcript} />
               )}
+              {state.panelTab === PanelTabs.Files && (
+                <FileWorkspace
+                  world={world}
+                  onEdit={(edit) => {
+                    const result = Engine.editFiles(world, edit);
+                    if (!result.ok) {
+                      return Result.err(result.error);
+                    }
+                    dispatch({ type: "filesChanged", world: result.value });
+                    return Result.ok(undefined);
+                  }}
+                />
+              )}
             </div>
           </aside>
+        )}
+        {!isConsole && (
+          <>
+            <PanelResizeHandle
+              label="左サイドバーの幅"
+              {...panels.left}
+              direction="right"
+              className="hidden lg:block"
+              style={{ left: "calc(var(--cli-left-width) - 4px)" }}
+            />
+            <PanelResizeHandle
+              label="右サイドバーの幅"
+              {...panels.right}
+              direction="left"
+              className="hidden lg:block"
+              style={{ right: "calc(var(--cli-right-width) - 4px)" }}
+            />
+          </>
+        )}
+        {isConsole && navigationOpen && !isCreate && (
+          <PanelResizeHandle
+            label="コンソールの左サイドバーの幅"
+            {...panels.console}
+            direction="right"
+            className="hidden md:block"
+            style={{ left: "calc(var(--console-nav-width) - 4px)" }}
+          />
         )}
       </div>
       {state.hierarchyOpen && (

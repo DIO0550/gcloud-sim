@@ -60,7 +60,7 @@ export const IngressProperties = ({
         ホストとパスが一致した中で最長パスを選び、同じ長さならExactを優先します。Prefixはパス要素単位です。未一致はdefaultBackendへ振り分けます。
       </p>
       <p className="mb-3 text-sm text-muted">
-        sim kubernetes requestで判定できます。NodePort
+        NodePort
         Serviceのportを参照し、targetPortへ送るReadyなPodを確認します。実LB・DNS・TLS・HTTPヘルスチェック・外部クライアントのNetworkPolicy判定は行いません。
       </p>
     </>

@@ -23,12 +23,12 @@
   試行錯誤できる。エラーの下に `gcloud-sim: hint:` で「その権限を含むロール」を出す
 - **リソースツリー**: 組織 → フォルダ → プロジェクト → リソース。クリックでプロパティと
   IAM の継承元、ダブルクリックで `describe` を入力行に挿入
-- **ミッション**: 136 本（ACE の 5 ドメインからカテゴリ→ミッション→手順を選択）。状態に対するアサーションでクリア判定する
-  （コマンドの文字列一致ではない）
-- **Cloud SQL / AlloyDB / DMS**: SQLの実データ、private接続・HA・replica、backup/PITR・Storage転送、AlloyDB read pool、DMSの初期コピー/CDC/切替を学習できる（[対応範囲](docs/RELATIONAL_DATABASES.md)）
+- **ミッション**: 実在するCLIと設定ファイル編集で進める74件の操作演習。ACEの4セクション・5操作カテゴリから選び、結果の状態でクリアを判定する
+- **ファイル編集**: CLI画面の「ファイル」タブでHCL・YAML・JSONを編集し、テンプレートを読み込む。Terraformやkubectlで適用する
+- **総合演習**: Terraformの構築・import・module化・GCSへのstate移行を通して練習できる
+- **画面レイアウト**: CLIの左右・Consoleの左サイドバーは境界をドラッグして幅を変更できる。CLI / Consoleの切り替えは共通ヘッダーにある
 - **保存**: コマンドごとに localStorage へ自動保存。設定から JSON の export / import / リセット
-- **kubectl**: `gcloud container clusters get-credentials` したクラスタに対して、Deployment / Service / Pod を
-  `apply` / `expose` / `scale` / `autoscale` / `rollout` などで動かせる（ConfigMap/Secret・単一コンテナのDeployment/Service・CPU HPAは編集可能なYAML/JSONに対応）。ConfigMap/Secretのファイルマウント・items/optional/subPathと、cat/base64による内容確認にも対応。HTTP readinessProbeと応答コードによる明示評価で、未準備PodをServiceの接続先から外す練習もできる。HTTP livenessProbeでは同じPod内のコンテナ再起動とreadinessの再評価も確認できる。HTTP startupProbeでは起動確認が成功するまでreadiness/livenessを待機させる
+- **kubectl**: クラスタの選択、Deployment / Service / Pod、ConfigMap / Secret、マニフェストのapply、更新・ロールバックなどを練習できる。設定ファイルは画面で編集する。実測CPU・HTTP応答・通信の注入を必要とする演習は公開しない
 - **Console 風 GUI**（Phase 2）: ヘッダーの CLI / Console で切り替える。IAM・サービスアカウント・ロール・予算・
   VM・ファイアウォール・サブネット・バケット・クラスタ・Cloud Run の画面を持ち、作成フォームには
   「同等のコマンドライン」が出る。送信したものはターミナルにも `# Console:` 付きで残る
@@ -331,14 +331,10 @@ pnpm visual:compare -- --expected visual-baseline --actual visual-actual --out v
 
 ### Terraformの演習
 
-`sim files load terraform-network` から始められます。VPC/subnet/VM/firewall/bucketのHCL、plan/apply、ドリフト、state/import、ローカルmodule/moved、GCS backendへのstate移行・ロック復旧と7本のミッションに対応しています。操作例と未対応範囲は [docs/TERRAFORM.md](docs/TERRAFORM.md) を参照してください。
-
-### Docker・Artifact Registryの演習
-
-`sim docker example` → `docker build -t hello:v1 ./hello-web` から始められます。ローカル起動、push/pull、タグとdigest、リポジトリIAM、Cloud Build、GKEのpull権限、リリースタグの切替と片付けを7本のミッションで練習できます。詳細は [docs/CONTAINERS.md](docs/CONTAINERS.md)。
+CLI画面の「ファイル」タブでterraform-networkを読み込み、`gcloud auth application-default login` → `terraform init` → `terraform plan`から始めます。VPC/subnet/VM/firewall/bucketのHCL、state/import、module/moved、GCS backendへのstate移行に対応します。[操作例](docs/TERRAFORM.md)。
 
 ### GKEの更新・復旧
 
-`kubectl set image`、`rollout history/status/undo`でイメージ更新とロールバックを練習できます。ConfigMap/Secretからの環境変数注入・再起動・設定ファイル適用と、Deployment更新・Service接続先の修正も含む6本のミッションと、現在/過去のReplicaSet表示、Podを1つ削除した後の自己修復に対応しています。操作例と再現範囲は [docs/KUBERNETES.md](docs/KUBERNETES.md)。
+`kubectl set image`、`rollout history/status/undo`で更新・復旧を練習できます。ConfigMap/SecretやDeployment/Serviceの設定ファイルは「ファイル」タブで編集します。[操作例](docs/KUBERNETES.md)。
 
-Firestore・Spanner・Bigtable・Memorystoreの操作と14ミッションは[MANAGED_DATABASES.md](docs/MANAGED_DATABASES.md)を参照してください。実データの読書き、索引、複製、GC、期限、復元、Functionsの実行SA/VPC接続を教材モデルで評価します。
+現在の公開範囲と未対応の学習目標は[ACE_COVERAGE.md](docs/ACE_COVERAGE.md)と[ACE_SOURCE_MAP.md](docs/ACE_SOURCE_MAP.md)を参照してください。

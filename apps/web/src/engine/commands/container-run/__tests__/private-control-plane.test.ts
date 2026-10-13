@@ -1,11 +1,11 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { Engine } from "@/engine";
-import { Now, run, type Session, session } from "@/engine/__tests__/setup";
+import { Engine } from "@/engine/__tests__/fixture-engine";
+import { Now, run, type Session, session } from "@/engine/__tests__/fixture-setup";
+import { SchemaVersion, Snapshot } from "@/engine/__tests__/fixture-snapshot";
 import { GkeControlPlane } from "@/engine/domains/gke-control-plane";
 import { KubeContext } from "@/engine/domains/kube-context";
 import { World } from "@/engine/domains/world";
-import { SchemaVersion, Snapshot } from "@/engine/snapshot";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 

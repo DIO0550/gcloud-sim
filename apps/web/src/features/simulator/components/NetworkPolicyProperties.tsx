@@ -100,9 +100,8 @@ export const NetworkPolicyProperties = ({
         許可はポリシー間で合算します。通信には送信側Egressと受信側Ingressの両方の許可が必要です。PodのReadyやServiceの接続先は変えません。
       </p>
       <p className="mb-3 text-sm text-muted">
-        sim kubernetes
-        connectでTCPの新規通信を判定します。実通信・プロセスの待受確認は行いません。namespace
-        selectorとPod selectorを同じ許可元・許可先に書くとAND条件になります。
+        実通信・プロセスの待受確認は行いません。namespace selectorとPod
+        selectorを同じ許可元・許可先に書くとAND条件になります。
       </p>
     </>
   );

@@ -313,7 +313,10 @@ const clickByText = (text) => {
 const fillByLabel = ([label, value]) => {
   const labels = [...document.querySelectorAll("label")];
   const target = labels.find((l) => (l.textContent ?? "").trim() === label);
-  const input = target?.control;
+  const input =
+    [...document.querySelectorAll("input, textarea, select")].find(
+      (field) => field.getAttribute("aria-label") === label,
+    ) ?? target?.control;
   if (!input) {
     return { ok: false, found: labels.map((l) => (l.textContent ?? "").trim()).slice(0, 40) };
   }

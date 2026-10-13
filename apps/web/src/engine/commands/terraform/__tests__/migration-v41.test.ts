@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { Now, run, type Session, session } from "@/engine/__tests__/setup";
+import { Now, run, type Session, session } from "@/engine/__tests__/fixture-setup";
 import { TfBackend, type TfStateData } from "@/engine/domains/terraform/backend";
 import { Snapshot } from "@/engine/snapshot";
 import { Option } from "@/utils/Option";

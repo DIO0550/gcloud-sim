@@ -1,8 +1,8 @@
 import { expect } from "vitest";
-import { Now, run, type Session, session } from "@/engine/__tests__/setup";
+import { Now, run, type Session, session } from "@/engine/__tests__/fixture-setup";
+import { Snapshot } from "@/engine/__tests__/fixture-snapshot";
 import { KubePod } from "@/engine/domains/kubernetes";
 import { World } from "@/engine/domains/world";
-import { Snapshot } from "@/engine/snapshot";
 import { Result } from "@/utils/Result";
 
 export const execute = (s: Session, ...commands: string[]): Session =>

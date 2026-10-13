@@ -1,8 +1,9 @@
 // @vitest-environment node
 import { expect, test } from "vitest";
-import { Engine } from "@/engine";
-import { Now, run, session } from "@/engine/__tests__/setup";
-import { Mission } from "@/engine/missions";
+import { Engine } from "@/engine/__tests__/fixture-engine";
+import { Mission } from "@/engine/__tests__/fixture-missions";
+import { Now, run, session } from "@/engine/__tests__/fixture-setup";
+import { Snapshot } from "@/engine/__tests__/fixture-snapshot";
 import {
   type DataLesson,
   DataMissions,
@@ -10,7 +11,6 @@ import {
   DataSolutions,
   dataSatisfied,
 } from "@/engine/missions/data-processing";
-import { Snapshot } from "@/engine/snapshot";
 
 for (const mission of DataMissions) {
   test(`${mission.title}: initial, every intermediate, saved solution`, () => {

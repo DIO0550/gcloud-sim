@@ -1983,7 +1983,10 @@ export const Snapshot = {
     const validated = Result.flatMap(hydrated, (w) =>
       Result.mapErr(World.validate(w), (reason): ImportFailure => ({ kind: "invariant", reason })),
     );
-    return Result.map(validated, Mission.syncProgress);
+    // 廃止した架空のAI教材が、公開CLIでSAやsubnetを削除できない参照を残さないようにする。
+    return Result.map(validated, (world) =>
+      Mission.syncProgress({ ...world, aceSupport: { resources: [], decisions: [] } }),
+    );
   },
 } as const;
 

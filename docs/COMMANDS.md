@@ -12,7 +12,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 - ここに無いコマンドは `ERROR: (gcloud) Invalid choice: 'xxx'.`（E-001）になる。「未実装」の表に
   あるものは `gcloud-sim: command not implemented yet: ...`（E-002）になる
 - グローバルフラグ `--project` `--account` `--format` `--filter` `--limit` `--sort-by`
-  `--impersonate-service-account`（gcloudの対象コマンド） `--quiet`/`-q` `--help`/`-h` `--verbosity` はgcloud/gsutil/kubectlが受ける（Terraform/sim/Dockerはhelpのみ）
+  `--impersonate-service-account`（gcloudの対象コマンド） `--quiet`/`-q` `--help`/`-h` `--verbosity` はgcloud/gsutil/kubectlが受ける（Terraform/Dockerはhelpのみ）
 - `--format` は `json` / `yaml` / `value(FIELDS)` / `table(FIELDS)` / `none`、`--filter` は
   `key=value` / `key!=value` / `key:substring` / `NOT` / `AND` / `OR` の簡易版（DJ-009）
 - `gcloud beta` / `gcloud alpha` は警告を出して `gcloud` と同じに扱う
@@ -21,139 +21,45 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 この表は `src/engine/commands/` の登録簿から作っている。登録簿と食い違うと
 `src/engine/__tests__/commands-doc.test.ts` が落ちる。
 
-## 実装済み（856）
+実在するCLIの構文だけを登録します。アプリ独自のコマンドは受け付けません。HCL・YAML・JSONはCLI画面の「ファイル」タブで編集します。
 
-### ACE選定・AI構成教材
+実在するCLIの構文だけを登録します。アプリ独自のコマンドは受け付けません。HCL・YAML・JSONはCLI画面の「ファイル」タブで編集します。
 
-| コマンド | 内容 |
-|---|---|
-| `sim ace scenarios list` | 固定の選定シナリオ一覧。 |
-| `sim ace scenarios describe` | 要件・選択肢・解説と現在の回答。 |
-| `sim ace scenarios choose` | `--choice` / `--reason`で選択と理由を保存。 |
-| `sim ai resources create` | kind/platform・regional subnet・専用SAの教材構成を作成。 |
-| `sim ai resources update` | 停止中のaccess・idle・SA・subnetを変更。 |
-| `sim ai resources start` | API・IAM・actAs・subnetを検証して教材状態をRUNNINGにする。 |
-| `sim ai resources stop` | 停止して構成revisionの履歴を保存。 |
-| `sim ai resources delete` | 停止済み、または未開始の教材構成を削除。 |
-| `sim ai resources describe` | 指定project/regionの構成と履歴を表示。 |
-| `sim ai resources list` | 指定projectの構成一覧。 |
+## 実装済み（674）
 
-実行するのは構成教材の状態遷移です。実AI・VM・IDEの起動や課金は行いません。詳細は[ACE_AI_SUPPORT.md](ACE_AI_SUPPORT.md)を参照してください。
-
-### コンテナ教材の公開検証
+### gcloud compute
 
 | コマンド | 内容 |
 |---|---|
-| `sim container-release validate-local` | 固定教材のローカル稼働・イメージ・ポートを検証して履歴を残す。実HTTPなし。 |
-| `sim container-release validate-deployment` | `--region=us-central1`。専用GKEの取得IAM・API・2 Readyレプリカ・公開Service・同一イメージを検証。 |
-| `sim container-release status` | 削除後も残る検証履歴と現在の片付け状態。 |
-
-### 組織・IAM・ID連携・クォータ・課金
-
-構文・公式参照・教材の権限投影・未対応範囲は[ADMINISTRATION.md](ADMINISTRATION.md)を参照してください。
-
-| コマンド | 内容 |
-|---|---|
-| `gcloud org-policies set-policy` | 管理教材の構成・検証・状態操作。 |
-| `gcloud org-policies describe` | 管理教材の構成・検証・状態操作。 |
-| `gcloud org-policies reset` | 管理教材の構成・検証・状態操作。 |
-| `gcloud org-policies delete` | 管理教材の構成・検証・状態操作。 |
-| `sim identity users create` | 管理教材の構成・検証・状態操作。 |
-| `sim identity users describe` | 管理教材の構成・検証・状態操作。 |
-| `sim identity users list` | 管理教材の構成・検証・状態操作。 |
-| `sim identity users update` | 管理教材の構成・検証・状態操作。 |
-| `sim identity users delete` | 管理教材の構成・検証・状態操作。 |
-| `gcloud identity groups create` | 管理教材の構成・検証・状態操作。 |
-| `gcloud identity groups describe` | 管理教材の構成・検証・状態操作。 |
-| `gcloud identity groups search` | 管理教材の構成・検証・状態操作。 |
-| `gcloud identity groups delete` | 管理教材の構成・検証・状態操作。 |
-| `gcloud identity groups memberships add` | 管理教材の構成・検証・状態操作。 |
-| `gcloud identity groups memberships delete` | 管理教材の構成・検証・状態操作。 |
-| `gcloud identity groups memberships list` | 管理教材の構成・検証・状態操作。 |
-| `gcloud auth print-access-token` | 管理教材の構成・検証・状態操作。 |
-| `sim auth credentials check` | 管理教材の構成・検証・状態操作。 |
-| `sim iam runtime check` | 管理教材の構成・検証・状態操作。 |
-| `gcloud iam workload-identity-pools create` | 管理教材の構成・検証・状態操作。 |
-| `gcloud iam workload-identity-pools list` | 管理教材の構成・検証・状態操作。 |
-| `gcloud iam workload-identity-pools describe` | 管理教材の構成・検証・状態操作。 |
-| `gcloud iam workload-identity-pools delete` | 管理教材の構成・検証・状態操作。 |
-| `gcloud iam workforce-pools create` | 管理教材の構成・検証・状態操作。 |
-| `gcloud iam workforce-pools list` | 管理教材の構成・検証・状態操作。 |
-| `gcloud iam workforce-pools describe` | 管理教材の構成・検証・状態操作。 |
-| `gcloud iam workforce-pools delete` | 管理教材の構成・検証・状態操作。 |
-| `gcloud iam workload-identity-pools providers create-oidc` | 管理教材の構成・検証・状態操作。 |
-| `gcloud iam workload-identity-pools providers list` | 管理教材の構成・検証・状態操作。 |
-| `gcloud iam workload-identity-pools providers describe` | 管理教材の構成・検証・状態操作。 |
-| `gcloud iam workload-identity-pools providers delete` | 管理教材の構成・検証・状態操作。 |
-| `gcloud iam workforce-pools providers create-oidc` | 管理教材の構成・検証・状態操作。 |
-| `gcloud iam workforce-pools providers list` | 管理教材の構成・検証・状態操作。 |
-| `gcloud iam workforce-pools providers describe` | 管理教材の構成・検証・状態操作。 |
-| `gcloud iam workforce-pools providers delete` | 管理教材の構成・検証・状態操作。 |
-| `sim identity federation exchange` | 管理教材の構成・検証・状態操作。 |
-| `sim identity federation access` | 管理教材の構成・検証・状態操作。 |
-| `gcloud quotas info list` | 管理教材の構成・検証・状態操作。 |
-| `gcloud quotas preferences create` | 管理教材の構成・検証・状態操作。 |
-| `gcloud quotas preferences update` | 管理教材の構成・検証・状態操作。 |
-| `sim quotas resolve` | 管理教材の構成・検証・状態操作。 |
-| `sim quotas evaluate` | 管理教材の構成・検証・状態操作。 |
-| `gcloud asset search-all-resources` | 管理教材の構成・検証・状態操作。 |
-| `gcloud billing budgets update` | 管理教材の構成・検証・状態操作。 |
-| `gcloud billing budgets delete` | 管理教材の構成・検証・状態操作。 |
-| `sim billing budgets evaluate` | 管理教材の構成・検証・状態操作。 |
-| `sim billing export configure` | 管理教材の構成・検証・状態操作。 |
-| `sim billing export describe` | 管理教材の構成・検証・状態操作。 |
-| `sim billing export run` | 管理教材の構成・検証・状態操作。 |
-| `sim billing placement evaluate` | 管理教材の構成・検証・状態操作。 |
-
-### Storage・暗号化・転送・共有ファイル
-
-構成例、IAM、世代復旧と対応範囲は[STORAGE.md](STORAGE.md)を参照してください。
-
-| コマンド | 内容 |
-|---|---|
-| `gcloud filestore instances create` | Storage教材の構成・検証・状態操作。 |
-| `gcloud filestore instances list` | Storage教材の構成・検証・状態操作。 |
-| `gcloud filestore instances describe` | Storage教材の構成・検証・状態操作。 |
-| `gcloud filestore instances delete` | Storage教材の構成・検証・状態操作。 |
-| `gcloud netapp storage-pools create` | Storage教材の構成・検証・状態操作。 |
-| `gcloud netapp storage-pools list` | Storage教材の構成・検証・状態操作。 |
-| `gcloud netapp storage-pools describe` | Storage教材の構成・検証・状態操作。 |
-| `gcloud netapp storage-pools delete` | Storage教材の構成・検証・状態操作。 |
-| `gcloud netapp volumes create` | Storage教材の構成・検証・状態操作。 |
-| `gcloud netapp volumes list` | Storage教材の構成・検証・状態操作。 |
-| `gcloud netapp volumes describe` | Storage教材の構成・検証・状態操作。 |
-| `gcloud netapp volumes delete` | Storage教材の構成・検証・状態操作。 |
-| `gcloud lustre instances create` | Storage教材の構成・検証・状態操作。 |
-| `gcloud lustre instances list` | Storage教材の構成・検証・状態操作。 |
-| `gcloud lustre instances describe` | Storage教材の構成・検証・状態操作。 |
-| `gcloud lustre instances delete` | Storage教材の構成・検証・状態操作。 |
-| `sim storage choose` | Storage教材の構成・検証・状態操作。 |
-| `gcloud kms keys versions enable` | Storage教材の構成・検証・状態操作。 |
-| `gcloud kms keys versions disable` | Storage教材の構成・検証・状態操作。 |
-| `gcloud storage service-agent` | Storage教材の構成・検証・状態操作。 |
-| `gcloud storage objects describe` | Storage教材の構成・検証・状態操作。 |
-| `gcloud storage restore` | Storage教材の構成・検証・状態操作。 |
-| `sim storage versions restore` | Storage教材の構成・検証・状態操作。 |
-| `sim storage access check` | Storage教材の構成・検証・状態操作。 |
-| `sim storage lifecycle run` | Storage教材の構成・検証・状態操作。 |
-| `sim storage time advance` | Storage教材の構成・検証・状態操作。 |
-| `sim storage signed-url check` | Storage教材の構成・検証・状態操作。 |
-| `gcloud transfer jobs create` | Storage教材の構成・検証・状態操作。 |
-| `gcloud transfer jobs run` | Storage教材の構成・検証・状態操作。 |
-| `gcloud transfer jobs describe` | Storage教材の構成・検証・状態操作。 |
-| `gcloud transfer jobs list` | Storage教材の構成・検証・状態操作。 |
-| `gcloud transfer jobs update` | Storage教材の構成・検証・状態操作。 |
-| `gcloud transfer jobs delete` | Storage教材の構成・検証・状態操作。 |
-| `sim storage transfer-service-agent` | Storage教材の構成・検証・状態操作。 |
-
-Compute・復旧・VM管理は42コマンドと15ミッションを追加しています。構文・範囲・カタログ根拠は[COMPUTE.md](COMPUTE.md)を参照してください。
-
-### VPC・接続・DNS・Firewall
-
-対応範囲・構文例・明示診断は[NETWORKING.md](NETWORKING.md)を参照してください。
-
-| コマンド | 内容 |
-|---|---|
+| `gcloud compute disks delete` | gcloud compute disks delete: bounded Compute lesson; no cloud execution. |
+| `gcloud compute disks update` | gcloud compute disks update: bounded Compute lesson; no cloud execution. |
+| `gcloud compute snapshots delete` | gcloud compute snapshots delete: bounded Compute lesson; no cloud execution. |
+| `gcloud compute images create` | gcloud compute images create: bounded Compute lesson; no cloud execution. |
+| `gcloud compute images describe` | gcloud compute images describe: bounded Compute lesson; no cloud execution. |
+| `gcloud compute images delete` | gcloud compute images delete: bounded Compute lesson; no cloud execution. |
+| `gcloud compute resource-policies create snapshot-schedule` | gcloud compute resource-policies create snapshot-schedule: bounded Compute lesson; no cloud execution. |
+| `gcloud compute resource-policies describe` | gcloud compute resource-policies describe: bounded Compute lesson; no cloud execution. |
+| `gcloud compute resource-policies delete` | gcloud compute resource-policies delete: bounded Compute lesson; no cloud execution. |
+| `gcloud compute resource-policies list` | gcloud compute resource-policies list: bounded Compute lesson; no cloud execution. |
+| `gcloud compute disks add-resource-policies` | gcloud compute disks add-resource-policies: bounded Compute lesson; no cloud execution. |
+| `gcloud compute disks remove-resource-policies` | gcloud compute disks remove-resource-policies: bounded Compute lesson; no cloud execution. |
+| `gcloud compute instance-groups managed set-instance-template` | gcloud compute instance-groups managed set-instance-template: bounded Compute lesson; no cloud execution. |
+| `gcloud compute instance-groups managed rolling-action start-update` | gcloud compute instance-groups managed rolling-action start-update: bounded Compute lesson; no cloud execution. |
+| `gcloud compute instance-groups managed update` | gcloud compute instance-groups managed update: bounded Compute lesson; no cloud execution. |
+| `gcloud compute instance-groups managed resize` | gcloud compute instance-groups managed resize: bounded Compute lesson; no cloud execution. |
+| `gcloud compute instances detach-disk` | gcloud compute instances detach-disk: bounded Compute lesson; no cloud execution. |
+| `gcloud compute instances set-scheduling` | gcloud compute instances set-scheduling: bounded Compute lesson; no cloud execution. |
+| `gcloud compute instances set-service-account` | gcloud compute instances set-service-account: bounded Compute lesson; no cloud execution. |
+| `gcloud compute tpus tpu-vm create` | gcloud compute tpus tpu-vm create: bounded Compute lesson; no cloud execution. |
+| `gcloud compute tpus tpu-vm list` | gcloud compute tpus tpu-vm list: bounded Compute lesson; no cloud execution. |
+| `gcloud compute tpus tpu-vm describe` | gcloud compute tpus tpu-vm describe: bounded Compute lesson; no cloud execution. |
+| `gcloud compute tpus tpu-vm start` | gcloud compute tpus tpu-vm start: bounded Compute lesson; no cloud execution. |
+| `gcloud compute tpus tpu-vm stop` | gcloud compute tpus tpu-vm stop: bounded Compute lesson; no cloud execution. |
+| `gcloud compute tpus tpu-vm delete` | gcloud compute tpus tpu-vm delete: bounded Compute lesson; no cloud execution. |
+| `gcloud compute os-config inventories describe` | gcloud compute os-config inventories describe: bounded Compute lesson; no cloud execution. |
+| `gcloud compute os-config os-policy-assignments create` | gcloud compute os-config os-policy-assignments create: bounded Compute lesson; no cloud execution. |
+| `gcloud compute os-config os-policy-assignments describe` | gcloud compute os-config os-policy-assignments describe: bounded Compute lesson; no cloud execution. |
+| `gcloud compute os-config os-policy-assignments delete` | gcloud compute os-config os-policy-assignments delete: bounded Compute lesson; no cloud execution. |
 | `gcloud compute vpn-gateways create` | gcloud compute vpn-gateways create: bounded network configuration or diagnosis; no traffic is sent. |
 | `gcloud compute vpn-gateways list` | gcloud compute vpn-gateways list: bounded network configuration or diagnosis; no traffic is sent. |
 | `gcloud compute vpn-gateways describe` | gcloud compute vpn-gateways describe: bounded network configuration or diagnosis; no traffic is sent. |
@@ -168,16 +74,12 @@ Compute・復旧・VM管理は42コマンドと15ミッションを追加して�
 | `gcloud compute vpn-tunnels delete` | gcloud compute vpn-tunnels delete: bounded network configuration or diagnosis; no traffic is sent. |
 | `gcloud compute routers add-interface` | gcloud compute routers add-interface: bounded network configuration or diagnosis; no traffic is sent. |
 | `gcloud compute routers add-bgp-peer` | gcloud compute routers add-bgp-peer: bounded network configuration or diagnosis; no traffic is sent. |
-| `sim network bgp establish` | sim network bgp establish: bounded network configuration or diagnosis; no traffic is sent. |
-| `sim network bgp disconnect` | sim network bgp disconnect: bounded network configuration or diagnosis; no traffic is sent. |
 | `gcloud compute routers remove-bgp-peer` | gcloud compute routers remove-bgp-peer: bounded network configuration or diagnosis; no traffic is sent. |
 | `gcloud compute routers remove-interface` | gcloud compute routers remove-interface: bounded network configuration or diagnosis; no traffic is sent. |
-| `sim network hybrid describe` | sim network hybrid describe: bounded network configuration or diagnosis; no traffic is sent. |
 | `gcloud compute interconnects attachments partner create` | gcloud compute interconnects attachments partner create: bounded network configuration or diagnosis; no traffic is sent. |
 | `gcloud compute interconnects attachments list` | gcloud compute interconnects attachments list: bounded network configuration or diagnosis; no traffic is sent. |
 | `gcloud compute interconnects attachments describe` | gcloud compute interconnects attachments describe: bounded network configuration or diagnosis; no traffic is sent. |
 | `gcloud compute interconnects attachments delete` | gcloud compute interconnects attachments delete: bounded network configuration or diagnosis; no traffic is sent. |
-| `sim network interconnect activate` | sim network interconnect activate: bounded network configuration or diagnosis; no traffic is sent. |
 | `gcloud compute interconnects attachments partner update` | gcloud compute interconnects attachments partner update: bounded network configuration or diagnosis; no traffic is sent. |
 | `gcloud compute networks subnets expand-ip-range` | gcloud compute networks subnets expand-ip-range: bounded network configuration or diagnosis; no traffic is sent. |
 | `gcloud compute routes create` | gcloud compute routes create: bounded network configuration or diagnosis; no traffic is sent. |
@@ -195,18 +97,8 @@ Compute・復旧・VM管理は42コマンドと15ミッションを追加して�
 | `gcloud compute shared-vpc get-host-project` | gcloud compute shared-vpc get-host-project: bounded network configuration or diagnosis; no traffic is sent. |
 | `gcloud compute shared-vpc associated-projects list` | gcloud compute shared-vpc associated-projects list: bounded network configuration or diagnosis; no traffic is sent. |
 | `gcloud compute networks peerings delete` | gcloud compute networks peerings delete: bounded network configuration or diagnosis; no traffic is sent. |
-| `sim network connectivity` | sim network connectivity: bounded network configuration or diagnosis; no traffic is sent. |
-| `sim network logs list` | sim network logs list: bounded network configuration or diagnosis; no traffic is sent. |
 | `gcloud compute networks update` | gcloud compute networks update: bounded network configuration or diagnosis; no traffic is sent. |
-| `gcloud dns record-sets create` | gcloud dns record-sets create: bounded network configuration or diagnosis; no traffic is sent. |
-| `gcloud dns record-sets update` | gcloud dns record-sets update: bounded network configuration or diagnosis; no traffic is sent. |
-| `gcloud dns record-sets delete` | gcloud dns record-sets delete: bounded network configuration or diagnosis; no traffic is sent. |
-| `gcloud dns record-sets describe` | gcloud dns record-sets describe: bounded network configuration or diagnosis; no traffic is sent. |
-| `gcloud dns record-sets list` | gcloud dns record-sets list: bounded network configuration or diagnosis; no traffic is sent. |
-| `gcloud dns managed-zones update` | gcloud dns managed-zones update: bounded network configuration or diagnosis; no traffic is sent. |
-| `gcloud dns managed-zones delete` | gcloud dns managed-zones delete: bounded network configuration or diagnosis; no traffic is sent. |
 | `gcloud compute firewall-rules update` | gcloud compute firewall-rules update: bounded network configuration or diagnosis; no traffic is sent. |
-| `sim network secure-tags bind` | sim network secure-tags bind: bounded network configuration or diagnosis; no traffic is sent. |
 | `gcloud compute network-firewall-policies create` | gcloud compute network-firewall-policies create: bounded network configuration or diagnosis; no traffic is sent. |
 | `gcloud compute network-firewall-policies list` | gcloud compute network-firewall-policies list: bounded network configuration or diagnosis; no traffic is sent. |
 | `gcloud compute network-firewall-policies describe` | gcloud compute network-firewall-policies describe: bounded network configuration or diagnosis; no traffic is sent. |
@@ -216,57 +108,136 @@ Compute・復旧・VM管理は42コマンドと15ミッションを追加して�
 | `gcloud compute network-firewall-policies rules create` | gcloud compute network-firewall-policies rules create: bounded network configuration or diagnosis; no traffic is sent. |
 | `gcloud compute network-firewall-policies rules delete` | gcloud compute network-firewall-policies rules delete: bounded network configuration or diagnosis; no traffic is sent. |
 | `gcloud compute routers delete` | gcloud compute routers delete: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud compute instances create` | Create Compute Engine virtual machine instances. |
+| `gcloud compute instances list` | List Compute Engine virtual machine instances. |
+| `gcloud compute instances describe` | Describe a virtual machine instance. |
+| `gcloud compute instances start` | Start a virtual machine instance. |
+| `gcloud compute instances stop` | Stopp a virtual machine instance. |
+| `gcloud compute instances suspend` | Suspend a virtual machine instance. |
+| `gcloud compute instances resume` | Resum a virtual machine instance. |
+| `gcloud compute instances delete` | Delete Compute Engine virtual machine instances. |
+| `gcloud compute instances add-tags` | Add tags to Compute Engine virtual machine instances. |
+| `gcloud compute instances add-metadata` | Add or update instance metadata. |
+| `gcloud compute instances set-machine-type` | Set machine type for Compute Engine virtual machines (the instance must be stopped). |
+| `gcloud compute instances attach-disk` | Attach a disk to an instance. |
+| `gcloud compute ssh` | SSH into a virtual machine instance (checks the connection prerequisites only). |
+| `gcloud compute scp` | Copy files to and from Google Compute Engine virtual machines via scp (checks the connection prerequisites only). |
+| `gcloud compute project-info describe` | Describe the Compute Engine project resource. |
+| `gcloud compute project-info add-metadata` | Add or update project-wide metadata. |
+| `gcloud compute os-login ssh-keys add` | Add an SSH public key to an OS Login profile. |
+| `gcloud compute zones list` | List Compute Engine zones. |
+| `gcloud compute regions list` | List Compute Engine regions. |
+| `gcloud compute machine-types list` | List Compute Engine machine types. |
+| `gcloud compute images list` | List Compute Engine images. |
+| `gcloud compute operations list` | List Compute Engine operations. |
+| `gcloud compute disks list` | List Compute Engine disks. |
+| `gcloud compute disks create` | Create Compute Engine persistent disks. |
+| `gcloud compute disks describe` | Describe a Compute Engine disk. |
+| `gcloud compute disks snapshot` | Create snapshots of Compute Engine persistent disks. |
+| `gcloud compute disks resize` | Resize a disk or disks (larger only). |
+| `gcloud compute snapshots create` | Create a Compute Engine snapshot from a disk. |
+| `gcloud compute snapshots list` | List Compute Engine snapshots. |
+| `gcloud compute snapshots describe` | Describe a Compute Engine snapshot. |
+| `gcloud compute networks subnets update` | Update Private Google Access on a subnetwork. |
+| `gcloud compute networks create` | Create a Compute Engine network. |
+| `gcloud compute networks list` | List Compute Engine networks. |
+| `gcloud compute networks describe` | Describe a Compute Engine network. |
+| `gcloud compute networks delete` | Delete a Compute Engine network. |
+| `gcloud compute networks subnets create` | Define a subnet for a network in custom subnet mode. |
+| `gcloud compute networks subnets list` | List Compute Engine subnetworks. |
+| `gcloud compute networks subnets describe` | Describe a Compute Engine subnetwork. |
+| `gcloud compute networks peerings create` | Create a Compute Engine network peering. |
+| `gcloud compute firewall-rules create` | Create a Compute Engine firewall rule. |
+| `gcloud compute firewall-rules list` | List Compute Engine firewall rules. |
+| `gcloud compute firewall-rules describe` | Describe a Compute Engine firewall rule. |
+| `gcloud compute firewall-rules delete` | Delete Compute Engine firewall rules. |
+| `gcloud compute addresses create` | Reserve IP addresses. |
+| `gcloud compute addresses list` | List addresses. |
+| `gcloud compute addresses describe` | Display detailed information about an address. |
+| `gcloud compute routers create` | Create a Compute Engine router. |
+| `gcloud compute routers list` | List Compute Engine routers. |
+| `gcloud compute routers describe` | Describe a Compute Engine router. |
+| `gcloud compute health-checks create tcp` | Create a TCP health check. |
+| `gcloud compute health-checks create http` | Create a HTTP health check. |
+| `gcloud compute health-checks create https` | Create a HTTPS health check. |
+| `gcloud compute health-checks create` | Legacy simulator alias; prefer create http/tcp/https NAME. |
+| `gcloud compute health-checks describe` | Describe a scoped health check. |
+| `gcloud compute backend-services create` | Create a backend service for the three modeled LB architectures. |
+| `gcloud compute backend-services update` | Update named port, timeout, health check and CDN configuration. |
+| `gcloud compute backend-services add-backend` | add a scoped MIG or zonal NEG backend. |
+| `gcloud compute backend-services remove-backend` | remove a scoped MIG or zonal NEG backend. |
+| `gcloud compute backend-services get-health` | Diagnose VM, app response, named port and health-check firewall independently. |
+| `gcloud compute backend-services describe` | Describe a scoped backend service. |
+| `gcloud compute health-checks list` | List selected global/regional resources with scoped read permissions. |
+| `gcloud compute backend-services list` | List selected global/regional resources with scoped read permissions. |
+| `gcloud compute url-maps create` | Create url-maps and validate scoped references. |
+| `gcloud compute url-maps describe` | Describe url-maps. |
+| `gcloud compute url-maps list` | List url-maps. |
+| `gcloud compute target-http-proxies create` | Create target-http-proxies and validate scoped references. |
+| `gcloud compute target-http-proxies describe` | Describe target-http-proxies. |
+| `gcloud compute target-http-proxies list` | List target-http-proxies. |
+| `gcloud compute target-https-proxies create` | Create target-https-proxies and validate scoped references. |
+| `gcloud compute target-https-proxies describe` | Describe target-https-proxies. |
+| `gcloud compute target-https-proxies list` | List target-https-proxies. |
+| `gcloud compute ssl-certificates create` | Create ssl-certificates and validate scoped references. |
+| `gcloud compute ssl-certificates describe` | Describe ssl-certificates. |
+| `gcloud compute ssl-certificates list` | List ssl-certificates. |
+| `gcloud compute network-endpoint-groups create` | Create network-endpoint-groups and validate scoped references. |
+| `gcloud compute network-endpoint-groups describe` | Describe network-endpoint-groups. |
+| `gcloud compute network-endpoint-groups list` | List network-endpoint-groups. |
+| `gcloud compute backend-buckets create` | Create backend-buckets and validate scoped references. |
+| `gcloud compute backend-buckets describe` | Describe backend-buckets. |
+| `gcloud compute backend-buckets list` | List backend-buckets. |
+| `gcloud compute url-maps add-path-matcher` | Add host and exact/longest prefix path routing. |
+| `gcloud compute network-endpoint-groups update` | Add/remove one GCE_VM_IP_PORT endpoint per call. |
+| `gcloud compute forwarding-rules create` | Connect a passthrough backend or Application proxy frontend. |
+| `gcloud compute forwarding-rules describe` | Describe a scoped forwarding rule. |
+| `gcloud compute forwarding-rules list` | List scoped frontends. |
+| `gcloud compute instance-groups managed list-instances` | List only VMs belonging to the scoped managed instance group. |
+| `gcloud compute instance-groups managed set-named-ports` | Set MIG named ports; this does not start an application or open a firewall. |
+| `gcloud compute instance-groups set-named-ports` | Set MIG named ports; this does not start an application or open a firewall. |
+| `gcloud compute instance-groups get-named-ports` | Show MIG named ports. |
+| `gcloud compute url-maps delete` | Delete url-maps after dependents. |
+| `gcloud compute target-http-proxies delete` | Delete target-http-proxies after dependents. |
+| `gcloud compute target-https-proxies delete` | Delete target-https-proxies after dependents. |
+| `gcloud compute ssl-certificates delete` | Delete ssl-certificates after dependents. |
+| `gcloud compute network-endpoint-groups delete` | Delete network-endpoint-groups after dependents. |
+| `gcloud compute backend-buckets delete` | Delete backend-buckets after dependents. |
+| `gcloud compute health-checks delete` | Delete an unused scoped health check. |
+| `gcloud compute backend-services delete` | Delete a backend after frontends and URL maps. |
+| `gcloud compute forwarding-rules delete` | Delete frontend and release its reserved address. |
+| `gcloud compute addresses delete` | Delete an unused reserved address. |
+| `gcloud compute instance-groups managed delete` | Delete an unused MIG and only its own member VMs. |
+| `gcloud compute instance-templates delete` | Delete an unused instance template. |
+| `gcloud compute networks subnets delete` | Delete an unused subnet after frontends, proxies and VMs. |
+| `gcloud compute instance-templates create` | Create a Compute Engine virtual machine instance template. |
+| `gcloud compute instance-templates list` | List Compute Engine virtual machine instance templates. |
+| `gcloud compute instance-templates describe` | Describe a virtual machine instance template. |
+| `gcloud compute instance-groups managed create` | Create a Compute Engine managed instance group. |
+| `gcloud compute instance-groups managed list` | List Compute Engine managed instance groups. |
+| `gcloud compute instance-groups managed describe` | Describe a managed instance group. |
+| `gcloud compute instance-groups managed set-autoscaling` | Set autoscaling parameters of a managed instance group. |
+| `gcloud compute networks vpc-access connectors create` | create connectors in the fixed serverless lesson. |
+| `gcloud compute networks vpc-access connectors list` | list connectors in the fixed serverless lesson. |
+| `gcloud compute networks vpc-access connectors describe` | describe connectors in the fixed serverless lesson. |
+| `gcloud compute networks vpc-access connectors delete` | delete connectors in the fixed serverless lesson. |
 
-### Compute・復旧・VM管理
+### gcloud dns
 
 | コマンド | 内容 |
 |---|---|
-| `gcloud compute disks delete` | gcloud compute disks delete: bounded Compute lesson; no cloud execution. |
-| `gcloud compute disks update` | gcloud compute disks update: bounded Compute lesson; no cloud execution. |
-| `sim compute disks write` | sim compute disks write: bounded Compute lesson; no cloud execution. |
-| `sim compute disks read` | sim compute disks read: bounded Compute lesson; no cloud execution. |
-| `gcloud compute snapshots delete` | gcloud compute snapshots delete: bounded Compute lesson; no cloud execution. |
-| `gcloud compute images create` | gcloud compute images create: bounded Compute lesson; no cloud execution. |
-| `gcloud compute images describe` | gcloud compute images describe: bounded Compute lesson; no cloud execution. |
-| `gcloud compute images delete` | gcloud compute images delete: bounded Compute lesson; no cloud execution. |
-| `gcloud compute resource-policies create snapshot-schedule` | gcloud compute resource-policies create snapshot-schedule: bounded Compute lesson; no cloud execution. |
-| `gcloud compute resource-policies describe` | gcloud compute resource-policies describe: bounded Compute lesson; no cloud execution. |
-| `gcloud compute resource-policies delete` | gcloud compute resource-policies delete: bounded Compute lesson; no cloud execution. |
-| `gcloud compute resource-policies list` | gcloud compute resource-policies list: bounded Compute lesson; no cloud execution. |
-| `gcloud compute disks add-resource-policies` | gcloud compute disks add-resource-policies: bounded Compute lesson; no cloud execution. |
-| `gcloud compute disks remove-resource-policies` | gcloud compute disks remove-resource-policies: bounded Compute lesson; no cloud execution. |
-| `sim compute snapshot-schedules run` | sim compute snapshot-schedules run: bounded Compute lesson; no cloud execution. |
-| `gcloud compute instance-groups managed set-instance-template` | gcloud compute instance-groups managed set-instance-template: bounded Compute lesson; no cloud execution. |
-| `gcloud compute instance-groups managed rolling-action start-update` | gcloud compute instance-groups managed rolling-action start-update: bounded Compute lesson; no cloud execution. |
-| `sim compute instance-groups managed advance-update` | sim compute instance-groups managed advance-update: bounded Compute lesson; no cloud execution. |
-| `gcloud compute instance-groups managed update` | gcloud compute instance-groups managed update: bounded Compute lesson; no cloud execution. |
-| `sim compute instance-groups managed fail-instance` | sim compute instance-groups managed fail-instance: bounded Compute lesson; no cloud execution. |
-| `sim compute instance-groups managed autoheal` | sim compute instance-groups managed autoheal: bounded Compute lesson; no cloud execution. |
-| `sim compute instance-groups managed evaluate-autoscaling` | sim compute instance-groups managed evaluate-autoscaling: bounded Compute lesson; no cloud execution. |
-| `gcloud compute instance-groups managed resize` | gcloud compute instance-groups managed resize: bounded Compute lesson; no cloud execution. |
-| `sim compute instance-groups managed describe` | sim compute instance-groups managed describe: bounded Compute lesson; no cloud execution. |
-| `sim compute time advance` | sim compute time advance: bounded Compute lesson; no cloud execution. |
-| `sim compute instances os-login-check` | sim compute instances os-login-check: bounded Compute lesson; no cloud execution. |
-| `gcloud compute instances detach-disk` | gcloud compute instances detach-disk: bounded Compute lesson; no cloud execution. |
-| `gcloud compute instances set-scheduling` | gcloud compute instances set-scheduling: bounded Compute lesson; no cloud execution. |
-| `gcloud compute instances set-service-account` | gcloud compute instances set-service-account: bounded Compute lesson; no cloud execution. |
-| `sim compute instances runtime-check` | sim compute instances runtime-check: bounded Compute lesson; no cloud execution. |
-| `sim compute instances preempt` | sim compute instances preempt: bounded Compute lesson; no cloud execution. |
-| `gcloud compute tpus tpu-vm create` | gcloud compute tpus tpu-vm create: bounded Compute lesson; no cloud execution. |
-| `gcloud compute tpus tpu-vm list` | gcloud compute tpus tpu-vm list: bounded Compute lesson; no cloud execution. |
-| `gcloud compute tpus tpu-vm describe` | gcloud compute tpus tpu-vm describe: bounded Compute lesson; no cloud execution. |
-| `gcloud compute tpus tpu-vm start` | gcloud compute tpus tpu-vm start: bounded Compute lesson; no cloud execution. |
-| `gcloud compute tpus tpu-vm stop` | gcloud compute tpus tpu-vm stop: bounded Compute lesson; no cloud execution. |
-| `gcloud compute tpus tpu-vm delete` | gcloud compute tpus tpu-vm delete: bounded Compute lesson; no cloud execution. |
-| `gcloud compute os-config inventories describe` | gcloud compute os-config inventories describe: bounded Compute lesson; no cloud execution. |
-| `gcloud compute os-config os-policy-assignments create` | gcloud compute os-config os-policy-assignments create: bounded Compute lesson; no cloud execution. |
-| `gcloud compute os-config os-policy-assignments describe` | gcloud compute os-config os-policy-assignments describe: bounded Compute lesson; no cloud execution. |
-| `gcloud compute os-config os-policy-assignments delete` | gcloud compute os-config os-policy-assignments delete: bounded Compute lesson; no cloud execution. |
-| `sim compute os-config os-policy-assignments apply` | sim compute os-config os-policy-assignments apply: bounded Compute lesson; no cloud execution. |
+| `gcloud dns record-sets create` | gcloud dns record-sets create: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud dns record-sets update` | gcloud dns record-sets update: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud dns record-sets delete` | gcloud dns record-sets delete: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud dns record-sets describe` | gcloud dns record-sets describe: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud dns record-sets list` | gcloud dns record-sets list: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud dns managed-zones update` | gcloud dns managed-zones update: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud dns managed-zones delete` | gcloud dns managed-zones delete: bounded network configuration or diagnosis; no traffic is sent. |
+| `gcloud dns managed-zones create` | Create a Cloud DNS managed-zone. |
+| `gcloud dns managed-zones list` | View the list of all your managed-zones. |
+| `gcloud dns managed-zones describe` | View the details of a Cloud DNS managed-zone. |
 
-BigQuery・Pub/Subの配送・Dataflow/Dataproc・Kafka・exportは45コマンドを追加しています。入力・SQL・明示的な進行と15ミッションの手順は[DATA_PROCESSING.md](DATA_PROCESSING.md)を参照してください。
-
-### BigQuery・データ処理
+### bq
 
 | コマンド | 内容 |
 |---|---|
@@ -276,31 +247,51 @@ BigQuery・Pub/Subの配送・Dataflow/Dataproc・Kafka・exportは45コマン�
 | `bq ls` | bq ls: bounded data lesson. |
 | `bq show` | bq show: bounded data lesson. |
 | `bq rm` | bq rm: bounded data lesson. |
-| `sim storage objects write` | sim storage objects write: bounded data lesson. |
+
+### gcloud pubsub
+
+| コマンド | 内容 |
+|---|---|
 | `gcloud pubsub subscriptions pull` | gcloud pubsub subscriptions pull: bounded data lesson. |
 | `gcloud pubsub subscriptions ack` | gcloud pubsub subscriptions ack: bounded data lesson. |
-| `sim pubsub push` | sim pubsub push: bounded data lesson. |
-| `sim time advance` | sim time advance: bounded data lesson. |
 | `gcloud pubsub subscriptions update` | gcloud pubsub subscriptions update: bounded data lesson. |
 | `gcloud pubsub subscriptions delete` | gcloud pubsub subscriptions delete: bounded data lesson. |
 | `gcloud pubsub topics delete` | gcloud pubsub topics delete: bounded data lesson. |
+| `gcloud pubsub topics publish` | Publish a lesson message and deliver matching function/Eventarc events. |
+| `gcloud pubsub topics create` | Create one or more Cloud Pub/Sub topics. |
+| `gcloud pubsub topics list` | List Cloud Pub/Sub topics. |
+| `gcloud pubsub topics describe` | Describe a Cloud Pub/Sub topic. |
+| `gcloud pubsub subscriptions create` | Create one or more Cloud Pub/Sub subscriptions. |
+| `gcloud pubsub subscriptions list` | List Cloud Pub/Sub subscriptions. |
+| `gcloud pubsub subscriptions describe` | Describe a Cloud Pub/Sub subscription. |
+
+### gcloud dataflow
+
+| コマンド | 内容 |
+|---|---|
 | `gcloud dataflow jobs run` | gcloud dataflow jobs run: bounded data lesson. |
-| `gcloud dataproc jobs submit spark` | gcloud dataproc jobs submit spark: bounded data lesson. |
 | `gcloud dataflow jobs list` | gcloud dataflow jobs list: bounded data lesson. |
 | `gcloud dataflow jobs describe` | gcloud dataflow jobs describe: bounded data lesson. |
 | `gcloud dataflow jobs cancel` | gcloud dataflow jobs cancel: bounded data lesson. |
-| `sim dataflow jobs advance` | sim dataflow jobs advance: bounded data lesson. |
-| `sim dataflow jobs retry` | sim dataflow jobs retry: bounded data lesson. |
+
+### gcloud dataproc
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud dataproc jobs submit spark` | gcloud dataproc jobs submit spark: bounded data lesson. |
 | `gcloud dataproc jobs list` | gcloud dataproc jobs list: bounded data lesson. |
 | `gcloud dataproc jobs describe` | gcloud dataproc jobs describe: bounded data lesson. |
 | `gcloud dataproc jobs cancel` | gcloud dataproc jobs cancel: bounded data lesson. |
-| `sim dataproc jobs advance` | sim dataproc jobs advance: bounded data lesson. |
-| `sim dataproc jobs retry` | sim dataproc jobs retry: bounded data lesson. |
 | `gcloud dataproc clusters create` | gcloud dataproc clusters create: bounded data lesson. |
 | `gcloud dataproc clusters list` | gcloud dataproc clusters list: bounded data lesson. |
 | `gcloud dataproc clusters describe` | gcloud dataproc clusters describe: bounded data lesson. |
 | `gcloud dataproc clusters update` | gcloud dataproc clusters update: bounded data lesson. |
 | `gcloud dataproc clusters delete` | gcloud dataproc clusters delete: bounded data lesson. |
+
+### gcloud managed-kafka
+
+| コマンド | 内容 |
+|---|---|
 | `gcloud managed-kafka clusters create` | gcloud managed-kafka clusters create: bounded data lesson. |
 | `gcloud managed-kafka clusters list` | gcloud managed-kafka clusters list: bounded data lesson. |
 | `gcloud managed-kafka clusters describe` | gcloud managed-kafka clusters describe: bounded data lesson. |
@@ -309,661 +300,618 @@ BigQuery・Pub/Subの配送・Dataflow/Dataproc・Kafka・exportは45コマン�
 | `gcloud managed-kafka topics list` | gcloud managed-kafka topics list: bounded data lesson. |
 | `gcloud managed-kafka topics describe` | gcloud managed-kafka topics describe: bounded data lesson. |
 | `gcloud managed-kafka topics delete` | gcloud managed-kafka topics delete: bounded data lesson. |
-| `sim kafka connect` | sim kafka connect: bounded data lesson. |
-| `sim data-services choose` | sim data-services choose: bounded data lesson. |
-| `sim billing exports configure` | sim billing exports configure: bounded data lesson. |
-| `sim billing exports run` | sim billing exports run: bounded data lesson. |
-| `sim logging sinks grant-writer` | sim logging sinks grant-writer: bounded data lesson. |
-| `sim logging sinks export` | sim logging sinks export: bounded data lesson. |
 
-ロードバランサは3種類の接続構成・HC/アプリ/FWの独立診断・NEG・Google-managed HTTPS・CDN設定・backend bucket・依存順の削除に対応します。[LOAD_BALANCING.md](LOAD_BALANCING.md)にミッション、スコープ別権限、旧保存とモデルの範囲を記載しています。
-
-ConfigMap/SecretのYAML/JSONは`immutable: true`に対応します。保護後はデータ更新とfalseへの変更を拒否し、ラベル更新・削除/再作成は可能です。get/describe・プロパティにもフラグを表示します。詳細と教材は[KUBERNETES.md](KUBERNETES.md)に記載しています。
-
-ConfigMapの`binaryData`もYAML/JSONで保存できます。getはbase64、describe・プロパティは復号後のサイズを表示します。`data`とのキー重複を拒否し、環境変数のキー参照・`set env --from`はテキストの`data`だけを扱います。`immutable: true`は両方のフィールドを保護します。
-
-Kubernetesは`kubectl create/get/describe/delete namespace`（`ns`別名）とNamespace manifestに対応します。各kubectl操作と`sim kubernetes probe/reconcile`で`-n/--namespace`を使い、`kubectl get -A/--all-namespaces`でnamespaceを横断した一覧を確認できます。省略時はコンテキストの既定namespace（未設定なら`default`）です。`kubectl config set-context --current --namespace=staging`または既存CONTEXT名で設定し、空文字で解除できます。詳細は[KUBERNETES.md](KUBERNETES.md)。
-
-PVC/StorageClassの仮想create/apply/deleteと、PVC/PV/StorageClassのget/describe/delete（pvc/pv/sc別名）に対応します。動的割り当て、WaitForFirstConsumer、容量拡張、削除保護、Delete/Retainを教材として再現します。アプリの書き込みは`sim kubernetes write-file DEPLOYMENT --path=PATH --content=TEXT`、確認は`kubectl exec -- cat/base64 PATH`です。操作ごとにcontainer.persistentVolumeClaims.* / container.persistentVolumes.* / container.storageClasses.*を要求します。制限と2ミッションは[KUBERNETES.md](KUBERNETES.md)に記載しています。
-
-Ingressはnetworking.k8s.io/v1の仮想YAML/JSONによるcreate/apply/deleteとget/describe/delete（ingress/ingresses/ing）に対応します。権限は`container.ingresses.create/get/list/update/delete`、`-n`、`-A`、`-l`とJSON/YAML出力も使えます。`sim kubernetes request INGRESS --host=example.test --path=/`はHTTPの振り分けを確認します。`container.ingresses.get`、`container.services.get`、`container.deployments.list`、`container.pods.list`を要求します。ホスト・最長パス・Exact/PrefixとReadyなNodePort Service接続先を判定し、実LB・IP・DNS・TLS・ヘルスチェック・外部クライアントのNetworkPolicyは作成/判定しません。`get all`にはIngressを含めません。2ミッションの手順は[KUBERNETES.md](KUBERNETES.md)を参照してください。
-
-NetworkPolicyはnetworking.k8s.io/v1の仮想YAML/JSONによるcreate/apply/deleteと、get/describe/delete（networkpolicy/networkpolicies/netpol別名）に対応します。操作ごとに`container.networkPolicies.create/get/list/update/delete`を要求し、`get -A`、`-l`、JSON/YAML出力を使えます。Autopilotは強制有効、Standardは作成時の`--enable-network-policy`で有効にします。`sim kubernetes connect SOURCE --to=DESTINATION --port=N`は両Deploymentの先頭Pod間の新規TCP通信を判定します。実通信や待受ポートの確認は行いません。既定遮断・許可の合算・両方向の許可と2ミッションは[KUBERNETES.md](KUBERNETES.md)に記載しています。`get all`にはNetworkPolicyを含めません。
-
-Deploymentは1〜10個の名前付きコンテナに対応し、exec/logs/probeで対象を選べます。ServiceAccount（sa）・VerticalPodAutoscaler（vpa）のmanifest、get/describe/delete、namespace/-A・権限・保存/表示に対応します。VPAのOff/Initial/Recreate、GKE Workload Identity、Autopilotの単一コンテナのリソース補正、regionalのzone別ノード数は明示教材モデルです。手順と制限は[KUBERNETES.md](KUBERNETES.md)を参照してください。
-
-### Cloud Build
-
-固定教材をビルドしてArtifact Registryへ登録します。呼び出し元のbuilds権限とサービスアカウントのactAs、実行SAのレジストリ書込権限は別に検証します。操作例・制約は[CONTAINERS.md](CONTAINERS.md)。
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud builds submit` | cloudbuild.builds.create + iam.serviceAccounts.actAs | Cloud Build（登録時Artifact Registry） | --tag/-t, --service-account, --region, --async |
-| `gcloud builds list` | cloudbuild.builds.list | Cloud Build | --region |
-| `gcloud builds describe` | cloudbuild.builds.get | Cloud Build | --region |
-| `gcloud builds log` | cloudbuild.builds.get | Cloud Build | --region |
-| `gcloud builds cancel` | cloudbuild.builds.update | Cloud Build | --region |
-| `sim builds advance` | cloudbuild.builds.update | Cloud Build（完了時Artifact Registry） | --region |
-
-GKE clusters create/create-autoは`--service-account=EMAIL`で既存ノードSAを指定でき、作成者のactAsを確認します。Artifact Registry参照はノードSAのReader権限とタグ/digestの存在を検証し、取得できないDeployment/Podは`ImagePullBackOff`、rollout status/logsはエラーになります。
-
-### Docker / Artifact Registry
-
-ローカルのイメージ・コンテナとクラウドの保存先を分けて扱う学習用サブセットです。固定教材のみを使用し、実プロセス/クラウド通信は行いません。操作例・制限は [CONTAINERS.md](CONTAINERS.md)。
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `sim docker example` | — | — | — |
-| `sim docker request` | — | — | — |
-| `docker build` | — | — | --tag/-t（必須） |
-| `docker images` | — | — | — |
-| `docker tag` | — | — | — |
-| `docker push` | artifactregistry.repositories.uploadArtifacts | artifactregistry.googleapis.com | — |
-| `docker pull` | artifactregistry.repositories.downloadArtifacts | artifactregistry.googleapis.com | — |
-| `docker run` | キャッシュなし時はpull権限 | キャッシュなし時はartifactregistry.googleapis.com | --detach/-d（必須）、--name、--publish/-p |
-| `docker ps` | — | — | --all/-a |
-| `docker logs` | — | — | — |
-| `docker inspect` | — | — | — |
-| `docker stop` | — | — | — |
-| `docker rm` | — | — | --force/-f |
-| `docker rmi` | — | — | — |
-| `gcloud auth configure-docker` | ログイン済みアカウント | — | — |
-| `gcloud artifacts repositories create` | artifactregistry.repositories.create | artifactregistry.googleapis.com | --repository-format=docker（必須）、--location、--description、--immutable-tags |
-| `gcloud artifacts repositories list` | artifactregistry.repositories.list | artifactregistry.googleapis.com | --location |
-| `gcloud artifacts repositories describe` | artifactregistry.repositories.get | artifactregistry.googleapis.com | --location |
-| `gcloud artifacts repositories delete` | artifactregistry.repositories.delete | artifactregistry.googleapis.com | --location |
-| `gcloud artifacts repositories get-iam-policy` | artifactregistry.repositories.getIamPolicy | artifactregistry.googleapis.com | --location |
-| `gcloud artifacts repositories add-iam-policy-binding` | artifactregistry.repositories.setIamPolicy | artifactregistry.googleapis.com | --location、--member、--role |
-| `gcloud artifacts repositories remove-iam-policy-binding` | artifactregistry.repositories.setIamPolicy | artifactregistry.googleapis.com | --location、--member、--role |
-| `gcloud artifacts docker images list` | artifactregistry.dockerimages.list | artifactregistry.googleapis.com | --include-tags |
-| `gcloud artifacts docker images describe` | artifactregistry.dockerimages.get | artifactregistry.googleapis.com | — |
-| `gcloud artifacts docker tags list` | artifactregistry.tags.list | artifactregistry.googleapis.com | — |
-| `gcloud artifacts docker tags add` | artifactregistry.tags.create/update | artifactregistry.googleapis.com | — |
-| `gcloud artifacts docker tags delete` | artifactregistry.tags.delete | artifactregistry.googleapis.com | — |
-| `gcloud artifacts docker images delete` | artifactregistry.versions.delete（版）/packages.delete（全体） | artifactregistry.googleapis.com | --delete-tags |
-
-tags addは同一imageパス内のタグ作成/移動、tags deleteはタグだけを削除してdigestを保持します。images deleteは指定版またはimageパス全体を削除し、付随タグには--delete-tagsが必要です。immutable制約、repoAdmin権限、削除確認を検証します。非同期削除は未対応です。
-
-repository操作の位置引数はID＋--location、または完全名projects/PROJECT/locations/LOCATION/repositories/ID。Dockerのpush/pullには対象ホストのconfigure-docker設定が必要で、ADCではなく現在のgcloudアカウントを使用します。v1〜v6のSnapshotは空のDocker/Artifact Registry状態を補完します。
-
-### Terraform / 学習用ファイル
-
-`sim files load terraform-infrastructure` でVPC/subnet/VM/firewall/bucketの構築・片付けを練習できます。
-
-対応範囲・通常のTerraformとの差異・操作例は [TERRAFORM.md](TERRAFORM.md) を参照。
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `sim files list` | — | — | — |
-| `sim files read` | — | — | — |
-| `sim files write` | — | — | --content |
-| `sim files replace` | — | — | --search, --replacement |
-| `sim files delete` | — | — | — |
-| `sim files load` | — | — | --force |
-| `terraform init` | GCS時: ADCのstorage.objects.get/list/create/delete | GCS時: storage.googleapis.com（bucket所属project） | -migrate-state, -force-copy |
-| `terraform state pull` | GCS時: ADCのstorage.objects.get/list | GCS時: storage.googleapis.com | — |
-| `terraform force-unlock` | ADCのstorage.objects.get/list/create/delete | storage.googleapis.com | -force |
-| `sim terraform backend` | GCS時: ADCのstorage.objects.get/list | GCS時: storage.googleapis.com | — |
-| `sim terraform lock` | ADCのstorage.objects.get/list/create/delete | storage.googleapis.com | — |
-| `terraform validate` | — | — | — |
-| `terraform fmt` | — | — | -check, -recursive |
-| `terraform plan` | ADCの管理対象操作権限・GCS state権限（下記） | 管理対象API・GCS時Storage API | -out, -destroy, -refresh-only |
-| `terraform apply` | ADCの管理対象操作権限・GCS state権限（下記） | 管理対象API・GCS時Storage API | -auto-approve, -destroy, -refresh-only |
-| `terraform destroy` | ADCの管理対象操作権限・GCS state権限（下記） | 管理対象API・GCS時Storage API | -auto-approve |
-| `terraform show` | GCS state読込権限（下記） | GCS時Storage API | — |
-| `terraform output` | GCS state読込権限（下記） | GCS時Storage API | — |
-| `terraform state list` | GCS state読込権限（下記） | GCS時Storage API | — |
-| `terraform state show` | GCS state読込権限（下記） | GCS時Storage API | — |
-| `terraform state mv` | ADCの管理対象操作権限・GCS state権限（下記） | 管理対象API・GCS時Storage API | — |
-| `terraform state rm` | ADCの管理対象操作権限・GCS state権限（下記） | 管理対象API・GCS時Storage API | — |
-| `terraform import` | ADCの管理対象操作権限・GCS state権限（下記） | 管理対象API・GCS時Storage API | — |
-| `gcloud compute networks subnets update` | compute.subnetworks.setPrivateIpGoogleAccess | compute.googleapis.com | --region, --enable-private-ip-google-access |
-
-GCS backend使用時、stateを読むshow/output/state list/showにもstorage.objects.get/listが必要です。plan/apply/destroy/import/state mv/rmはさらにcreate/deleteを確認します。Compute/Storageの実リソース操作権限は管理対象ごとに別途確認します。local backendのstate読込とfmt/validate自体にはクラウド権限は不要です。保存planのshowもクラウド参照なしです。
-
-### `gcloud config`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud config set` | — | — | — |
-| `gcloud config unset` | — | — | — |
-| `gcloud config get` | — | — | — |
-| `gcloud config get-value` | — | — | — |
-| `gcloud config list` | — | — | `--all` |
-| `gcloud config configurations list` | — | — | — |
-| `gcloud config configurations create` | — | — | `--activate` |
-| `gcloud config configurations activate` | — | — | — |
-| `gcloud config configurations describe` | — | — | — |
-| `gcloud config configurations delete` | — | — | — |
-
-### `gcloud auth`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud auth activate-service-account` | — | — | `--key-file` |
-| `gcloud auth application-default login` | — | — | `--no-launch-browser` |
-| `gcloud auth login` | — | — | `--brief` `--no-launch-browser` |
-| `gcloud auth list` | — | — | — |
-| `gcloud auth revoke` | — | — | — |
-
-### `gcloud version`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud version` | — | — | — |
-
-### `gcloud info`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud info` | — | — | `--run-diagnostics` |
-
-### `gcloud init`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud init` | — | — | `--skip-diagnostics` `--console-only` |
-
-### `gcloud components`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud components list` | — | — | — |
-| `gcloud components install` | — | — | — |
-| `gcloud components update` | — | — | — |
-
-### `gcloud projects`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud projects list` | — | — | — |
-| `gcloud projects describe` | `resourcemanager.projects.get` | — | — |
-| `gcloud projects create` | `resourcemanager.projects.create` | — | `--name` `--organization` `--folder` `--set-as-default` `--labels` |
-| `gcloud projects delete` | `resourcemanager.projects.delete` | — | — |
-| `gcloud projects undelete` | `resourcemanager.projects.undelete` | — | — |
-| `gcloud projects get-iam-policy` | `resourcemanager.projects.getIamPolicy` | — | — |
-| `gcloud projects add-iam-policy-binding` | `resourcemanager.projects.setIamPolicy` | — | `--member` `--role` |
-| `gcloud projects remove-iam-policy-binding` | `resourcemanager.projects.setIamPolicy` | — | `--member` `--role` |
-
-### `gcloud organizations`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud organizations list` | — | — | — |
-| `gcloud organizations describe` | `resourcemanager.organizations.get` | — | — |
-| `gcloud organizations get-iam-policy` | `resourcemanager.organizations.getIamPolicy` | — | — |
-| `gcloud organizations add-iam-policy-binding` | `resourcemanager.organizations.setIamPolicy` | — | `--member` `--role` |
-| `gcloud organizations remove-iam-policy-binding` | `resourcemanager.organizations.setIamPolicy` | — | `--member` `--role` |
-
-### `gcloud resource-manager`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud resource-manager folders list` | — | — | `--organization` `--folder` |
-| `gcloud resource-manager folders create` | `resourcemanager.folders.create` | — | `--display-name` `--organization` `--folder` |
-| `gcloud resource-manager folders describe` | `resourcemanager.folders.get` | — | — |
-| `gcloud resource-manager folders get-iam-policy` | `resourcemanager.folders.getIamPolicy` | — | — |
-| `gcloud resource-manager folders add-iam-policy-binding` | `resourcemanager.folders.setIamPolicy` | — | `--member` `--role` |
-| `gcloud resource-manager folders remove-iam-policy-binding` | `resourcemanager.folders.setIamPolicy` | — | `--member` `--role` |
-
-### `gcloud billing`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud billing accounts list` | — | — | — |
-| `gcloud billing accounts describe` | — | — | — |
-| `gcloud billing projects describe` | `billing.resourceAssociations.list` | — | — |
-| `gcloud billing projects link` | `billing.resourceAssociations.create` | — | `--billing-account` |
-| `gcloud billing projects unlink` | `billing.resourceAssociations.delete` | — | — |
-| `gcloud billing budgets create` | `billing.budgets.create` | — | `--billing-account` `--display-name` `--budget-amount` `--threshold-rule` `--filter-projects` |
-| `gcloud billing budgets list` | `billing.budgets.list` | — | `--billing-account` |
-| `gcloud billing budgets describe` | `billing.budgets.get` | — | `--billing-account` |
-
-### `gcloud services`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud services enable` | `serviceusage.services.enable` | — | `--async` |
-| `gcloud services disable` | `serviceusage.services.disable` | — | `--force` |
-| `gcloud services list` | `serviceusage.services.list` | — | `--enabled` `--available` |
-
-### `gcloud compute`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud compute instances create` | `compute.instances.create` | `compute.googleapis.com` | `--zone` `--machine-type` `--image-family` `--image-project` `--network` `--subnet` `--tags` `--service-account` `--scopes` `--preemptible` `--provisioning-model` `--metadata` `--boot-disk-size` `--boot-disk-type` `--address` `--async` |
-| `gcloud compute instances list` | `compute.instances.list` | `compute.googleapis.com` | — |
-| `gcloud compute instances describe` | `compute.instances.get` | `compute.googleapis.com` | `--zone` |
-| `gcloud compute instances start` | `compute.instances.start` | `compute.googleapis.com` | `--zone` `--async` |
-| `gcloud compute instances stop` | `compute.instances.stop` | `compute.googleapis.com` | `--zone` `--async` |
-| `gcloud compute instances suspend` | `compute.instances.suspend` | `compute.googleapis.com` | `--zone` `--async` |
-| `gcloud compute instances resume` | `compute.instances.resume` | `compute.googleapis.com` | `--zone` `--async` |
-| `gcloud compute instances delete` | `compute.instances.delete` | `compute.googleapis.com` | `--zone` `--keep-disks` `--delete-disks` `--async` |
-| `gcloud compute instances add-tags` | `compute.instances.setTags` | `compute.googleapis.com` | `--zone` `--tags` |
-| `gcloud compute instances add-metadata` | `compute.instances.setMetadata` | `compute.googleapis.com` | `--zone` `--metadata` |
-| `gcloud compute instances set-machine-type` | `compute.instances.setMachineType` | `compute.googleapis.com` | `--zone` `--machine-type` |
-| `gcloud compute instances attach-disk` | `compute.instances.attachDisk` | `compute.googleapis.com` | `--zone` `--disk` `--device-name` `--mode` |
-| `gcloud compute ssh` | `compute.instances.get` `compute.instances.osLogin` | `compute.googleapis.com` | `--zone` `--internal-ip` `--tunnel-through-iap` `--plain` `--command` `--dry-run` |
-| `gcloud compute scp` | `compute.instances.get` `compute.instances.osLogin` | `compute.googleapis.com` | `--zone` `--internal-ip` `--tunnel-through-iap` `--plain` `--recurse` |
-| `gcloud compute project-info describe` | `compute.projects.get` | `compute.googleapis.com` | — |
-| `gcloud compute project-info add-metadata` | `compute.projects.setCommonInstanceMetadata` | `compute.googleapis.com` | `--metadata` |
-| `gcloud compute os-login ssh-keys add` | `compute.instances.osLogin` | `compute.googleapis.com` | `--key` `--ttl` |
-| `gcloud compute zones list` | `compute.zones.list` | `compute.googleapis.com` | — |
-| `gcloud compute regions list` | `compute.regions.list` | `compute.googleapis.com` | — |
-| `gcloud compute machine-types list` | `compute.machineTypes.list` | `compute.googleapis.com` | `--zones` |
-| `gcloud compute images list` | `compute.images.list` | `compute.googleapis.com` | — |
-| `gcloud compute operations list` | `compute.zoneOperations.list` | `compute.googleapis.com` | — |
-| `gcloud compute disks list` | `compute.disks.list` | `compute.googleapis.com` | — |
-| `gcloud compute disks create` | `compute.disks.create` | `compute.googleapis.com` | `--zone` `--size` `--type` `--image-family` `--image-project` `--image` |
-| `gcloud compute disks describe` | `compute.disks.get` | `compute.googleapis.com` | `--zone` |
-| `gcloud compute disks snapshot` | `compute.disks.createSnapshot` | `compute.googleapis.com` | `--zone` `--snapshot-names` |
-| `gcloud compute disks resize` | `compute.disks.update` | `compute.googleapis.com` | `--zone` `--size` |
-| `gcloud compute snapshots create` | `compute.disks.createSnapshot` | `compute.googleapis.com` | `--source-disk` `--source-disk-zone` `--zone` |
-| `gcloud compute snapshots list` | `compute.snapshots.list` | `compute.googleapis.com` | — |
-| `gcloud compute snapshots describe` | `compute.snapshots.get` | `compute.googleapis.com` | — |
-| `gcloud compute networks create` | `compute.networks.create` | `compute.googleapis.com` | `--subnet-mode` `--bgp-routing-mode` |
-| `gcloud compute networks list` | `compute.networks.list` | `compute.googleapis.com` | — |
-| `gcloud compute networks describe` | `compute.networks.get` | `compute.googleapis.com` | — |
-| `gcloud compute networks delete` | `compute.networks.delete` | `compute.googleapis.com` | — |
-| `gcloud compute networks subnets create` | `compute.subnetworks.create` | `compute.googleapis.com` | `--network` `--range` `--region` `--purpose` `--role` `--enable-private-ip-google-access` |
-| `gcloud compute networks subnets list` | `compute.subnetworks.list` | `compute.googleapis.com` | — |
-| `gcloud compute networks subnets describe` | `compute.subnetworks.get` | `compute.googleapis.com` | `--region` |
-| `gcloud compute networks peerings create` | `compute.networks.addPeering` | `compute.googleapis.com` | `--network` `--peer-network` `--peer-project` `--export-custom-routes` `--import-custom-routes` |
-| `gcloud compute firewall-rules create` | `compute.firewalls.create` | `compute.googleapis.com` | `--network` `--allow` `--action` `--rules` `--direction` `--priority` `--source-ranges` `--target-tags` `--destination-ranges` `--disabled` |
-| `gcloud compute firewall-rules list` | `compute.firewalls.list` | `compute.googleapis.com` | — |
-| `gcloud compute firewall-rules describe` | `compute.firewalls.get` | `compute.googleapis.com` | — |
-| `gcloud compute firewall-rules delete` | `compute.firewalls.delete` | `compute.googleapis.com` | — |
-| `gcloud compute addresses create` | スコープ・参照先で検証 | `compute.googleapis.com` | `--region` `--global` `--address-type` `--addresses` `--network-tier` `--ip-version` `--subnet` |
-| `gcloud compute addresses list` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--regions` |
-| `gcloud compute addresses describe` | スコープ・参照先で検証 | `compute.googleapis.com` | `--region` `--global` |
-| `gcloud compute routers create` | `compute.routers.create` | `compute.googleapis.com` | `--network` `--region` `--asn` |
-| `gcloud compute routers list` | `compute.routers.list` | `compute.googleapis.com` | — |
-| `gcloud compute routers describe` | `compute.routers.get` | `compute.googleapis.com` | `--region` |
-| `gcloud compute health-checks create` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--port` `--request-path` `--check-interval` `--timeout` `--http` `--https` `--tcp` |
-| `gcloud compute health-checks list` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--regions` |
-| `gcloud compute health-checks describe` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
-| `gcloud compute backend-services create` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--protocol` `--health-checks` `--health-checks-region` `--load-balancing-scheme` `--port-name` `--timeout` `--enable-cdn` `--cache-mode` |
-| `gcloud compute backend-services list` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--regions` |
-| `gcloud compute backend-services describe` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
-| `gcloud compute forwarding-rules create` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--backend-service` `--target-http-proxy` `--target-https-proxy` `--target-http-proxy-region` `--target-https-proxy-region` `--address` `--ports` `--ip-protocol` `--load-balancing-scheme` `--network-tier` `--network` `--subnet` |
-| `gcloud compute forwarding-rules list` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--regions` |
-| `gcloud compute forwarding-rules describe` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
-| `gcloud compute instance-templates create` | `compute.instanceTemplates.create` | `compute.googleapis.com` | `--machine-type` `--image-family` `--image-project` `--network` `--subnet` `--tags` `--service-account` `--scopes` `--preemptible` `--provisioning-model` `--metadata` `--boot-disk-size` `--boot-disk-type` `--address` |
-| `gcloud compute instance-templates list` | `compute.instanceTemplates.list` | `compute.googleapis.com` | — |
-| `gcloud compute instance-templates describe` | `compute.instanceTemplates.get` | `compute.googleapis.com` | — |
-| `gcloud compute instance-groups managed create` | `compute.instanceGroupManagers.create` | `compute.googleapis.com` | `--zone` `--region` `--template` `--size` `--base-instance-name` |
-| `gcloud compute instance-groups managed list` | `compute.instanceGroupManagers.list` | `compute.googleapis.com` | — |
-| `gcloud compute instance-groups managed describe` | `compute.instanceGroupManagers.get` | `compute.googleapis.com` | `--zone` `--region` |
-| `gcloud compute instance-groups managed set-autoscaling` | `compute.autoscalers.create` | `compute.googleapis.com` | `--zone` `--region` `--max-num-replicas` `--min-num-replicas` `--target-cpu-utilization` `--cool-down-period` |
-
-### `gcloud storage`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud storage buckets create` | `storage.buckets.create` | — | `--location` `--default-storage-class` `--uniform-bucket-level-access` `--public-access-prevention` |
-| `gcloud storage buckets list` | `storage.buckets.list` | — | — |
-| `gcloud storage buckets describe` | `storage.buckets.get` | — | — |
-| `gcloud storage buckets delete` | `storage.buckets.delete` | — | `--recursive` |
-| `gcloud storage buckets get-iam-policy` | `storage.buckets.getIamPolicy` | — | — |
-| `gcloud storage buckets add-iam-policy-binding` | `storage.buckets.setIamPolicy` | — | `--member` `--role` |
-| `gcloud storage buckets remove-iam-policy-binding` | `storage.buckets.setIamPolicy` | — | `--member` `--role` |
-| `gcloud storage ls` | `storage.objects.list` | — | `--long` `--recursive` |
-| `gcloud storage cp` | `storage.objects.create` | — | `--recursive` |
-| `gcloud storage rm` | `storage.objects.delete` | — | `--recursive` |
-| `gcloud storage buckets update` | `storage.buckets.update` | — | `--versioning` `--lifecycle-file` `--default-storage-class` `--uniform-bucket-level-access` `--public-access-prevention` |
-| `gcloud storage objects update` | `storage.objects.update` | — | `--storage-class` `--content-type` |
-| `gcloud storage rsync` | `storage.objects.create` | — | `--recursive` `--delete-unmatched-destination-objects` |
-| `gcloud storage sign-url` | `storage.objects.get` | — | `--duration` `--private-key-file` `--impersonate-service-account` |
-
-### `gsutil`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gsutil mb` | `storage.buckets.create` | — | `--l` `--c` `--b` `--public-access-prevention` |
-| `gsutil ls` | `storage.objects.list` | — | `--long` `--recursive` |
-| `gsutil cp` | `storage.objects.create` | — | `--recursive` `--m` |
-| `gsutil rm` | `storage.objects.delete` | — | `--recursive` `--m` |
-| `gsutil iam get` | `storage.buckets.getIamPolicy` | — | — |
-| `gsutil iam ch` | `storage.buckets.setIamPolicy` | — | `--d` |
-| `gsutil rsync` | `storage.objects.create` | — | `--recursive` `--d` `--m` |
-| `gsutil lifecycle set` | `storage.buckets.update` | — | — |
-| `gsutil versioning set` | `storage.buckets.update` | — | — |
-| `gsutil acl ch` | `storage.buckets.update` | — | `--u` `--g` |
-
-### `gcloud iam`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud iam service-accounts create` | `iam.serviceAccounts.create` | — | `--display-name` `--description` |
-| `gcloud iam service-accounts list` | `iam.serviceAccounts.list` | — | — |
-| `gcloud iam service-accounts describe` | `iam.serviceAccounts.get` | — | — |
-| `gcloud iam service-accounts delete` | `iam.serviceAccounts.delete` | — | — |
-| `gcloud iam roles list` | — | — | `--show-deleted` |
-| `gcloud iam roles describe` | — | — | — |
-| `gcloud iam roles create` | `iam.roles.create` | — | `--permissions` `--title` `--description` `--stage` |
-| `gcloud iam roles copy` | `iam.roles.create` | — | `--source` `--destination` `--dest-project` |
-| `gcloud iam service-accounts keys create` | `iam.serviceAccountKeys.create` | — | `--iam-account` `--key-file-type` |
-| `gcloud iam service-accounts keys list` | `iam.serviceAccountKeys.list` | — | `--iam-account` |
-| `gcloud iam service-accounts get-iam-policy` | `iam.serviceAccounts.getIamPolicy` | — | — |
-| `gcloud iam service-accounts add-iam-policy-binding` | `iam.serviceAccounts.setIamPolicy` | — | `--member` `--role` |
-| `gcloud iam service-accounts remove-iam-policy-binding` | `iam.serviceAccounts.setIamPolicy` | — | `--member` `--role` |
-
-### `gcloud container`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud container clusters create` | `container.clusters.create` | `container.googleapis.com` | `--zone` `--region` `--num-nodes` `--machine-type` `--release-channel` `--enable-network-policy` `--enable-private-nodes` `--enable-private-endpoint` `--master-ipv4-cidr` `--network` `--subnetwork` `--enable-master-authorized-networks` `--master-authorized-networks` `--enable-authorized-networks-on-private-endpoint` `--enable-ip-alias`  `--node-locations` `--workload-pool` `--enable-vertical-pod-autoscaling` |
-| `gcloud container clusters create-auto` | `container.clusters.create` | `container.googleapis.com` | `--region` `--release-channel` `--enable-private-nodes` `--enable-private-endpoint` `--master-ipv4-cidr` `--network` `--subnetwork` `--enable-master-authorized-networks` `--master-authorized-networks` `--enable-authorized-networks-on-private-endpoint` |
-| `gcloud container clusters list` | `container.clusters.list` | `container.googleapis.com` | — |
-| `gcloud container clusters describe` | `container.clusters.get` | `container.googleapis.com` | `--zone` `--region` |
-| `gcloud container clusters update` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--enable-private-endpoint` `--enable-master-authorized-networks` `--master-authorized-networks` `--enable-authorized-networks-on-private-endpoint`  `--workload-pool` `--enable-vertical-pod-autoscaling` |
-| `gcloud container clusters delete` | `container.clusters.delete` | `container.googleapis.com` | `--zone` `--region` `--async` |
-| `gcloud container clusters get-credentials` | `container.clusters.get` `container.clusters.getCredentials` | `container.googleapis.com` | `--zone` `--region` `--internal-ip` |
-| `gcloud container clusters resize` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--num-nodes` `--node-pool` |
-| `gcloud container clusters upgrade` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--master` `--node-pool` `--cluster-version` |
-| `gcloud container node-pools create` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--cluster` `--machine-type` `--num-nodes` `--disk-size` `--enable-autoscaling` `--min-nodes` `--max-nodes` `--enable-autorepair` `--enable-autoupgrade`  `--workload-metadata=GCE_METADATA\|GKE_METADATA` |
-| `gcloud container node-pools list` | `container.clusters.get` | `container.googleapis.com` | `--zone` `--region` `--cluster` |
-| `gcloud container node-pools describe` | `container.clusters.get` | `container.googleapis.com` | `--zone` `--region` `--cluster` |
-| `gcloud container node-pools update` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--cluster` `--enable-autoscaling` `--min-nodes` `--max-nodes` `--enable-autorepair` `--enable-autoupgrade`  `--workload-metadata=GCE_METADATA\|GKE_METADATA` |
-| `gcloud container node-pools delete` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--cluster` |
-| `sim gke autoscale-nodes` | `container.clusters.update` | `container.googleapis.com` | `--zone` `--region` `--cluster` `--required-nodes` |
-| `sim gke check-control-plane` | `container.clusters.get` | `container.googleapis.com` | `--zone` `--region` `--endpoint` `--source-ip` `--source-network` |
-
-### `kubectl`
-
-StatefulSetは`sts/statefulset/statefulsets.apps`のget/describe/delete、仮想manifestのcreate/apply/deleteとscaleに対応します。対象の`container.statefulSets.get/list/create/update/delete`を要求し、Pod操作はpodsの権限を使います。`get all`はStatefulSetのlist権限も必要です。`sim files load kubernetes-statefulset`で教材を読めます。`sim kubernetes write-file pod/NAME`は指定PodのPVCへ書き込みます。Parallel、Retain、単一image/PVCマウントに限定し、詳しい再現範囲は[KUBERNETES.md](KUBERNETES.md)を参照してください。
-
-HPAは`autoscale`またはautoscaling/v2の仮想YAML/JSONで作成し、`get/describe/delete hpa`で確認・削除できます。HPAファイルの`create/apply/delete -f`にも対応し、applyは目標値・レプリカ範囲・対象を置き換えます。`get all`はHPAのlist権限も要求します。CPU使用量は`sim kubernetes reconcile NAME --cpu=250m`で1 Podあたりの値を明示し、1回だけ評価します（実測や定期実行はありません）。
-
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `kubectl create configmap` | `container.configMaps.create` | `container.googleapis.com` | `--from-literal`（繰り返し可） `--namespace` |
-| `kubectl create secret generic` | `container.secrets.create` | `container.googleapis.com` | `--from-literal`（繰り返し可） `--namespace` |
-| `kubectl label` | ConfigMap/Secretのgetとupdate | `container.googleapis.com` | `--overwrite` `--namespace`（1リソースのKEY=VALUE / KEY-） |
-| `kubectl set env` | 更新: `container.deployments.update`、一覧: `container.deployments.get`、取込元のgetも必要 | `container.googleapis.com` | `--from` `--keys` `--prefix` `--list` `--namespace`  `--containers` |
-| `kubectl exec` | `container.pods.exec` | `container.googleapis.com` | `--namespace`（printenv/envのみ）  `--container/-c` |
-| `kubectl get` | Deployment/StatefulSet/Service/ConfigMap/Secret/HPA/NetworkPolicy/Ingress: 対象のget/list、その他: `container.pods.list` | `container.googleapis.com` | `--output` `--selector` (`-l`) `--namespace` |
-| `kubectl apply` | 仮想ファイル: 対象のgetとcreate/update、固定教材: `container.deployments.update` | `container.googleapis.com` | `--filename` `--namespace` |
-| `kubectl create` | 仮想ファイル: 対象のcreate、Deployment/固定教材: `container.deployments.create` | `container.googleapis.com` | `--filename` `--image` `--replicas` `--namespace` |
-| `kubectl delete` | Deployment/StatefulSet/Service/ConfigMap/Secret/HPA/NetworkPolicy/Ingress: 対象のdelete、その他・固定教材: `container.deployments.delete` | `container.googleapis.com` | `--filename` `--namespace` |
-| `kubectl describe` | Deployment/StatefulSet/Service/ConfigMap/Secret/HPA/NetworkPolicy/Ingress: 対象のget/list、その他: `container.pods.get` | `container.googleapis.com` | `--namespace` |
-| `kubectl expose` | `container.services.create` | `container.googleapis.com` | `--type` `--port` `--target-port` `--name` `--namespace` |
-| `kubectl autoscale` | `container.horizontalPodAutoscalers.create`、`container.deployments.get` | `container.googleapis.com` | `--min` `--max` `--cpu-percent` `--name` `--namespace` |
-| `kubectl create serviceaccount` | `container.serviceAccounts.create` | `container.googleapis.com` | `--namespace/-n` |
-| `kubectl annotate` | `container.serviceAccounts.update` + `container.serviceAccounts.get` | `container.googleapis.com` | `--namespace/-n`, `--overwrite`（Workload Identity annotationのみ） |
-| `sim kubernetes check-access` | `container.deployments.get` | `container.googleapis.com`（連携先はIAM Credentials APIも有効化） | `--bucket`, `--permission`（必須）, `--node-pool`, `--namespace/-n` |
-| `sim kubernetes recommend-vpa` | `container.thirdPartyObjects.update` + `container.deployments.get` | `container.googleapis.com` | `--cpu`, `--memory`（必須）, `--namespace/-n` |
-| `sim kubernetes admit-autopilot` | `container.deployments.update` | `container.googleapis.com` | `--namespace/-n`（単一コンテナの明示教材評価） |
-| `sim kubernetes probe` | `container.deployments.update` | `container.googleapis.com` | `--status-code`（必須）、`--pod`（省略時は対象Deploymentの全Pod）、`--kind=readiness|liveness|startup`（既定readiness）  `--container/-c` |
-| `sim kubernetes write-file` | 対象の`container.deployments.get` / `container.statefulSets.get` + `container.pods.exec` | `container.googleapis.com` | `--namespace/-n`, `--path`, `--content` |
-| `sim kubernetes connect` | `container.deployments.get` + `container.pods.exec` + `container.networkPolicies.list` | `container.googleapis.com` | `--to`, `--port`（両方必須）、`--namespace/-n`（送信元）、`--to-namespace`（省略時は送信元と同じ） |
-| `sim kubernetes request` | `container.ingresses.get` + `container.services.get` + `container.deployments.list` + `container.pods.list` | `container.googleapis.com` | `--host`（必須）、`--path`（既定/）、`--namespace/-n` |
-| `sim kubernetes reconcile` | `container.horizontalPodAutoscalers.update`、`container.deployments.update` | `container.googleapis.com` | `--cpu`（1 Podあたりの教材用使用量） |
-| `kubectl scale` | 対象の`container.deployments.update` / `container.statefulSets.update` | `container.googleapis.com` | `--replicas` `--namespace` |
-| `kubectl set resources` | `container.deployments.update` | `container.googleapis.com` | `--requests` `--limits` `--containers` (`-c`) `--namespace` |
-| `kubectl set image` | `container.deployments.update` | `container.googleapis.com` | `--namespace` |
-| `kubectl rollout status` | `container.deployments.get` | `container.googleapis.com` | `--namespace` |
-| `kubectl rollout history` | `container.deployments.get` | `container.googleapis.com` | `--revision` `--namespace` |
-| `kubectl rollout restart` | `container.deployments.update` | `container.googleapis.com` | `--namespace` |
-| `kubectl rollout undo` | `container.deployments.update` | `container.googleapis.com` | `--to-revision` `--namespace` |
-| `kubectl logs` | `container.pods.get` | `container.googleapis.com` | `--follow` `--namespace`  `--container/-c` |
-| `kubectl config` | `container.clusters.get` | `container.googleapis.com` | `--current` `--namespace`（set-contextのみ） |
-
-### `gcloud run`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud run deploy` | `run.services.create` | `run.googleapis.com` | `--image` `--region` `--platform` `--allow-unauthenticated` |
-| `gcloud run services list` | `run.services.list` | `run.googleapis.com` | `--region` `--platform` |
-| `gcloud run services describe` | `run.services.get` | `run.googleapis.com` | `--region` `--platform` |
-| `gcloud run services delete` | `run.services.delete` | `run.googleapis.com` | `--region` `--platform` |
-
-### `gcloud functions`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud functions deploy` | `cloudfunctions.functions.create` | `cloudfunctions.googleapis.com` | `--region` `--runtime` `--trigger-http` `--trigger-topic` `--entry-point` `--memory` `--allow-unauthenticated` `--gen2` `--source` |
-| `gcloud functions list` | `cloudfunctions.functions.list` | `cloudfunctions.googleapis.com` | `--regions` |
-| `gcloud functions describe` | `cloudfunctions.functions.get` | `cloudfunctions.googleapis.com` | `--region` |
-| `gcloud functions delete` | `cloudfunctions.functions.delete` | `cloudfunctions.googleapis.com` | `--region` |
-| `gcloud functions call` | `cloudfunctions.functions.call` | `cloudfunctions.googleapis.com` | `--region` `--data` |
-
-### `gcloud app`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud app deploy` | `appengine.applications.create` `appengine.versions.create` | `appengine.googleapis.com` | `--region` `--version` `--promote` |
-| `gcloud app browse` | `appengine.applications.get` | `appengine.googleapis.com` | `--service` |
-| `gcloud app describe` | `appengine.applications.get` | `appengine.googleapis.com` | — |
-| `gcloud app versions list` | `appengine.versions.list` | `appengine.googleapis.com` | `--service` |
-| `gcloud app services set-traffic` | `appengine.services.update` | `appengine.googleapis.com` | `--splits` `--split-by` |
-
-### `gcloud sql`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud sql instances create` | `cloudsql.instances.create` | `sqladmin.googleapis.com` | `--database-version` `--tier` `--region` `--availability-type` `--network` `--assign-ip` `--authorized-networks` `--enable-point-in-time-recovery` `--master-instance-name` |
-| `gcloud sql instances list` | `cloudsql.instances.list` | `sqladmin.googleapis.com` | — |
-| `gcloud sql instances describe` | `cloudsql.instances.get` | `sqladmin.googleapis.com` | — |
-| `gcloud sql instances delete` | `cloudsql.instances.delete` | `sqladmin.googleapis.com` | — |
-| `gcloud sql backups create` | `cloudsql.backupRuns.create` | `sqladmin.googleapis.com` | `--instance` `--description` `--async` |
-| `gcloud sql backups list` | `cloudsql.instances.get` | `sqladmin.googleapis.com` | `--instance` |
-
-### `gcloud pubsub`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud pubsub topics create` | `pubsub.topics.create` | `pubsub.googleapis.com` | — |
-| `gcloud pubsub topics list` | `pubsub.topics.list` | `pubsub.googleapis.com` | — |
-| `gcloud pubsub topics describe` | `pubsub.topics.get` | `pubsub.googleapis.com` | — |
-| `gcloud pubsub subscriptions create` | `pubsub.subscriptions.create` | `pubsub.googleapis.com` | `--topic` `--ack-deadline` `--push-endpoint` |
-| `gcloud pubsub subscriptions list` | `pubsub.topics.list` | `pubsub.googleapis.com` | — |
-| `gcloud pubsub subscriptions describe` | `pubsub.subscriptions.get` | `pubsub.googleapis.com` | — |
-
-### `gcloud logging`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud logging read` | `logging.logEntries.list` | `logging.googleapis.com` | `--freshness` `--order` |
-| `gcloud logging logs list` | `logging.logs.list` | `logging.googleapis.com` | — |
-| `gcloud logging sinks create` | `logging.sinks.create` | `logging.googleapis.com` | `--log-filter` |
-| `gcloud logging sinks list` | `logging.sinks.list` | `logging.googleapis.com` | — |
-| `gcloud logging sinks describe` | `logging.sinks.get` | `logging.googleapis.com` | — |
-| `gcloud logging metrics create` | `logging.logMetrics.create` | `logging.googleapis.com` | `--log-filter` `--description` |
-| `gcloud logging metrics update` | `logging.logMetrics.update` | `logging.googleapis.com` | `--log-filter` `--description` |
-| `gcloud logging metrics delete` | `logging.logMetrics.delete` | `logging.googleapis.com` | — |
-| `gcloud logging metrics describe` | `logging.logMetrics.get` | `logging.googleapis.com` | — |
-| `gcloud logging metrics list` | `logging.logMetrics.list` | `logging.googleapis.com` | — |
-| `gcloud logging sinks update` | `logging.sinks.update` | `logging.googleapis.com` | `--log-filter` |
-| `gcloud logging sinks delete` | `logging.sinks.delete` | `logging.googleapis.com` | — |
-
-### `gcloud monitoring`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud monitoring dashboards list` | `monitoring.dashboards.list` | `monitoring.googleapis.com` | — |
-| `gcloud monitoring policies list` | `monitoring.alertPolicies.list` | `monitoring.googleapis.com` | — |
-| `gcloud monitoring dashboards create` | `monitoring.dashboards.create` | `monitoring.googleapis.com` | `--config` `--config-from-file` `--validate-only` |
-| `gcloud monitoring dashboards describe` | `monitoring.dashboards.get` | `monitoring.googleapis.com` | — |
-| `gcloud monitoring dashboards delete` | `monitoring.dashboards.delete` | `monitoring.googleapis.com` | — |
-| `gcloud monitoring policies create` | `monitoring.alertPolicies.create` | `monitoring.googleapis.com` | `--display-name` `--condition-display-name` `--condition-filter` `--if` `--duration` `--combiner` `--enabled` |
-| `gcloud monitoring policies describe` | `monitoring.alertPolicies.get` | `monitoring.googleapis.com` | — |
-| `gcloud monitoring policies delete` | `monitoring.alertPolicies.delete` | `monitoring.googleapis.com` | — |
-| `gcloud monitoring uptime create` | `monitoring.uptimeCheckConfigs.create` | `monitoring.googleapis.com` | `--resource-type` `--resource-labels` `--protocol` `--path` `--port` `--period` `--timeout` |
-| `gcloud monitoring uptime describe` | `monitoring.uptimeCheckConfigs.get` | `monitoring.googleapis.com` | — |
-| `gcloud monitoring uptime delete` | `monitoring.uptimeCheckConfigs.delete` | `monitoring.googleapis.com` | — |
-| `gcloud monitoring uptime list` | `monitoring.uptimeCheckConfigs.list` | `monitoring.googleapis.com` | — |
-
-### `gcloud kms`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud kms keyrings create` | `cloudkms.keyRings.create` | `cloudkms.googleapis.com` | `--location` |
-| `gcloud kms keyrings list` | `cloudkms.keyRings.list` | `cloudkms.googleapis.com` | `--location` |
-| `gcloud kms keyrings describe` | `cloudkms.keyRings.get` | `cloudkms.googleapis.com` | `--location` |
-
-### `gcloud dns`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud dns managed-zones create` | `dns.managedZones.create` | `dns.googleapis.com` | `--dns-name` `--description` `--visibility` |
-| `gcloud dns managed-zones list` | `dns.managedZones.list` | `dns.googleapis.com` | — |
-| `gcloud dns managed-zones describe` | `dns.managedZones.get` | `dns.googleapis.com` | — |
-
-### `gcloud deployment-manager`
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud deployment-manager deployments create` | `deploymentmanager.deployments.create` | `deploymentmanager.googleapis.com` | `--config` `--preview` |
-| `gcloud deployment-manager deployments list` | `deploymentmanager.deployments.list` | `deploymentmanager.googleapis.com` | — |
-| `gcloud deployment-manager deployments describe` | `deploymentmanager.deployments.get` | `deploymentmanager.googleapis.com` | — |
-
-| `gcloud compute health-checks create tcp` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--port` `--request-path` `--check-interval` `--timeout` |
-| `gcloud compute health-checks create http` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--port` `--request-path` `--check-interval` `--timeout` |
-| `gcloud compute health-checks create https` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--port` `--request-path` `--check-interval` `--timeout` |
-| `gcloud compute backend-services update` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--protocol` `--health-checks` `--health-checks-region` `--load-balancing-scheme` `--port-name` `--timeout` `--enable-cdn` `--cache-mode` |
-| `gcloud compute backend-services add-backend` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--instance-group` `--instance-group-zone` `--instance-group-region` `--network-endpoint-group` `--network-endpoint-group-zone` `--balancing-mode` `--max-rate-per-endpoint` |
-| `gcloud compute backend-services remove-backend` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--instance-group` `--instance-group-zone` `--instance-group-region` `--network-endpoint-group` `--network-endpoint-group-zone` |
-| `gcloud compute backend-services get-health` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
-| `gcloud compute url-maps create` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--default-service` `--default-backend-bucket` |
-| `gcloud compute url-maps describe` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
-| `gcloud compute url-maps list` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--regions` |
-| `gcloud compute target-http-proxies create` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--url-map` `--url-map-region` `--ssl-certificates` |
-| `gcloud compute target-http-proxies describe` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
-| `gcloud compute target-http-proxies list` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--regions` |
-| `gcloud compute target-https-proxies create` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--url-map` `--url-map-region` `--ssl-certificates` |
-| `gcloud compute target-https-proxies describe` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
-| `gcloud compute target-https-proxies list` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--regions` |
-| `gcloud compute ssl-certificates create` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--domains` |
-| `gcloud compute ssl-certificates describe` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
-| `gcloud compute ssl-certificates list` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--regions` |
-| `gcloud compute network-endpoint-groups create` | スコープ・参照先で検証 | `compute.googleapis.com` | `--zone` `--network-endpoint-type` `--network` `--subnet` `--default-port` |
-| `gcloud compute network-endpoint-groups describe` | スコープ・参照先で検証 | `compute.googleapis.com` | `--zone` |
-| `gcloud compute network-endpoint-groups list` | スコープ・参照先で検証 | `compute.googleapis.com` | - |
-| `gcloud compute backend-buckets create` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--gcs-bucket-name` `--enable-cdn` `--cache-mode` |
-| `gcloud compute backend-buckets describe` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
-| `gcloud compute backend-buckets list` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--regions` |
-| `gcloud compute url-maps add-path-matcher` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--path-matcher-name` `--default-service` `--new-hosts` `--path-rules` |
-| `gcloud compute network-endpoint-groups update` | スコープ・参照先で検証 | `compute.googleapis.com` | `--zone` `--add-endpoint` `--remove-endpoint` |
-| `gcloud compute instance-groups managed list-instances` | `compute.instanceGroupManagers.get` | `compute.googleapis.com` | `--zone` `--region` |
-| `gcloud compute instance-groups managed set-named-ports` | `compute.instanceGroups.setNamedPorts` | `compute.googleapis.com` | `--zone` `--region` `--named-ports` |
-| `gcloud compute instance-groups set-named-ports` | `compute.instanceGroups.setNamedPorts` | `compute.googleapis.com` | `--zone` `--region` `--named-ports` |
-| `gcloud compute instance-groups get-named-ports` | `compute.instanceGroups.get` | `compute.googleapis.com` | `--zone` `--region` |
-| `gcloud compute url-maps delete` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
-| `gcloud compute target-http-proxies delete` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
-| `gcloud compute target-https-proxies delete` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
-| `gcloud compute ssl-certificates delete` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
-| `gcloud compute network-endpoint-groups delete` | スコープ・参照先で検証 | `compute.googleapis.com` | `--zone` |
-| `gcloud compute backend-buckets delete` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
-| `gcloud compute health-checks delete` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
-| `gcloud compute backend-services delete` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
-| `gcloud compute forwarding-rules delete` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
-| `gcloud compute addresses delete` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` |
-| `gcloud compute instance-groups managed delete` | `compute.instanceGroupManagers.delete` | `compute.googleapis.com` | `--zone` `--region` |
-| `gcloud compute instance-templates delete` | `compute.instanceTemplates.delete` | `compute.googleapis.com` | - |
-| `gcloud compute networks subnets delete` | `compute.subnetworks.delete` | `compute.googleapis.com` | `--region` |
-| `sim load-balancing serve` | `compute.instances.setMetadata` | `compute.googleapis.com` | `--zone` `--region` `--instance` `--port` `--protocol` `--path` `--status-code` |
-| `sim load-balancing probe` | スコープ・参照先で検証 | `compute.googleapis.com` | `--global` `--region` `--port` `--host` `--path` `--source-ip` `--source-network` `--source-region` `--min-healthy` |
-| `sim load-balancing activate-certificate` | `compute.sslCertificates.get` / `compute.targetHttpsProxies.setSslCertificates` | `compute.googleapis.com` | `--global` `--region` |
-| `sim load-balancing checkpoint` | `compute.projects.setCommonInstanceMetadata` | `compute.googleapis.com` | `--global` `--region` |
-
-
-### Firestore / Spanner / Bigtable / Memorystore
-
-[MANAGED_DATABASES.md](MANAGED_DATABASES.md)に14ミッション、再現範囲、旧保存の移行を記載しています。`sim`のデータ操作はSDK/SQL/Redis通信を行う固定教材です。これらの`sim`コマンドは明示した`--project`/`--account`にも対応します。削除確認を省く場合は`--quiet`を使います。
-
-| コマンド | 必要な権限 | 必要な API | フラグ |
-|---|---|---|---|
-| `gcloud bigtable backups create` | bigtable.backups.create | bigtableadmin.googleapis.com | --instance, --cluster, --table |
-| `gcloud bigtable backups delete` | bigtable.backups.delete | bigtableadmin.googleapis.com | --instance, --cluster, --table |
-| `gcloud bigtable backups describe` | bigtable.backups.get | bigtableadmin.googleapis.com | --instance, --cluster, --table |
-| `gcloud bigtable backups list` | bigtable.backups.list | bigtableadmin.googleapis.com | --instance, --cluster, --table |
-| `gcloud bigtable clusters create` | bigtable.clusters.create | bigtableadmin.googleapis.com | --instance, --zone, --num-nodes |
-| `gcloud bigtable clusters delete` | bigtable.clusters.delete | bigtableadmin.googleapis.com | --instance, --zone, --num-nodes |
-| `gcloud bigtable clusters describe` | bigtable.clusters.get | bigtableadmin.googleapis.com | --instance, --zone, --num-nodes |
-| `gcloud bigtable clusters list` | bigtable.clusters.list | bigtableadmin.googleapis.com | --instance, --zone, --num-nodes |
-| `gcloud bigtable clusters update` | bigtable.clusters.update | bigtableadmin.googleapis.com | --instance, --zone, --num-nodes |
-| `gcloud bigtable instances create` | bigtable.instances.create | bigtableadmin.googleapis.com | --cluster, --cluster-zone, --cluster-num-nodes |
-| `gcloud bigtable instances delete` | bigtable.instances.delete | bigtableadmin.googleapis.com | --cluster, --cluster-zone, --cluster-num-nodes |
-| `gcloud bigtable instances describe` | bigtable.instances.get | bigtableadmin.googleapis.com | --cluster, --cluster-zone, --cluster-num-nodes |
-| `gcloud bigtable instances list` | bigtable.instances.list | bigtableadmin.googleapis.com | --cluster, --cluster-zone, --cluster-num-nodes |
-| `gcloud redis instances failover` | redis.instances.update | redis.googleapis.com | --region |
-| `gcloud spanner backups create` | spanner.backups.create | spanner.googleapis.com | --instance, --database |
-| `gcloud spanner backups delete` | spanner.backups.delete | spanner.googleapis.com | --instance |
-| `gcloud spanner backups describe` | spanner.backups.get | spanner.googleapis.com | --instance |
-| `gcloud spanner backups list` | spanner.backups.list | spanner.googleapis.com | --instance |
-| `gcloud spanner databases create` | spanner.databases.create | spanner.googleapis.com | --instance, --ddl |
-| `gcloud spanner databases ddl update` | spanner.databases.updateDdl | spanner.googleapis.com | --instance, --ddl |
-| `gcloud spanner databases delete` | spanner.databases.delete | spanner.googleapis.com | --instance |
-| `gcloud spanner databases describe` | spanner.databases.get | spanner.googleapis.com | --instance |
-| `gcloud spanner databases execute-sql` | spanner.databases.read | spanner.googleapis.com | --instance, --sql |
-| `gcloud spanner databases list` | spanner.databases.list | spanner.googleapis.com | --instance |
-| `gcloud spanner databases restore` | spanner.databases.create | spanner.googleapis.com | --instance, --backup, --backup-instance |
-| `gcloud spanner instances create` | spanner.instances.create | spanner.googleapis.com | --config, --processing-units, --nodes |
-| `gcloud spanner instances delete` | spanner.instances.delete | spanner.googleapis.com | --config, --processing-units, --nodes |
-| `gcloud spanner instances describe` | spanner.instances.get | spanner.googleapis.com | --config, --processing-units, --nodes |
-| `gcloud spanner instances list` | spanner.instances.list | spanner.googleapis.com | --config, --processing-units, --nodes |
-| `gcloud spanner instances update` | spanner.instances.update | spanner.googleapis.com | --config, --processing-units, --nodes |
-| `sim bigtable backups restore` | bigtable.tables.create | bigtableadmin.googleapis.com | --instance, --cluster, --table, --backup-instance, --backup-cluster, --project, --account |
-| `sim bigtable families set-gc` | bigtable.tables.update | bigtableadmin.googleapis.com | --instance, --cluster, --table, --max-versions, --max-age-seconds, --project, --account |
-| `sim bigtable gc` | bigtable.tables.update | bigtableadmin.googleapis.com | --instance, --cluster, --at, --project, --account |
-| `sim bigtable replication advance` | bigtable.clusters.update | bigtableadmin.googleapis.com | --instance, --project, --account |
-| `sim bigtable rows delete` | bigtable.tables.mutateRows | bigtable.googleapis.com | --instance, --cluster, --table, --project, --account, --quiet |
-| `sim bigtable rows read` | bigtable.tables.readRows | bigtable.googleapis.com | --instance, --cluster, --table, --project, --account |
-| `sim bigtable rows scan` | bigtable.tables.readRows | bigtable.googleapis.com | --instance, --cluster, --table, --prefix, --project, --account |
-| `sim bigtable rows write` | bigtable.tables.mutateRows | bigtable.googleapis.com | --instance, --cluster, --table, --family, --qualifier, --value, --timestamp, --project, --account |
-| `sim bigtable tables create` | bigtable.tables.create | bigtableadmin.googleapis.com | --instance, --cluster, --column-families, --project, --account |
-| `sim bigtable tables delete` | bigtable.tables.delete | bigtableadmin.googleapis.com | --instance, --cluster, --project, --account, --quiet |
-| `sim bigtable tables describe` | bigtable.tables.get | bigtableadmin.googleapis.com | --instance, --cluster, --project, --account |
-| `sim bigtable tables list` | bigtable.tables.list | bigtableadmin.googleapis.com | --instance, --cluster, --project, --account |
-| `sim databases time advance` | redis.instances.get | redis.googleapis.com | --seconds, --project, --account |
-| `sim firestore backups create` | datastore.backups.create | firestore.googleapis.com | --database, --location, --project, --account |
-| `sim firestore backups delete` | datastore.backups.delete | firestore.googleapis.com | --database, --location, --project, --account, --quiet |
-| `sim firestore backups describe` | datastore.backups.get | firestore.googleapis.com | --database, --location, --project, --account |
-| `sim firestore backups list` | datastore.backups.list | firestore.googleapis.com | --database, --location, --project, --account |
-| `sim firestore backups restore` | datastore.databases.create | firestore.googleapis.com | --destination-database, --location, --project, --account |
-| `sim firestore documents increment` | datastore.entities.update | firestore.googleapis.com | --database, --field, --amount, --expected-version, --project, --account |
-| `sim firestore indexes create` | datastore.indexes.create | firestore.googleapis.com | --database, --collection, --fields, --project, --account |
-| `sim firestore indexes delete` | datastore.indexes.delete | firestore.googleapis.com | --database, --project, --account, --quiet |
-| `sim firestore indexes describe` | datastore.indexes.get | firestore.googleapis.com | --database, --project, --account |
-| `sim firestore indexes list` | datastore.indexes.list | firestore.googleapis.com | --database, --project, --account |
-| `sim firestore query` | datastore.entities.list | firestore.googleapis.com | --database, --location, --where-field, --equals, --order-by, --descending, --limit, --project, --account |
-| `sim functions database increment-cache` | cloudfunctions.functions.get | cloudfunctions.googleapis.com | --region, --key, --project, --account |
-| `sim functions database read` | cloudfunctions.functions.get | cloudfunctions.googleapis.com | --region, --document, --project, --account |
-| `sim redis cache delete` | redis.instances.get | redis.googleapis.com | --instance, --region, --network, --project, --account, --quiet |
-| `sim redis cache get` | redis.instances.get | redis.googleapis.com | --instance, --region, --network, --project, --account |
-| `sim redis cache increment` | redis.instances.get | redis.googleapis.com | --instance, --region, --network, --project, --account |
-| `sim redis cache set` | redis.instances.get | redis.googleapis.com | --instance, --region, --network, --value, --ttl, --project, --account |
-| `sim spanner execute` | spanner.databases.read | spanner.googleapis.com | --instance, --sql, --project, --account |
-
-
-### 監視・ログの運用教材
-
-詳細と再現範囲: [OBSERVABILITY.md](OBSERVABILITY.md)。`sim` コマンドは教材専用。
+### terraform
 
 | コマンド | 内容 |
 |---|---|
-| `gcloud monitoring channels create` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `gcloud monitoring channels list` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `gcloud monitoring channels describe` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `gcloud monitoring channels update` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `gcloud monitoring channels delete` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim monitoring channels verify` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim monitoring clock advance` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim monitoring metric-descriptors create` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim monitoring time-series write` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim monitoring time-series list` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `gcloud monitoring metrics-scopes create` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `gcloud monitoring metrics-scopes describe` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `gcloud monitoring metrics-scopes list` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim monitoring policies evaluate` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim monitoring slos create` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim monitoring slos record` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim monitoring slos describe` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `gcloud monitoring policies update` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `gcloud monitoring dashboards update` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `gcloud monitoring uptime update` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `terraform init` | Initialize a backend and the offline Google provider lock; optionally migrate state. |
+| `terraform force-unlock` | Remove the matching simulated abandoned state lock. |
+| `terraform state pull` | Read the current simulator state as JSON (simplified schema). |
+| `terraform validate` | Validate the supported HCL subset and configured variable values. |
+| `terraform fmt` | Format supported HCL files. |
+| `terraform plan` | Preview changes without mutating cloud resources or managed state. |
+| `terraform apply` | Apply a new or saved execution plan. |
+| `terraform destroy` | Destroy the resources managed by this simulator state. |
+| `terraform show` | Show a saved plan or state; -json exposes the raw simulator data. |
+| `terraform output` | Read outputs recorded by the last apply. |
+| `terraform state list` | List managed resource addresses. |
+| `terraform state show` | Show a managed resource from state (does not refresh). |
+| `terraform state rm` | Forget an address without deleting its remote resource. |
+| `terraform state mv` | Rename a state address; update HCL separately to avoid recreation. |
+| `terraform import` | Import an existing supported resource into a configured address. |
+| `terraform state push` | Replace managed state from validated simulator JSON; infrastructure is unchanged. |
+
+### gcloud terraform
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud terraform vet` | Validate a simulator JSON plan against a bounded teaching policy library. |
+
+### gcloud artifacts
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud artifacts docker tags list` | List remote tags in a repository or image path. |
+| `gcloud artifacts docker tags add` | Create or move a remote tag within the same image path. |
+| `gcloud artifacts docker tags delete` | Remove a remote tag while retaining the image version. |
+| `gcloud artifacts docker images delete` | Delete a remote image path or a specific tag/digest version. |
+| `gcloud artifacts repositories create` | Create a standard Docker Artifact Registry repository. |
+| `gcloud artifacts repositories list` | List repositories in the selected project, optionally filtered by location. |
+| `gcloud artifacts repositories describe` | describe for an Artifact Registry repository. |
+| `gcloud artifacts repositories delete` | delete for an Artifact Registry repository. |
+| `gcloud artifacts repositories get-iam-policy` | get-iam-policy for an Artifact Registry repository. |
+| `gcloud artifacts repositories add-iam-policy-binding` | add-iam-policy-binding for an Artifact Registry repository. |
+| `gcloud artifacts repositories remove-iam-policy-binding` | remove-iam-policy-binding for an Artifact Registry repository. |
+| `gcloud artifacts docker images list` | List simulated image versions in a Docker repository, optionally including tags. |
+| `gcloud artifacts docker images describe` | Describe a simulated registry image by tag or digest. |
+
+### docker
+
+| コマンド | 内容 |
+|---|---|
+| `docker build` | Build a simulated image from a fixed lesson context; no host files or Docker daemon. |
+| `docker images` | List local images, separately from registry images. |
+| `docker tag` | Add or move a local tag without copying the image. |
+| `docker push` | Push a local tagged image to an existing simulated Artifact Registry repository. |
+| `docker pull` | Pull a tagged image or digest from simulated Artifact Registry. |
+| `docker run` | Start a simulated detached lesson container; missing images are pulled from Artifact Registry. |
+| `docker ps` | List running simulated containers. |
+| `docker logs` | Read fixed lesson startup logs; no application process runs. |
+| `docker inspect` | Inspect a simulated container and its pinned image ID. |
+| `docker stop` | Stop a simulated container and release its published port. |
+| `docker rm` | Remove a stopped simulated container. |
+| `docker rmi` | Remove one local image tag or an unreferenced image ID; registry images remain. |
+
+### gcloud auth
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud auth configure-docker` | Configure simulated gcloud credential helpers for the specified Artifact Registry hosts. |
+| `gcloud auth activate-service-account` | Authorize access to Google Cloud with a service account credential file. |
+| `gcloud auth application-default login` | Acquire new user credentials to use for Application Default Credentials (simulated: uses the active account). |
+| `gcloud auth login` | Authorize gcloud to access Google Cloud (simulated: registers ACCOUNT as the active principal). |
+| `gcloud auth list` | Lists credentialed accounts. |
+| `gcloud auth revoke` | Revoke access credentials for an account (simulated). |
+| `gcloud auth print-access-token` | Issue simulated one-hour-or-shorter SA credential metadata; no real bearer token. |
+
+### gcloud builds
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud builds submit` | Build a fixed lesson context remotely and push to Artifact Registry (simulated). |
+| `gcloud builds list` | List simulated builds in one project and location. |
+| `gcloud builds describe` | Describe a simulated build. |
+| `gcloud builds log` | Read fixed simulated build logs; no streaming or external log storage. |
+| `gcloud builds cancel` | Cancel a queued or working simulated build. |
+
+### gcloud config
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud config set` | Set a Google Cloud CLI property. |
+| `gcloud config unset` | Unset a Google Cloud CLI property. |
+| `gcloud config get` | Print the value of a Google Cloud CLI property. |
+| `gcloud config get-value` | Print the value of a Google Cloud CLI property. |
+| `gcloud config list` | List Google Cloud CLI properties for the currently active configuration. |
+| `gcloud config configurations list` | List existing named configurations. |
+| `gcloud config configurations create` | Create a new named configuration. |
+| `gcloud config configurations activate` | Activates an existing named configuration. |
+| `gcloud config configurations describe` | Describes a named configuration by listing its properties. |
+| `gcloud config configurations delete` | Deletes a named configuration. |
+
+### gcloud version
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud version` | Print version information for Google Cloud CLI components. |
+
+### gcloud info
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud info` | Display information about the current gcloud environment. |
+
+### gcloud init
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud init` | Initialize or reinitialize gcloud (non-interactive: prints the current configuration). |
+
+### gcloud components
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud components list` | List the status of all Google Cloud CLI components. |
+| `gcloud components install` | Install specified components. |
+| `gcloud components update` | Update all of your installed components. |
+
+### gcloud projects
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud projects list` | List projects accessible by the active account. |
+| `gcloud projects describe` | Show metadata for a project. |
+| `gcloud projects create` | Create a new project. |
+| `gcloud projects delete` | Delete a project. |
+| `gcloud projects undelete` | Undelete a project. |
+| `gcloud projects get-iam-policy` | Get the IAM policy for a resource. |
+| `gcloud projects add-iam-policy-binding` | Add an IAM policy binding to a resource. |
+| `gcloud projects remove-iam-policy-binding` | Remove an IAM policy binding from a resource. |
+
+### gcloud organizations
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud organizations list` | List organizations accessible by the active account. |
+| `gcloud organizations describe` | Show metadata for an organization. |
+| `gcloud organizations get-iam-policy` | Get the IAM policy for a resource. |
+| `gcloud organizations add-iam-policy-binding` | Add an IAM policy binding to a resource. |
+| `gcloud organizations remove-iam-policy-binding` | Remove an IAM policy binding from a resource. |
+
+### gcloud resource-manager
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud resource-manager folders list` | List folders under a parent. |
+| `gcloud resource-manager folders create` | Create a new folder. |
+| `gcloud resource-manager folders describe` | Show metadata for a folder. |
+| `gcloud resource-manager folders get-iam-policy` | Get the IAM policy for a resource. |
+| `gcloud resource-manager folders add-iam-policy-binding` | Add an IAM policy binding to a resource. |
+| `gcloud resource-manager folders remove-iam-policy-binding` | Remove an IAM policy binding from a resource. |
+
+### gcloud billing
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud billing accounts list` | List all active billing accounts. |
+| `gcloud billing accounts describe` | Show metadata for a billing account. |
+| `gcloud billing projects describe` | Show detailed billing information for a project. |
+| `gcloud billing projects link` | Link a project with a billing account. |
+| `gcloud billing projects unlink` | Unlink a project from its billing account. |
+| `gcloud billing budgets create` | Create a budget for a billing account. |
+| `gcloud billing budgets list` | List budgets for a billing account. |
+| `gcloud billing budgets describe` | Describe a budget. |
+| `gcloud billing budgets update` | Configure bounded administration resources in the simulator. |
+| `gcloud billing budgets delete` | Configure bounded administration resources in the simulator. |
+
+### gcloud services
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud services enable` | Enable a service for consumption for a project. |
+| `gcloud services disable` | Disable a service for the current project. |
+| `gcloud services list` | List services for a project. |
+
+### gcloud filestore
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud filestore instances create` | Bounded storage configuration; no cloud requests or billing. |
+| `gcloud filestore instances list` | Bounded storage configuration; no cloud requests or billing. |
+| `gcloud filestore instances describe` | Bounded storage configuration; no cloud requests or billing. |
+| `gcloud filestore instances delete` | Bounded storage configuration; no cloud requests or billing. |
+
+### gcloud netapp
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud netapp storage-pools create` | Bounded storage configuration; no cloud requests or billing. |
+| `gcloud netapp storage-pools list` | Bounded storage configuration; no cloud requests or billing. |
+| `gcloud netapp storage-pools describe` | Bounded storage configuration; no cloud requests or billing. |
+| `gcloud netapp storage-pools delete` | Bounded storage configuration; no cloud requests or billing. |
+| `gcloud netapp volumes create` | Bounded storage configuration; no cloud requests or billing. |
+| `gcloud netapp volumes list` | Bounded storage configuration; no cloud requests or billing. |
+| `gcloud netapp volumes describe` | Bounded storage configuration; no cloud requests or billing. |
+| `gcloud netapp volumes delete` | Bounded storage configuration; no cloud requests or billing. |
+
+### gcloud lustre
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud lustre instances create` | Bounded storage configuration; no cloud requests or billing. |
+| `gcloud lustre instances list` | Bounded storage configuration; no cloud requests or billing. |
+| `gcloud lustre instances describe` | Bounded storage configuration; no cloud requests or billing. |
+| `gcloud lustre instances delete` | Bounded storage configuration; no cloud requests or billing. |
+
+### gcloud kms
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud kms keys versions enable` | Bounded storage configuration; no cloud requests or billing. |
+| `gcloud kms keys versions disable` | Bounded storage configuration; no cloud requests or billing. |
+| `gcloud kms keys create` | create keys in the fixed serverless lesson. |
+| `gcloud kms keys list` | list keys in the fixed serverless lesson. |
+| `gcloud kms keys describe` | describe keys in the fixed serverless lesson. |
+| `gcloud kms keys delete` | delete keys in the fixed serverless lesson. |
+| `gcloud kms keys versions update` | Enable or disable the lesson key's primary version (version 1). |
+| `gcloud kms keys get-iam-policy` | Read or change the resource IAM policy. |
+| `gcloud kms keys add-iam-policy-binding` | Read or change the resource IAM policy. |
+| `gcloud kms keys remove-iam-policy-binding` | Read or change the resource IAM policy. |
+| `gcloud kms keyrings create` | Create a new keyring. |
+| `gcloud kms keyrings list` | List keyrings within a location. |
+| `gcloud kms keyrings describe` | Get metadata for a keyring. |
+
+### gcloud storage
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud storage service-agent` | Bounded storage configuration; no cloud requests or billing. |
+| `gcloud storage objects describe` | Configure or inspect virtual object generations; no cloud requests. |
+| `gcloud storage restore` | Configure or inspect virtual object generations; no cloud requests. |
+| `gcloud storage buckets create` | Create Cloud Storage buckets. |
+| `gcloud storage buckets list` | List Cloud Storage buckets. |
+| `gcloud storage buckets describe` | Describe a Cloud Storage bucket. |
+| `gcloud storage buckets delete` | Delete Cloud Storage buckets. |
+| `gcloud storage buckets get-iam-policy` | Get the IAM policy for a resource. |
+| `gcloud storage buckets add-iam-policy-binding` | Add an IAM policy binding to a resource. |
+| `gcloud storage buckets remove-iam-policy-binding` | Remove an IAM policy binding from a resource. |
+| `gcloud storage ls` | List Cloud Storage buckets and objects. |
+| `gcloud storage cp` | Upload, download, and copy Cloud Storage objects (contents are not stored). |
+| `gcloud storage rm` | Delete objects and buckets. |
+| `gcloud storage buckets update` | Update Cloud Storage buckets (versioning, lifecycle, storage class, access settings). |
+| `gcloud storage objects update` | Update Cloud Storage objects (storage class, content type). |
+| `gcloud storage rsync` | Synchronize content of two buckets/directories (objects are copied between gs:// URLs). |
+| `gcloud storage sign-url` | Generate a URL with embedded authentication for an object. |
+
+### gcloud transfer
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud transfer jobs create` | Bounded storage configuration; no cloud requests or billing. |
+| `gcloud transfer jobs run` | Bounded storage configuration; no cloud requests or billing. |
+| `gcloud transfer jobs describe` | Bounded storage configuration; no cloud requests or billing. |
+| `gcloud transfer jobs list` | Bounded storage configuration; no cloud requests or billing. |
+| `gcloud transfer jobs update` | Bounded storage configuration; no cloud requests or billing. |
+| `gcloud transfer jobs delete` | Bounded storage configuration; no cloud requests or billing. |
+
+### gcloud org-policies
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud org-policies set-policy` | Configure bounded administration resources in the simulator. |
+| `gcloud org-policies describe` | Configure bounded administration resources in the simulator. |
+| `gcloud org-policies reset` | Configure bounded administration resources in the simulator. |
+| `gcloud org-policies delete` | Configure bounded administration resources in the simulator. |
+
+### gcloud identity
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud identity groups create` | Configure bounded administration resources in the simulator. |
+| `gcloud identity groups describe` | Configure bounded administration resources in the simulator. |
+| `gcloud identity groups search` | Configure bounded administration resources in the simulator. |
+| `gcloud identity groups delete` | Configure bounded administration resources in the simulator. |
+| `gcloud identity groups memberships add` | Configure bounded administration resources in the simulator. |
+| `gcloud identity groups memberships delete` | Configure bounded administration resources in the simulator. |
+| `gcloud identity groups memberships list` | Configure bounded administration resources in the simulator. |
+
+### gcloud iam
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud iam workload-identity-pools create` | Configure bounded administration resources in the simulator. |
+| `gcloud iam workload-identity-pools list` | Configure bounded administration resources in the simulator. |
+| `gcloud iam workload-identity-pools describe` | Configure bounded administration resources in the simulator. |
+| `gcloud iam workload-identity-pools delete` | Configure bounded administration resources in the simulator. |
+| `gcloud iam workforce-pools create` | Configure bounded administration resources in the simulator. |
+| `gcloud iam workforce-pools list` | Configure bounded administration resources in the simulator. |
+| `gcloud iam workforce-pools describe` | Configure bounded administration resources in the simulator. |
+| `gcloud iam workforce-pools delete` | Configure bounded administration resources in the simulator. |
+| `gcloud iam workload-identity-pools providers create-oidc` | Configure bounded administration resources in the simulator. |
+| `gcloud iam workload-identity-pools providers list` | Configure bounded administration resources in the simulator. |
+| `gcloud iam workload-identity-pools providers describe` | Configure bounded administration resources in the simulator. |
+| `gcloud iam workload-identity-pools providers delete` | Configure bounded administration resources in the simulator. |
+| `gcloud iam workforce-pools providers create-oidc` | Configure bounded administration resources in the simulator. |
+| `gcloud iam workforce-pools providers list` | Configure bounded administration resources in the simulator. |
+| `gcloud iam workforce-pools providers describe` | Configure bounded administration resources in the simulator. |
+| `gcloud iam workforce-pools providers delete` | Configure bounded administration resources in the simulator. |
+| `gcloud iam service-accounts create` | Create a service account for a project. |
+| `gcloud iam service-accounts list` | List all of a project's service accounts. |
+| `gcloud iam service-accounts describe` | Show metadata for a service account from a project. |
+| `gcloud iam service-accounts delete` | Delete a service account from a project. |
+| `gcloud iam roles list` | List predefined roles known to gcloud-sim, or a project's custom roles with --project (as the real gcloud does). |
+| `gcloud iam roles describe` | Show metadata for a role, including the permissions gcloud-sim records for it. |
+| `gcloud iam roles create` | Create a custom role for a project. |
+| `gcloud iam roles copy` | Create a role from an existing role. |
+| `gcloud iam service-accounts keys create` | Create a private key for a service account (the key is recorded, not written to disk). |
+| `gcloud iam service-accounts keys list` | List the keys for a service account. |
+| `gcloud iam service-accounts get-iam-policy` | Get the IAM policy for a resource. |
+| `gcloud iam service-accounts add-iam-policy-binding` | Add an IAM policy binding to a resource. |
+| `gcloud iam service-accounts remove-iam-policy-binding` | Remove an IAM policy binding from a resource. |
+
+### gcloud quotas
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud quotas info list` | Configure bounded administration resources in the simulator. |
+| `gcloud quotas preferences create` | Configure bounded administration resources in the simulator. |
+| `gcloud quotas preferences update` | Configure bounded administration resources in the simulator. |
+
+### gcloud asset
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud asset search-all-resources` | Configure bounded administration resources in the simulator. |
+
+### gsutil
+
+| コマンド | 内容 |
+|---|---|
+| `gsutil mb` | Make buckets (alias of gcloud storage buckets create). |
+| `gsutil ls` | List providers, buckets, or objects (alias of gcloud storage ls). |
+| `gsutil cp` | Copy files and objects (alias of gcloud storage cp). |
+| `gsutil rm` | Remove objects (alias of gcloud storage rm). |
+| `gsutil iam get` | Get the IAM policy of a bucket (alias of gcloud storage buckets get-iam-policy). |
+| `gsutil iam ch` | Change a bucket's IAM policy, e.g. gsutil iam ch allUsers:objectViewer gs://BUCKET. |
+| `gsutil rsync` | Synchronize content of two buckets/directories (alias of gcloud storage rsync). |
+| `gsutil lifecycle set` | Set lifecycle configuration for a bucket from a file (sample files only). |
+| `gsutil versioning set` | Enable or disable versioning for a bucket. |
+| `gsutil acl ch` | Change bucket or object ACLs (rejected on buckets with uniform bucket-level access). |
+
+### gcloud container
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud container clusters create` | Create a GKE Standard cluster. |
+| `gcloud container clusters create-auto` | Create a GKE Autopilot cluster. |
+| `gcloud container clusters list` | List existing clusters for running containers. |
+| `gcloud container clusters describe` | Describe an existing cluster for running containers. |
+| `gcloud container clusters delete` | Delete an existing cluster for running containers. |
+| `gcloud container clusters get-credentials` | Fetch credentials for a running cluster (updates kubeconfig, simulated). |
+| `gcloud container clusters update` | Update simulated endpoint, Workload Identity and VPA settings. |
+| `gcloud container clusters resize` | Resizes an existing cluster for running containers. |
+| `gcloud container clusters upgrade` | Upgrade the Kubernetes version of an existing container cluster. |
+| `gcloud container node-pools create` | Create a node pool in a running cluster. |
+| `gcloud container node-pools list` | List node pools in a running cluster. |
+| `gcloud container node-pools describe` | Describe an existing node pool for a cluster. |
+| `gcloud container node-pools update` | Update simulated autoscaling or node management settings. |
+| `gcloud container node-pools delete` | Delete a Standard node pool (no Pod scheduling is simulated). |
+
+### kubectl
+
+| コマンド | 内容 |
+|---|---|
+| `kubectl create serviceaccount` | Create a Kubernetes ServiceAccount (no key is generated). |
+| `kubectl annotate` | Link one Kubernetes ServiceAccount to an IAM service account. |
+| `kubectl autoscale` | Create a CPU utilization HPA for one Deployment (explicit simulator evaluation). |
+| `kubectl create configmap` | Create a configmap from repeated --from-literal=KEY=VALUE (selected namespace). |
+| `kubectl create secret generic` | Create a secret from repeated --from-literal=KEY=VALUE (selected namespace). |
+| `kubectl label` | Add, replace (--overwrite) or remove labels on one ConfigMap or Secret. |
+| `kubectl set env` | Set/remove environment variables or import ConfigMap/Secret key references. |
+| `kubectl exec` | Inspect Pod env with printenv/env and mounted files with cat/base64 (no shell execution). |
+| `kubectl get` | Display one or many resources. |
+| `kubectl apply` | Apply virtual ConfigMap/Secret (including immutable and ConfigMap binaryData)/Deployment/Service/HPA/PVC/StorageClass YAML/JSON or fixed samples. |
+| `kubectl create` | Create a resource from a file or from the command line (deployment). |
+| `kubectl delete` | Delete resources. |
+| `kubectl describe` | Show details of a specific resource or group of resources. |
+| `kubectl expose` | Expose a resource as a new Kubernetes service. |
+| `kubectl scale` | Set replicas for a Deployment or StatefulSet (StatefulSet PVCs are retained). |
+| `kubectl set image` | Update the single container image of a Deployment. |
+| `kubectl set resources` | Update CPU/memory requests and limits of a single Deployment container. |
+| `kubectl rollout status` | Deployment rollout status (retains current and 10 previous templates). |
+| `kubectl rollout restart` | Deployment rollout restart (retains current and 10 previous templates). |
+| `kubectl rollout history` | Deployment rollout history (retains current and 10 previous templates). |
+| `kubectl rollout undo` | Deployment rollout undo (retains current and 10 previous templates). |
+| `kubectl logs` | Print the logs for a container in a pod. |
+| `kubectl config` | Modify kubeconfig files (current-context / get-contexts / use-context / set-context / view). |
+
+### gcloud run
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud run deploy` | Deploy a fixed Cloud Run lesson with immutable revisions. |
+| `gcloud run services update` | Update runtime configuration by creating a new revision. |
+| `gcloud run services list` | List regional lesson resources. |
+| `gcloud run services describe` | describe a lesson resource. |
+| `gcloud run services delete` | delete a lesson resource. |
+| `gcloud run services get-iam-policy` | Read or change resource IAM bindings. |
+| `gcloud run services add-iam-policy-binding` | Read or change resource IAM bindings. |
+| `gcloud run services remove-iam-policy-binding` | Read or change resource IAM bindings. |
+| `gcloud run services update-traffic` | Route percentages to existing revisions. |
+| `gcloud run jobs create` | Configure a fixed job lesson (no arbitrary container execution). |
+| `gcloud run jobs update` | Configure a fixed job lesson (no arbitrary container execution). |
+| `gcloud run jobs list` | List regional lesson resources. |
+| `gcloud run jobs describe` | describe a lesson resource. |
+| `gcloud run jobs delete` | delete a lesson resource. |
+| `gcloud run jobs get-iam-policy` | Read or change resource IAM bindings. |
+| `gcloud run jobs add-iam-policy-binding` | Read or change resource IAM bindings. |
+| `gcloud run jobs remove-iam-policy-binding` | Read or change resource IAM bindings. |
+| `gcloud run jobs execute` | Run fixed lesson tasks and save execution history. |
+| `gcloud run revisions list` | List immutable revision configurations. |
+
+### gcloud functions
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud functions deploy` | Deploy a Gen2 fixed lesson handler with HTTP/PubSub/Storage/Firestore triggers. |
+| `gcloud functions list` | List regional lesson resources. |
+| `gcloud functions describe` | describe a lesson resource. |
+| `gcloud functions delete` | delete a lesson resource. |
+| `gcloud functions get-iam-policy` | Read or change resource IAM bindings. |
+| `gcloud functions add-iam-policy-binding` | Read or change resource IAM bindings. |
+| `gcloud functions remove-iam-policy-binding` | Read or change resource IAM bindings. |
+| `gcloud functions call` | Evaluate authentication, ingress and runtime dependencies using the fixed lesson handler. |
+
+### gcloud eventarc
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud eventarc triggers create` | Connect a supported source event to a Cloud Run lesson. |
+| `gcloud eventarc triggers list` | list Eventarc lesson triggers. |
+| `gcloud eventarc triggers describe` | describe Eventarc lesson triggers. |
+| `gcloud eventarc triggers delete` | delete Eventarc lesson triggers. |
+
+### gcloud redis
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud redis instances create` | create redis in the fixed serverless lesson. |
+| `gcloud redis instances list` | list redis in the fixed serverless lesson. |
+| `gcloud redis instances describe` | describe redis in the fixed serverless lesson. |
+| `gcloud redis instances delete` | delete redis in the fixed serverless lesson. |
+| `gcloud redis instances failover` | gcloud redis instances failover: deterministic database lesson; no external SDK execution. |
+
+### gcloud firestore
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud firestore databases create` | create databases in the fixed serverless lesson. |
+| `gcloud firestore databases list` | list databases in the fixed serverless lesson. |
+| `gcloud firestore databases describe` | describe databases in the fixed serverless lesson. |
+| `gcloud firestore databases delete` | delete databases in the fixed serverless lesson. |
+
+### gcloud secrets
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud secrets create` | create secrets in the fixed serverless lesson. |
+| `gcloud secrets list` | list secrets in the fixed serverless lesson. |
+| `gcloud secrets describe` | describe secrets in the fixed serverless lesson. |
+| `gcloud secrets delete` | delete secrets in the fixed serverless lesson. |
+| `gcloud secrets versions access` | Evaluate access or change the state of a lesson secret version. |
+| `gcloud secrets versions enable` | Evaluate access or change the state of a lesson secret version. |
+| `gcloud secrets versions disable` | Evaluate access or change the state of a lesson secret version. |
+| `gcloud secrets versions destroy` | Evaluate access or change the state of a lesson secret version. |
+| `gcloud secrets get-iam-policy` | Read or change the resource IAM policy. |
+| `gcloud secrets add-iam-policy-binding` | Read or change the resource IAM policy. |
+| `gcloud secrets remove-iam-policy-binding` | Read or change the resource IAM policy. |
+
+### gcloud workflows
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud workflows deploy` | Deploy the built-in workflow.yaml (run:workflow-api → function:workflow-function). |
+| `gcloud workflows list` | list a fixed workflow lesson. |
+| `gcloud workflows describe` | describe a fixed workflow lesson. |
+| `gcloud workflows delete` | delete a fixed workflow lesson. |
+| `gcloud workflows run` | run a fixed workflow lesson. |
+
+### gcloud app
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud app deploy` | Deploy the local code and/or configuration of your app to App Engine (sample app.yaml only). |
+| `gcloud app browse` | Open the current app in a web browser (prints the URL; gcloud-sim has no browser). |
+| `gcloud app describe` | Display all data about an existing App Engine application. |
+| `gcloud app versions list` | List the versions of all services in the App Engine server. |
+| `gcloud app services set-traffic` | Set traffic splitting settings. |
+
+### gcloud sql
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud sql instances create` | gcloud sql instances create (deterministic database lesson). |
+| `gcloud sql instances patch` | gcloud sql instances patch (deterministic database lesson). |
+| `gcloud sql instances list` | gcloud sql instances list (deterministic database lesson). |
+| `gcloud sql instances describe` | gcloud sql instances describe (deterministic database lesson). |
+| `gcloud sql instances delete` | gcloud sql instances delete (deterministic database lesson). |
+| `gcloud sql instances failover` | gcloud sql instances failover (deterministic database lesson). |
+| `gcloud sql instances clone` | gcloud sql instances clone (deterministic database lesson). |
+| `gcloud sql backups create` | gcloud sql backups create (deterministic database lesson). |
+| `gcloud sql backups list` | gcloud sql backups list (deterministic database lesson). |
+| `gcloud sql backups describe` | gcloud sql backups describe (deterministic database lesson). |
+| `gcloud sql backups restore` | gcloud sql backups restore (deterministic database lesson). |
+| `gcloud sql databases create` | gcloud sql databases create (deterministic database lesson). |
+| `gcloud sql databases list` | gcloud sql databases list (deterministic database lesson). |
+| `gcloud sql databases describe` | gcloud sql databases describe (deterministic database lesson). |
+| `gcloud sql databases delete` | gcloud sql databases delete (deterministic database lesson). |
+| `gcloud sql users create` | gcloud sql users create (deterministic database lesson). |
+| `gcloud sql users list` | gcloud sql users list (deterministic database lesson). |
+| `gcloud sql users delete` | gcloud sql users delete (deterministic database lesson). |
+| `gcloud sql connect` | gcloud sql connect (deterministic database lesson). |
+| `gcloud sql export sql` | gcloud sql export sql (deterministic database lesson). |
+| `gcloud sql import sql` | gcloud sql import sql (deterministic database lesson). |
+
+### gcloud alloydb
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud alloydb users create` | gcloud alloydb users create (deterministic database lesson). |
+| `gcloud alloydb users list` | gcloud alloydb users list (deterministic database lesson). |
+| `gcloud alloydb users delete` | gcloud alloydb users delete (deterministic database lesson). |
+| `gcloud alloydb clusters create` | gcloud alloydb clusters create (deterministic database lesson). |
+| `gcloud alloydb clusters list` | gcloud alloydb clusters list (deterministic database lesson). |
+| `gcloud alloydb clusters describe` | gcloud alloydb clusters describe (deterministic database lesson). |
+| `gcloud alloydb clusters delete` | gcloud alloydb clusters delete (deterministic database lesson). |
+| `gcloud alloydb clusters restore` | gcloud alloydb clusters restore (deterministic database lesson). |
+| `gcloud alloydb instances create` | gcloud alloydb instances create (deterministic database lesson). |
+| `gcloud alloydb instances list` | gcloud alloydb instances list (deterministic database lesson). |
+| `gcloud alloydb instances describe` | gcloud alloydb instances describe (deterministic database lesson). |
+| `gcloud alloydb instances delete` | gcloud alloydb instances delete (deterministic database lesson). |
+| `gcloud alloydb backups create` | gcloud alloydb backups create (deterministic database lesson). |
+| `gcloud alloydb backups list` | gcloud alloydb backups list (deterministic database lesson). |
+| `gcloud alloydb backups describe` | gcloud alloydb backups describe (deterministic database lesson). |
+| `gcloud alloydb backups delete` | gcloud alloydb backups delete (deterministic database lesson). |
+
+### gcloud database-migration
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud database-migration connection-profiles create` | gcloud database-migration connection-profiles create (deterministic database lesson). |
+| `gcloud database-migration migration-jobs create` | gcloud database-migration migration-jobs create (deterministic database lesson). |
+| `gcloud database-migration connection-profiles list` | gcloud database-migration connection-profiles list (deterministic database lesson). |
+| `gcloud database-migration connection-profiles describe` | gcloud database-migration connection-profiles describe (deterministic database lesson). |
+| `gcloud database-migration connection-profiles delete` | gcloud database-migration connection-profiles delete (deterministic database lesson). |
+| `gcloud database-migration migration-jobs list` | gcloud database-migration migration-jobs list (deterministic database lesson). |
+| `gcloud database-migration migration-jobs describe` | gcloud database-migration migration-jobs describe (deterministic database lesson). |
+| `gcloud database-migration migration-jobs delete` | gcloud database-migration migration-jobs delete (deterministic database lesson). |
+| `gcloud database-migration migration-jobs verify` | gcloud database-migration migration-jobs verify (deterministic database lesson). |
+| `gcloud database-migration migration-jobs start` | gcloud database-migration migration-jobs start (deterministic database lesson). |
+| `gcloud database-migration migration-jobs stop` | gcloud database-migration migration-jobs stop (deterministic database lesson). |
+| `gcloud database-migration migration-jobs resume` | gcloud database-migration migration-jobs resume (deterministic database lesson). |
+| `gcloud database-migration migration-jobs promote` | gcloud database-migration migration-jobs promote (deterministic database lesson). |
+
+### gcloud bigtable
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud bigtable instances create` | gcloud bigtable instances create: deterministic database lesson; no external SDK execution. |
+| `gcloud bigtable instances list` | gcloud bigtable instances list: deterministic database lesson; no external SDK execution. |
+| `gcloud bigtable instances describe` | gcloud bigtable instances describe: deterministic database lesson; no external SDK execution. |
+| `gcloud bigtable instances delete` | gcloud bigtable instances delete: deterministic database lesson; no external SDK execution. |
+| `gcloud bigtable clusters create` | gcloud bigtable clusters create: deterministic database lesson; no external SDK execution. |
+| `gcloud bigtable clusters list` | gcloud bigtable clusters list: deterministic database lesson; no external SDK execution. |
+| `gcloud bigtable clusters describe` | gcloud bigtable clusters describe: deterministic database lesson; no external SDK execution. |
+| `gcloud bigtable clusters update` | gcloud bigtable clusters update: deterministic database lesson; no external SDK execution. |
+| `gcloud bigtable clusters delete` | gcloud bigtable clusters delete: deterministic database lesson; no external SDK execution. |
+| `gcloud bigtable backups create` | gcloud bigtable backups create: deterministic database lesson; no external SDK execution. |
+| `gcloud bigtable backups list` | gcloud bigtable backups list: deterministic database lesson; no external SDK execution. |
+| `gcloud bigtable backups describe` | gcloud bigtable backups describe: deterministic database lesson; no external SDK execution. |
+| `gcloud bigtable backups delete` | gcloud bigtable backups delete: deterministic database lesson; no external SDK execution. |
+
+### gcloud spanner
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud spanner instances create` | gcloud spanner instances create: deterministic database lesson; no external SDK execution. |
+| `gcloud spanner instances list` | gcloud spanner instances list: deterministic database lesson; no external SDK execution. |
+| `gcloud spanner instances describe` | gcloud spanner instances describe: deterministic database lesson; no external SDK execution. |
+| `gcloud spanner instances update` | gcloud spanner instances update: deterministic database lesson; no external SDK execution. |
+| `gcloud spanner instances delete` | gcloud spanner instances delete: deterministic database lesson; no external SDK execution. |
+| `gcloud spanner databases create` | gcloud spanner databases create: deterministic database lesson; no external SDK execution. |
+| `gcloud spanner databases list` | gcloud spanner databases list: deterministic database lesson; no external SDK execution. |
+| `gcloud spanner databases describe` | gcloud spanner databases describe: deterministic database lesson; no external SDK execution. |
+| `gcloud spanner databases delete` | gcloud spanner databases delete: deterministic database lesson; no external SDK execution. |
+| `gcloud spanner backups create` | gcloud spanner backups create: deterministic database lesson; no external SDK execution. |
+| `gcloud spanner backups list` | gcloud spanner backups list: deterministic database lesson; no external SDK execution. |
+| `gcloud spanner backups describe` | gcloud spanner backups describe: deterministic database lesson; no external SDK execution. |
+| `gcloud spanner backups delete` | gcloud spanner backups delete: deterministic database lesson; no external SDK execution. |
+| `gcloud spanner databases restore` | gcloud spanner databases restore: deterministic database lesson; no external SDK execution. |
+| `gcloud spanner databases ddl update` | gcloud spanner databases ddl update: deterministic database lesson; no external SDK execution. |
+| `gcloud spanner databases execute-sql` | gcloud spanner databases execute-sql: deterministic database lesson; no external SDK execution. |
+
+### gcloud logging
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud logging sinks update` | update a log sink. |
+| `gcloud logging sinks delete` | delete a log sink. |
+| `gcloud logging read` | Read log entries (audit logs derived from the operation history). |
+| `gcloud logging logs list` | List logs in a project. |
+| `gcloud logging sinks create` | Create a log sink. |
+| `gcloud logging sinks list` | List the defined sinks. |
+| `gcloud logging sinks describe` | Display information about a sink. |
 | `gcloud logging buckets list` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
 | `gcloud logging buckets create` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
 | `gcloud logging buckets describe` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
@@ -975,244 +923,49 @@ HPAは`autoscale`またはautoscaling/v2の仮想YAML/JSONで作成し、`get/de
 | `gcloud logging views update` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
 | `gcloud logging views delete` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
 | `gcloud logging views list` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim logging views grant-reader` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim logging views read` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim logging audit configure` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim logging audit emit` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim logging router describe` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim logging exclusions configure` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim logging exclusions delete` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim logging exclusions list` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim logging analytics links create` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim logging analytics links describe` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim logging analytics links delete` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim logging analytics query` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim monitoring collectors configure` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim monitoring collectors describe` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim monitoring collectors delete` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim monitoring collectors collect` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim monitoring collectors list` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim monitoring metric-descriptors list` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim monitoring metric-descriptors describe` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim monitoring metric-descriptors delete` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud logging metrics list` | List metrics. |
+| `gcloud logging metrics describe` | describe metrics. |
+| `gcloud logging metrics delete` | delete metrics. |
+| `gcloud logging metrics create` | create a user-defined counter metric (no real ingestion). |
+| `gcloud logging metrics update` | update a user-defined counter metric (no real ingestion). |
+
+### gcloud monitoring
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud monitoring channels create` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud monitoring channels list` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud monitoring channels describe` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud monitoring channels update` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud monitoring channels delete` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud monitoring metrics-scopes create` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud monitoring metrics-scopes describe` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud monitoring metrics-scopes list` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud monitoring policies update` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud monitoring dashboards update` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud monitoring uptime update` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
 | `gcloud monitoring metrics-scopes delete` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim monitoring slos list` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim monitoring slos update` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim monitoring slos delete` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim monitoring resources describe` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
-| `sim monitoring resources list` | Configure and evaluate a bounded observability lesson; no network, real alerts or arbitrary code. |
+| `gcloud monitoring dashboards list` | List dashboards. |
+| `gcloud monitoring dashboards describe` | describe dashboards. |
+| `gcloud monitoring dashboards delete` | delete dashboards. |
+| `gcloud monitoring policies list` | List alertPolicies. |
+| `gcloud monitoring policies describe` | describe alertPolicies. |
+| `gcloud monitoring policies delete` | delete alertPolicies. |
+| `gcloud monitoring uptime list` | List uptimeCheckConfigs. |
+| `gcloud monitoring uptime describe` | describe uptimeCheckConfigs. |
+| `gcloud monitoring uptime delete` | delete uptimeCheckConfigs. |
+| `gcloud monitoring dashboards create` | Create one single-series grid chart. JSON or cpu-dashboard.json; no real metric collection. |
+| `gcloud monitoring policies create` | Create one metric threshold condition. Incidents and notifications are not executed. |
+| `gcloud monitoring uptime create` | Configure a public URL uptime check (no network request or real probe). |
+
+### gcloud deployment-manager
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud deployment-manager deployments create` | Create a deployment (sample config.yaml only). |
+| `gcloud deployment-manager deployments list` | List deployments in a project. |
+| `gcloud deployment-manager deployments describe` | Provide information about a deployment. |
 
 ## 解決はできるが未実装（0）
 
-設計書 3.1 の範囲はすべて実装済み。次に足すコマンドは、実装するまで `src/engine/commands/not-implemented/` に並べると、打ったときに E-002（`gcloud-sim: command not implemented yet`）になる。
-
-## サンプルファイル
-
-gcloud-simはホストのファイルを読みません。TerraformとConfigMap/Secret/Deployment/Service/HPAは `sim files` で編集できる仮想ファイルを読みます。`sim files load kubernetes-config` 、`sim files load kubernetes-workload` 、`sim files load kubernetes-labels` 、`sim files load kubernetes-resources` 、`sim files load kubernetes-hpa` 、`sim files load kubernetes-readiness` 、`sim files load kubernetes-liveness` または `sim files load kubernetes-startup` でYAML教材を読み込み、`kubectl create/apply/delete -f FILE` で操作できます（詳細は [KUBERNETES.md](KUBERNETES.md)）。Kubernetesのファイルは正規化した相対パスで一致し、同名の仮想ファイルが固定教材より優先します。仮想ファイルがない場合の `deployment.yaml` / `service.yaml` と、他サービスの次の操作は固定サンプルを使います（kubectl以外はディレクトリ部分を無視）。無い名前は本物と同じ `No such file or directory`（E-005）になる。`gcloud storage cp ./x gs://b` のように名前しか使わない経路は任意のパスを受ける。
-
-| ファイル | 受けるコマンド | 中身 |
-|---|---|---|
-| `app.yaml` | `gcloud app deploy` | `runtime: python312` / `service: default` |
-| `deployment.yaml` | `kubectl apply -f` / `kubectl delete -f` | Deployment `web`（image `nginx:1.27`、replicas 2） |
-| `service.yaml` | `kubectl apply -f` / `kubectl delete -f` | Service `web`（type LoadBalancer、port 80 → 80、selector app=web） |
-| `config.yaml` | `gcloud deployment-manager deployments create --config` | `compute.v1.instance` の `dm-vm`（asia-northeast1-a） |
-| `lifecycle.json` | `gsutil lifecycle set` / `gcloud storage buckets update --lifecycle-file` | 365 日で Delete |
-| `lifecycle-nearline.json` | 同上 | 30 日で SetStorageClass NEARLINE |
-| `key.json` | `gcloud auth activate-service-account --key-file` | `web-sa@ace-dev-01.iam.gserviceaccount.com` の鍵。`keys create OUTPUT` で書き出した名前も使える |
-
-
-## 監視・ログ演習の再現範囲
-
-- `logging read 'LOG_FILTER'` は比較、AND/OR/NOT、括弧を解釈し、severityの順序も考慮する。`--order=asc|desc` に対応。ログはCompute操作履歴由来の管理アクティビティのみ。実クラウドから収集しない。フルLoggingクエリ言語（関数や正規表現等）は未対応でエラー。
-- `logging metrics` はカウンタ指標の設定。時系列の取り込み・遡及集計はしない。`sinks update/delete` は転送設定の変更で、実際の配送はしない。
-- `monitoring dashboards create` はJSONの `gridLayout`（columns=1、xyChart 1つ、timeSeriesFilter 1つ）のみ。未対応フィールド/レイアウトを黙って捨てずエラーにする。`--validate-only` は保存しない。
-- `monitoring policies create` は1つのしきい値条件（`--if='> 0.8'` / `'< 1'`、`--duration=300s`、OR）。通知先・複数条件・欠測/PromQL・インシデント評価は未対応。
-- `monitoring uptime create` はpublic URLのHTTP/HTTPS設定。periodは分（1/5/10/15）、timeoutは秒（1〜60）。外部URLへアクセスせず、稼働状況の値は生成しない。
-- 上記設定はリソースツリーとプロパティ、一覧/describe、JSON保存/復元に反映する。Snapshot v8（監視リソースはv3、Terraformはv4で追加）。v1/v2は監視集合、v1/v2/v3は空のTerraform状態を補完し、v4/v5のTerraform状態はlocal backendとplanのbackendRevision（v4はmoved情報も）を補って保持する。
-- 新ミッション5本はログ指標、uptime、CPUダッシュボード、CPUアラート、sinkと転送先IAM。残る資料対応は [ACE_COVERAGE.md](ACE_COVERAGE.md)。
-
-### 組み込み cpu-dashboard.json
-
-`gcloud monitoring dashboards create --config-from-file=cpu-dashboard.json` が読む学習用サンプル。任意のローカルファイルを読む機能ではない。次のJSONを `--config` に渡しても同じ設定になる。
-
-```json
-{
-  "displayName": "VM CPU",
-  "gridLayout": {
-    "columns": 1,
-    "widgets": [{
-      "title": "CPU utilization",
-      "xyChart": {
-        "dataSets": [{
-          "timeSeriesQuery": {
-            "timeSeriesFilter": {
-              "filter": "metric.type=\"compute.googleapis.com/instance/cpu/utilization\" AND resource.type=\"gce_instance\""
-            }
-          }
-        }]
-      }
-    }]
-  }
-}
-```
-
-構文確認に使用した公式資料:
-- https://docs.cloud.google.com/sdk/gcloud/reference/monitoring/dashboards/create
-- https://docs.cloud.google.com/sdk/gcloud/reference/monitoring/policies/create
-- https://docs.cloud.google.com/sdk/gcloud/reference/monitoring/uptime/create
-- https://docs.cloud.google.com/sdk/gcloud/reference/logging/metrics/create
-
-PodのQoSは`kubectl get pods -o json` / `-o yaml` / `kubectl describe pods`の`status.qosClass`で確認できます。CPU・メモリのrequests/limitsから導出する読み取り専用の分類です。`status`はオブジェクト、一覧表示用の状態文字列は`displayStatus`です（詳細は[KUBERNETES.md](KUBERNETES.md)）。
-
-`sim kubernetes probe NAME --status-code=200`はHTTP readiness応答を1回評価します。設定はDeployment manifestのreadinessProbeで管理し、READY・Service接続先・rollout status・HPA評価に反映します。`--kind=liveness`はliveness応答を評価し、連続失敗が閾値に達したPodのコンテナだけを即時再起動します。Pod名/IP/revisionは維持し、RESTARTSが増加、startup/readinessは未評価へ戻ります。`--kind=startup`は起動を1回確認し、成功するまでreadiness/livenessを待機させます。成功済みのstartupは再起動まで評価を拒否します。実通信・定期実行・経過時間・backoffは再現しません。
-
-## Cloud Run・Functions・Eventarcの学習用拡充
-
-設定・権限・実行履歴・再試行・冪等性・DB/Secret/CMEKの連携は[SERVERLESS.md](SERVERLESS.md)を参照してください。`sim`は教材専用操作です。
-
-| コマンド | 再現する操作 |
-| --- | --- |
-| `gcloud run services update` | Update runtime configuration by creating a new revision. |
-| `gcloud run services get-iam-policy` | Read or change resource IAM bindings. |
-| `gcloud run services add-iam-policy-binding` | Read or change resource IAM bindings. |
-| `gcloud run services remove-iam-policy-binding` | Read or change resource IAM bindings. |
-| `sim run invoke` | Evaluate authentication, ingress and runtime dependencies using the fixed lesson handler. |
-| `gcloud run services update-traffic` | Route percentages to existing revisions. |
-| `gcloud functions get-iam-policy` | Read or change resource IAM bindings. |
-| `gcloud functions add-iam-policy-binding` | Read or change resource IAM bindings. |
-| `gcloud functions remove-iam-policy-binding` | Read or change resource IAM bindings. |
-| `gcloud run jobs create` | Configure a fixed job lesson (no arbitrary container execution). |
-| `gcloud run jobs update` | Configure a fixed job lesson (no arbitrary container execution). |
-| `gcloud run jobs list` | List regional lesson resources. |
-| `gcloud run jobs describe` | describe a lesson resource. |
-| `gcloud run jobs delete` | delete a lesson resource. |
-| `gcloud run jobs get-iam-policy` | Read or change resource IAM bindings. |
-| `gcloud run jobs add-iam-policy-binding` | Read or change resource IAM bindings. |
-| `gcloud run jobs remove-iam-policy-binding` | Read or change resource IAM bindings. |
-| `gcloud run jobs execute` | Run fixed lesson tasks and save execution history. |
-| `gcloud run revisions list` | List immutable revision configurations. |
-| `gcloud eventarc triggers create` | Connect a supported source event to a Cloud Run lesson. |
-| `gcloud eventarc triggers list` | list Eventarc lesson triggers. |
-| `gcloud eventarc triggers describe` | describe Eventarc lesson triggers. |
-| `gcloud eventarc triggers delete` | delete Eventarc lesson triggers. |
-| `gcloud pubsub topics publish` | Publish a lesson message and deliver matching function/Eventarc events. |
-| `sim events list` | Inspect retained lesson events and delivery attempts. |
-| `sim events retry` | Retry pending deliveries after repairing their cause. |
-| `sim events replay` | Redeliver a retained event ID to inspect idempotency. |
-| `sim serverless handler` | Choose whether the fixed lesson handler deduplicates repeated event IDs. |
-| `gcloud compute networks vpc-access connectors create` | create connectors in the fixed serverless lesson. |
-| `gcloud compute networks vpc-access connectors list` | list connectors in the fixed serverless lesson. |
-| `gcloud compute networks vpc-access connectors describe` | describe connectors in the fixed serverless lesson. |
-| `gcloud compute networks vpc-access connectors delete` | delete connectors in the fixed serverless lesson. |
-| `gcloud redis instances create` | create redis in the fixed serverless lesson. |
-| `gcloud redis instances list` | list redis in the fixed serverless lesson. |
-| `gcloud redis instances describe` | describe redis in the fixed serverless lesson. |
-| `gcloud redis instances delete` | delete redis in the fixed serverless lesson. |
-| `gcloud firestore databases create` | create databases in the fixed serverless lesson. |
-| `gcloud firestore databases list` | list databases in the fixed serverless lesson. |
-| `gcloud firestore databases describe` | describe databases in the fixed serverless lesson. |
-| `gcloud firestore databases delete` | delete databases in the fixed serverless lesson. |
-| `gcloud secrets create` | create secrets in the fixed serverless lesson. |
-| `gcloud secrets list` | list secrets in the fixed serverless lesson. |
-| `gcloud secrets describe` | describe secrets in the fixed serverless lesson. |
-| `gcloud secrets delete` | delete secrets in the fixed serverless lesson. |
-| `gcloud kms keys create` | create keys in the fixed serverless lesson. |
-| `gcloud kms keys list` | list keys in the fixed serverless lesson. |
-| `gcloud kms keys describe` | describe keys in the fixed serverless lesson. |
-| `gcloud kms keys delete` | delete keys in the fixed serverless lesson. |
-| `sim secrets versions add` | Add a small lesson secret value without reading host files. |
-| `gcloud secrets versions access` | Evaluate access or change the state of a lesson secret version. |
-| `gcloud secrets versions enable` | Evaluate access or change the state of a lesson secret version. |
-| `gcloud secrets versions disable` | Evaluate access or change the state of a lesson secret version. |
-| `gcloud secrets versions destroy` | Evaluate access or change the state of a lesson secret version. |
-| `gcloud kms keys versions update` | Enable or disable the lesson key's primary version (version 1). |
-| `sim firestore documents write` | Read/change a lesson document; emits Firestore events without SDK execution. |
-| `sim firestore documents delete` | Read/change a lesson document; emits Firestore events without SDK execution. |
-| `sim firestore documents read` | Read/change a lesson document; emits Firestore events without SDK execution. |
-| `gcloud secrets get-iam-policy` | Read or change the resource IAM policy. |
-| `gcloud secrets add-iam-policy-binding` | Read or change the resource IAM policy. |
-| `gcloud secrets remove-iam-policy-binding` | Read or change the resource IAM policy. |
-| `gcloud kms keys get-iam-policy` | Read or change the resource IAM policy. |
-| `gcloud kms keys add-iam-policy-binding` | Read or change the resource IAM policy. |
-| `gcloud kms keys remove-iam-policy-binding` | Read or change the resource IAM policy. |
-| `gcloud workflows deploy` | Deploy the built-in workflow.yaml (run:workflow-api → function:workflow-function). |
-| `gcloud workflows list` | list a fixed workflow lesson. |
-| `gcloud workflows describe` | describe a fixed workflow lesson. |
-| `gcloud workflows delete` | delete a fixed workflow lesson. |
-| `gcloud workflows run` | run a fixed workflow lesson. |
-
-## Cloud SQL・AlloyDB・DMSの教材操作（#18）
-
-対応範囲・接続方式・SQL文法・復旧/移行の制約は [RELATIONAL_DATABASES.md](RELATIONAL_DATABASES.md) を参照。`sim` は教材専用操作です。
-
-| コマンド | 再現範囲 |
-|---|---|
-| `gcloud sql instances patch` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud sql instances failover` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud sql instances clone` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud sql backups describe` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud sql backups restore` | 設定・参照・API/IAM・データ結果を評価 |
-| `sim sql checkpoint` | 設定・参照・API/IAM・データ結果を評価 |
-| `sim sql writes pause` | 設定・参照・API/IAM・データ結果を評価 |
-| `sim sql writes resume` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud sql databases create` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud sql databases list` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud sql databases describe` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud sql databases delete` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud sql users create` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud sql users list` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud sql users delete` | 設定・参照・API/IAM・データ結果を評価 |
-| `sim sql execute` | 設定・参照・API/IAM・データ結果を評価 |
-| `sim alloydb databases create` | 設定・参照・API/IAM・データ結果を評価 |
-| `sim alloydb databases list` | 設定・参照・API/IAM・データ結果を評価 |
-| `sim alloydb databases describe` | 設定・参照・API/IAM・データ結果を評価 |
-| `sim alloydb databases delete` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud alloydb users create` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud alloydb users list` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud alloydb users delete` | 設定・参照・API/IAM・データ結果を評価 |
-| `sim alloydb execute` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud sql connect` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud sql export sql` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud sql import sql` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud alloydb clusters create` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud alloydb clusters list` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud alloydb clusters describe` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud alloydb clusters delete` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud alloydb clusters restore` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud alloydb instances create` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud alloydb instances list` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud alloydb instances describe` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud alloydb instances delete` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud alloydb backups create` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud alloydb backups list` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud alloydb backups describe` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud alloydb backups delete` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud database-migration connection-profiles create` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud database-migration migration-jobs create` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud database-migration connection-profiles list` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud database-migration connection-profiles describe` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud database-migration connection-profiles delete` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud database-migration migration-jobs list` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud database-migration migration-jobs describe` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud database-migration migration-jobs delete` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud database-migration migration-jobs verify` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud database-migration migration-jobs start` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud database-migration migration-jobs stop` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud database-migration migration-jobs resume` | 設定・参照・API/IAM・データ結果を評価 |
-| `gcloud database-migration migration-jobs promote` | 設定・参照・API/IAM・データ結果を評価 |
-| `sim dms advance` | 設定・参照・API/IAM・データ結果を評価 |
-| `sim databases choose` | 設定・参照・API/IAM・データ結果を評価 |
-
-| コマンド | 対応範囲 |
-|---|---|
-| `sim terraform state save` | 仮想tfstateバックアップ・同名上書き拒否 |
-| `terraform state push` | 本アプリのstate JSON・確認/serial/権限検証・実リソース保持 |
-| `sim terraform backend restore` | 版管理したGCS backendの既知世代を確認付きで復旧 |
-| `sim terraform plan-json` | 保存planを仮想JSONへ書き出す |
-| `gcloud terraform vet` | 保存plan JSONと限定policy.jsonの検証。Regoは非対応 |
-
-## ACE判断・AI構成教材（Issue #25）
-
-`sim ace scenarios list|describe|choose` と `sim ai resources list|describe|create|update|start|stop|delete`。
-`choose`はNAME、`--choice`、`--reason`を要求する。AIリソースの変更とdescribeにはNAMEと`--region`を要求する。
-CLI helpとTab補完、project別のツリー/プロパティを提供する。[再現範囲](ACE_AI_SUPPORT.md)と[48資料の対応表](ACE_SOURCE_MAP.md)を参照。
+なし。

@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { expect, test } from "vitest";
 import { Engine } from "@/engine";
-import { run, session } from "@/engine/__tests__/setup";
+import { run, session } from "@/engine/__tests__/fixture-setup";
 import { AdminPrelude, AdminSolutions } from "@/engine/missions/admin-lab";
 import { TreeNode, TreeSelection } from "@/engine/resource-tree";
 import { AdminLabProperties } from "@/features/simulator/components/AdminLabProperties";
