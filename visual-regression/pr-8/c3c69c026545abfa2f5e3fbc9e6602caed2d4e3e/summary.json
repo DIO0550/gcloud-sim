@@ -1,0 +1,103 @@
+{
+  "reportVersion": "c3c69c026545abfa2f5e3fbc9e6602caed2d4e3e",
+  "pr": "8",
+  "changed": 2,
+  "new": 8,
+  "deleted": 0,
+  "passed": 0,
+  "maxImages": 10,
+  "maxDiffRatio": 0.0001,
+  "tolerance": 8,
+  "results": [
+    {
+      "name": "console-iam__desktop",
+      "label": "Console: IAM（継承されたロールを含む）",
+      "viewport": "desktop",
+      "status": "new",
+      "published": true
+    },
+    {
+      "name": "console-iam__mobile",
+      "label": "Console: IAM（継承されたロールを含む）",
+      "viewport": "mobile",
+      "status": "new",
+      "published": true
+    },
+    {
+      "name": "console-vm-create__desktop",
+      "label": "Console: インスタンスを作成（名前とタグを入れた状態）",
+      "viewport": "desktop",
+      "status": "new",
+      "published": true
+    },
+    {
+      "name": "console-vm-create__mobile",
+      "label": "Console: インスタンスを作成（名前とタグを入れた状態）",
+      "viewport": "mobile",
+      "status": "new",
+      "published": true
+    },
+    {
+      "name": "console-vm-list__desktop",
+      "label": "Console: VM インスタンス一覧（VM を 2 台作った状態）",
+      "viewport": "desktop",
+      "status": "new",
+      "published": true
+    },
+    {
+      "name": "console-vm-list__mobile",
+      "label": "Console: VM インスタンス一覧（VM を 2 台作った状態）",
+      "viewport": "mobile",
+      "status": "new",
+      "published": true
+    },
+    {
+      "name": "home__desktop",
+      "label": "CLI 画面（初期 World）",
+      "viewport": "desktop",
+      "status": "changed",
+      "ratio": 0.998694,
+      "changedPixels": 2300990,
+      "beforeSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "afterSize": {
+        "width": 1440,
+        "height": 1600
+      },
+      "published": true
+    },
+    {
+      "name": "home__mobile",
+      "label": "CLI 画面（初期 World）",
+      "viewport": "mobile",
+      "status": "changed",
+      "ratio": 0.994676,
+      "changedPixels": 513253,
+      "beforeSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "afterSize": {
+        "width": 430,
+        "height": 1200
+      },
+      "published": true
+    },
+    {
+      "name": "settings__desktop",
+      "label": "設定ダイアログ",
+      "viewport": "desktop",
+      "status": "new",
+      "published": true
+    },
+    {
+      "name": "settings__mobile",
+      "label": "設定ダイアログ",
+      "viewport": "mobile",
+      "status": "new",
+      "published": true
+    }
+  ]
+}
