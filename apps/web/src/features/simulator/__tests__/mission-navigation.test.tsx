@@ -4,7 +4,7 @@ import { expect, test } from "vitest";
 import { Mission, MissionDomains } from "@/engine/missions";
 import { renderSimulator } from "@/features/simulator/__tests__/setup";
 
-test("カテゴリ→ミッション→手順だけを表示し、戻っても挑戦とヒントを保持する", async () => {
+test("カテゴリ→ミッション→全手順を表示し、戻っても挑戦状態を保持する", async () => {
   const user = userEvent.setup();
   renderSimulator();
   await user.click(screen.getByRole("tab", { name: /ミッション/ }));
@@ -18,14 +18,14 @@ test("カテゴリ→ミッション→手順だけを表示し、戻っても�
   expect(
     screen.queryByRole("button", { name: /ace-prod-01 で Compute Engine/ }),
   ).not.toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "手順・ヒント" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "実行手順" })).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "開始" }));
-  await user.click(screen.getByRole("button", { name: /ヒント（0\/2）/ }));
   await user.click(screen.getByRole("button", { name: "一覧へ戻る" }));
   expect(screen.queryByText(/gcloud config configurations create prod/)).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: /本番用の configuration.*挑戦中/ }));
   expect(screen.getByText(/gcloud config configurations create prod/)).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /ヒント（1\/2）/ })).toBeInTheDocument();
+  expect(screen.getByText(/gcloud config set compute\/zone asia-northeast1-a/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /ヒント/ })).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "カテゴリへ" }));
   expect(screen.getByRole("button", { name: /環境セットアップ.*1件 挑戦中/ })).toBeInTheDocument();
 });

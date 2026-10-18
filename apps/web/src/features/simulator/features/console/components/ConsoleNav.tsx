@@ -10,7 +10,6 @@ import {
 type ConsoleNavProps = Readonly<{
   screen: ConsoleScreen;
   onChange: (screen: ConsoleScreen) => void;
-  onInsert: (command: string) => void;
 }>;
 
 /** 左ナビの見出し（設計書 3.1 のプロダクト名）。 */
@@ -48,6 +47,20 @@ export const screenText = (screen: ConsoleScreen): string => {
       return "VM インスタンス";
     case "vm-create":
       return "インスタンスを作成";
+    case "instance-templates":
+      return "インスタンス テンプレート";
+    case "instance-groups":
+      return "インスタンス グループ";
+    case "disks":
+      return "ディスク";
+    case "snapshots":
+      return "スナップショット";
+    case "images":
+      return "イメージ";
+    case "operations":
+      return "オペレーション";
+    case "zones":
+      return "ゾーン";
     case "firewall":
       return "ファイアウォール";
     case "subnets":
@@ -63,8 +76,8 @@ export const screenText = (screen: ConsoleScreen): string => {
 
 export { sectionText };
 
-/** プロダクト別のナビ（UI 案 2b / 2d）。GUI のない画面は対応する CLI に案内する。 */
-export const ConsoleNav = ({ screen, onChange, onInsert }: ConsoleNavProps): ReactElement => {
+/** プロダクト別のナビ（UI 案 2b / 2d）。各項目から対応する一覧画面へ移動する。 */
+export const ConsoleNav = ({ screen, onChange }: ConsoleNavProps): ReactElement => {
   const [showProducts, setShowProducts] = useState(false);
   const current = ConsoleScreen.navItem(screen);
   const compute = ConsoleScreen.section(screen) === ConsoleSections.Compute && !showProducts;
@@ -77,29 +90,10 @@ export const ConsoleNav = ({ screen, onChange, onInsert }: ConsoleNavProps): Rea
     compute: "コンピューティング",
     storage: "ストレージとネットワーク",
   };
-  const shortcuts = [
-    {
-      heading: "仮想マシン",
-      items: [
-        { label: "インスタンス テンプレート", command: "gcloud compute instance-templates list" },
-        { label: "インスタンス グループ", command: "gcloud compute instance-groups managed list" },
-      ],
-    },
-    {
-      heading: "ストレージ",
-      items: [
-        { label: "ディスク", command: "gcloud compute disks list" },
-        { label: "スナップショット", command: "gcloud compute snapshots list" },
-        { label: "イメージ", command: "gcloud compute images list" },
-      ],
-    },
-    {
-      heading: "その他",
-      items: [
-        { label: "オペレーション", command: "gcloud compute operations list" },
-        { label: "ゾーン", command: "gcloud compute zones list" },
-      ],
-    },
+  const groups: readonly Readonly<{ heading: string; screens: readonly ConsoleScreen[] }>[] = [
+    { heading: "仮想マシン", screens: ["vm-list", "instance-templates", "instance-groups"] },
+    { heading: "ストレージ", screens: ["disks", "snapshots", "images"] },
+    { heading: "その他", screens: ["operations", "zones"] },
   ];
   return (
     <nav
@@ -112,32 +106,23 @@ export const ConsoleNav = ({ screen, onChange, onInsert }: ConsoleNavProps): Rea
             <span aria-hidden="true" className="h-6 w-6 rounded bg-accent" />
             Compute Engine
           </h3>
-          {shortcuts.map((group, index) => (
+          {groups.map((group) => (
             <div key={group.heading} className="mb-4">
               <h4 className="px-5 pb-2 font-medium text-muted text-xs">{group.heading}</h4>
-              {index === 0 && (
-                <div className="pr-3">
-                  <NavItemButton
-                    current
-                    currentKind="page"
-                    className="rounded-r-full px-6 py-2.5 font-medium text-accent text-sm"
-                    onClick={() => navigate(current)}
-                  >
-                    {screenText(current)}
-                  </NavItemButton>
-                </div>
-              )}
-              {group.items.map((item) => (
-                <button
-                  key={item.label}
-                  type="button"
-                  className="w-full px-6 py-2.5 text-left text-sm hover:bg-canvas"
-                  title="CLI で一覧を表示"
-                  onClick={() => onInsert(item.command)}
-                >
-                  {item.label}
-                </button>
-              ))}
+              <ul className="pr-3">
+                {group.screens.map((item) => (
+                  <li key={item}>
+                    <NavItemButton
+                      current={item === current}
+                      currentKind="page"
+                      className={`rounded-r-full px-6 py-2.5 text-sm ${item === current ? "font-medium text-accent" : ""}`}
+                      onClick={() => navigate(item)}
+                    >
+                      {screenText(item)}
+                    </NavItemButton>
+                  </li>
+                ))}
+              </ul>
             </div>
           ))}
           <button

@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
-
 import { BudgetsScreen } from "@/features/simulator/features/console/components/BillingScreens";
+import { ComputeResourceScreen } from "@/features/simulator/features/console/components/ComputeResourceScreen";
 import {
   VmCreateScreen,
   VmListScreen,
@@ -40,6 +40,14 @@ export const ScreenRouter = ({
       return <VmListScreen {...props} />;
     case "vm-create":
       return <VmCreateScreen {...props} />;
+    case "instance-templates":
+    case "instance-groups":
+    case "disks":
+    case "snapshots":
+    case "images":
+    case "operations":
+    case "zones":
+      return <ComputeResourceScreen {...props} screen={screen} />;
     case "firewall":
       return <FirewallScreen {...props} />;
     case "subnets":

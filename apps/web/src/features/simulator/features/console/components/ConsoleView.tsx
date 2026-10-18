@@ -91,7 +91,7 @@ export const ConsoleView = ({
       data-testid="console-view"
     >
       {navigationOpen && screen !== ConsoleScreens.VmCreate && (
-        <ConsoleNav screen={screen} onChange={handlers.changeScreen} onInsert={handlers.insert} />
+        <ConsoleNav screen={screen} onChange={handlers.changeScreen} />
       )}
       <main
         className={`min-h-0 min-w-0 overflow-auto bg-surface md:col-start-2 ${screen === ConsoleScreens.VmCreate ? "xl:overflow-hidden" : "px-5 py-5"} ${terminalOpen ? "pb-[var(--console-terminal-height)]" : ""}`}

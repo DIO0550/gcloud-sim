@@ -17,7 +17,6 @@ type MissionPanelProps = Readonly<{
   onSelect: (id: string) => void;
   onStart: (id: string) => void;
   onAbandon: (id: string) => void;
-  onHint: (id: string) => void;
 }>;
 
 const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElement => {
@@ -231,13 +230,11 @@ const MissionBrief = ({
   mission,
   onStart,
   onAbandon,
-  onHint,
 }: Readonly<
-  { world: World; mission: Mission } & Pick<MissionPanelProps, "onStart" | "onAbandon" | "onHint">
+  { world: World; mission: Mission } & Pick<MissionPanelProps, "onStart" | "onAbandon">
 >): ReactElement => {
   const progress = World.findMissionProgress(world, mission.id);
   const status = Option.isSome(progress) ? progress.value.status : MissionStatuses.Available;
-  const revealed = Option.isSome(progress) ? progress.value.revealedHints : 0;
   const results = Mission.assertionResults(world, mission);
   return (
     <section aria-label={mission.title} className="border-line border-t p-4">
@@ -257,17 +254,19 @@ const MissionBrief = ({
           </li>
         ))}
       </ul>
-      <h5 className="mb-2 font-semibold">手順・ヒント</h5>
-      <p className="mb-3 text-sm text-muted">開始後、ヒントを押すと手順を1つずつ確認できます。</p>
-      {revealed > 0 && (
-        <ol className="mb-3 list-decimal space-y-1 rounded bg-canvas px-4 py-2 text-sm">
-          {mission.hints.slice(0, revealed).map((hint) => (
-            <li key={hint} className="ml-4 break-all font-mono text-xs">
-              {hint}
-            </li>
-          ))}
-        </ol>
-      )}
+      <h5 className="mb-2 font-semibold">実行手順</h5>
+      <p className="mb-3 text-sm text-muted">
+        開始すると演習の初期状態が用意されます。説明とコマンドを上から順に確認して実行してください。
+      </p>
+      <ol className="mb-4 list-decimal space-y-3 pl-5 text-sm leading-relaxed">
+        {mission.hints.map((instruction) => (
+          <li key={instruction} className="pl-1">
+            <p className="whitespace-pre-wrap break-words rounded border border-line bg-canvas p-3">
+              {instruction}
+            </p>
+          </li>
+        ))}
+      </ol>
       <div className="flex flex-wrap gap-2">
         {status !== MissionStatuses.InProgress && (
           <PrimaryButton onClick={() => onStart(mission.id)}>
@@ -275,15 +274,7 @@ const MissionBrief = ({
           </PrimaryButton>
         )}
         {status === MissionStatuses.InProgress && (
-          <>
-            <SecondaryButton
-              onClick={() => onHint(mission.id)}
-              disabled={revealed >= mission.hints.length}
-            >
-              ヒント（{revealed}/{mission.hints.length}）
-            </SecondaryButton>
-            <SecondaryButton onClick={() => onAbandon(mission.id)}>中断</SecondaryButton>
-          </>
+          <SecondaryButton onClick={() => onAbandon(mission.id)}>中断</SecondaryButton>
         )}
       </div>
     </section>
@@ -298,7 +289,6 @@ export const MissionPanel = ({
   onSelect,
   onStart,
   onAbandon,
-  onHint,
 }: MissionPanelProps): ReactElement => {
   const [classification, setClassification] = useState<"exam" | "practice">("exam");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -346,13 +336,7 @@ export const MissionPanel = ({
           </SecondaryButton>
         </nav>
         <p className="px-4 text-sm text-muted">{categoryOf(selected)}</p>
-        <MissionBrief
-          world={world}
-          mission={selected}
-          onStart={onStart}
-          onAbandon={onAbandon}
-          onHint={onHint}
-        />
+        <MissionBrief world={world} mission={selected} onStart={onStart} onAbandon={onAbandon} />
       </div>
     );
   if (view.kind === "list")

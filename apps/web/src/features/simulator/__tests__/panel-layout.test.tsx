@@ -2,9 +2,44 @@ import { act, fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { ElementSize } from "@/libs/element-size";
-import { renderSimulator } from "./setup";
+import { renderSimulator, resourceTree, typeLine } from "./setup";
 
 afterEach(() => vi.restoreAllMocks());
+
+test("左端のボタンでCLIの階層を開閉し、幅と入力履歴を保持する", async () => {
+  const user = userEvent.setup();
+  const { terminal } = renderSimulator();
+  const toggle = screen.getByRole("button", { name: "CLI ナビゲーションを切り替え" });
+  expect(toggle.closest("header")?.firstElementChild).toBe(toggle);
+  const tree = resourceTree();
+  const left = screen.getByRole("separator", { name: "左サイドバーの幅" });
+  left.focus();
+  await user.keyboard("{ArrowRight}");
+  await act(async () => typeLine(terminal, "gcloud config list"));
+  const before = [...terminal.written];
+
+  await user.click(toggle);
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  expect(tree).not.toBeVisible();
+  expect(screen.queryByRole("separator", { name: "左サイドバーの幅" })).not.toBeInTheDocument();
+  expect(screen.getByTestId("simulator-layout").style.getPropertyValue("--cli-left-width")).toBe(
+    "0px",
+  );
+  expect(screen.getByRole("separator", { name: "右サイドバーの幅" })).toBeInTheDocument();
+
+  await user.click(toggle);
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+  expect(resourceTree()).toBe(tree);
+  expect(screen.getByRole("separator", { name: "左サイドバーの幅" })).toHaveAttribute(
+    "aria-valuenow",
+    "296",
+  );
+  expect(terminal.written).toEqual(before);
+  await user.click(screen.getByRole("button", { name: "Console" }));
+  const consoleToggle = screen.getByRole("button", { name: "Console ナビゲーションを切り替え" });
+  expect(consoleToggle).toBe(toggle);
+  expect(consoleToggle.closest("header")?.firstElementChild).toBe(toggle);
+});
 
 /** jsdomが持たない、ブラウザのpointer capture境界を置き換える。 */
 const capture = (element: HTMLElement): void => {
