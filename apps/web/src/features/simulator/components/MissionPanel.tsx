@@ -8,6 +8,8 @@ import { type MissionStatus, MissionStatuses } from "@/engine/domains/mission-pr
 import { World } from "@/engine/domains/world";
 import { Mission, MissionDomains } from "@/engine/missions";
 import { ExamSections, examSectionOf } from "@/engine/missions/exam-sections";
+import { MissionGuides } from "@/engine/missions/learning-guides";
+import { MissionGuideView } from "@/features/simulator/components/MissionGuideView";
 import { Option } from "@/utils/Option";
 
 type MissionPanelProps = Readonly<{
@@ -236,6 +238,7 @@ const MissionBrief = ({
   const progress = World.findMissionProgress(world, mission.id);
   const status = Option.isSome(progress) ? progress.value.status : MissionStatuses.Available;
   const results = Mission.assertionResults(world, mission);
+  const guide = MissionGuides.find(mission.id);
   return (
     <section aria-label={mission.title} className="border-line border-t p-4">
       <div className="mb-2 flex items-center gap-2">
@@ -256,17 +259,9 @@ const MissionBrief = ({
       </ul>
       <h5 className="mb-2 font-semibold">実行手順</h5>
       <p className="mb-3 text-sm text-muted">
-        開始すると演習の初期状態が用意されます。説明とコマンドを上から順に確認して実行してください。
+        「開始」を押して演習を準備したら、各段階の目的を読み、操作後の結果を確認しながら進めます。
       </p>
-      <ol className="mb-4 list-decimal space-y-3 pl-5 text-sm leading-relaxed">
-        {mission.hints.map((instruction) => (
-          <li key={instruction} className="pl-1">
-            <p className="whitespace-pre-wrap break-words rounded border border-line bg-canvas p-3">
-              {instruction}
-            </p>
-          </li>
-        ))}
-      </ol>
+      <div className="mb-4">{guide && <MissionGuideView guide={guide} />}</div>
       <div className="flex flex-wrap gap-2">
         {status !== MissionStatuses.InProgress && (
           <PrimaryButton onClick={() => onStart(mission.id)}>
