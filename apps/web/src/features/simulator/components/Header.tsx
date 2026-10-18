@@ -76,6 +76,15 @@ export const Header = ({
 
   return (
     <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-3 border-line border-b bg-surface px-4 py-2 text-sm lg:flex-nowrap">
+      <GhostButton
+        ariaLabel={`${viewText(view)} ナビゲーションを切り替え`}
+        ariaExpanded={isNavigationOpen}
+        onClick={onNavigationToggle}
+      >
+        <svg aria-hidden="true" viewBox="0 0 20 20" className="h-5 w-5">
+          <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+      </GhostButton>
       <div className="flex shrink-0 self-start items-center gap-3" data-testid="view-switcher">
         <h1 className="shrink-0 font-bold font-mono text-lg tracking-tight">gcloud-sim</h1>
         <SegmentedControl
@@ -91,15 +100,6 @@ export const Header = ({
       </span>
       {view === Views.Console ? (
         <div className="flex w-full min-w-0 flex-wrap items-center gap-2 lg:w-auto lg:flex-1 lg:flex-nowrap">
-          <GhostButton
-            ariaLabel="Console ナビゲーションを切り替え"
-            ariaExpanded={isNavigationOpen}
-            onClick={onNavigationToggle}
-          >
-            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-5 w-5">
-              <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.5" />
-            </svg>
-          </GhostButton>
           <div className="flex shrink-0 items-center gap-2 rounded border border-line px-3 py-1.5">
             <span aria-hidden="true" className="h-4 w-4 rounded-sm bg-accent" />
             <Select

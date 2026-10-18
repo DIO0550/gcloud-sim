@@ -138,17 +138,19 @@ test("ミッションを開始して条件を満たすとクリアの通知が�
   expect(screen.getByText(`1/${Mission.all().length} クリア`)).toBeInTheDocument();
 });
 
-test("ヒントは押すたびに 1 つ開く", async () => {
+test("ミッションの説明と全コマンドを開始前から表示する", async () => {
   const user = userEvent.setup();
   renderSimulator();
   await user.click(screen.getByRole("tab", { name: /ミッション/ }));
   await user.selectOptions(screen.getByRole("combobox", { name: "ミッション分類" }), "practice");
   await user.click(screen.getByRole("button", { name: /環境セットアップ/ }));
   await user.click(screen.getByRole("button", { name: /本番用の configuration を用意する/ }));
-  await user.click(screen.getByRole("button", { name: "開始" }));
-  await user.click(screen.getByRole("button", { name: /ヒント（0\/2）/ }));
   expect(screen.getByText(/gcloud config configurations create prod/)).toBeInTheDocument();
-  expect(screen.queryByText(/gcloud config set project ace-prod-01/)).not.toBeInTheDocument();
+  expect(screen.getByText(/gcloud config set project ace-prod-01/)).toBeInTheDocument();
+  expect(screen.getByText(/作成と同時にアクティブになります/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /ヒント/ })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "開始" }));
+  expect(screen.getByText(/gcloud config set project ace-prod-01/)).toBeInTheDocument();
 });
 
 test("設定のリセットで初期状態に戻る", async () => {

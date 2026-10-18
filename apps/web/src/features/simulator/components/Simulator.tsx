@@ -126,7 +126,7 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
   } as CSSProperties;
   const panelLayout = {
     ...consoleLayout,
-    "--cli-left-width": `${panels.left.width}px`,
+    "--cli-left-width": navigationOpen ? `${panels.left.width}px` : "0px",
     "--cli-right-width": `${panels.right.width}px`,
   } as CSSProperties;
   const copy = async (text: string): Promise<void> => {
@@ -193,17 +193,19 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
         className={`relative grid min-h-0 flex-1 ${isConsole ? "grid-cols-[minmax(0,1fr)]" : "grid-cols-1 content-start overflow-y-auto lg:grid-cols-[var(--cli-left-width)_minmax(0,1fr)_var(--cli-right-width)] lg:content-normal lg:overflow-hidden"}`}
       >
         {!isConsole && (
-          <ResourceTree
-            world={world}
-            selection={state.selection}
-            currentProjectId={WorldOps.currentProjectId(world)}
-            onSelect={(selection) => dispatch({ type: "selected", selection })}
-            onInsertDescribe={(command) => dispatch({ type: "insertRequested", text: command })}
-            onCreate={() => dispatch({ type: "hierarchyToggled", open: true })}
-          />
+          <div hidden={!navigationOpen} className={navigationOpen ? "contents" : "hidden"}>
+            <ResourceTree
+              world={world}
+              selection={state.selection}
+              currentProjectId={WorldOps.currentProjectId(world)}
+              onSelect={(selection) => dispatch({ type: "selected", selection })}
+              onInsertDescribe={(command) => dispatch({ type: "insertRequested", text: command })}
+              onCreate={() => dispatch({ type: "hierarchyToggled", open: true })}
+            />
+          </div>
         )}
         <div
-          className={`relative flex min-w-0 flex-col ${isConsole ? "min-h-0" : "order-2 h-96 lg:order-none lg:h-auto lg:min-h-0"}`}
+          className={`relative flex min-w-0 flex-col ${isConsole ? "min-h-0" : "order-2 h-96 lg:order-none lg:col-start-2 lg:h-auto lg:min-h-0"}`}
           style={consoleLayout}
         >
           {isConsole && (
@@ -251,7 +253,7 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
         </div>
         {!isConsole && (
           <aside
-            className="order-1 flex h-[60dvh] min-h-96 min-w-0 flex-col border-line border-l bg-surface lg:order-none lg:h-auto lg:min-h-0"
+            className="order-1 flex h-[60dvh] min-h-96 min-w-0 flex-col border-line border-l bg-surface lg:order-none lg:col-start-3 lg:h-auto lg:min-h-0"
             aria-label="詳細"
           >
             <div
@@ -309,7 +311,6 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
                     onSelect={(id) => dispatch({ type: "missionSelected", id })}
                     onStart={(id) => dispatch({ type: "missionStarted", id })}
                     onAbandon={(id) => dispatch({ type: "missionAbandoned", id })}
-                    onHint={(id) => dispatch({ type: "hintRevealed", id })}
                   />
                 </>
               )}
@@ -334,13 +335,15 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
         )}
         {!isConsole && (
           <>
-            <PanelResizeHandle
-              label="左サイドバーの幅"
-              {...panels.left}
-              direction="right"
-              className="hidden lg:block"
-              style={{ left: "calc(var(--cli-left-width) - 4px)" }}
-            />
+            {navigationOpen && (
+              <PanelResizeHandle
+                label="左サイドバーの幅"
+                {...panels.left}
+                direction="right"
+                className="hidden lg:block"
+                style={{ left: "calc(var(--cli-left-width) - 4px)" }}
+              />
+            )}
             <PanelResizeHandle
               label="右サイドバーの幅"
               {...panels.right}
