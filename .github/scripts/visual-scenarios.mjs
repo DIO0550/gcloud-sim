@@ -136,9 +136,6 @@ export const SCENARIOS = [
         click: "開始",
       },
       {
-        click: "ヒント（0/5）",
-      },
-      {
         wait: 300,
       },
     ],
@@ -292,9 +289,6 @@ export const SCENARIOS = [
         click: "開始",
       },
       {
-        click: "ヒント（0/5）",
-      },
-      {
         wait: 300,
       },
     ],
@@ -320,9 +314,6 @@ export const SCENARIOS = [
       },
       {
         click: "開始",
-      },
-      {
-        click: "ヒント（0/5）",
       },
       {
         wait: 300,
@@ -352,9 +343,6 @@ export const SCENARIOS = [
         click: "開始",
       },
       {
-        click: "ヒント（0/5）",
-      },
-      {
         wait: 300,
       },
     ],
@@ -380,9 +368,6 @@ export const SCENARIOS = [
       },
       {
         click: "開始",
-      },
-      {
-        click: "ヒント（0/6）",
       },
       {
         wait: 300,
@@ -412,9 +397,6 @@ export const SCENARIOS = [
         click: "開始",
       },
       {
-        click: "ヒント（0/5）",
-      },
-      {
         wait: 300,
       },
     ],
@@ -440,9 +422,6 @@ export const SCENARIOS = [
       },
       {
         click: "開始",
-      },
-      {
-        click: "ヒント（0/6）",
       },
       {
         wait: 300,
@@ -526,9 +505,6 @@ export const SCENARIOS = [
         click: "開始",
       },
       {
-        click: "ヒント（0/6）",
-      },
-      {
         wait: 300,
       },
     ],
@@ -554,9 +530,6 @@ export const SCENARIOS = [
       },
       {
         click: "開始",
-      },
-      {
-        click: "ヒント（0/5）",
       },
       {
         wait: 300,
@@ -619,9 +592,6 @@ export const SCENARIOS = [
         click: "開始",
       },
       {
-        click: "ヒント（0/5）",
-      },
-      {
         wait: 300,
       },
     ],
@@ -682,9 +652,6 @@ export const SCENARIOS = [
         click: "開始",
       },
       {
-        click: "ヒント（0/5）",
-      },
-      {
         wait: 300,
       },
     ],
@@ -712,9 +679,6 @@ export const SCENARIOS = [
         click: "開始",
       },
       {
-        click: "ヒント（0/5）",
-      },
-      {
         wait: 300,
       },
     ],
@@ -740,9 +704,6 @@ export const SCENARIOS = [
       },
       {
         click: "開始",
-      },
-      {
-        click: "ヒント（0/5）",
       },
       {
         wait: 300,
@@ -865,9 +826,6 @@ export const SCENARIOS = [
         click: "開始",
       },
       {
-        click: "ヒント（0/5）",
-      },
-      {
         wait: 300,
       },
     ],
@@ -895,9 +853,6 @@ export const SCENARIOS = [
         click: "開始",
       },
       {
-        click: "ヒント（0/7）",
-      },
-      {
         wait: 300,
       },
     ],
@@ -923,9 +878,6 @@ export const SCENARIOS = [
       },
       {
         click: "開始",
-      },
-      {
-        click: "ヒント（0/4）",
       },
       {
         wait: 300,
@@ -989,9 +941,6 @@ export const SCENARIOS = [
       },
       {
         click: "開始",
-      },
-      {
-        click: "ヒント（0/2）",
       },
       {
         wait: 300,
@@ -1169,9 +1118,6 @@ export const SCENARIOS = [
       },
       {
         click: "開始",
-      },
-      {
-        click: "ヒント（0/4）",
       },
       {
         wait: 300,
