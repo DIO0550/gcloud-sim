@@ -7,7 +7,7 @@ import { TreeNode, TreeSelection } from "@/engine/resource-tree";
 import { AdminLabProperties } from "@/features/simulator/components/AdminLabProperties";
 
 test("pending quotas show request and grant separately and appear in their scope", () => {
-  const s = run(session(), ...AdminPrelude, AdminSolutions.quota[0]);
+  const s = run(session(), ...AdminPrelude, ...AdminSolutions.quota.slice(0, 1));
   const selection = {
     kind: "admin-lab",
     scope: "projects/ace-dev-01",

@@ -40,6 +40,7 @@ import {
   ensureContainerCleanupLab,
 } from "@/engine/missions/artifact-lifecycle";
 import { type BuildAssertion, BuildMissions, buildSatisfied } from "@/engine/missions/builds";
+import { ConsoleMissions } from "@/engine/missions/console";
 import {
   type ContainerReleaseAssertion,
   ContainerReleaseMissions,
@@ -95,6 +96,7 @@ import {
   KubernetesMissions,
   kubernetesSatisfied,
 } from "@/engine/missions/kubernetes";
+import { MissionStep } from "@/engine/missions/mission-step";
 import {
   type ObservabilityAssertion,
   ObservabilityMissions,
@@ -370,7 +372,7 @@ export type Mission = Readonly<{
   domain: MissionDomain;
   title: string;
   description: string;
-  hints: readonly string[];
+  steps: readonly MissionStep[];
   setup: readonly WorldPatch[];
   assertions: readonly MissionAssertion[];
 }>;
@@ -433,10 +435,21 @@ export const ScenarioMissions: readonly Mission[] = [
     title: "ace-prod-01 で Compute Engine を使えるようにする",
     description:
       "プロジェクト ace-prod-01 に請求アカウントをリンクし、Compute Engine API を有効化してください。",
-    hints: [
-      "請求アカウントの ID は gcloud billing accounts list で確認できます。",
-      "gcloud billing projects link ace-prod-01 --billing-account=ACCOUNT_ID でリンクします。",
-      "API の有効化は gcloud services enable compute.googleapis.com --project=ace-prod-01 です。",
+    steps: [
+      MissionStep.run(
+        "リンクに使う請求アカウントのIDを調べる",
+        "gcloud billing accounts list",
+        "ACCOUNT_ID 列の値（例: 01AB2C-DEF345-6789AB）を次の手順で使います。",
+      ),
+      MissionStep.run(
+        "ace-prod-01 に請求アカウントをリンクする",
+        "gcloud billing projects link ace-prod-01 --billing-account=ACCOUNT_ID",
+        "ACCOUNT_ID には前の手順で調べた請求アカウントのIDを入れます。請求先がリンクされていないと Compute Engine API は有効にできません。",
+      ),
+      MissionStep.run(
+        "ace-prod-01 で Compute Engine API を有効にする",
+        "gcloud services enable compute.googleapis.com --project=ace-prod-01",
+      ),
     ],
     setup: [],
     assertions: [
@@ -450,9 +463,20 @@ export const ScenarioMissions: readonly Mission[] = [
     title: "本番用の configuration を用意する",
     description:
       "configuration `prod` を作り、その中で core/project を ace-prod-01、compute/zone を asia-northeast1-a に設定してください。",
-    hints: [
-      "gcloud config configurations create prod で作成と同時にアクティブになります。",
-      "gcloud config set project ace-prod-01 / gcloud config set compute/zone asia-northeast1-a",
+    steps: [
+      MissionStep.run(
+        "本番用の configuration prod を作って切り替える",
+        "gcloud config configurations create prod",
+        "作成と同時に prod がアクティブになるので、以降の config set は prod に入ります。",
+      ),
+      MissionStep.run(
+        "prod の既定プロジェクトを ace-prod-01 にする",
+        "gcloud config set project ace-prod-01",
+      ),
+      MissionStep.run(
+        "prod の既定ゾーンを asia-northeast1-a にする",
+        "gcloud config set compute/zone asia-northeast1-a",
+      ),
     ],
     setup: [],
     assertions: [
@@ -476,9 +500,16 @@ export const ScenarioMissions: readonly Mission[] = [
     title: "カスタムモードの VPC を設計する",
     description:
       "ace-dev-01 にカスタム サブネット モードの VPC `vpc-app` を作り、asia-northeast1 にサブネット `app-subnet`（10.10.0.0/24）を作ってください。",
-    hints: [
-      "gcloud compute networks create vpc-app --subnet-mode=custom",
-      "gcloud compute networks subnets create app-subnet --network=vpc-app --region=asia-northeast1 --range=10.10.0.0/24",
+    steps: [
+      MissionStep.run(
+        "サブネットを自分で切るカスタムモードの VPC を作る",
+        "gcloud compute networks create vpc-app --subnet-mode=custom",
+        "カスタムモードではサブネットが自動では作られません。",
+      ),
+      MissionStep.run(
+        "東京リージョンに 10.10.0.0/24 のサブネットを作る",
+        "gcloud compute networks subnets create app-subnet --network=vpc-app --region=asia-northeast1 --range=10.10.0.0/24",
+      ),
     ],
     setup: [{ kind: "setProject", projectId: F.devProjectId }],
     assertions: [
@@ -503,10 +534,20 @@ export const ScenarioMissions: readonly Mission[] = [
     title: "バッチ用のサービスアカウントを用意する",
     description:
       "ace-dev-01 にサービスアカウント `batch-sa` を作り、プロジェクトに roles/storage.objectAdmin を付与してください。",
-    hints: [
-      'gcloud iam service-accounts create batch-sa --display-name="Batch SA"',
-      "メンバーは serviceAccount:batch-sa@ace-dev-01.iam.gserviceaccount.com の形で指定します。",
-      "gcloud projects add-iam-policy-binding ace-dev-01 --member=serviceAccount:... --role=roles/storage.objectAdmin",
+    steps: [
+      MissionStep.run(
+        "バッチ用のサービスアカウント batch-sa を作る",
+        'gcloud iam service-accounts create batch-sa --display-name="Batch SA"',
+      ),
+      MissionStep.say(
+        "付与先のメンバー名を組み立てる",
+        "メンバーは serviceAccount:batch-sa@ace-dev-01.iam.gserviceaccount.com の形で指定します。",
+      ),
+      MissionStep.run(
+        "batch-sa にプロジェクトのオブジェクト管理権限を付ける",
+        "gcloud projects add-iam-policy-binding ace-dev-01 --member=serviceAccount:... --role=roles/storage.objectAdmin",
+        "... には batch-sa@ace-dev-01.iam.gserviceaccount.com を入れます。",
+      ),
     ],
     setup: [{ kind: "setProject", projectId: F.devProjectId }],
     assertions: [
@@ -525,9 +566,16 @@ export const ScenarioMissions: readonly Mission[] = [
     title: "Web サーバーを公開する",
     description:
       "ace-dev-01 の asia-northeast1-a に e2-small の VM `web-1` をネットワークタグ http-server 付きで作り、そのタグ向けに tcp:80 を許可するファイアウォールルール `allow-http` を作ってください。",
-    hints: [
-      "gcloud compute instances create web-1 --zone=asia-northeast1-a --machine-type=e2-small --tags=http-server",
-      "gcloud compute firewall-rules create allow-http --network=default --allow=tcp:80 --target-tags=http-server",
+    steps: [
+      MissionStep.run(
+        "VM web-1 に http-server タグを付けて作る",
+        "gcloud compute instances create web-1 --zone=asia-northeast1-a --machine-type=e2-small --tags=http-server",
+      ),
+      MissionStep.run(
+        "http-server タグの VM へ tcp:80 を通す",
+        "gcloud compute firewall-rules create allow-http --network=default --allow=tcp:80 --target-tags=http-server",
+        "--target-tags で、同じタグを持つ VM だけにルールが効きます。",
+      ),
     ],
     setup: [{ kind: "setProject", projectId: F.devProjectId }],
     assertions: [
@@ -555,8 +603,12 @@ export const ScenarioMissions: readonly Mission[] = [
     title: "ログ保管用のバケットを作る",
     description:
       "東京リージョン（ASIA-NORTHEAST1）に、既定のストレージクラスが NEARLINE のバケット `ace-dev-01-logs` を作ってください。",
-    hints: [
-      "gcloud storage buckets create gs://ace-dev-01-logs --location=asia-northeast1 --default-storage-class=NEARLINE",
+    steps: [
+      MissionStep.run(
+        "東京に NEARLINE のログ保管用バケットを作る",
+        "gcloud storage buckets create gs://ace-dev-01-logs --location=asia-northeast1 --default-storage-class=NEARLINE",
+        "既定のストレージクラスは後から変えられますが、既存オブジェクトのクラスは変わりません。",
+      ),
     ],
     setup: [{ kind: "setProject", projectId: F.devProjectId }],
     assertions: [
@@ -574,9 +626,16 @@ export const ScenarioMissions: readonly Mission[] = [
     title: "GKE Autopilot クラスタを作る",
     description:
       "ace-dev-01 に、asia-northeast1 リージョンの Autopilot クラスタ `app-cluster` を作ってください（Kubernetes Engine API の有効化から）。",
-    hints: [
-      "gcloud services enable container.googleapis.com",
-      "Autopilot は create ではなく create-auto です: gcloud container clusters create-auto app-cluster --region=asia-northeast1",
+    steps: [
+      MissionStep.run(
+        "Kubernetes Engine API を有効にする",
+        "gcloud services enable container.googleapis.com",
+      ),
+      MissionStep.run(
+        "東京リージョンに Autopilot クラスタを作る",
+        "gcloud container clusters create-auto app-cluster --region=asia-northeast1",
+        "Autopilot は create ではなく create-auto です。",
+      ),
     ],
     setup: [{ kind: "setProject", projectId: F.devProjectId }],
     assertions: [
@@ -595,9 +654,16 @@ export const ScenarioMissions: readonly Mission[] = [
     title: "停止してからスナップショットを取る",
     description:
       "asia-northeast1-b で動いている VM `batch-1` を停止し、そのブートディスク（batch-1）のスナップショット `batch-1-snap` を作ってください。",
-    hints: [
-      "gcloud compute instances stop batch-1 --zone=asia-northeast1-b",
-      "gcloud compute snapshots create batch-1-snap --source-disk=batch-1 --source-disk-zone=asia-northeast1-b",
+    steps: [
+      MissionStep.run(
+        "書き込みを止めるために VM batch-1 を停止する",
+        "gcloud compute instances stop batch-1 --zone=asia-northeast1-b",
+        "停止すると状態が TERMINATED になり、ディスクの中身が一貫した状態で取れます。",
+      ),
+      MissionStep.run(
+        "batch-1 のブートディスクのスナップショットを取る",
+        "gcloud compute snapshots create batch-1-snap --source-disk=batch-1 --source-disk-zone=asia-northeast1-b",
+      ),
     ],
     setup: [
       { kind: "setProject", projectId: F.devProjectId },
@@ -627,9 +693,13 @@ export const ScenarioMissions: readonly Mission[] = [
     title: "Cloud Run にサービスを公開する",
     description:
       "ace-dev-01 の asia-northeast1 に、イメージ gcr.io/cloudrun/hello のサービス `hello` を未認証アクセス許可でデプロイしてください。",
-    hints: [
-      "gcloud services enable run.googleapis.com",
-      "gcloud run deploy hello --image=gcr.io/cloudrun/hello --region=asia-northeast1 --allow-unauthenticated",
+    steps: [
+      MissionStep.run("Cloud Run API を有効にする", "gcloud services enable run.googleapis.com"),
+      MissionStep.run(
+        "hello イメージを誰でも呼べるサービスとしてデプロイする",
+        "gcloud run deploy hello --image=gcr.io/cloudrun/hello --region=asia-northeast1 --allow-unauthenticated",
+        "--allow-unauthenticated で allUsers に起動元ロールが付き、認証なしで呼べます。",
+      ),
     ],
     setup: [{ kind: "setProject", projectId: F.devProjectId }],
     assertions: [
@@ -648,10 +718,34 @@ export const ScenarioMissions: readonly Mission[] = [
     title: "dev に最小権限で VM を作らせる",
     description:
       "dev@example.com は ace-dev-01 で VM を作れません。フォルダ dev に roles/compute.instanceAdmin.v1 だけを付与して、dev@example.com として asia-northeast1-a に VM `web-2` を作ってください（プロジェクトに editor / owner を付けるのは不正解）。",
-    hints: [
-      "gcloud config set account dev@example.com で切り替えて gcloud compute instances create web-2 --zone=asia-northeast1-a を試すと PERMISSION_DENIED になります。",
-      "owner@example.com に戻り、gcloud resource-manager folders add-iam-policy-binding 284100000001 --member=user:dev@example.com --role=roles/compute.instanceAdmin.v1",
-      "もう一度 dev@example.com で create を実行します。",
+    steps: [
+      MissionStep.run(
+        "操作するアカウントを dev@example.com にする",
+        "gcloud config set account dev@example.com",
+      ),
+      MissionStep.run(
+        "dev のまま VM を作れないことを確かめる",
+        "gcloud compute instances create web-2 --zone=asia-northeast1-a",
+        "まだ権限が無いので PERMISSION_DENIED になります。",
+      ),
+      MissionStep.run(
+        "権限を付けられる owner@example.com に戻る",
+        "gcloud config set account owner@example.com",
+      ),
+      MissionStep.run(
+        "フォルダ dev で dev に VM 管理ロールだけを付ける",
+        "gcloud resource-manager folders add-iam-policy-binding 284100000001 --member=user:dev@example.com --role=roles/compute.instanceAdmin.v1",
+        "284100000001 はフォルダ dev の ID です。フォルダに付けたロールは配下の ace-dev-01 に継承されます。",
+      ),
+      MissionStep.run(
+        "もう一度 dev@example.com に切り替える",
+        "gcloud config set account dev@example.com",
+      ),
+      MissionStep.run(
+        "dev として VM web-2 を作る",
+        "gcloud compute instances create web-2 --zone=asia-northeast1-a",
+        "継承したロールで compute.instances.create が通ります。",
+      ),
     ],
     setup: [
       { kind: "setProject", projectId: F.devProjectId },
@@ -699,9 +793,13 @@ export const ScenarioMissions: readonly Mission[] = [
     title: "運用チームに組織全体の閲覧権限を付ける",
     description:
       "グループ ops@example.com が組織配下のすべてのプロジェクトを閲覧できるように、組織レベルで roles/viewer を付与してください。",
-    hints: [
-      "組織 ID は gcloud organizations list で確認できます。",
-      "gcloud organizations add-iam-policy-binding 123456789012 --member=group:ops@example.com --role=roles/viewer",
+    steps: [
+      MissionStep.run("付与先の組織IDを調べる", "gcloud organizations list"),
+      MissionStep.run(
+        "組織レベルで ops@example.com に閲覧ロールを付ける",
+        "gcloud organizations add-iam-policy-binding 123456789012 --member=group:ops@example.com --role=roles/viewer",
+        "123456789012 は前の手順で調べた組織IDです。組織に付けたロールは配下のすべてのプロジェクトに継承されます。",
+      ),
     ],
     setup: [],
     assertions: [
@@ -714,9 +812,12 @@ export const ScenarioMissions: readonly Mission[] = [
     title: "請求アカウントに予算を設定する",
     description:
       "請求アカウント 01AB2C-DEF345-6789AB に、月額 100000 JPY の予算（表示名は任意）を作ってください。しきい値は既定のままで構いません。",
-    hints: [
-      "予算は gcloud billing budgets create で作ります。--billing-account と --display-name と --budget-amount が必須です。",
-      "gcloud billing budgets create --billing-account=01AB2C-DEF345-6789AB --display-name=monthly --budget-amount=100000JPY",
+    steps: [
+      MissionStep.run(
+        "請求アカウントに月額 100000 JPY の予算を作る",
+        "gcloud billing budgets create --billing-account=01AB2C-DEF345-6789AB --display-name=monthly --budget-amount=100000JPY",
+        "--billing-account と --display-name と --budget-amount が必須です。",
+      ),
     ],
     setup: [],
     assertions: [{ kind: "budgetExists", billingAccountId: F.billingAccountId, amount: 100000 }],
@@ -727,10 +828,14 @@ export const ScenarioMissions: readonly Mission[] = [
     title: "非同期処理用の Pub/Sub を用意する",
     description:
       "ace-dev-01 に Pub/Sub トピック `orders` と、それを購読する pull サブスクリプション `orders-worker` を作ってください（Pub/Sub API の有効化から）。",
-    hints: [
-      "gcloud services enable pubsub.googleapis.com",
-      "gcloud pubsub topics create orders",
-      "gcloud pubsub subscriptions create orders-worker --topic=orders",
+    steps: [
+      MissionStep.run("Pub/Sub API を有効にする", "gcloud services enable pubsub.googleapis.com"),
+      MissionStep.run("注文を流すトピック orders を作る", "gcloud pubsub topics create orders"),
+      MissionStep.run(
+        "orders を購読する pull サブスクリプションを作る",
+        "gcloud pubsub subscriptions create orders-worker --topic=orders",
+        "--push-endpoint を付けなければ pull 型になります。",
+      ),
     ],
     setup: [{ kind: "setProject", projectId: F.devProjectId }],
     assertions: [
@@ -750,10 +855,26 @@ export const ScenarioMissions: readonly Mission[] = [
     title: "GKE に Deployment を出して公開する",
     description:
       "ace-dev-01 の asia-northeast1-a に Standard クラスタ `app` を作り、kubectl で deployment.yaml（Deployment `web`）を適用して 3 レプリカにスケールし、LoadBalancer 型の Service `web` で公開してください。",
-    hints: [
-      "gcloud services enable container.googleapis.com のあと gcloud container clusters create app --zone=asia-northeast1-a",
-      "kubectl を使う前に gcloud container clusters get-credentials app --zone=asia-northeast1-a で認証情報を取ります。",
-      "kubectl apply -f deployment.yaml / kubectl scale deployment web --replicas=3 / kubectl expose deployment web --type=LoadBalancer --port=80",
+    steps: [
+      MissionStep.run(
+        "Kubernetes Engine API を有効にする",
+        "gcloud services enable container.googleapis.com",
+      ),
+      MissionStep.run(
+        "ゾーン asia-northeast1-a に Standard クラスタを作る",
+        "gcloud container clusters create app --zone=asia-northeast1-a",
+      ),
+      MissionStep.run(
+        "kubectl が app クラスタに接続できるようにする",
+        "gcloud container clusters get-credentials app --zone=asia-northeast1-a",
+        "kubectl を使う前に認証情報を取ります。",
+      ),
+      MissionStep.run("Deployment web を作る", "kubectl apply -f deployment.yaml"),
+      MissionStep.run("web を 3 レプリカに増やす", "kubectl scale deployment web --replicas=3"),
+      MissionStep.run(
+        "web を LoadBalancer の Service で外部に公開する",
+        "kubectl expose deployment web --type=LoadBalancer --port=80",
+      ),
     ],
     setup: [{ kind: "setProject", projectId: F.devProjectId }],
     assertions: [
@@ -786,9 +907,16 @@ export const ScenarioMissions: readonly Mission[] = [
     title: "HTTP で呼べる Cloud Functions をデプロイする",
     description:
       "ace-dev-01 の asia-northeast1 に、ランタイム python312 の HTTP トリガー関数 `hello` を未認証呼び出し許可でデプロイしてください。",
-    hints: [
-      "gcloud services enable cloudfunctions.googleapis.com",
-      "gcloud functions deploy hello --runtime=python312 --trigger-http --allow-unauthenticated --region=asia-northeast1",
+    steps: [
+      MissionStep.run(
+        "Cloud Functions API を有効にする",
+        "gcloud services enable cloudfunctions.googleapis.com",
+      ),
+      MissionStep.run(
+        "認証なしで呼べる HTTP 関数 hello をデプロイする",
+        "gcloud functions deploy hello --runtime=python312 --trigger-http --allow-unauthenticated --region=asia-northeast1",
+        "--trigger-http で URL から呼ぶ関数になります。",
+      ),
     ],
     setup: [{ kind: "setProject", projectId: F.devProjectId }],
     assertions: [
@@ -808,9 +936,15 @@ export const ScenarioMissions: readonly Mission[] = [
     title: "Cloud SQL のインスタンスを立てる",
     description:
       "ace-dev-01 の asia-northeast1 に、MySQL 8.0 の Cloud SQL インスタンス `app-db` を作ってください（Cloud SQL Admin API の有効化から）。",
-    hints: [
-      "gcloud services enable sqladmin.googleapis.com",
-      "gcloud sql instances create app-db --database-version=MYSQL_8_0 --region=asia-northeast1",
+    steps: [
+      MissionStep.run(
+        "Cloud SQL Admin API を有効にする",
+        "gcloud services enable sqladmin.googleapis.com",
+      ),
+      MissionStep.run(
+        "東京に MySQL 8.0 のインスタンス app-db を作る",
+        "gcloud sql instances create app-db --database-version=MYSQL_8_0 --region=asia-northeast1",
+      ),
     ],
     setup: [{ kind: "setProject", projectId: F.devProjectId }],
     assertions: [
@@ -828,10 +962,19 @@ export const ScenarioMissions: readonly Mission[] = [
     title: "テンプレートから自動スケールする MIG を作る",
     description:
       "ace-dev-01 にインスタンステンプレート `web-tpl` を作り、それを使う 2 台のマネージドインスタンスグループ `web-mig` を asia-northeast1-a に作って、最大 5 台まで自動スケールするよう設定してください。",
-    hints: [
-      "gcloud compute instance-templates create web-tpl --machine-type=e2-small",
-      "gcloud compute instance-groups managed create web-mig --template=web-tpl --size=2 --zone=asia-northeast1-a",
-      "gcloud compute instance-groups managed set-autoscaling web-mig --max-num-replicas=5 --zone=asia-northeast1-a",
+    steps: [
+      MissionStep.run(
+        "VM の型紙になるインスタンステンプレートを作る",
+        "gcloud compute instance-templates create web-tpl --machine-type=e2-small",
+      ),
+      MissionStep.run(
+        "テンプレートから 2 台の MIG を作る",
+        "gcloud compute instance-groups managed create web-mig --template=web-tpl --size=2 --zone=asia-northeast1-a",
+      ),
+      MissionStep.run(
+        "MIG が最大 5 台まで自動で増えるようにする",
+        "gcloud compute instance-groups managed set-autoscaling web-mig --max-num-replicas=5 --zone=asia-northeast1-a",
+      ),
     ],
     setup: [{ kind: "setProject", projectId: F.devProjectId }],
     assertions: [
@@ -850,10 +993,19 @@ export const ScenarioMissions: readonly Mission[] = [
     title: "VM の起動と停止だけできるカスタムロールを作る",
     description:
       "ace-dev-01 に、compute.instances.start / compute.instances.stop / compute.instances.get / compute.instances.list だけを持つカスタムロール `vmOperator` を作り、dev@example.com にプロジェクトレベルで付与してください。",
-    hints: [
-      "gcloud iam roles create vmOperator --project=ace-dev-01 --title=VMOperator --permissions=compute.instances.start,compute.instances.stop,compute.instances.get,compute.instances.list",
-      "カスタムロールの名前は projects/ace-dev-01/roles/vmOperator です。",
-      "gcloud projects add-iam-policy-binding ace-dev-01 --member=user:dev@example.com --role=projects/ace-dev-01/roles/vmOperator",
+    steps: [
+      MissionStep.run(
+        "起動・停止・参照の 4 権限だけを持つカスタムロールを作る",
+        "gcloud iam roles create vmOperator --project=ace-dev-01 --title=VMOperator --permissions=compute.instances.start,compute.instances.stop,compute.instances.get,compute.instances.list",
+      ),
+      MissionStep.say(
+        "付与に使うカスタムロールの完全な名前を確かめる",
+        "カスタムロールの名前は projects/ace-dev-01/roles/vmOperator です。",
+      ),
+      MissionStep.run(
+        "dev@example.com にカスタムロールをプロジェクトで付ける",
+        "gcloud projects add-iam-policy-binding ace-dev-01 --member=user:dev@example.com --role=projects/ace-dev-01/roles/vmOperator",
+      ),
     ],
     setup: [{ kind: "setProject", projectId: F.devProjectId }],
     assertions: [
@@ -871,6 +1023,7 @@ export const ScenarioMissions: readonly Mission[] = [
       },
     ],
   },
+  ...ConsoleMissions,
 ];
 
 const Missions = practiceCatalog(ScenarioMissions);
@@ -1280,7 +1433,7 @@ export const Mission = {
     return Option.isSome(progress)
       ? World.replaceMissionProgress(
           world,
-          MissionProgress.revealHint(progress.value, mission.hints.length),
+          MissionProgress.revealHint(progress.value, mission.steps.length),
         )
       : world;
   },

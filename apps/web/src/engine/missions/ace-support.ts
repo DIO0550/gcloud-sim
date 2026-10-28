@@ -4,6 +4,7 @@ import { EffectivePermissions } from "@/engine/domains/effective-permissions";
 import { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
 
 export type AiLesson = "agent" | "notebook" | "workstation";
 export type AceAssertion =
@@ -23,7 +24,7 @@ const api = {
   notebook: "notebooks.googleapis.com",
   workstation: "workstations.googleapis.com",
 } as const;
-export const aiSolutions = (kind: AiLesson): readonly string[] => {
+export const aiSolutions = (kind: AiLesson): readonly MissionStep[] => {
   const name = aiLessonName(kind);
   const net = `${name}-net`;
   const subnet = `${name}-subnet`;
@@ -32,17 +33,46 @@ export const aiSolutions = (kind: AiLesson): readonly string[] => {
   const updateIdle = kind === "agent" ? "" : " --idle-minutes=15";
   const target = `${name} --region=us-central1`;
   return [
-    `gcloud services enable compute.googleapis.com iam.googleapis.com ${api[kind]}`,
-    `gcloud compute networks create ${net} --subnet-mode=custom`,
-    `gcloud compute networks subnets create ${subnet} --network=${net} --region=us-central1 --range=10.60.0.0/24 --enable-private-ip-google-access`,
-    `gcloud iam service-accounts create ${name}`,
-    `gcloud iam service-accounts add-iam-policy-binding ${sa} --member=user:${F.owner} --role=roles/iam.serviceAccountUser`,
-    `gcloud projects add-iam-policy-binding ${p} --member=serviceAccount:${sa} --role=roles/storage.objectViewer`,
-    `sim ai resources create ${target} --kind=${kind} --platform=${platform[kind]} --service-account=${sa} --subnet=${subnet} --access=public${idle}`,
-    `sim ai resources start ${target}`,
-    `sim ai resources stop ${target}`,
-    `sim ai resources update ${target} --access=private${updateIdle}`,
-    `sim ai resources start ${target}`,
+    MissionStep.run(
+      "教材で使う Compute・IAM・製品の API を有効にする",
+      `gcloud services enable compute.googleapis.com iam.googleapis.com ${api[kind]}`,
+    ),
+    MissionStep.run(
+      "教材専用のカスタムモード VPC を作る",
+      `gcloud compute networks create ${net} --subnet-mode=custom`,
+    ),
+    MissionStep.run(
+      "限定公開の Google アクセス付きのサブネットを作る",
+      `gcloud compute networks subnets create ${subnet} --network=${net} --region=us-central1 --range=10.60.0.0/24 --enable-private-ip-google-access`,
+      "外部 IP の無いリソースからでも Google API に届くようにします。",
+    ),
+    MissionStep.run(
+      "リソース専用のサービスアカウントを作る",
+      `gcloud iam service-accounts create ${name}`,
+    ),
+    MissionStep.run(
+      "自分がこの SA をリソースに割り当てられるようにする",
+      `gcloud iam service-accounts add-iam-policy-binding ${sa} --member=user:${F.owner} --role=roles/iam.serviceAccountUser`,
+      "SA を割り当てる人には、その SA に対する serviceAccountUser が要ります。",
+    ),
+    MissionStep.run(
+      "SA に Storage の閲覧ロールだけを付ける",
+      `gcloud projects add-iam-policy-binding ${p} --member=serviceAccount:${sa} --role=roles/storage.objectViewer`,
+      "最小権限にするため、これ以外のロールは付けません。",
+    ),
+    MissionStep.run(
+      "まず public 構成で教材リソースを作る",
+      `sim ai resources create ${target} --kind=${kind} --platform=${platform[kind]} --service-account=${sa} --subnet=${subnet} --access=public${idle}`,
+    ),
+    MissionStep.run("public 構成のまま開始する", `sim ai resources start ${target}`),
+    MissionStep.run("構成を直すために停止する", `sim ai resources stop ${target}`),
+    MissionStep.run(
+      kind === "agent"
+        ? "接続を private 構成に直す"
+        : "private 構成に直し、idle timeout を 15 分にする",
+      `sim ai resources update ${target} --access=private${updateIdle}`,
+    ),
+    MissionStep.run("直した構成で再開する", `sim ai resources start ${target}`),
   ];
 };
 
@@ -107,9 +137,13 @@ export const AceDecisionMissions: readonly Mission[] = AceScenarios.map((s) => (
   domain: s.domain,
   title: s.title,
   description: `判断演習: ${s.requirements} 選択肢: ${s.choices.join(" / ")}。理由を記録してください。固定した選択を採点し、自由文の意味は採点しません。`,
-  hints: [
-    `sim ace scenarios describe ${s.id} で要件・選択肢・解説を確認する。`,
-    `sim ace scenarios choose ${s.id} --choice=${s.answer} --reason='${s.reason}'`,
+  steps: [
+    MissionStep.run("要件・選択肢・解説を確かめる", `sim ace scenarios describe ${s.id}`),
+    MissionStep.run(
+      "要件に合う選択肢を選び、理由を記録する",
+      `sim ace scenarios choose ${s.id} --choice=${s.answer} --reason='${s.reason}'`,
+      "採点されるのは選んだ選択肢だけで、理由の文は採点されません。",
+    ),
   ],
   setup: [
     { kind: "setProject", projectId: p },
@@ -124,7 +158,7 @@ export const AiMissions: readonly Mission[] = (["agent", "notebook", "workstatio
     title: `${kind}の教材構成を停止・修正・再開する`,
     description:
       "専用SAとregional subnetを用意し、public構成の開始・停止後、private構成に修正して再開する。notebook/IDEのidle timeoutは15分。SAはStorage閲覧だけにする。教材のRUNNINGは構成状態であり、実agent・VM・IDEの起動や推論は行いません。",
-    hints: aiSolutions(kind),
+    steps: aiSolutions(kind),
     setup: [
       { kind: "setProject", projectId: p },
       { kind: "setPrincipal", principal: F.owner },

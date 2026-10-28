@@ -4,6 +4,7 @@ import { allows } from "@/engine/domains/serverless-lab/runtime";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
 
 const p = F.devProjectId;
 const z = "us-central1-a";
@@ -14,8 +15,12 @@ const write = (n: string, data: string) =>
   `sim compute disks write ${n} --zone=${z} --data=${data}`;
 const read = (n: string) => `sim compute disks read ${n} --zone=${z}`;
 const createWorker = [
-  "gcloud iam service-accounts create vm-worker",
-  `gcloud iam service-accounts add-iam-policy-binding ${worker} --member=user:${F.owner} --role=roles/iam.serviceAccountUser`,
+  MissionStep.run("VM用のサービスアカウントを作る", "gcloud iam service-accounts create vm-worker"),
+  MissionStep.run(
+    "自分にSAのService Account Userを付ける",
+    `gcloud iam service-accounts add-iam-policy-binding ${worker} --member=user:${F.owner} --role=roles/iam.serviceAccountUser`,
+    "SAをVMやTPUに割り当てるには、そのSAへの actAs が要ります。",
+  ),
 ];
 const template = (n: string, flags = "") =>
   `gcloud compute instance-templates create ${n} ${flags}`;
@@ -23,118 +28,280 @@ const group = (n: string, flags = "") =>
   `gcloud compute instance-groups managed create ${n} --zone=${z} --template=${n}-v1 --size=2 ${flags}`;
 const mig = (n: string, op: string, flags = "") =>
   `sim compute instance-groups managed ${op} ${n} --zone=${z} ${flags}`;
-export const ComputePrelude = [
+const preludeStep = MissionStep.run(
+  "Compute・TPU・OS ConfigのAPIを有効にする",
   "gcloud services enable compute.googleapis.com tpu.googleapis.com osconfig.googleapis.com",
-];
-export const ComputeSolutions = {
-  custom: [vm("custom-worker", "--custom-vm-type=n2 --custom-cpu=4 --custom-memory=12GB")],
-  spot: [
-    vm(
-      "checkpoint-worker",
-      "--provisioning-model=SPOT --maintenance-policy=TERMINATE --no-restart-on-failure",
+);
+/** 全レッスンの前に流す行（テスト・Storybook 用）。 */
+export const ComputePrelude = MissionStep.lines([preludeStep]);
+/** レッスンごとの解き方の手順。 */
+export const ComputeSteps = {
+  custom: [
+    MissionStep.run(
+      "N2で4 vCPU・12 GBのカスタムVMを作る",
+      vm("custom-worker", "--custom-vm-type=n2 --custom-cpu=4 --custom-memory=12GB"),
+      "マシンタイプは n2-custom-4-12288 になります。",
     ),
-    write("checkpoint-worker", "checkpoint-42"),
-    "sim compute instances preempt checkpoint-worker --zone=us-central1-a",
-    "gcloud compute instances start checkpoint-worker --zone=us-central1-a",
-    read("checkpoint-worker"),
+  ],
+  spot: [
+    MissionStep.run(
+      "中断時に停止するSpot VMを作る",
+      vm(
+        "checkpoint-worker",
+        "--provisioning-model=SPOT --maintenance-policy=TERMINATE --no-restart-on-failure",
+      ),
+      "中断されてもVMは削除されずに停止し、ディスクは残ります。",
+    ),
+    MissionStep.run(
+      "ディスクにチェックポイントを書く",
+      write("checkpoint-worker", "checkpoint-42"),
+    ),
+    MissionStep.run(
+      "Spot VMの中断を起こす",
+      "sim compute instances preempt checkpoint-worker --zone=us-central1-a",
+    ),
+    MissionStep.run(
+      "停止したVMを再開する",
+      "gcloud compute instances start checkpoint-worker --zone=us-central1-a",
+    ),
+    MissionStep.run("チェックポイントが残っているか読む", read("checkpoint-worker")),
   ],
   gpu: [
-    vm(
-      "gpu-worker",
-      "--machine-type=n1-standard-1 --accelerator=type=nvidia-tesla-t4,count=1 --maintenance-policy=TERMINATE",
+    MissionStep.run(
+      "T4を1枚付けたN1のVMを作る",
+      vm(
+        "gpu-worker",
+        "--machine-type=n1-standard-1 --accelerator=type=nvidia-tesla-t4,count=1 --maintenance-policy=TERMINATE",
+      ),
+      "GPU付きVMはライブマイグレーションできないため、メンテナンス時は終了（TERMINATE）にします。",
     ),
   ],
   tpu: [
     ...createWorker,
-    `gcloud compute tpus tpu-vm create matrix-worker --zone=us-central1-b --accelerator-type=v2-8 --version=tpu-vm-base --service-account=${worker}`,
+    MissionStep.run(
+      "対応ゾーンにv2-8のTPU VMを作る",
+      `gcloud compute tpus tpu-vm create matrix-worker --zone=us-central1-b --accelerator-type=v2-8 --version=tpu-vm-base --service-account=${worker}`,
+      "v2-8 を置けるゾーン（us-central1-b）を選び、専用SAで動かします。",
+    ),
   ],
   regional: [
-    vm("ha-worker"),
-    "gcloud compute disks create mirrored --region=us-central1 --replica-zones=us-central1-a,us-central1-b --type=pd-ssd --size=200GB",
-    "gcloud compute instances attach-disk ha-worker --zone=us-central1-a --disk=mirrored --disk-scope=regional",
+    MissionStep.run("ディスクを付けるVMを作る", vm("ha-worker")),
+    MissionStep.run(
+      "2ゾーンに複製するリージョンSSDを作る",
+      "gcloud compute disks create mirrored --region=us-central1 --replica-zones=us-central1-a,us-central1-b --type=pd-ssd --size=200GB",
+    ),
+    MissionStep.run(
+      "リージョンディスクをVMに接続する",
+      "gcloud compute instances attach-disk ha-worker --zone=us-central1-a --disk=mirrored --disk-scope=regional",
+      "VMのゾーンがレプリカゾーンのどちらかに入っている必要があります。",
+    ),
   ],
   hyperdisk: [
-    vm("io-worker", "--machine-type=c3-standard-4"),
-    disk(
-      "fast-data",
-      "--type=hyperdisk-balanced --size=100GB --provisioned-iops=10000 --provisioned-throughput=400",
+    MissionStep.run(
+      "Hyperdiskに対応するC3のVMを作る",
+      vm("io-worker", "--machine-type=c3-standard-4"),
     ),
-    "gcloud compute instances attach-disk io-worker --zone=us-central1-a --disk=fast-data",
+    MissionStep.run(
+      "IOPSとスループットを指定したディスクを作る",
+      disk(
+        "fast-data",
+        "--type=hyperdisk-balanced --size=100GB --provisioned-iops=10000 --provisioned-throughput=400",
+      ),
+      "Hyperdiskは容量とは別に性能を決められます。",
+    ),
+    MissionStep.run(
+      "HyperdiskをVMに接続する",
+      "gcloud compute instances attach-disk io-worker --zone=us-central1-a --disk=fast-data",
+    ),
   ],
   restore: [
-    disk("orders", "--size=20GB"),
-    write("orders", "orders-v1"),
-    "gcloud compute disks snapshot orders --zone=us-central1-a --snapshot-names=orders-safe",
-    write("orders", "corrupted"),
-    disk("recovered-orders", "--source-snapshot=orders-safe --size=30GB"),
-    read("recovered-orders"),
+    MissionStep.run("注文データ用のディスクを作る", disk("orders", "--size=20GB")),
+    MissionStep.run("正常なデータを書き込む", write("orders", "orders-v1")),
+    MissionStep.run(
+      "変更前のスナップショットを取る",
+      "gcloud compute disks snapshot orders --zone=us-central1-a --snapshot-names=orders-safe",
+    ),
+    MissionStep.run("元ディスクのデータを壊す", write("orders", "corrupted")),
+    MissionStep.run(
+      "スナップショットから別のディスクへ復元する",
+      disk("recovered-orders", "--source-snapshot=orders-safe --size=30GB"),
+      "容量はスナップショット元のディスク以上にします。",
+    ),
+    MissionStep.run("復元したディスクの内容を読む", read("recovered-orders")),
   ],
   image: [
-    vm("golden"),
-    write("golden", "release-v2"),
-    "gcloud compute instances stop golden --zone=us-central1-a",
-    "gcloud compute images create release-v2 --source-disk=golden --source-disk-zone=us-central1-a --family=app",
-    vm("image-worker", "--image=release-v2"),
-    read("image-worker"),
+    MissionStep.run("イメージの元になるVMを作る", vm("golden")),
+    MissionStep.run("ブートディスクにリリース内容を書く", write("golden", "release-v2")),
+    MissionStep.run(
+      "イメージ化の前にVMを停止する",
+      "gcloud compute instances stop golden --zone=us-central1-a",
+      "実行中のVMのブートディスクからはイメージを作れません。",
+    ),
+    MissionStep.run(
+      "停止したディスクからカスタムイメージを作る",
+      "gcloud compute images create release-v2 --source-disk=golden --source-disk-zone=us-central1-a --family=app",
+      "--family=app でイメージファミリーにまとめます。",
+    ),
+    MissionStep.run("カスタムイメージから別のVMを作る", vm("image-worker", "--image=release-v2")),
+    MissionStep.run("新しいVMに内容が引き継がれたか読む", read("image-worker")),
   ],
   schedule: [
-    disk("seed-data", "--size=20GB"),
-    write("seed-data", "scheduled-v1"),
-    "gcloud compute disks snapshot seed-data --zone=us-central1-a --snapshot-names=seed-safe",
-    disk("scheduled-data", "--source-snapshot=seed-safe --size=20GB"),
-    "gcloud compute resource-policies create snapshot-schedule hourly --region=us-central1 --hourly-schedule=1 --max-retention-days=7",
-    "gcloud compute disks add-resource-policies scheduled-data --zone=us-central1-a --resource-policies=hourly",
-    "sim compute snapshot-schedules run hourly --region=us-central1",
-    "sim compute time advance --seconds=3600",
-    "sim compute snapshot-schedules run hourly --region=us-central1",
+    MissionStep.run("元データ用のディスクを作る", disk("seed-data", "--size=20GB")),
+    MissionStep.run("元データを書き込む", write("seed-data", "scheduled-v1")),
+    MissionStep.run(
+      "元データのスナップショットを取る",
+      "gcloud compute disks snapshot seed-data --zone=us-central1-a --snapshot-names=seed-safe",
+    ),
+    MissionStep.run(
+      "スナップショットからバックアップ対象のディスクを作る",
+      disk("scheduled-data", "--source-snapshot=seed-safe --size=20GB"),
+    ),
+    MissionStep.run(
+      "1時間ごと・7日保持のスケジュールを作る",
+      "gcloud compute resource-policies create snapshot-schedule hourly --region=us-central1 --hourly-schedule=1 --max-retention-days=7",
+    ),
+    MissionStep.run(
+      "ディスクにスケジュールを付ける",
+      "gcloud compute disks add-resource-policies scheduled-data --zone=us-central1-a --resource-policies=hourly",
+    ),
+    MissionStep.run(
+      "スケジュールを1回実行する",
+      "sim compute snapshot-schedules run hourly --region=us-central1",
+    ),
+    MissionStep.run(
+      "仮想時間を1時間進める",
+      "sim compute time advance --seconds=3600",
+      "間隔が空かないうちに次を実行すると拒否されます。",
+    ),
+    MissionStep.run(
+      "スケジュールをもう1回実行する",
+      "sim compute snapshot-schedules run hourly --region=us-central1",
+    ),
   ],
   osLogin: [
     ...createWorker,
-    vm("login-worker", `--service-account=${worker} --metadata=enable-oslogin=TRUE`),
-    `gcloud projects add-iam-policy-binding ${p} --member=user:${F.developer} --role=roles/compute.viewer`,
-    `gcloud projects add-iam-policy-binding ${p} --member=user:${F.developer} --role=roles/compute.osLogin`,
-    `gcloud iam service-accounts add-iam-policy-binding ${worker} --member=user:${F.developer} --role=roles/iam.serviceAccountUser`,
-    `sim compute instances os-login-check login-worker --zone=${z} --account=${F.developer}`,
+    MissionStep.run(
+      "OS Loginを有効にしたVMを作る",
+      vm("login-worker", `--service-account=${worker} --metadata=enable-oslogin=TRUE`),
+    ),
+    MissionStep.run(
+      "開発者にVMの閲覧を許可する",
+      `gcloud projects add-iam-policy-binding ${p} --member=user:${F.developer} --role=roles/compute.viewer`,
+    ),
+    MissionStep.run(
+      "開発者に一般ユーザーのOS Loginを許可する",
+      `gcloud projects add-iam-policy-binding ${p} --member=user:${F.developer} --role=roles/compute.osLogin`,
+      "sudo が要るときだけ compute.osAdminLogin を使います。",
+    ),
+    MissionStep.run(
+      "開発者にVMのSAのactAsを付ける",
+      `gcloud iam service-accounts add-iam-policy-binding ${worker} --member=user:${F.developer} --role=roles/iam.serviceAccountUser`,
+      "SA付きのVMにログインするには、そのSAの Service Account User も要ります。",
+    ),
+    MissionStep.run(
+      "開発者が非管理者でログインできるか確かめる",
+      `sim compute instances os-login-check login-worker --zone=${z} --account=${F.developer}`,
+    ),
   ],
   osManager: [
-    vm("managed-worker", "--metadata=enable-osconfig=TRUE"),
-    "gcloud compute os-config inventories describe managed-worker --zone=us-central1-a",
-    "gcloud compute os-config os-policy-assignments create security-baseline --zone=us-central1-a --instance=managed-worker --policy=security-updates",
-    "sim compute os-config os-policy-assignments apply security-baseline --zone=us-central1-a",
+    MissionStep.run(
+      "OS Configを有効にしたVMを作る",
+      vm("managed-worker", "--metadata=enable-osconfig=TRUE"),
+    ),
+    MissionStep.run(
+      "VMのインベントリを確かめる",
+      "gcloud compute os-config inventories describe managed-worker --zone=us-central1-a",
+    ),
+    MissionStep.run(
+      "security-updatesポリシーをVMに割り当てる",
+      "gcloud compute os-config os-policy-assignments create security-baseline --zone=us-central1-a --instance=managed-worker --policy=security-updates",
+    ),
+    MissionStep.run(
+      "ポリシーを適用して結果を確かめる",
+      "sim compute os-config os-policy-assignments apply security-baseline --zone=us-central1-a",
+    ),
   ],
   scopes: [
     ...createWorker,
-    vm("scoped-worker", `--service-account=${worker} --scopes=cloud-platform`),
-    `gcloud projects add-iam-policy-binding ${p} --member=serviceAccount:${worker} --role=roles/storage.objectCreator`,
-    "sim compute instances runtime-check scoped-worker --zone=us-central1-a --operation=storage-write",
+    MissionStep.run(
+      "cloud-platformスコープでSA付きVMを作る",
+      vm("scoped-worker", `--service-account=${worker} --scopes=cloud-platform`),
+      "スコープは上限で、実際にできることはIAMで決まります。",
+    ),
+    MissionStep.run(
+      "SAにオブジェクトの作成を許可する",
+      `gcloud projects add-iam-policy-binding ${p} --member=serviceAccount:${worker} --role=roles/storage.objectCreator`,
+    ),
+    MissionStep.run(
+      "VMからStorageへ書き込めるか確かめる",
+      "sim compute instances runtime-check scoped-worker --zone=us-central1-a --operation=storage-write",
+    ),
   ],
   rolling: [
-    template("release-v1", "--metadata=release=v1"),
-    group("release"),
-    template("release-v2", "--metadata=release=v2 --machine-type=n2-standard-2"),
-    "gcloud compute instance-groups managed rolling-action start-update release --zone=us-central1-a --version=template=release-v2 --max-surge=1 --max-unavailable=0",
-    mig("release", "advance-update"),
-    mig("release", "advance-update"),
+    MissionStep.run(
+      "v1のインスタンステンプレートを作る",
+      template("release-v1", "--metadata=release=v1"),
+    ),
+    MissionStep.run("v1から2台のMIGを作る", group("release")),
+    MissionStep.run(
+      "v2のインスタンステンプレートを作る",
+      template("release-v2", "--metadata=release=v2 --machine-type=n2-standard-2"),
+    ),
+    MissionStep.run(
+      "v2への段階更新を始める",
+      "gcloud compute instance-groups managed rolling-action start-update release --zone=us-central1-a --version=template=release-v2 --max-surge=1 --max-unavailable=0",
+      "max-surge=1 で1台ずつ増やし、max-unavailable=0 で稼働台数を減らしません。",
+    ),
+    MissionStep.run("更新を1台分進める", mig("release", "advance-update")),
+    MissionStep.run("残りの1台を更新する", mig("release", "advance-update")),
   ],
   autoheal: [
-    template("healing-v1", "--metadata=app-port=80"),
-    group("healing"),
-    "gcloud compute health-checks create http app-health --global --port=80",
-    "gcloud compute instance-groups managed update healing --zone=us-central1-a --health-check=app-health --initial-delay=60",
+    MissionStep.run(
+      "修復に使うテンプレートを作る",
+      template("healing-v1", "--metadata=app-port=80"),
+    ),
+    MissionStep.run("テンプレートから2台のMIGを作る", group("healing")),
+    MissionStep.run(
+      "ポート80のヘルスチェックを作る",
+      "gcloud compute health-checks create http app-health --global --port=80",
+    ),
+    MissionStep.run(
+      "MIGにヘルスチェックと60秒の待機を設定する",
+      "gcloud compute instance-groups managed update healing --zone=us-central1-a --health-check=app-health --initial-delay=60",
+      "起動から60秒はヘルスチェックに失敗しても修復しません。",
+    ),
     // Initial sequence is deterministic, but the test replaces this marker with a member name.
-    mig("healing", "fail-instance", "--instance=@member"),
-    "sim compute time advance --seconds=60",
-    mig("healing", "autoheal"),
+    MissionStep.run(
+      "MIGのVMを1台障害状態にする",
+      mig("healing", "fail-instance", "--instance=@member"),
+      "@member にはMIGに属するVMの名前を1つ入れます。",
+    ),
+    MissionStep.run("仮想時間を60秒進める", "sim compute time advance --seconds=60"),
+    MissionStep.run("自動修復でVMを作り直す", mig("healing", "autoheal")),
   ],
   autoscaling: [
-    template("scaling-v1"),
-    group("scaling"),
-    "gcloud compute instance-groups managed set-autoscaling scaling --zone=us-central1-a --min-num-replicas=1 --max-num-replicas=4 --target-cpu-utilization=0.5 --cool-down-period=60",
-    mig("scaling", "evaluate-autoscaling", "--cpu-utilization=1 --elapsed-seconds=60"),
-    "gcloud compute instance-groups managed resize scaling --zone=us-central1-a --size=4",
+    MissionStep.run("スケール用のテンプレートを作る", template("scaling-v1")),
+    MissionStep.run("テンプレートから2台のMIGを作る", group("scaling")),
+    MissionStep.run(
+      "CPU目標0.5・1〜4台の自動スケールを設定する",
+      "gcloud compute instance-groups managed set-autoscaling scaling --zone=us-central1-a --min-num-replicas=1 --max-num-replicas=4 --target-cpu-utilization=0.5 --cool-down-period=60",
+    ),
+    MissionStep.run(
+      "CPU使用率100%で推奨台数を評価する",
+      mig("scaling", "evaluate-autoscaling", "--cpu-utilization=1 --elapsed-seconds=60"),
+      "待機時間の60秒が過ぎているので、推奨は4台になります。",
+    ),
+    MissionStep.run(
+      "MIGを推奨の4台に増やす",
+      "gcloud compute instance-groups managed resize scaling --zone=us-central1-a --size=4",
+    ),
   ],
-} as const;
-export type ComputeLesson = keyof typeof ComputeSolutions;
+} as const satisfies Record<string, readonly MissionStep[]>;
+export type ComputeLesson = keyof typeof ComputeSteps;
+/** レッスンごとに端末へ流す行（テスト・Storybook 用）。 */
+export const ComputeSolutions = Object.fromEntries(
+  Object.entries(ComputeSteps).map(([lesson, steps]) => [lesson, MissionStep.lines(steps)]),
+) as Record<ComputeLesson, readonly string[]>;
 export type ComputeAssertion = Readonly<{ kind: "computeLesson"; lesson: ComputeLesson }>;
 const titles: Record<ComputeLesson, readonly [string, string, Mission["domain"]]> = {
   custom: [
@@ -214,7 +381,7 @@ const titles: Record<ComputeLesson, readonly [string, string, Mission["domain"]]
   ],
 };
 export const ComputeMissions: readonly Mission[] = (
-  Object.keys(ComputeSolutions) as ComputeLesson[]
+  Object.keys(ComputeSteps) as ComputeLesson[]
 ).map((lesson) => ({
   id: `compute-${lesson}`,
   domain: titles[lesson][2],
@@ -224,7 +391,14 @@ export const ComputeMissions: readonly Mission[] = (
     { kind: "setProject", projectId: p },
     { kind: "setPrincipal", principal: F.owner },
   ],
-  hints: ["helpで対応フラグを確認し、API・場所・権限を先に揃える。", ...ComputeSolutions[lesson]],
+  steps: [
+    MissionStep.say(
+      "helpで使えるフラグを確かめる",
+      "API・場所・権限を先に揃えてから作成に進みます。",
+    ),
+    preludeStep,
+    ...ComputeSteps[lesson],
+  ],
   assertions: [{ kind: "computeLesson", lesson }],
 }));
 export const computeSatisfied = (w: World, lesson: ComputeLesson): boolean => {

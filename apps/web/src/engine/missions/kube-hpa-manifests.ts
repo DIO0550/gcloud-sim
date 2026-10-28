@@ -3,6 +3,7 @@ import { KubeManifest } from "@/engine/domains/kube-manifest";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
@@ -18,13 +19,58 @@ export const KubeHpaManifestMissions: readonly Mission[] = [
     ],
     description:
       "hpa-manifest-gkeでautoscale-webのHPAをファイルから作成します。教材の上限は3レプリカです。CPU目標を50%、最大数を6へ変更してapplyし、1 Podあたり250mの使用量で3→6レプリカへ増やしてください。ファイル・HPA設定・評価結果をそろえて完了です。",
-    hints: [
-      "gcloud services enable container.googleapis.com → gcloud container clusters create-auto hpa-manifest-gke --region=us-central1 → sim files load kubernetes-hpa",
-      "sim files read autoscale-hpa.yaml → kubectl apply -f autoscale-web.yaml → kubectl apply -f autoscale-hpa.yaml → sim kubernetes reconcile autoscale-web --cpu=1。上限3で止まり、TooManyReplicasと表示されます。",
-      "sim files replace autoscale-hpa.yaml --search='maxReplicas: 3' --replacement='maxReplicas: 6' → sim files replace autoscale-hpa.yaml --search='averageUtilization: 80' --replacement='averageUtilization: 50'",
-      "kubectl apply -f autoscale-hpa.yaml → kubectl get hpa。設定変更で前回の教材評価を消しますが、Deploymentはまだ3レプリカです。applyだけでは再評価しません。",
-      "sim kubernetes reconcile autoscale-web --cpu=250m → kubectl describe hpa autoscale-web → kubectl get deployment autoscale-web。request 250mに対する使用率100%、目標50%でceil(3×100/50)=6です。",
-      "kubectl apply -f autoscale-web.yaml → kubectl apply -f autoscale-hpa.yaml。同じHPA設定なら評価結果を保ちます。Deploymentファイルはreplicasを省略しているので、再applyしてもスケール後の6を維持します。",
+    steps: [
+      MissionStep.run(
+        "Kubernetes Engine APIを有効にする",
+        "gcloud services enable container.googleapis.com",
+      ),
+      MissionStep.run(
+        "Autopilotクラスタを作る",
+        "gcloud container clusters create-auto hpa-manifest-gke --region=us-central1",
+      ),
+      MissionStep.run("教材のマニフェストを読み込む", "sim files load kubernetes-hpa"),
+      MissionStep.run("HPAファイルの上限と目標を確かめる", "sim files read autoscale-hpa.yaml"),
+      MissionStep.run("autoscale-webを配置する", "kubectl apply -f autoscale-web.yaml"),
+      MissionStep.run("ファイルからHPAを作る", "kubectl apply -f autoscale-hpa.yaml"),
+      MissionStep.run(
+        "1 Podあたり1 CPUの使用量でHPAを評価する",
+        "sim kubernetes reconcile autoscale-web --cpu=1",
+        "上限3で止まり、TooManyReplicasと表示されます。",
+      ),
+      MissionStep.run(
+        "ファイルの最大レプリカ数を6へ上げる",
+        "sim files replace autoscale-hpa.yaml --search='maxReplicas: 3' --replacement='maxReplicas: 6'",
+      ),
+      MissionStep.run(
+        "ファイルのCPU目標を50%へ下げる",
+        "sim files replace autoscale-hpa.yaml --search='averageUtilization: 80' --replacement='averageUtilization: 50'",
+      ),
+      MissionStep.run("変更したHPAをクラスタへ反映する", "kubectl apply -f autoscale-hpa.yaml"),
+      MissionStep.run(
+        "HPAの設定とレプリカ数を確かめる",
+        "kubectl get hpa",
+        "設定変更で前回の教材評価を消しますが、Deploymentはまだ3レプリカです。applyだけでは再評価しません。",
+      ),
+      MissionStep.run(
+        "1 Podあたり250mの使用量で再評価する",
+        "sim kubernetes reconcile autoscale-web --cpu=250m",
+      ),
+      MissionStep.run("HPAの評価結果を確かめる", "kubectl describe hpa autoscale-web"),
+      MissionStep.run(
+        "6レプリカへ増えたか確かめる",
+        "kubectl get deployment autoscale-web",
+        "request 250mに対する使用率100%、目標50%でceil(3×100/50)=6です。",
+      ),
+      MissionStep.run(
+        "再applyしてもレプリカ数6が保たれるか確かめる",
+        "kubectl apply -f autoscale-web.yaml",
+        "Deploymentファイルはreplicasを省略しているので、再applyしてもスケール後の6を維持します。",
+      ),
+      MissionStep.run(
+        "HPAを再applyしても評価結果が残るか確かめる",
+        "kubectl apply -f autoscale-hpa.yaml",
+        "同じHPA設定なら評価結果を保ちます。",
+      ),
     ],
     assertions: [{ kind: "kubeHpaManifestConfigured" }],
   },

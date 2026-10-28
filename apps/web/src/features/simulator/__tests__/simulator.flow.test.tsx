@@ -147,7 +147,7 @@ test("ミッションの説明と全コマンドを開始前から表示する",
   await user.click(screen.getByRole("button", { name: /本番用の configuration を用意する/ }));
   expect(screen.getByText(/gcloud config configurations create prod/)).toBeInTheDocument();
   expect(screen.getByText(/gcloud config set project ace-prod-01/)).toBeInTheDocument();
-  expect(screen.getByText(/作成と同時にアクティブになります/)).toBeInTheDocument();
+  expect(screen.getByText(/作成と同時に prod がアクティブになる/)).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /ヒント/ })).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "開始" }));
   expect(screen.getByText(/gcloud config set project ace-prod-01/)).toBeInTheDocument();

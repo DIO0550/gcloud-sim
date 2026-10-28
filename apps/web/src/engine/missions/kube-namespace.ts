@@ -4,6 +4,7 @@ import { KubePod } from "@/engine/domains/kubernetes";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
 import { Result } from "@/utils/Result";
 
 export type KubeNamespaceAssertion = Readonly<{ kind: "kubeNamespaceIsolated" }>;
@@ -18,13 +19,67 @@ export const KubeNamespaceMissions: readonly Mission[] = [
     ],
     description:
       "namespace-gkeでstagingとproductionに同名のweb・settings・web-serviceを作ります。stagingだけnginx:2・3レプリカへ更新し、本番はnginx:1・1レプリカ・revision 1を保ってください。各PodのMODEとService接続先が同じnamespace内で解決されることを確認します。namespaceを省略するとdefaultが対象です。",
-    hints: [
-      "gcloud services enable container.googleapis.com → gcloud container clusters create namespace-gke --zone=us-central1-a → sim files load kubernetes-namespace",
-      "kubectl apply -f namespaces.yaml → kubectl get namespaces。続いてkubectl apply -f staging.yaml → kubectl apply -f production.yaml。metadata.namespaceの指定に従って別々の環境へ作ります。",
-      "kubectl get deploymentsはdefaultを対象にするので空です。kubectl get deployments -AでNAMESPACE列を確認し、kubectl get deployment web -n stagingで検証環境だけを選びます。",
-      "kubectl set image deployment/web web=nginx:2 -n staging → kubectl scale deployment/web --replicas=3 -n staging。本番の同名Deploymentは変わりません。",
-      "kubectl exec deployment/web -n staging -- printenv MODE → kubectl exec deployment/web -n production -- printenv MODE。値はそれぞれstaging/productionで、同名ConfigMapを取り違えません。",
-      "kubectl describe service web-service -n staging → kubectl describe service web-service -n production。接続先はそれぞれ3つ/1つです。kubectl get deployments -A -o jsonでイメージ・レプリカ・namespaceを比べれば達成。namespace削除は中のリソースも即時削除するため、片付けはクリア後に行います。",
+    steps: [
+      MissionStep.run("GKEのAPIを有効にする", "gcloud services enable container.googleapis.com"),
+      MissionStep.run(
+        "Standardクラスタnamespace-gkeを作る",
+        "gcloud container clusters create namespace-gke --zone=us-central1-a",
+      ),
+      MissionStep.run(
+        "namespace教材のマニフェストを用意する",
+        "sim files load kubernetes-namespace",
+      ),
+      MissionStep.run("stagingとproductionのnamespaceを作る", "kubectl apply -f namespaces.yaml"),
+      MissionStep.run("namespaceができたか確かめる", "kubectl get namespaces"),
+      MissionStep.run(
+        "検証環境のweb一式を作る",
+        "kubectl apply -f staging.yaml",
+        "metadata.namespaceの指定に従って別々の環境へ作ります。",
+      ),
+      MissionStep.run("本番環境のweb一式を作る", "kubectl apply -f production.yaml"),
+      MissionStep.run(
+        "namespaceを省略するとdefaultが対象になることを確かめる",
+        "kubectl get deployments",
+        "defaultを対象にするので空です。",
+      ),
+      MissionStep.run(
+        "全namespaceのDeploymentを一覧する",
+        "kubectl get deployments -A",
+        "NAMESPACE列を確認します。",
+      ),
+      MissionStep.run("検証環境のwebだけを選ぶ", "kubectl get deployment web -n staging"),
+      MissionStep.run(
+        "検証環境のwebをnginx:2へ更新する",
+        "kubectl set image deployment/web web=nginx:2 -n staging",
+      ),
+      MissionStep.run(
+        "検証環境のwebを3レプリカに増やす",
+        "kubectl scale deployment/web --replicas=3 -n staging",
+        "本番の同名Deploymentは変わりません。",
+      ),
+      MissionStep.run(
+        "検証環境のPodのMODEを確かめる",
+        "kubectl exec deployment/web -n staging -- printenv MODE",
+      ),
+      MissionStep.run(
+        "本番環境のPodのMODEを確かめる",
+        "kubectl exec deployment/web -n production -- printenv MODE",
+        "値はそれぞれstaging/productionで、同名ConfigMapを取り違えません。",
+      ),
+      MissionStep.run(
+        "検証環境のServiceの接続先を確かめる",
+        "kubectl describe service web-service -n staging",
+      ),
+      MissionStep.run(
+        "本番環境のServiceの接続先を確かめる",
+        "kubectl describe service web-service -n production",
+        "接続先はそれぞれ3つ/1つです。",
+      ),
+      MissionStep.run(
+        "両環境のイメージとレプリカ数を比べる",
+        "kubectl get deployments -A -o json",
+        "イメージ・レプリカ・namespaceを比べれば達成です。namespace削除は中のリソースも即時削除するため、片付けはクリア後に行います。",
+      ),
     ],
     assertions: [{ kind: "kubeNamespaceIsolated" }],
   },

@@ -4,6 +4,7 @@ import { KubeLabels } from "@/engine/domains/kube-labels";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
 export type BuildAssertion =
   | Readonly<{ kind: "cloudBuildPublished" }>
   | Readonly<{ kind: "registryDeploymentReady" }>;
@@ -12,11 +13,38 @@ const setup = [
   { kind: "setPrincipal", principal: F.owner },
   { kind: "setProject", projectId: F.devProjectId },
 ] as const;
-const hints = [
-  "gcloud services enable cloudbuild.googleapis.com artifactregistry.googleapis.com container.googleapis.com → gcloud artifacts repositories create ace-images --repository-format=docker --location=us-central1",
-  "gcloud iam service-accounts create ace-builder → gcloud artifacts repositories add-iam-policy-binding ace-images --location=us-central1 --member=serviceAccount:ace-builder@ace-dev-01.iam.gserviceaccount.com --role=roles/artifactregistry.writer",
-  "gcloud iam service-accounts add-iam-policy-binding ace-builder@ace-dev-01.iam.gserviceaccount.com --member=user:owner@example.com --role=roles/iam.serviceAccountUser（ビルド依頼者のactAs権限）",
-  `gcloud builds submit ./hello-web --tag=${image} --service-account=projects/ace-dev-01/serviceAccounts/ace-builder@ace-dev-01.iam.gserviceaccount.com --region=us-central1 → gcloud builds list --region=us-central1。FAILUREならlogで理由を確認して再submitします。`,
+/** 両ミッション共通の、リポジトリ作成からCloud Buildでの登録まで。 */
+const buildSteps: readonly MissionStep[] = [
+  MissionStep.run(
+    "Cloud Build・Artifact Registry・GKEのAPIを有効にする",
+    "gcloud services enable cloudbuild.googleapis.com artifactregistry.googleapis.com container.googleapis.com",
+  ),
+  MissionStep.run(
+    "Dockerリポジトリace-imagesを作る",
+    "gcloud artifacts repositories create ace-images --repository-format=docker --location=us-central1",
+  ),
+  MissionStep.run(
+    "ビルド用のサービスアカウントを作る",
+    "gcloud iam service-accounts create ace-builder",
+  ),
+  MissionStep.run(
+    "ビルド用SAにリポジトリへの書き込みを許可する",
+    "gcloud artifacts repositories add-iam-policy-binding ace-images --location=us-central1 --member=serviceAccount:ace-builder@ace-dev-01.iam.gserviceaccount.com --role=roles/artifactregistry.writer",
+  ),
+  MissionStep.run(
+    "自分がビルド用SAとして実行できるようにする",
+    "gcloud iam service-accounts add-iam-policy-binding ace-builder@ace-dev-01.iam.gserviceaccount.com --member=user:owner@example.com --role=roles/iam.serviceAccountUser",
+    "ビルド依頼者のactAs権限です。",
+  ),
+  MissionStep.run(
+    "Cloud Buildでhello-webをビルドしてhello:v1に登録する",
+    `gcloud builds submit ./hello-web --tag=${image} --service-account=projects/ace-dev-01/serviceAccounts/ace-builder@ace-dev-01.iam.gserviceaccount.com --region=us-central1`,
+  ),
+  MissionStep.run(
+    "ビルドの結果を確かめる",
+    "gcloud builds list --region=us-central1",
+    "FAILUREならlogで理由を確認して再submitします。",
+  ),
 ];
 export const BuildMissions: readonly Mission[] = [
   {
@@ -26,7 +54,7 @@ export const BuildMissions: readonly Mission[] = [
     setup,
     description:
       "ace-builderサービスアカウントに書き込み権限を付与し、Cloud Buildでhello-webをビルドしてace-imagesのhello:v1へ登録します。ローカルでのdocker pushだけでは達成になりません。",
-    hints,
+    steps: buildSteps,
     assertions: [{ kind: "cloudBuildPublished" }],
   },
   {
@@ -36,12 +64,53 @@ export const BuildMissions: readonly Mission[] = [
     setup,
     description:
       "Cloud Buildでhello:v1を登録し、ace-gkeのhello Deploymentを2レプリカで起動してLoadBalancer Service（80→8080）で公開します。ビルド用とノード用のサービスアカウントを分け、ノードにReader権限を設定します。ImagePullBackOffや未公開では達成しません。",
-    hints: [
-      ...hints,
-      "gcloud iam service-accounts create ace-nodes → gcloud iam service-accounts add-iam-policy-binding ace-nodes@ace-dev-01.iam.gserviceaccount.com --member=user:owner@example.com --role=roles/iam.serviceAccountUser → gcloud container clusters create-auto ace-gke --region=us-central1 --service-account=ace-nodes@ace-dev-01.iam.gserviceaccount.com",
-      `kubectl create deployment hello --image=${image} --replicas=2 → kubectl get pods。ノードに取得権限がないとImagePullBackOffになります。`,
-      "gcloud artifacts repositories add-iam-policy-binding ace-images --location=us-central1 --member=serviceAccount:ace-nodes@ace-dev-01.iam.gserviceaccount.com --role=roles/artifactregistry.reader → kubectl rollout status deployment/hello",
-      "kubectl expose deployment hello --type=LoadBalancer --port=80 --target-port=8080 → kubectl get all。完了後の片付け: kubectl delete service hello → kubectl delete deployment hello → gcloud container clusters delete ace-gke --region=us-central1 → gcloud artifacts repositories delete ace-images --location=us-central1。",
+    steps: [
+      ...buildSteps,
+      MissionStep.run(
+        "ノード用のサービスアカウントを作る",
+        "gcloud iam service-accounts create ace-nodes",
+      ),
+      MissionStep.run(
+        "自分がノード用SAをクラスタに割り当てられるようにする",
+        "gcloud iam service-accounts add-iam-policy-binding ace-nodes@ace-dev-01.iam.gserviceaccount.com --member=user:owner@example.com --role=roles/iam.serviceAccountUser",
+      ),
+      MissionStep.run(
+        "ノード用SAでAutopilotクラスタace-gkeを作る",
+        "gcloud container clusters create-auto ace-gke --region=us-central1 --service-account=ace-nodes@ace-dev-01.iam.gserviceaccount.com",
+      ),
+      MissionStep.run(
+        "登録したイメージでhelloを2レプリカ起動する",
+        `kubectl create deployment hello --image=${image} --replicas=2`,
+      ),
+      MissionStep.run(
+        "イメージを取得できずに止まっているか確かめる",
+        "kubectl get pods",
+        "ノードに取得権限がないとImagePullBackOffになります。",
+      ),
+      MissionStep.run(
+        "ノード用SAにリポジトリの読み取りを許可する",
+        "gcloud artifacts repositories add-iam-policy-binding ace-images --location=us-central1 --member=serviceAccount:ace-nodes@ace-dev-01.iam.gserviceaccount.com --role=roles/artifactregistry.reader",
+      ),
+      MissionStep.run("2つのPodの起動完了を待つ", "kubectl rollout status deployment/hello"),
+      MissionStep.run(
+        "helloを80→8080のLoadBalancerで公開する",
+        "kubectl expose deployment hello --type=LoadBalancer --port=80 --target-port=8080",
+      ),
+      MissionStep.run("Deployment・Pod・Serviceをまとめて確かめる", "kubectl get all"),
+      MissionStep.run(
+        "片付けでServiceを削除する",
+        "kubectl delete service hello",
+        "ここからは完了後の片付けです。",
+      ),
+      MissionStep.run("片付けでDeploymentを削除する", "kubectl delete deployment hello"),
+      MissionStep.run(
+        "片付けでクラスタを削除する",
+        "gcloud container clusters delete ace-gke --region=us-central1",
+      ),
+      MissionStep.run(
+        "片付けでリポジトリを削除する",
+        "gcloud artifacts repositories delete ace-images --location=us-central1",
+      ),
     ],
     assertions: [{ kind: "cloudBuildPublished" }, { kind: "registryDeploymentReady" }],
   },

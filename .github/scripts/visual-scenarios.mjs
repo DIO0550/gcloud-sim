@@ -1056,6 +1056,36 @@ export const SCENARIOS = [
     ],
   },
   {
+    name: "console-mission-stop",
+    label: "Console: ミッションパネルと画面操作の手順",
+    steps: [
+      {
+        wait: 800,
+      },
+      {
+        click: "Console",
+      },
+      {
+        wait: 300,
+      },
+      {
+        click: "ミッション",
+      },
+      {
+        click: "3. クラウド ソリューションの正常な運用0/1 クリア",
+      },
+      {
+        click: "Consoleで VM を停止するConsole未着手",
+      },
+      {
+        click: "開始",
+      },
+      {
+        wait: 300,
+      },
+    ],
+  },
+  {
     name: "console-vm-create",
     label: "Console: インスタンスを作成（名前とタグを入れた状態）",
     steps: [
