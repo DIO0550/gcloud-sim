@@ -1,0 +1,576 @@
+[
+  {
+    "name": "observe-channel-unverified__desktop",
+    "label": "監視: 通知チャネルの有効/検証状態",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "observe-analytics-bucket__desktop",
+    "label": "Logging: 保持とAnalyticsアップグレード",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "admin-quota-pending__desktop",
+    "label": "クォータ: 申請値32と承認値24を分けて表示",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "lb-cdn-bucket__desktop",
+    "label": "LB: cdn-bucket",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "mission-gke-nodepool-upgrade__desktop",
+    "label": "ミッション: 制御プレーンとノードプールを別々に更新する",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "gke-nodepool-upgrade-apps__desktop",
+    "label": "GKE: 制御プレーンとappsの独立した版",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "gke-nodepool-upgrade-default-pool__desktop",
+    "label": "GKE: 制御プレーンとdefault-poolの独立した版",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "gke-nodepool-deleted-default__desktop",
+    "label": "GKE: 既定プールの削除を一覧とツリーへ反映",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "gke-network-policy-cluster__desktop",
+    "label": "GKE: StandardのNetworkPolicy強制状態",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "mission-gke-volumes__desktop",
+    "label": "ミッション: 設定ファイルのマウント障害を直す",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "mission-gke-volume-refresh__desktop",
+    "label": "ミッション: マウントと環境変数の更新差を確認する",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "mission-gke-binary-data__desktop",
+    "label": "ミッション: バイナリ設定と環境変数の分離",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "mission-gke-immutable__desktop",
+    "label": "ミッション: 変更不可の設定を再作成して反映",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "mission-gke-config-labels__desktop",
+    "label": "ミッション: ConfigMap・Secretのラベル分類",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "mission-gke-context__desktop",
+    "label": "ミッション: コンテキストの既定namespace切り替え",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "gke-context-namespace__desktop",
+    "label": "GKE: 既定namespace・同名Deployment・コンテキスト一覧",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "mission-gke-namespace__desktop",
+    "label": "ミッション: namespaceで検証と本番を分離",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "mission-gke-qos__desktop",
+    "label": "ミッション: PodのQoSを比較する",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "gke-qos-properties__desktop",
+    "label": "GKE: Guaranteed PodのQoSとresources",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "mission-gke-resources__desktop",
+    "label": "ミッション: CPU・メモリの必要量と上限",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "gke-resource-properties__desktop",
+    "label": "GKE: CPU・メモリの設定と履歴",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "mission-gke-labels__desktop",
+    "label": "ミッション: 複数ラベルで公開先を切り替え",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "mission-gke-workload__desktop",
+    "label": "ミッション: マニフェスト更新とService接続先",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "mission-gke-manifest__desktop",
+    "label": "ミッション: 設定ファイルをapplyして反映",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "gke-env-properties__desktop",
+    "label": "GKE: 環境変数と更新履歴",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "gke-secret-properties__desktop",
+    "label": "GKE: Secretの値を隠したプロパティ",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "mission-gke-config__desktop",
+    "label": "ミッション: ConfigMap変更を再起動で反映",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "mission-gke-rollback__desktop",
+    "label": "ミッション: GKE更新失敗からの復旧",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "mission-cleanup__desktop",
+    "label": "ミッション: コンテナ教材の片付け",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "mission-categories__desktop",
+    "label": "ミッション: カテゴリ選択",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "mission-list__desktop",
+    "label": "ミッション: カテゴリ内の一覧",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "mission-steps__desktop",
+    "label": "ミッション: 選んだ1件の手順",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "home__desktop",
+    "label": "CLI 画面（初期 World）",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "settings__desktop",
+    "label": "設定ダイアログ",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "console-vm-list__desktop",
+    "label": "Console: VM インスタンス一覧（VM を 2 台作った状態）",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "console-mission-stop__desktop",
+    "label": "Console: ミッションパネルと画面操作の手順",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "console-vm-create__desktop",
+    "label": "Console: インスタンスを作成（名前とタグを入れた状態）",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "console-iam__desktop",
+    "label": "Console: IAM（継承されたロールを含む）",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "mission-gke-final-regional__desktop",
+    "label": "ミッション: regionalクラスタの配置とレプリカ数を確認する",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "configuration-file-editor__desktop",
+    "label": "設定ファイル: テンプレートの読み込みと通常の編集画面",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "terraform-network-state__desktop",
+    "label": "Terraform: ファイル画面と正式CLIで構築したstate",
+    "viewport": "desktop",
+    "width": 1440,
+    "height": 1600
+  },
+  {
+    "name": "observe-channel-unverified__mobile",
+    "label": "監視: 通知チャネルの有効/検証状態",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "observe-analytics-bucket__mobile",
+    "label": "Logging: 保持とAnalyticsアップグレード",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "admin-quota-pending__mobile",
+    "label": "クォータ: 申請値32と承認値24を分けて表示",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "lb-cdn-bucket__mobile",
+    "label": "LB: cdn-bucket",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "mission-gke-nodepool-upgrade__mobile",
+    "label": "ミッション: 制御プレーンとノードプールを別々に更新する",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "gke-nodepool-upgrade-apps__mobile",
+    "label": "GKE: 制御プレーンとappsの独立した版",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "gke-nodepool-upgrade-default-pool__mobile",
+    "label": "GKE: 制御プレーンとdefault-poolの独立した版",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "gke-nodepool-deleted-default__mobile",
+    "label": "GKE: 既定プールの削除を一覧とツリーへ反映",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "gke-network-policy-cluster__mobile",
+    "label": "GKE: StandardのNetworkPolicy強制状態",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "mission-gke-volumes__mobile",
+    "label": "ミッション: 設定ファイルのマウント障害を直す",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "mission-gke-volume-refresh__mobile",
+    "label": "ミッション: マウントと環境変数の更新差を確認する",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "mission-gke-binary-data__mobile",
+    "label": "ミッション: バイナリ設定と環境変数の分離",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "mission-gke-immutable__mobile",
+    "label": "ミッション: 変更不可の設定を再作成して反映",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "mission-gke-config-labels__mobile",
+    "label": "ミッション: ConfigMap・Secretのラベル分類",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "mission-gke-context__mobile",
+    "label": "ミッション: コンテキストの既定namespace切り替え",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "gke-context-namespace__mobile",
+    "label": "GKE: 既定namespace・同名Deployment・コンテキスト一覧",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "mission-gke-namespace__mobile",
+    "label": "ミッション: namespaceで検証と本番を分離",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "mission-gke-qos__mobile",
+    "label": "ミッション: PodのQoSを比較する",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "gke-qos-properties__mobile",
+    "label": "GKE: Guaranteed PodのQoSとresources",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "mission-gke-resources__mobile",
+    "label": "ミッション: CPU・メモリの必要量と上限",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "gke-resource-properties__mobile",
+    "label": "GKE: CPU・メモリの設定と履歴",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "mission-gke-labels__mobile",
+    "label": "ミッション: 複数ラベルで公開先を切り替え",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "mission-gke-workload__mobile",
+    "label": "ミッション: マニフェスト更新とService接続先",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "mission-gke-manifest__mobile",
+    "label": "ミッション: 設定ファイルをapplyして反映",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "gke-env-properties__mobile",
+    "label": "GKE: 環境変数と更新履歴",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "gke-secret-properties__mobile",
+    "label": "GKE: Secretの値を隠したプロパティ",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "mission-gke-config__mobile",
+    "label": "ミッション: ConfigMap変更を再起動で反映",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "mission-gke-rollback__mobile",
+    "label": "ミッション: GKE更新失敗からの復旧",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "mission-cleanup__mobile",
+    "label": "ミッション: コンテナ教材の片付け",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "mission-categories__mobile",
+    "label": "ミッション: カテゴリ選択",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "mission-list__mobile",
+    "label": "ミッション: カテゴリ内の一覧",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "mission-steps__mobile",
+    "label": "ミッション: 選んだ1件の手順",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "home__mobile",
+    "label": "CLI 画面（初期 World）",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "settings__mobile",
+    "label": "設定ダイアログ",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "console-vm-list__mobile",
+    "label": "Console: VM インスタンス一覧（VM を 2 台作った状態）",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "console-mission-stop__mobile",
+    "label": "Console: ミッションパネルと画面操作の手順",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "console-vm-create__mobile",
+    "label": "Console: インスタンスを作成（名前とタグを入れた状態）",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "console-iam__mobile",
+    "label": "Console: IAM（継承されたロールを含む）",
+    "viewport": "mobile",
+    "width": 747,
+    "height": 1200
+  },
+  {
+    "name": "mission-gke-final-regional__mobile",
+    "label": "ミッション: regionalクラスタの配置とレプリカ数を確認する",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "configuration-file-editor__mobile",
+    "label": "設定ファイル: テンプレートの読み込みと通常の編集画面",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  },
+  {
+    "name": "terraform-network-state__mobile",
+    "label": "Terraform: ファイル画面と正式CLIで構築したstate",
+    "viewport": "mobile",
+    "width": 430,
+    "height": 1200
+  }
+]
