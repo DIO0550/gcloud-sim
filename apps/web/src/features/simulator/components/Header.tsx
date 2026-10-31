@@ -25,6 +25,9 @@ type HeaderProps = Readonly<{
   /** Console の下の端末（ドロワー）を開いているか */
   isTerminalOpen: boolean;
   onTerminalToggle: () => void;
+  /** Console の右に演習（ミッション）のパネルを開いているか */
+  isMissionsOpen: boolean;
+  onMissionsToggle: () => void;
   isNavigationOpen: boolean;
   onNavigationToggle: () => void;
   onNavigate: (screen: ConsoleScreen) => void;
@@ -50,6 +53,8 @@ export const Header = ({
   onCreateResource,
   isTerminalOpen,
   onTerminalToggle,
+  isMissionsOpen,
+  onMissionsToggle,
   isNavigationOpen,
   onNavigationToggle,
   onNavigate,
@@ -137,6 +142,9 @@ export const Header = ({
           </div>
           <ToggleButton variant="ghost" pressed={isTerminalOpen} onClick={onTerminalToggle}>
             <span className="font-mono">&gt;_</span> ターミナル
+          </ToggleButton>
+          <ToggleButton variant="ghost" pressed={isMissionsOpen} onClick={onMissionsToggle}>
+            ミッション
           </ToggleButton>
           <GhostButton ariaLabel="設定" onClick={onOpenSettings}>
             ⚙

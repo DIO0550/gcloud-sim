@@ -9,6 +9,7 @@ import {
   NetworkChallengeSteps,
   TerraformChallengeSteps,
 } from "@/engine/missions/ace-challenges";
+import { MissionStep } from "@/engine/missions/mission-step";
 
 const start = (id: string): Session => {
   const result = Engine.startMission(session().world, id);
@@ -27,8 +28,8 @@ const complete = (id: string, steps: readonly string[]): Session => {
 };
 
 test.each([
-  { id: "m-ace-challenge-network", steps: NetworkChallengeSteps },
-  { id: "m-ace-challenge-terraform", steps: TerraformChallengeSteps },
+  { id: "m-ace-challenge-network", steps: MissionStep.lines(NetworkChallengeSteps) },
+  { id: "m-ace-challenge-terraform", steps: MissionStep.lines(TerraformChallengeSteps) },
 ])("$id: 初期状態・途中保存・完成後の復元を評価する", ({ id, steps }) => {
   const mission = AceChallengeMissions.find((m) => m.id === id);
   if (!mission) {
@@ -52,7 +53,7 @@ test.each([
 });
 
 test("ネットワーク総合演習は別VPCのSQLや過剰なSA権限では達成しない", () => {
-  const state = complete("m-ace-challenge-network", NetworkChallengeSteps);
+  const state = complete("m-ace-challenge-network", MissionStep.lines(NetworkChallengeSteps));
   const mission = AceChallengeMissions[0];
   if (!mission) {
     throw new Error("ネットワーク総合演習が見つかりません");
@@ -79,7 +80,7 @@ test("ネットワーク総合演習は別VPCのSQLや過剰なSA権限では達
 });
 
 test("Terraform総合演習はimportしたVPCをstateから外すと未達成になる", () => {
-  const state = complete("m-ace-challenge-terraform", TerraformChallengeSteps);
+  const state = complete("m-ace-challenge-terraform", MissionStep.lines(TerraformChallengeSteps));
   const removed = run(state, "terraform state rm google_compute_network.imported");
   const mission = AceChallengeMissions[1];
   if (!mission) {

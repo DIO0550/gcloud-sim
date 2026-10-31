@@ -5,6 +5,7 @@ import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
 import { Result } from "@/utils/Result";
 
 export type KubeLabelAssertion = Readonly<{ kind: "kubeLabelsSwitched" }>;
@@ -19,12 +20,41 @@ export const KubeLabelMissions: readonly Mission[] = [
     ],
     description:
       "labels-gkeにshop-blueとshop-greenを2レプリカずつ作成します。appとtrackの2つのラベルを使い、Service shopの接続先をgreenのPodだけに切り替えてください。両Deploymentを残し、編集したファイルとクラスタの状態をそろえます。",
-    hints: [
-      "gcloud services enable container.googleapis.com → gcloud container clusters create-auto labels-gke --region=us-central1 → sim files load kubernetes-labels",
-      "sim files read shop-blue.yaml → sim files read shop-green.yaml → kubectl apply -f shop-blue.yaml → kubectl apply -f shop-green.yaml → kubectl apply -f shop-service.yaml",
-      "kubectl get pods -l app=shop → kubectl get pods -l app=shop,track=blue → kubectl describe service shop。selectorの全条件に一致するPodが接続先です。Deployment自身のmetadata.labelsとPodのラベルは別です。",
-      "sim files replace shop-service.yaml --search=blue --replacement=green → kubectl apply -f shop-service.yaml → kubectl describe service shop。ServiceのIPを保ち、接続先がshop-greenの2つのPodへ切り替わります。",
-      "kubectl get pods -l app=shop,track=green → kubectl get deployments -l team=storefront。Deploymentのselectorは変更できません。blue/greenのPodを両方選びたい場合はServiceのtrack条件だけを外しますが、このミッションのゴールはgreenだけへの公開です。",
+    steps: [
+      MissionStep.run("GKEのAPIを有効にする", "gcloud services enable container.googleapis.com"),
+      MissionStep.run(
+        "Autopilotクラスタlabels-gkeを作る",
+        "gcloud container clusters create-auto labels-gke --region=us-central1",
+      ),
+      MissionStep.run("ラベル教材のマニフェストを用意する", "sim files load kubernetes-labels"),
+      MissionStep.run("blue版のPodラベルを確かめる", "sim files read shop-blue.yaml"),
+      MissionStep.run("green版のPodラベルを確かめる", "sim files read shop-green.yaml"),
+      MissionStep.run("blue版のDeploymentを作る", "kubectl apply -f shop-blue.yaml"),
+      MissionStep.run("green版のDeploymentを作る", "kubectl apply -f shop-green.yaml"),
+      MissionStep.run("Service shopを作る", "kubectl apply -f shop-service.yaml"),
+      MissionStep.run("app=shopのPodをすべて表示する", "kubectl get pods -l app=shop"),
+      MissionStep.run("blue側のPodだけに絞り込む", "kubectl get pods -l app=shop,track=blue"),
+      MissionStep.run(
+        "Serviceの今の接続先を確かめる",
+        "kubectl describe service shop",
+        "selectorの全条件に一致するPodが接続先です。Deployment自身のmetadata.labelsとPodのラベルは別です。",
+      ),
+      MissionStep.run(
+        "Serviceのselectorをgreenに書き換える",
+        "sim files replace shop-service.yaml --search=blue --replacement=green",
+      ),
+      MissionStep.run("書き換えたServiceを適用する", "kubectl apply -f shop-service.yaml"),
+      MissionStep.run(
+        "接続先がgreenに切り替わったか確かめる",
+        "kubectl describe service shop",
+        "ServiceのIPを保ち、接続先がshop-greenの2つのPodへ切り替わります。",
+      ),
+      MissionStep.run("green側のPodを確かめる", "kubectl get pods -l app=shop,track=green"),
+      MissionStep.run(
+        "チームのラベルで両Deploymentが残っているか確かめる",
+        "kubectl get deployments -l team=storefront",
+        "Deploymentのselectorは変更できません。blue/greenのPodを両方選びたい場合はServiceのtrack条件だけを外しますが、このミッションのゴールはgreenだけへの公開です。",
+      ),
     ],
     assertions: [{ kind: "kubeLabelsSwitched" }],
   },

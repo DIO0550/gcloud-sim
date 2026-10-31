@@ -8,6 +8,7 @@ import { KubePod } from "@/engine/domains/kubernetes";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
 import { Result } from "@/utils/Result";
 
 export type StatefulAssertion = Readonly<{
@@ -17,11 +18,36 @@ const setup = [
   { kind: "setPrincipal", principal: F.owner },
   { kind: "setProject", projectId: F.devProjectId },
 ] as const;
-const sharedHints = [
-  "gcloud services enable container.googleapis.com → gcloud container clusters create-auto CLUSTER --region=us-central1 → sim files load kubernetes-statefulset",
-  "kubectl apply -f stateful-service.yaml → kubectl apply -f stateful-notes.yaml → kubectl get sts → kubectl get pods → kubectl get pvc。notes-0/notes-1にdata-notes-0/data-notes-1を個別に割り当てます。",
-  "sim kubernetes write-file pod/notes-0 --path=/data/note.txt --content=first-note → sim kubernetes write-file pod/notes-1 --path=/data/note.txt --content=second-note。連番ごとのデータは独立しています。",
-] as const;
+/** 両ミッション共通の、クラスタ作成から2つのPodへの書き込みまで。 */
+const sharedSteps = (cluster: string): readonly MissionStep[] => [
+  MissionStep.run("GKEのAPIを有効にする", "gcloud services enable container.googleapis.com"),
+  MissionStep.run(
+    `Autopilotクラスタ${cluster}を作る`,
+    `gcloud container clusters create-auto ${cluster} --region=us-central1`,
+  ),
+  MissionStep.run(
+    "StatefulSet教材のマニフェストを用意する",
+    "sim files load kubernetes-statefulset",
+  ),
+  MissionStep.run("headless Service notes-peersを作る", "kubectl apply -f stateful-service.yaml"),
+  MissionStep.run("2レプリカのStatefulSet notesを作る", "kubectl apply -f stateful-notes.yaml"),
+  MissionStep.run("StatefulSetの準備状況を確かめる", "kubectl get sts"),
+  MissionStep.run("連番のPod notes-0/notes-1を確かめる", "kubectl get pods"),
+  MissionStep.run(
+    "Podごとに別のPVCが付いたか確かめる",
+    "kubectl get pvc",
+    "notes-0/notes-1にdata-notes-0/data-notes-1を個別に割り当てます。",
+  ),
+  MissionStep.run(
+    "notes-0のボリュームにfirst-noteを書く",
+    "sim kubernetes write-file pod/notes-0 --path=/data/note.txt --content=first-note",
+  ),
+  MissionStep.run(
+    "notes-1のボリュームにsecond-noteを書く",
+    "sim kubernetes write-file pod/notes-1 --path=/data/note.txt --content=second-note",
+    "連番ごとのデータは独立しています。",
+  ),
+];
 
 export const StatefulMissions: readonly Mission[] = [
   {
@@ -31,12 +57,28 @@ export const StatefulMissions: readonly Mission[] = [
     setup,
     description:
       "stateful-gkeへheadless Service notes-peersと2レプリカのStatefulSet notesを配置します。notes-0/notes-1の/data/note.txtへfirst-note/second-noteをそれぞれ保存し、notes-0だけを削除してください。同じ名前・PVC・内容で復旧し、notes-1は作り直さずReadyを保ちます。実DNSやアプリのレプリケーションは再現しません。",
-    hints: [
-      sharedHints[0].replace("CLUSTER", "stateful-gke"),
-      sharedHints[1],
-      sharedHints[2],
-      "kubectl delete pod notes-0 → kubectl get pods → kubectl get pvc。Deploymentと違ってPod名は変わらず、PVは保持されます。",
-      "kubectl exec notes-0 -- cat /data/note.txt → kubectl exec notes-1 -- cat /data/note.txt → kubectl describe sts notes。ツリーのsts: notesでPod世代とPVCを確認できます。",
+    steps: [
+      ...sharedSteps("stateful-gke"),
+      MissionStep.run("notes-0だけを削除する", "kubectl delete pod notes-0"),
+      MissionStep.run("notes-0が同じ名前で作り直されたか確かめる", "kubectl get pods"),
+      MissionStep.run(
+        "PVCが残っているか確かめる",
+        "kubectl get pvc",
+        "Deploymentと違ってPod名は変わらず、PVは保持されます。",
+      ),
+      MissionStep.run(
+        "復旧したnotes-0の内容を確かめる",
+        "kubectl exec notes-0 -- cat /data/note.txt",
+      ),
+      MissionStep.run(
+        "notes-1の内容が変わっていないか確かめる",
+        "kubectl exec notes-1 -- cat /data/note.txt",
+      ),
+      MissionStep.run(
+        "Pod世代とPVCの対応を確かめる",
+        "kubectl describe sts notes",
+        "ツリーのsts: notesでPod世代とPVCを確認できます。",
+      ),
     ],
     assertions: [{ kind: "kubeStatefulPodRecovered" }],
   },
@@ -47,12 +89,29 @@ export const StatefulMissions: readonly Mission[] = [
     setup,
     description:
       "stateful-scale-gkeへnotes-peersと2レプリカのnotesを配置し、notes-0/notes-1のnote.txtへfirst-note/second-noteを保存します。1レプリカへ減らすとnotes-1は消えますがPVCは残ります。2レプリカへ戻してnotes-1の同じPVとsecond-noteを再利用し、notes-0を維持してください。StorageClassのDeleteとStatefulSetのPVC保持は別の設定です。",
-    hints: [
-      sharedHints[0].replace("CLUSTER", "stateful-scale-gke"),
-      sharedHints[1],
-      sharedHints[2],
-      "kubectl scale sts/notes --replicas=1 → kubectl get pods → kubectl get pvc。data-notes-1はBoundのまま残り、PVと内容も保持します。",
-      "kubectl scale sts/notes --replicas=2 → kubectl exec notes-1 -- cat /data/note.txt → kubectl exec notes-0 -- cat /data/note.txt。kubectl describe sts notesで1→2のスケールと再利用したPVC/PVを確認します。",
+    steps: [
+      ...sharedSteps("stateful-scale-gke"),
+      MissionStep.run("notesを1レプリカに減らす", "kubectl scale sts/notes --replicas=1"),
+      MissionStep.run("notes-1が消えたか確かめる", "kubectl get pods"),
+      MissionStep.run(
+        "notes-1のPVCが残っているか確かめる",
+        "kubectl get pvc",
+        "data-notes-1はBoundのまま残り、PVと内容も保持します。",
+      ),
+      MissionStep.run("notesを2レプリカに戻す", "kubectl scale sts/notes --replicas=2"),
+      MissionStep.run(
+        "notes-1がsecond-noteを読めるか確かめる",
+        "kubectl exec notes-1 -- cat /data/note.txt",
+      ),
+      MissionStep.run(
+        "notes-0の内容が保たれているか確かめる",
+        "kubectl exec notes-0 -- cat /data/note.txt",
+      ),
+      MissionStep.run(
+        "スケールで再利用したPVC/PVを確かめる",
+        "kubectl describe sts notes",
+        "1→2のスケールと再利用したPVC/PVを確認します。",
+      ),
     ],
     assertions: [{ kind: "kubeStatefulScaleRecovered" }],
   },

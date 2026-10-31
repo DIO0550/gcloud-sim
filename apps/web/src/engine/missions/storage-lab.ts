@@ -4,6 +4,7 @@ import { keyAccess, protectionFor } from "@/engine/domains/storage-lab/model";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
 
 const p = F.devProjectId;
 const reader = `storage-reader@${p}.iam.gserviceaccount.com`;
@@ -11,130 +12,329 @@ const signer = `storage-signer@${p}.iam.gserviceaccount.com`;
 const agent = "project-481200000001@storage-transfer-service.iam.gserviceaccount.com";
 const key = `projects/${p}/locations/us-central1/keyRings/storage-ring/cryptoKeys/storage-key`;
 const b = (lesson: string) => `storage-${lesson.toLowerCase()}`;
-const create = (lesson: string, flags = "") =>
-  `gcloud storage buckets create gs://${b(lesson)} --location=us-central1 ${flags}`;
-const upload = (lesson: string) => `gcloud storage cp ./report.json gs://${b(lesson)}/report.json`;
-const bind = (bucket: string, email: string, role: string) =>
-  `gcloud storage buckets add-iam-policy-binding gs://${bucket} --member=serviceAccount:${email} --role=roles/storage.${role}`;
-const update = (lesson: string, flags: string) =>
-  `gcloud storage buckets update gs://${b(lesson)} ${flags}`;
-const decision = (lesson: string, principal: string) =>
-  `sim storage access check gs://${b(lesson)}/report.json --principal=${principal}`;
-export const StoragePrelude = [
-  "gcloud services enable storage.googleapis.com cloudkms.googleapis.com iamcredentials.googleapis.com storagetransfer.googleapis.com file.googleapis.com netapp.googleapis.com lustre.googleapis.com",
+const create = (what: string, lesson: string, flags = "", note?: string) =>
+  MissionStep.run(
+    what,
+    `gcloud storage buckets create gs://${b(lesson)} --location=us-central1 ${flags}`,
+    note,
+  );
+const upload = (lesson: string, what = "report.jsonをアップロードする", note?: string) =>
+  MissionStep.run(what, `gcloud storage cp ./report.json gs://${b(lesson)}/report.json`, note);
+const bind = (what: string, bucket: string, email: string, role: string, note?: string) =>
+  MissionStep.run(
+    what,
+    `gcloud storage buckets add-iam-policy-binding gs://${bucket} --member=serviceAccount:${email} --role=roles/storage.${role}`,
+    note,
+  );
+const update = (what: string, lesson: string, flags: string, note?: string) =>
+  MissionStep.run(what, `gcloud storage buckets update gs://${b(lesson)} ${flags}`, note);
+const decision = (what: string, lesson: string, principal: string, note?: string) =>
+  MissionStep.run(
+    what,
+    `sim storage access check gs://${b(lesson)}/report.json --principal=${principal}`,
+    note,
+  );
+const privateBucket = (lesson: string, what = "UBLAとPAPを有効にしてバケットを作る") =>
+  create(
+    what,
+    lesson,
+    "--uniform-bucket-level-access --public-access-prevention",
+    "ACLを使わずIAMだけで管理し、公開設定も入らないようにします。",
+  );
+const versioning = (lesson: string) =>
+  update(
+    "オブジェクトのバージョニングを有効にする",
+    lesson,
+    "--versioning",
+    "上書きや削除の前の世代が、非現行として残るようになります。",
+  );
+const nearline = (lesson: string) => [
+  update(
+    "30日でNEARLINEへ移すルールを設定する",
+    lesson,
+    "--lifecycle-file=lifecycle-nearline.json",
+    "lifecycle-nearline.jsonは、作成から30日でSetStorageClass（NEARLINE）を行うルールです。",
+  ),
+  MissionStep.run(
+    "時間を30日進める",
+    "sim storage time advance --seconds=2592000",
+    "2592000秒は30日です。",
+  ),
+  MissionStep.run(
+    "ライフサイクルルールを評価させる",
+    `sim storage lifecycle run gs://${b(lesson)}`,
+    "実際には非同期に適用されますが、教材では明示的に評価します。",
+  ),
 ];
-export const StorageSolutions = {
+const readerAccount = (what: string) =>
+  MissionStep.run(what, "gcloud iam service-accounts create storage-reader");
+export const StoragePreludeSteps: readonly MissionStep[] = [
+  MissionStep.run(
+    "ストレージ教材で使うAPIをまとめて有効にする",
+    "gcloud services enable storage.googleapis.com cloudkms.googleapis.com iamcredentials.googleapis.com storagetransfer.googleapis.com file.googleapis.com netapp.googleapis.com lustre.googleapis.com",
+  ),
+];
+export const StoragePrelude: readonly string[] = MissionStep.lines(StoragePreludeSteps);
+export const StorageSteps = {
   classes: [
-    create("classes", "--default-storage-class=COLDLINE"),
-    upload("classes"),
-    "gcloud storage objects update gs://storage-classes/report.json --storage-class=ARCHIVE",
+    create(
+      "既定クラスをCOLDLINEにしてバケットを作る",
+      "classes",
+      "--default-storage-class=COLDLINE",
+    ),
+    upload(
+      "classes",
+      "report.jsonをアップロードする",
+      "クラスを指定しないので、バケットの既定のCOLDLINEで保存されます。",
+    ),
+    MissionStep.run(
+      "report.jsonだけをARCHIVEに変える",
+      "gcloud storage objects update gs://storage-classes/report.json --storage-class=ARCHIVE",
+      "オブジェクトのクラスはバケットの既定と別に持てます。",
+    ),
   ],
   lifecycle: [
-    create("lifecycle"),
+    create("ライフサイクル用のバケットを作る", "lifecycle"),
     upload("lifecycle"),
-    update("lifecycle", "--lifecycle-file=lifecycle-nearline.json"),
-    "sim storage time advance --seconds=2592000",
-    "sim storage lifecycle run gs://storage-lifecycle",
+    ...nearline("lifecycle"),
   ],
   versioning: [
-    create("versioning"),
-    update("versioning", "--versioning"),
+    create("世代管理用のバケットを作る", "versioning"),
+    versioning("versioning"),
     upload("versioning"),
-    upload("versioning"),
-    "sim storage versions restore gs://storage-versioning/report.json#1 --allow-overwrite",
+    upload(
+      "versioning",
+      "もう一度アップロードして上書きする",
+      "上書き前の世代は非現行として残ります。",
+    ),
+    MissionStep.run(
+      "最初の世代を新しいlive世代として復元する",
+      "sim storage versions restore gs://storage-versioning/report.json#1 --allow-overwrite",
+      "#1は世代番号です。復元は古い世代をコピーして新しい世代を作ります。",
+    ),
   ],
-  ubla: [create("ubla"), upload("ubla"), update("ubla", "--uniform-bucket-level-access")],
+  ubla: [
+    create("UBLAを付けずにバケットを作る", "ubla"),
+    upload("ubla"),
+    update(
+      "均一なバケットレベルのアクセス（UBLA）を有効にする",
+      "ubla",
+      "--uniform-bucket-level-access",
+      "以後はACLが効かなくなり、アクセスはIAMだけで決まります。",
+    ),
+  ],
   iam: [
-    create("iam", "--uniform-bucket-level-access"),
+    create("UBLAを有効にしてバケットを作る", "iam", "--uniform-bucket-level-access"),
     upload("iam"),
-    "gcloud iam service-accounts create storage-reader",
-    bind(b("iam"), reader, "objectViewer"),
-    decision("iam", reader),
+    readerAccount("読み取り専用のサービスアカウントを作る"),
+    bind(
+      "storage-readerにObject Viewerを付ける",
+      b("iam"),
+      reader,
+      "objectViewer",
+      "プロジェクトではなくバケットに付けるので、ほかのバケットには効きません。",
+    ),
+    decision("storage-readerがreport.jsonを読めるか判定する", "iam", reader),
   ],
   softDelete: [
-    create("softDelete", "--soft-delete-duration=7d"),
+    create("soft delete期間7日でバケットを作る", "softDelete", "--soft-delete-duration=7d"),
     upload("softDelete"),
-    "gcloud storage rm gs://storage-softdelete/report.json --quiet",
-    "gcloud storage restore gs://storage-softdelete/report.json#1",
+    MissionStep.run(
+      "report.jsonを削除する",
+      "gcloud storage rm gs://storage-softdelete/report.json --quiet",
+      "soft delete期間のあいだは、削除された世代が残ります。",
+    ),
+    MissionStep.run(
+      "削除した世代を復元する",
+      "gcloud storage restore gs://storage-softdelete/report.json#1",
+      "復元した世代が新しいlive世代になります。",
+    ),
   ],
   retention: [
-    create("retention", "--retention-period=1h"),
-    update("retention", "--lock-retention-period"),
-    upload("retention"),
+    create("保持期間1時間でバケットを作る", "retention", "--retention-period=1h"),
+    update(
+      "保持ポリシーをロックする",
+      "retention",
+      "--lock-retention-period",
+      "ロックすると、保持期間の短縮や解除ができなくなります。",
+    ),
+    upload("retention", "report.jsonを保存する", "保持期間が過ぎるまで削除も上書きもできません。"),
   ],
   pap: [
-    create("pap"),
+    create("公開を試すバケットを作る", "pap"),
     upload("pap"),
-    "gsutil iam ch allUsers:objectViewer gs://storage-pap",
-    update("pap", "--public-access-prevention"),
-    decision("pap", "anonymous"),
+    MissionStep.run(
+      "allUsersに公開読み取りを付ける",
+      "gsutil iam ch allUsers:objectViewer gs://storage-pap",
+      "PAPの効果を見るために、わざと公開設定を入れます。",
+    ),
+    update("Public Access Preventionを有効にする", "pap", "--public-access-prevention"),
+    decision(
+      "匿名アクセスが拒否されるか判定する",
+      "pap",
+      "anonymous",
+      "公開IAMが残っていても、PAPが有効なら匿名アクセスは拒否されます。",
+    ),
   ],
   cmek: [
-    "gcloud kms keyrings create storage-ring --location=us-central1",
-    "gcloud kms keys create storage-key --keyring=storage-ring --location=us-central1 --purpose=encryption",
-    `gcloud storage service-agent --authorize-cmek=${key}`,
-    create("cmek", `--default-encryption-key=${key}`),
-    upload("cmek"),
+    MissionStep.run(
+      "us-central1にキーリングを作る",
+      "gcloud kms keyrings create storage-ring --location=us-central1",
+    ),
+    MissionStep.run(
+      "暗号化用の鍵を作る",
+      "gcloud kms keys create storage-key --keyring=storage-ring --location=us-central1 --purpose=encryption",
+    ),
+    MissionStep.run(
+      "Cloud Storageのサービスエージェントに鍵の使用を許可する",
+      `gcloud storage service-agent --authorize-cmek=${key}`,
+      "暗号化と復号を行うのはサービスエージェントなので、鍵の権限はここに付けます。",
+    ),
+    create(
+      "この鍵を既定の暗号鍵にしてバケットを作る",
+      "cmek",
+      `--default-encryption-key=${key}`,
+      "鍵はバケットと同じリージョンのものを使います。",
+    ),
+    upload("cmek", "report.jsonを保存して鍵で暗号化させる"),
   ],
   signed: [
-    create("signed", "--public-access-prevention"),
+    create("公開を禁止したバケットを作る", "signed", "--public-access-prevention"),
     upload("signed"),
-    "gcloud iam service-accounts create storage-signer",
-    `gcloud iam service-accounts add-iam-policy-binding ${signer} --member=user:${F.owner} --role=roles/iam.serviceAccountTokenCreator`,
-    bind(b("signed"), signer, "objectViewer"),
-    `gcloud storage sign-url gs://storage-signed/report.json --duration=10m --impersonate-service-account=${signer}`,
-    "sim storage signed-url check signed-2",
-    "sim storage time advance --seconds=601",
-    "sim storage signed-url check signed-2",
+    MissionStep.run(
+      "署名用のサービスアカウントを作る",
+      "gcloud iam service-accounts create storage-signer",
+    ),
+    MissionStep.run(
+      "自分にstorage-signerで署名する権限を付ける",
+      `gcloud iam service-accounts add-iam-policy-binding ${signer} --member=user:${F.owner} --role=roles/iam.serviceAccountTokenCreator`,
+      "SAになりすまして署名するには、Service Account Token Creatorが要ります。",
+    ),
+    bind(
+      "storage-signerにObject Viewerを付ける",
+      b("signed"),
+      signer,
+      "objectViewer",
+      "署名付きURLで読めるかどうかは、署名したSAの権限で決まります。",
+    ),
+    MissionStep.run(
+      "10分だけ有効な署名付きURLを発行する",
+      `gcloud storage sign-url gs://storage-signed/report.json --duration=10m --impersonate-service-account=${signer}`,
+    ),
+    MissionStep.run(
+      "発行直後にURLが使えるか確かめる",
+      "sim storage signed-url check signed-2",
+      "signed-2は、教材が発行したURLに付けたIDです。",
+    ),
+    MissionStep.run("時間を10分1秒進める", "sim storage time advance --seconds=601"),
+    MissionStep.run("期限切れのURLが拒否されるか確かめる", "sim storage signed-url check signed-2"),
   ],
   transfer: [
-    create("source"),
-    create("destination"),
+    create("コピー元のバケットを作る", "source"),
+    create("コピー先のバケットを作る", "destination"),
     upload("source"),
-    ...[b("source"), b("destination")].map((n) => bind(n, agent, "legacyBucketReader")),
-    bind(b("source"), agent, "objectViewer"),
-    bind(b("destination"), agent, "objectCreator"),
-    "gcloud transfer jobs create gs://storage-source gs://storage-destination --name=transferJobs/storage-lesson --do-not-run",
-    "gcloud transfer jobs run transferJobs/storage-lesson --no-async",
-    "sim storage choose --workload=bulk-transfer --resource=transferJobs/storage-lesson",
+    ...[b("source"), b("destination")].map((n) =>
+      bind(
+        `転送エージェントに${n}の一覧を読む権限を付ける`,
+        n,
+        agent,
+        "legacyBucketReader",
+        "Storage Transferは、両方のバケットのメタデータと一覧を読みます。",
+      ),
+    ),
+    bind("転送エージェントにコピー元の読み取りを付ける", b("source"), agent, "objectViewer"),
+    bind(
+      "転送エージェントにコピー先への書き込みを付ける",
+      b("destination"),
+      agent,
+      "objectCreator",
+    ),
+    MissionStep.run(
+      "すぐには走らない転送ジョブを作る",
+      "gcloud transfer jobs create gs://storage-source gs://storage-destination --name=transferJobs/storage-lesson --do-not-run",
+    ),
+    MissionStep.run(
+      "転送ジョブを実行して完了を待つ",
+      "gcloud transfer jobs run transferJobs/storage-lesson --no-async",
+    ),
+    MissionStep.run(
+      "大量転送の手段としてこのジョブを選ぶ",
+      "sim storage choose --workload=bulk-transfer --resource=transferJobs/storage-lesson",
+    ),
   ],
   filestore: [
-    "gcloud filestore instances create shared-files --zone=us-central1-c --tier=BASIC_HDD --file-share=name=my_vol,capacity=1TB --network=name=default",
-    "sim storage choose --workload=nfs --resource=shared-files",
+    MissionStep.run(
+      "BASIC_HDD・1TBのFilestoreを作る",
+      "gcloud filestore instances create shared-files --zone=us-central1-c --tier=BASIC_HDD --file-share=name=my_vol,capacity=1TB --network=name=default",
+    ),
+    MissionStep.run(
+      "NFS共有の手段としてFilestoreを選ぶ",
+      "sim storage choose --workload=nfs --resource=shared-files",
+    ),
   ],
   netapp: [
-    "gcloud netapp storage-pools create shared-pool --location=us-central1 --capacity=2048 --service-level=standard --network=name=default",
-    "gcloud netapp volumes create shared-volume --location=us-central1 --capacity=1024 --protocols=nfsv3,nfsv4 --share-name=share1 --storage-pool=shared-pool",
-    "sim storage choose --workload=enterprise-nfs --resource=shared-volume",
+    MissionStep.run(
+      "2048GiBのストレージプールを作る",
+      "gcloud netapp storage-pools create shared-pool --location=us-central1 --capacity=2048 --service-level=standard --network=name=default",
+    ),
+    MissionStep.run(
+      "プールからNFSv3/v4で共有するボリュームを切り出す",
+      "gcloud netapp volumes create shared-volume --location=us-central1 --capacity=1024 --protocols=nfsv3,nfsv4 --share-name=share1 --storage-pool=shared-pool",
+    ),
+    MissionStep.run(
+      "エンタープライズNFSの手段としてNetApp Volumesを選ぶ",
+      "sim storage choose --workload=enterprise-nfs --resource=shared-volume",
+    ),
   ],
   lustre: [
-    `gcloud lustre instances create hpc-files --location=us-central1-a --capacity-gib=18000 --per-unit-storage-throughput=1000 --filesystem=lustrefs --network=projects/${p}/global/networks/default`,
-    "sim storage choose --workload=hpc --resource=hpc-files",
+    MissionStep.run(
+      "18,000GiBのManaged Lustreを作る",
+      `gcloud lustre instances create hpc-files --location=us-central1-a --capacity-gib=18000 --per-unit-storage-throughput=1000 --filesystem=lustrefs --network=projects/${p}/global/networks/default`,
+    ),
+    MissionStep.run(
+      "HPC共有の手段としてManaged Lustreを選ぶ",
+      "sim storage choose --workload=hpc --resource=hpc-files",
+    ),
   ],
   recovery: [
-    create("recovery", "--uniform-bucket-level-access --public-access-prevention"),
-    update("recovery", "--versioning"),
+    privateBucket("recovery"),
+    versioning("recovery"),
     upload("recovery"),
-    "gcloud storage rm gs://storage-recovery/report.json --quiet",
-    "sim storage versions restore gs://storage-recovery/report.json#1",
+    MissionStep.run(
+      "report.jsonを誤って削除する",
+      "gcloud storage rm gs://storage-recovery/report.json --quiet",
+      "バージョニングが有効なので、削除前の世代は非現行として残ります。",
+    ),
+    MissionStep.run(
+      "削除前の世代を復元する",
+      "sim storage versions restore gs://storage-recovery/report.json#1",
+    ),
   ],
-  infrequent: [
-    create("infrequent", "--uniform-bucket-level-access --public-access-prevention"),
-    upload("infrequent"),
-    update("infrequent", "--lifecycle-file=lifecycle-nearline.json"),
-    "sim storage time advance --seconds=2592000",
-    "sim storage lifecycle run gs://storage-infrequent",
-  ],
+  infrequent: [privateBucket("infrequent"), upload("infrequent"), ...nearline("infrequent")],
   state: [
-    create("state", "--uniform-bucket-level-access --public-access-prevention"),
-    update("state", "--versioning"),
-    "gcloud iam service-accounts create storage-reader",
-    bind(b("state"), reader, "objectAdmin"),
-    "gcloud storage cp ./terraform.tfstate gs://storage-state/report.json --if-generation-match=0",
-    decision("state", reader),
+    privateBucket("state", "stateファイル用の非公開バケットを作る"),
+    versioning("state"),
+    readerAccount("state操作用のサービスアカウントを作る"),
+    bind(
+      "storage-readerにObject Adminを付ける",
+      b("state"),
+      reader,
+      "objectAdmin",
+      "stateの読み書きと、ロック用オブジェクトの削除に必要です。",
+    ),
+    MissionStep.run(
+      "同名のオブジェクトが無いときだけstateを保存する",
+      "gcloud storage cp ./terraform.tfstate gs://storage-state/report.json --if-generation-match=0",
+      "--if-generation-match=0は、まだ存在しない場合だけ書き込む条件です。",
+    ),
+    decision("storage-readerがstateを扱えるか判定する", "state", reader),
   ],
-} as const;
-export type StorageLesson = keyof typeof StorageSolutions;
+};
+export const StorageSolutions: Readonly<Record<StorageLesson, readonly string[]>> =
+  Object.fromEntries(
+    Object.entries<readonly MissionStep[]>(StorageSteps).map(([k, v]) => [k, MissionStep.lines(v)]),
+  ) as Record<StorageLesson, readonly string[]>;
+export type StorageLesson = keyof typeof StorageSteps;
 export type StorageAssertion = Readonly<{ kind: "storageLesson"; lesson: StorageLesson }>;
 const titles: Readonly<Record<StorageLesson, readonly [string, string, Mission["domain"]]>> = {
   classes: [
@@ -223,7 +423,7 @@ const titles: Readonly<Record<StorageLesson, readonly [string, string, Mission["
     "アクセスとセキュリティ",
   ],
 };
-export const StorageMissions: readonly Mission[] = Object.keys(StorageSolutions).map((key) => {
+export const StorageMissions: readonly Mission[] = Object.keys(StorageSteps).map((key) => {
   const lesson = key as StorageLesson;
   return {
     id: `storage-${lesson.toLowerCase()}`,
@@ -234,7 +434,7 @@ export const StorageMissions: readonly Mission[] = Object.keys(StorageSolutions)
       { kind: "setProject", projectId: p },
       { kind: "setPrincipal", principal: F.owner },
     ],
-    hints: [...StoragePrelude, ...StorageSolutions[lesson]],
+    steps: [...StoragePreludeSteps, ...StorageSteps[lesson]],
     assertions: [{ kind: "storageLesson", lesson }],
   };
 });

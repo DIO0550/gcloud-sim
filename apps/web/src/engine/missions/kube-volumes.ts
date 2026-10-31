@@ -5,6 +5,7 @@ import { KubePod } from "@/engine/domains/kubernetes";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
 import { Result } from "@/utils/Result";
 
 export type KubeVolumesAssertion = Readonly<{
@@ -22,12 +23,55 @@ export const KubeVolumesMissions: readonly Mission[] = [
     setup,
     description:
       "volume-gkeへConfigMap・Secret・volume-webを配置します。誤ったitemsのキーでPodはFailedMountとなります。volume-web.yamlのmissing.confをapp.confへ直してapplyし、nginx:1・2レプリカをReadyにしてください。/etc/app/app.confはproduction、/etc/app/assets/asset.binは4 bytes、/etc/credentials/TOKENはdemo-volume-tokenです。SecretやbinaryDataをファイルとして使い、参照先を修復します。",
-    hints: [
-      "gcloud services enable container.googleapis.com → gcloud container clusters create-auto volume-gke --region=us-central1 → sim files load kubernetes-volumes",
-      "kubectl apply -f volume-settings.yaml → kubectl apply -f volume-credentials.yaml → kubectl apply -f volume-web.yaml → kubectl get pods。ContainerCreatingのFailedMountで不足キーを確認します。",
-      "kubectl describe deployment volume-web → kubectl get deployment volume-web -o yaml。volumesの参照元・itemsとvolumeMountsのパスを確認します。",
-      "sim files replace volume-web.yaml --search='key: missing.conf' --replacement='key: app.conf' → kubectl apply -f volume-web.yaml → kubectl rollout status deployment/volume-web",
-      "kubectl exec deployment/volume-web -- cat /etc/app/app.conf → kubectl exec deployment/volume-web -- base64 /etc/app/assets/asset.bin → kubectl exec deployment/volume-web -- cat /etc/credentials/TOKEN。AP+AAQ==は非UTF-8の4 bytesです。",
+    steps: [
+      MissionStep.run("GKEのAPIを有効にする", "gcloud services enable container.googleapis.com"),
+      MissionStep.run(
+        "Autopilotクラスタvolume-gkeを作る",
+        "gcloud container clusters create-auto volume-gke --region=us-central1",
+      ),
+      MissionStep.run(
+        "ボリューム教材のマニフェストを用意する",
+        "sim files load kubernetes-volumes",
+      ),
+      MissionStep.run("ConfigMap volume-settingsを作る", "kubectl apply -f volume-settings.yaml"),
+      MissionStep.run(
+        "Secret volume-credentialsを作る",
+        "kubectl apply -f volume-credentials.yaml",
+      ),
+      MissionStep.run("設定をマウントするvolume-webを作る", "kubectl apply -f volume-web.yaml"),
+      MissionStep.run(
+        "PodがFailedMountで止まっているか確かめる",
+        "kubectl get pods",
+        "ContainerCreatingのFailedMountで不足キーを確認します。",
+      ),
+      MissionStep.run("マウント失敗の原因を調べる", "kubectl describe deployment volume-web"),
+      MissionStep.run(
+        "volumesとvolumeMountsの定義を確かめる",
+        "kubectl get deployment volume-web -o yaml",
+        "volumesの参照元・itemsとvolumeMountsのパスを確認します。",
+      ),
+      MissionStep.run(
+        "itemsのキーをapp.confに直す",
+        "sim files replace volume-web.yaml --search='key: missing.conf' --replacement='key: app.conf'",
+      ),
+      MissionStep.run("直したDeploymentを適用する", "kubectl apply -f volume-web.yaml"),
+      MissionStep.run(
+        "2つのPodがReadyになるのを確かめる",
+        "kubectl rollout status deployment/volume-web",
+      ),
+      MissionStep.run(
+        "ConfigMapから入ったapp.confを読む",
+        "kubectl exec deployment/volume-web -- cat /etc/app/app.conf",
+      ),
+      MissionStep.run(
+        "binaryDataから入ったasset.binを確かめる",
+        "kubectl exec deployment/volume-web -- base64 /etc/app/assets/asset.bin",
+        "AP+AAQ==は非UTF-8の4 bytesです。",
+      ),
+      MissionStep.run(
+        "Secretから入ったTOKENを読む",
+        "kubectl exec deployment/volume-web -- cat /etc/credentials/TOKEN",
+      ),
     ],
     assertions: [{ kind: "kubeVolumesReady" }],
   },
@@ -38,12 +82,49 @@ export const KubeVolumesMissions: readonly Mission[] = [
     setup,
     description:
       "reload-gkeへreload-settingsとreload-webを配置します。MODEをstagingからproductionにしてConfigMapをapplyすると、/etc/config/MODEは更新されます。subPathの/etc/mode.confと環境変数MODEはstagingを保持するため、rollout restartでPodを作り直します。マウント方法と環境変数による更新差を観察し、nginx:1・2レプリカで3つの値をproductionにそろえてください。",
-    hints: [
-      "gcloud services enable container.googleapis.com → gcloud container clusters create-auto reload-gke --region=us-central1 → sim files load kubernetes-volume-refresh",
-      "kubectl apply -f reload-settings.yaml → kubectl apply -f reload-web.yaml → kubectl exec deployment/reload-web -- cat /etc/config/MODE",
-      "sim files replace reload-settings.yaml --search='MODE: staging' --replacement='MODE: production' → kubectl apply -f reload-settings.yaml",
-      "kubectl exec deployment/reload-web -- cat /etc/config/MODE → kubectl exec deployment/reload-web -- cat /etc/mode.conf → kubectl exec deployment/reload-web -- printenv MODE。通常マウントだけproductionとなります。",
-      "kubectl rollout restart deployment/reload-web → kubectl rollout status deployment/reload-web。3つの値を確認します。通常マウントの更新は教材ではapply時に即反映し、実環境の遅延は再現しません。",
+    steps: [
+      MissionStep.run("GKEのAPIを有効にする", "gcloud services enable container.googleapis.com"),
+      MissionStep.run(
+        "Autopilotクラスタreload-gkeを作る",
+        "gcloud container clusters create-auto reload-gke --region=us-central1",
+      ),
+      MissionStep.run(
+        "設定更新教材のマニフェストを用意する",
+        "sim files load kubernetes-volume-refresh",
+      ),
+      MissionStep.run("ConfigMap reload-settingsを作る", "kubectl apply -f reload-settings.yaml"),
+      MissionStep.run("設定を3通りで使うreload-webを作る", "kubectl apply -f reload-web.yaml"),
+      MissionStep.run(
+        "マウントされたMODEがstagingか確かめる",
+        "kubectl exec deployment/reload-web -- cat /etc/config/MODE",
+      ),
+      MissionStep.run(
+        "ConfigMapのMODEをproductionに書き換える",
+        "sim files replace reload-settings.yaml --search='MODE: staging' --replacement='MODE: production'",
+      ),
+      MissionStep.run("書き換えたConfigMapを適用する", "kubectl apply -f reload-settings.yaml"),
+      MissionStep.run(
+        "通常マウントの値が更新されたか確かめる",
+        "kubectl exec deployment/reload-web -- cat /etc/config/MODE",
+      ),
+      MissionStep.run(
+        "subPathマウントの値を確かめる",
+        "kubectl exec deployment/reload-web -- cat /etc/mode.conf",
+      ),
+      MissionStep.run(
+        "環境変数MODEの値を確かめる",
+        "kubectl exec deployment/reload-web -- printenv MODE",
+        "通常マウントだけproductionとなります。",
+      ),
+      MissionStep.run(
+        "Podを作り直して設定を読み直させる",
+        "kubectl rollout restart deployment/reload-web",
+      ),
+      MissionStep.run(
+        "新しいPodの起動を待つ",
+        "kubectl rollout status deployment/reload-web",
+        "3つの値を確認します。通常マウントの更新は教材ではapply時に即反映し、実環境の遅延は再現しません。",
+      ),
     ],
     assertions: [{ kind: "kubeVolumeRefreshReady" }],
   },

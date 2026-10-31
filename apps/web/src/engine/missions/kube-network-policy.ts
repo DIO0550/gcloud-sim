@@ -6,6 +6,7 @@ import { KubePod } from "@/engine/domains/kubernetes";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
@@ -24,12 +25,63 @@ export const KubeNetworkMissions: readonly Mission[] = [
     setup,
     description:
       "policy-gkeでclient・backend・intruderを起動します。backendへのIngressとclientからのEgressを既定で遮断したまま、許可ファイルのラベルを修正してapplyし、client→backendのTCP 8080だけを許可してください。intruder→backend、client→intruder、8081は遮断を保ちます。実通信は教材用connectで模擬判定します。",
-    hints: [
-      "gcloud services enable container.googleapis.com → gcloud container clusters create-auto policy-gke --region=us-central1 → sim files load kubernetes-network-policy → kubectl apply -f network-workloads.yaml",
-      "kubectl apply -f deny-ingress.json → kubectl apply -f deny-egress.json → sim kubernetes connect client --to=backend --port=8080。両方向の既定遮断を確認します。",
-      "sim files replace allow-ingress.json --search=wrong-client --replacement=client → kubectl apply -f allow-ingress.json。受信側だけを許可しても送信側Egressで遮断されます。",
-      "sim files replace allow-egress.json --search=wrong-backend --replacement=backend → kubectl apply -f allow-egress.json → sim kubernetes connect client --to=backend --port=8080",
-      "sim kubernetes connect intruder --to=backend --port=8080 → sim kubernetes connect client --to=intruder --port=8080 → sim kubernetes connect client --to=backend --port=8081 → kubectl get netpol → kubectl describe netpol allow-client。遮断ポリシーを消さず、許可を合算します。",
+    steps: [
+      MissionStep.run("GKEのAPIを有効にする", "gcloud services enable container.googleapis.com"),
+      MissionStep.run(
+        "Autopilotクラスタpolicy-gkeを作る",
+        "gcloud container clusters create-auto policy-gke --region=us-central1",
+      ),
+      MissionStep.run(
+        "NetworkPolicy教材のマニフェストを用意する",
+        "sim files load kubernetes-network-policy",
+      ),
+      MissionStep.run(
+        "client・backend・intruderを起動する",
+        "kubectl apply -f network-workloads.yaml",
+      ),
+      MissionStep.run("backendへの受信を既定で遮断する", "kubectl apply -f deny-ingress.json"),
+      MissionStep.run("clientからの送信を既定で遮断する", "kubectl apply -f deny-egress.json"),
+      MissionStep.run(
+        "client→backendが遮断されることを確かめる",
+        "sim kubernetes connect client --to=backend --port=8080",
+        "両方向の既定遮断を確認します。",
+      ),
+      MissionStep.run(
+        "受信許可ポリシーの送信元ラベルを直す",
+        "sim files replace allow-ingress.json --search=wrong-client --replacement=client",
+      ),
+      MissionStep.run(
+        "clientからの受信を許可する",
+        "kubectl apply -f allow-ingress.json",
+        "受信側だけを許可しても送信側Egressで遮断されます。",
+      ),
+      MissionStep.run(
+        "送信許可ポリシーの宛先ラベルを直す",
+        "sim files replace allow-egress.json --search=wrong-backend --replacement=backend",
+      ),
+      MissionStep.run("backendへの送信を許可する", "kubectl apply -f allow-egress.json"),
+      MissionStep.run(
+        "client→backendの8080が通ることを確かめる",
+        "sim kubernetes connect client --to=backend --port=8080",
+      ),
+      MissionStep.run(
+        "intruder→backendが遮断されたままか確かめる",
+        "sim kubernetes connect intruder --to=backend --port=8080",
+      ),
+      MissionStep.run(
+        "client→intruderが遮断されたままか確かめる",
+        "sim kubernetes connect client --to=intruder --port=8080",
+      ),
+      MissionStep.run(
+        "8081番ポートが遮断されたままか確かめる",
+        "sim kubernetes connect client --to=backend --port=8081",
+      ),
+      MissionStep.run("適用したNetworkPolicyを一覧する", "kubectl get netpol"),
+      MissionStep.run(
+        "受信許可ポリシーの中身を確かめる",
+        "kubectl describe netpol allow-client",
+        "遮断ポリシーを消さず、許可を合算します。",
+      ),
     ],
     assertions: [{ kind: "kubeNetworkRestricted" }],
   },
@@ -40,12 +92,61 @@ export const KubeNetworkMissions: readonly Mission[] = [
     setup,
     description:
       "policy-ns-gkeでclient-nsのclientからdata-nsのbackendへTCP 8080だけを許可します。cross-ingress.jsonとcross-egress.jsonのPodラベルを修正し、namespaceSelectorとpodSelectorを同じpeerのAND条件に保ってapplyしてください。別namespaceの同じapp=client、同じdata-nsのintruder、8081への通信は遮断します。",
-    hints: [
-      "gcloud services enable container.googleapis.com → gcloud container clusters create-auto policy-ns-gke --region=us-central1 → sim files load kubernetes-network-policy → kubectl apply -f network-namespaces.yaml → kubectl apply -f cross-workloads.yaml → kubectl apply -f cross-deny.yaml",
-      "sim files replace cross-ingress.json --search=wrong-client --replacement=client → kubectl apply -f cross-ingress.json。data-nsのbackendはclient-nsかつapp=clientのPodを受け入れます。",
-      "sim files replace cross-egress.json --search=wrong-backend --replacement=backend → kubectl apply -f cross-egress.json。client-nsのclientはdata-nsかつapp=backendだけを宛先にします。",
-      "sim kubernetes connect client -n client-ns --to=backend --to-namespace=data-ns --port=8080 → sim kubernetes connect client -n other-ns --to=backend --to-namespace=data-ns --port=8080",
-      "sim kubernetes connect client -n client-ns --to=intruder --to-namespace=data-ns --port=8080 → sim kubernetes connect client -n client-ns --to=backend --to-namespace=data-ns --port=8081 → kubectl get netpol -A。別々のpeerに分けるとOR条件に広がる点に注意します。",
+    steps: [
+      MissionStep.run("GKEのAPIを有効にする", "gcloud services enable container.googleapis.com"),
+      MissionStep.run(
+        "Autopilotクラスタpolicy-ns-gkeを作る",
+        "gcloud container clusters create-auto policy-ns-gke --region=us-central1",
+      ),
+      MissionStep.run(
+        "NetworkPolicy教材のマニフェストを用意する",
+        "sim files load kubernetes-network-policy",
+      ),
+      MissionStep.run(
+        "client-ns・data-ns・other-nsを作る",
+        "kubectl apply -f network-namespaces.yaml",
+      ),
+      MissionStep.run("各namespaceにPodを起動する", "kubectl apply -f cross-workloads.yaml"),
+      MissionStep.run("受信と送信を既定で遮断する", "kubectl apply -f cross-deny.yaml"),
+      MissionStep.run(
+        "受信許可ポリシーの送信元ラベルを直す",
+        "sim files replace cross-ingress.json --search=wrong-client --replacement=client",
+      ),
+      MissionStep.run(
+        "client-nsのclientからの受信を許可する",
+        "kubectl apply -f cross-ingress.json",
+        "data-nsのbackendはclient-nsかつapp=clientのPodを受け入れます。",
+      ),
+      MissionStep.run(
+        "送信許可ポリシーの宛先ラベルを直す",
+        "sim files replace cross-egress.json --search=wrong-backend --replacement=backend",
+      ),
+      MissionStep.run(
+        "data-nsのbackendへの送信を許可する",
+        "kubectl apply -f cross-egress.json",
+        "client-nsのclientはdata-nsかつapp=backendだけを宛先にします。",
+      ),
+      MissionStep.run(
+        "client-ns→data-nsの8080が通ることを確かめる",
+        "sim kubernetes connect client -n client-ns --to=backend --to-namespace=data-ns --port=8080",
+      ),
+      MissionStep.run(
+        "別namespaceの同名clientが遮断されるか確かめる",
+        "sim kubernetes connect client -n other-ns --to=backend --to-namespace=data-ns --port=8080",
+      ),
+      MissionStep.run(
+        "data-nsのintruder宛てが遮断されるか確かめる",
+        "sim kubernetes connect client -n client-ns --to=intruder --to-namespace=data-ns --port=8080",
+      ),
+      MissionStep.run(
+        "8081番ポートが遮断されるか確かめる",
+        "sim kubernetes connect client -n client-ns --to=backend --to-namespace=data-ns --port=8081",
+      ),
+      MissionStep.run(
+        "全namespaceのNetworkPolicyを一覧する",
+        "kubectl get netpol -A",
+        "別々のpeerに分けるとOR条件に広がる点に注意します。",
+      ),
     ],
     assertions: [{ kind: "kubeNamespaceNetworkRestricted" }],
   },

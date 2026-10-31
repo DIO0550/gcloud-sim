@@ -11,7 +11,7 @@ const denied = (s: Session, line: string, reason: string) => {
   expect(next.world).toEqual(s.world);
 };
 test("pending quota requests preserve granted capacity; explicit grants govern VM growth", () => {
-  const s = run(session(), ...AdminPrelude, AdminSolutions.quota[0]);
+  const s = run(session(), ...AdminPrelude, ...AdminSolutions.quota.slice(0, 1));
   expect(s.world.adminLab.quotas[0]).toMatchObject({
     preferred: 32,
     granted: 24,
@@ -79,7 +79,7 @@ test("federation checks issuer, audience, current provider, IAM revocation and s
   );
 });
 test("federation provider options reject unsupported mappings and workforce audiences", () => {
-  const s = run(session(), ...AdminPrelude, AdminSolutions.workload[0]);
+  const s = run(session(), ...AdminPrelude, ...AdminSolutions.workload.slice(0, 1));
   denied(
     s,
     "gcloud iam workload-identity-pools providers create-oidc invalid-provider --workload-identity-pool=admin-workload --location=global --issuer-uri=http://example.com --attribute-mapping=google.subject=assertion.sub",
@@ -90,7 +90,7 @@ test("federation provider options reject unsupported mappings and workforce audi
     "gcloud iam workload-identity-pools providers create-oidc invalid-provider --workload-identity-pool=admin-workload --location=global --issuer-uri=https://example.com --attribute-mapping=google.groups=assertion.groups",
     "Only google.subject",
   );
-  const workforce = run(s, AdminSolutions.workforce[0]);
+  const workforce = run(s, ...AdminSolutions.workforce.slice(0, 1));
   denied(
     workforce,
     `${AdminSolutions.workforce[1]} --allowed-audiences=anything`,
@@ -134,7 +134,7 @@ test("ordinary budget notifications preserve billing and VM status; create fract
   );
 });
 test("billing export protects its dataset reference and separates project and location", () => {
-  const s = run(session(), ...AdminPrelude, AdminSolutions.export[0]);
+  const s = run(session(), ...AdminPrelude, ...AdminSolutions.export.slice(0, 1));
   denied(
     s,
     "sim billing export configure --billing-account=01AB2C-DEF345-6789AB --dataset=admin_costs --location=us-east1",

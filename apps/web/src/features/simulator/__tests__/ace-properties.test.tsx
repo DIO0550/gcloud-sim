@@ -1,13 +1,14 @@
 import { expect, test } from "vitest";
 import { run, session } from "@/engine/__tests__/fixture-setup";
 import { aiSolutions } from "@/engine/missions/ace-support";
+import { MissionStep } from "@/engine/missions/mission-step";
 import { TreeNode, TreeSelection } from "@/engine/resource-tree";
 import { Option } from "@/utils/Option";
 
 test("旧Snapshotの判断・AI教材をリソースツリーやコマンド挿入に出さない", () => {
   const state = run(
     session(),
-    ...aiSolutions("notebook"),
+    ...MissionStep.lines(aiSolutions("notebook")),
     "sim ace scenarios choose platform-vm --choice=gce --reason='VM OS control'",
   );
   const tree = JSON.stringify(TreeNode.fromWorld(state.world));

@@ -3,6 +3,7 @@ import { KubeContext } from "@/engine/domains/kube-context";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
 import { Option } from "@/utils/Option";
 
 export type GkePrivateAssertion = Readonly<{
@@ -12,6 +13,10 @@ const setup = [
   { kind: "setPrincipal", principal: F.owner },
   { kind: "setProject", projectId: F.devProjectId },
 ] as const;
+const enable = MissionStep.run(
+  "Kubernetes Engine APIを有効にする",
+  "gcloud services enable container.googleapis.com",
+);
 export const GkePrivateMissions: readonly Mission[] = [
   {
     id: "m-gke-030",
@@ -20,12 +25,35 @@ export const GkePrivateMissions: readonly Mission[] = [
     setup,
     description:
       "private-gkeをus-central1のdefault VPC/subnet・master CIDR 172.16.0.0/28のprivateノードで作成し、公開endpointを無効にします。許可CIDRを10.128.0.5/32だけにして内部endpointにも強制し、内部IPの認証情報を取得してください。default VPCの10.128.0.5からprivate endpointへの明示評価がALLOWになれば完了します。実通信・ノード配置は再現しません。",
-    hints: [
-      "gcloud services enable container.googleapis.com → gcloud container clusters create private-gke --region=us-central1 --enable-private-nodes --enable-ip-alias --master-ipv4-cidr=172.16.0.0/28",
-      "sim gke check-control-plane private-gke --region=us-central1 --endpoint=public --source-ip=203.0.113.20。privateノードだけでは公開endpointは無効になりません。",
-      "gcloud container clusters update private-gke --region=us-central1 --enable-private-endpoint --enable-master-authorized-networks --master-authorized-networks=10.128.0.5/32 --enable-authorized-networks-on-private-endpoint",
-      "gcloud container clusters get-credentials private-gke --region=us-central1 --internal-ip → kubectl config view。認証情報を取れたことと疎通条件は別です。",
-      "sim gke check-control-plane private-gke --region=us-central1 --endpoint=private --source-ip=10.128.0.5 --source-network=default。10.128.0.6やpublic endpointではDENYになります。最後に指定送信元を評価してください。",
+    steps: [
+      enable,
+      MissionStep.run(
+        "privateノードのクラスタを作る",
+        "gcloud container clusters create private-gke --region=us-central1 --enable-private-nodes --enable-ip-alias --master-ipv4-cidr=172.16.0.0/28",
+      ),
+      MissionStep.run(
+        "外部から公開endpointへ届くか評価する",
+        "sim gke check-control-plane private-gke --region=us-central1 --endpoint=public --source-ip=203.0.113.20",
+        "privateノードだけでは公開endpointは無効になりません。",
+      ),
+      MissionStep.run(
+        "公開endpointを閉じ、許可CIDRを内部endpointにも強制する",
+        "gcloud container clusters update private-gke --region=us-central1 --enable-private-endpoint --enable-master-authorized-networks --master-authorized-networks=10.128.0.5/32 --enable-authorized-networks-on-private-endpoint",
+      ),
+      MissionStep.run(
+        "内部IPを向く認証情報を取得する",
+        "gcloud container clusters get-credentials private-gke --region=us-central1 --internal-ip",
+      ),
+      MissionStep.run(
+        "kubeconfigの接続先を確かめる",
+        "kubectl config view",
+        "認証情報を取れたことと疎通条件は別です。",
+      ),
+      MissionStep.run(
+        "許可した送信元からprivate endpointへの接続を評価する",
+        "sim gke check-control-plane private-gke --region=us-central1 --endpoint=private --source-ip=10.128.0.5 --source-network=default",
+        "10.128.0.6やpublic endpointではDENYになります。最後に指定送信元を評価してください。",
+      ),
     ],
     assertions: [{ kind: "gkePrivateAccessSecured" }],
   },
@@ -36,12 +64,36 @@ export const GkePrivateMissions: readonly Mission[] = [
     setup,
     description:
       "authorized-gkeをus-central1のprivateノード・master CIDR 172.16.1.0/28で作成し、公開endpointは有効にします。誤った許可範囲203.0.113.0/28を203.0.113.16/28だけへ直し、203.0.113.20からpublic endpointへの明示評価でALLOWを確認してください。CIDR編集だけ、0.0.0.0/0への開放、内部endpointの評価では完了しません。",
-    hints: [
-      "gcloud services enable container.googleapis.com → gcloud container clusters create authorized-gke --region=us-central1 --enable-private-nodes --enable-ip-alias --master-ipv4-cidr=172.16.1.0/28 --enable-master-authorized-networks --master-authorized-networks=203.0.113.0/28",
-      "sim gke check-control-plane authorized-gke --region=us-central1 --endpoint=public --source-ip=203.0.113.20。source-not-authorizedのDENYを確認します。",
-      "gcloud container clusters update authorized-gke --region=us-central1 --enable-master-authorized-networks --master-authorized-networks=203.0.113.16/28",
-      "gcloud container clusters describe authorized-gke --region=us-central1 → gcloud container clusters get-credentials authorized-gke --region=us-central1。公開endpointのCIDRだけを直します。",
-      "sim gke check-control-plane authorized-gke --region=us-central1 --endpoint=public --source-ip=203.0.113.20。ALLOW/authorized-cidrを確認してください。",
+    steps: [
+      enable,
+      MissionStep.run(
+        "誤った許可CIDRでprivateノードのクラスタを作る",
+        "gcloud container clusters create authorized-gke --region=us-central1 --enable-private-nodes --enable-ip-alias --master-ipv4-cidr=172.16.1.0/28 --enable-master-authorized-networks --master-authorized-networks=203.0.113.0/28",
+      ),
+      MissionStep.run(
+        "許可範囲外の送信元が拒否されるか評価する",
+        "sim gke check-control-plane authorized-gke --region=us-central1 --endpoint=public --source-ip=203.0.113.20",
+        "source-not-authorizedのDENYを確認します。",
+      ),
+      MissionStep.run(
+        "許可CIDRを203.0.113.16/28だけに直す",
+        "gcloud container clusters update authorized-gke --region=us-central1 --enable-master-authorized-networks --master-authorized-networks=203.0.113.16/28",
+        "--master-authorized-networksは追記ではなく置き換えです。",
+      ),
+      MissionStep.run(
+        "制御プレーンの許可CIDRを確かめる",
+        "gcloud container clusters describe authorized-gke --region=us-central1",
+        "公開endpointのCIDRだけを直します。",
+      ),
+      MissionStep.run(
+        "公開endpoint向けの認証情報を取得する",
+        "gcloud container clusters get-credentials authorized-gke --region=us-central1",
+      ),
+      MissionStep.run(
+        "直した許可範囲で公開endpointへの接続を評価する",
+        "sim gke check-control-plane authorized-gke --region=us-central1 --endpoint=public --source-ip=203.0.113.20",
+        "ALLOW/authorized-cidrを確認してください。",
+      ),
     ],
     assertions: [{ kind: "gkeAuthorizedSourceRecovered" }],
   },

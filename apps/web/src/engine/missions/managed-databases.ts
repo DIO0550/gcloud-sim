@@ -2,6 +2,7 @@ import { cacheOf } from "@/engine/domains/managed-databases/cache";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
 
 export type ManagedDatabaseLesson =
   | "document"
@@ -22,9 +23,13 @@ export type ManagedDatabaseAssertion = Readonly<{
   kind: "managedDatabaseLesson";
   lesson: ManagedDatabaseLesson;
 }>;
-export const ManagedDatabasePrelude = [
-  "gcloud services enable firestore.googleapis.com spanner.googleapis.com bigtable.googleapis.com bigtableadmin.googleapis.com redis.googleapis.com compute.googleapis.com vpcaccess.googleapis.com cloudfunctions.googleapis.com run.googleapis.com sqladmin.googleapis.com",
+const ManagedDatabasePreludeSteps = [
+  MissionStep.run(
+    "データベース関連のAPIをまとめて有効にする",
+    "gcloud services enable firestore.googleapis.com spanner.googleapis.com bigtable.googleapis.com bigtableadmin.googleapis.com redis.googleapis.com compute.googleapis.com vpcaccess.googleapis.com cloudfunctions.googleapis.com run.googleapis.com sqladmin.googleapis.com",
+  ),
 ];
+export const ManagedDatabasePrelude = MissionStep.lines(ManagedDatabasePreludeSteps);
 const fs = (db: string, location = "us-central1") =>
   `gcloud firestore databases create ${db} --location=${location} --type=firestore-native`;
 const doc = (db: string, path: string, value: object) =>
@@ -37,9 +42,9 @@ const spDb = (i: string) =>
 const spSql = (i: string, sql: string, db = "app") =>
   `sim spanner execute ${db} --instance=${i} --sql="${sql}"`;
 const spSeed = (i: string) => [
-  spanner(i),
-  spDb(i),
-  spSql(i, "INSERT INTO orders VALUES (1, 'before')"),
+  MissionStep.run("単一リージョンのSpannerインスタンスを作る", spanner(i)),
+  MissionStep.run("主キー付きのordersテーブルを持つappデータベースを作る", spDb(i)),
+  MissionStep.run("注文を1行書き込む", spSql(i, "INSERT INTO orders VALUES (1, 'before')")),
 ];
 const bt = (i: string) =>
   `gcloud bigtable instances create ${i} --cluster=primary --cluster-zone=us-central1-a --cluster-num-nodes=1`;
@@ -49,6 +54,11 @@ const cell = (i: string, value: string, timestamp = "2026-10-01T10:00:00Z") =>
   `sim bigtable rows write sensor-1 --instance=${i} --cluster=primary --table=readings --family=data --qualifier=value --value=${value} --timestamp=${timestamp}`;
 const btRead = (i: string, table = "readings", cluster = "primary") =>
   `sim bigtable rows read sensor-1 --instance=${i} --cluster=${cluster} --table=${table}`;
+/** Bigtable のインスタンスとテーブルを用意する 2 手順。 */
+const btSeed = (i: string) => [
+  MissionStep.run("1ノードのクラスタprimaryでBigtableインスタンスを作る", bt(i)),
+  MissionStep.run("列ファミリーdataを持つreadingsテーブルを作る", table(i)),
+];
 const redis = (i: string, tier = "BASIC") =>
   `gcloud redis instances create ${i} --region=us-central1 --network=default --size=1 --tier=${tier}`;
 const cache = (i: string, operation: string, flags = "") =>
@@ -56,127 +66,290 @@ const cache = (i: string, operation: string, flags = "") =>
 const p = F.devProjectId;
 const sa = `database-worker@${p}.iam.gserviceaccount.com`;
 const worker = [
-  "gcloud iam service-accounts create database-worker",
-  `gcloud iam service-accounts add-iam-policy-binding ${sa} --member=user:${F.owner} --role=roles/iam.serviceAccountUser`,
+  MissionStep.run(
+    "関数を動かすサービスアカウントを作る",
+    "gcloud iam service-accounts create database-worker",
+  ),
+  MissionStep.run(
+    "自分にそのSAを関数へ付ける権限を与える",
+    `gcloud iam service-accounts add-iam-policy-binding ${sa} --member=user:${F.owner} --role=roles/iam.serviceAccountUser`,
+    "関数に実行SAを指定する人には、そのSAに対するiam.serviceAccountUserが要ります。",
+  ),
 ];
 const fn = (n: string, flags: string) =>
   `gcloud functions deploy ${n} --region=us-central1 --runtime=nodejs22 --service-account=${sa} --trigger-http ${flags}`;
-export const ManagedDatabaseSolutions: Readonly<Record<ManagedDatabaseLesson, readonly string[]>> =
-  {
-    document: [
+const ManagedDatabaseSteps: Readonly<Record<ManagedDatabaseLesson, readonly MissionStep[]>> = {
+  document: [
+    MissionStep.run(
+      "複数リージョンnam5にNative modeのFirestoreを作る",
       fs("doc-app", "nam5"),
-      doc("doc-app", "orders/one", { count: 1 }),
+      "ロケーションは作成後に変えられません。",
+    ),
+    MissionStep.run("orders/oneにcount=1の文書を書く", doc("doc-app", "orders/one", { count: 1 })),
+    MissionStep.run(
+      "版1を前提にcountを2増やす",
       "sim firestore documents increment orders/one --database=doc-app --field=count --amount=2 --expected-version=1",
-      fsQuery("doc-app"),
-    ],
-    index: [
-      fs("index-app"),
+      "--expected-versionが今の版と違えば更新は拒否されます。",
+    ),
+    MissionStep.run("ordersを照会してcountが3になったことを確かめる", fsQuery("doc-app")),
+  ],
+  index: [
+    MissionStep.run("index-appデータベースを作る", fs("index-app")),
+    MissionStep.run(
+      "テナントaの注文（total 10）を書く",
       doc("index-app", "orders/one", { tenant: "a", total: 10 }),
+    ),
+    MissionStep.run(
+      "テナントaの注文（total 20）を書く",
       doc("index-app", "orders/two", { tenant: "a", total: 20 }),
+    ),
+    MissionStep.run(
+      "テナントbの注文（total 30）を書く",
       doc("index-app", "orders/three", { tenant: "b", total: 30 }),
+    ),
+    MissionStep.run(
+      "tenantとtotalの複合索引を作る",
       "sim firestore indexes create tenant-total --database=index-app --collection=orders --fields=tenant,total",
+      "等価条件と別フィールドの並べ替えを組み合わせる照会には複合索引が要ります。",
+    ),
+    MissionStep.run(
+      "テナントaの注文をtotalの大きい順に2件照会する",
       `sim firestore query orders --database=index-app --where-field=tenant --equals='"a"' --order-by=total --descending --limit=2`,
-    ],
-    firestoreRestore: [
-      fs("source-docs"),
-      doc("source-docs", "orders/one", { note: "before" }),
+      "テナントbの注文は結果に入りません。",
+    ),
+  ],
+  firestoreRestore: [
+    MissionStep.run("復元元のsource-docsデータベースを作る", fs("source-docs")),
+    MissionStep.run("orders/oneに文書を書く", doc("source-docs", "orders/one", { note: "before" })),
+    MissionStep.run(
+      "データベースのバックアップを取る",
       "sim firestore backups create docs-copy --database=source-docs",
+      "索引はバックアップに含まれません。",
+    ),
+    MissionStep.run(
+      "誤って文書を削除する",
       "sim firestore documents delete orders/one --database=source-docs",
+    ),
+    MissionStep.run(
+      "バックアップを新しいデータベースへ復元する",
       "sim firestore backups restore docs-copy --destination-database=recovered-docs",
-      fsQuery("recovered-docs"),
-    ],
-    spanner: [
+      "復元先は既存のデータベースではなく、新しく作るrecovered-docsです。",
+    ),
+    MissionStep.run("復元先で文書が戻ったことを照会する", fsQuery("recovered-docs")),
+  ],
+  spanner: [
+    MissionStep.run(
+      "マルチリージョン構成nam3でSpannerインスタンスを作る",
       spanner("global-app", "nam3"),
-      spDb("global-app"),
+      "1000 PU（処理ユニット）は1ノード分です。",
+    ),
+    MissionStep.run("主キー付きのordersテーブルを持つappデータベースを作る", spDb("global-app")),
+    MissionStep.run(
+      "注文を1行書き込む",
       spSql("global-app", "INSERT INTO orders VALUES (1, 'committed')"),
+    ),
+    MissionStep.run(
+      "処理容量を2000 PUに増やす",
       "gcloud spanner instances update global-app --processing-units=2000",
+    ),
+    MissionStep.run(
+      "ordersを照会して書き込んだ行を確かめる",
       spSql("global-app", "SELECT * FROM orders"),
-    ],
-    spannerRestore: [
-      ...spSeed("restore-spanner"),
+    ),
+  ],
+  spannerRestore: [
+    ...spSeed("restore-spanner"),
+    MissionStep.run(
+      "データベースのバックアップを取る",
       "gcloud spanner backups create spanner-copy --instance=restore-spanner --database=app",
-      spSql("restore-spanner", "DELETE FROM orders"),
+    ),
+    MissionStep.run("誤って全行を削除する", spSql("restore-spanner", "DELETE FROM orders")),
+    MissionStep.run(
+      "バックアップを新しいデータベースrecoveredへ復元する",
       "gcloud spanner databases restore recovered --instance=restore-spanner --backup=spanner-copy",
+    ),
+    MissionStep.run(
+      "復元したデータベースで行が戻ったことを照会する",
       spSql("restore-spanner", "SELECT * FROM orders", "recovered"),
-    ],
-    bigtableGc: [
-      bt("telemetry"),
-      table("telemetry"),
-      cell("telemetry", "old"),
+    ),
+  ],
+  bigtableGc: [
+    ...btSeed("telemetry"),
+    MissionStep.run("同じセルに10:00の版を書く", cell("telemetry", "old")),
+    MissionStep.run(
+      "同じセルに10:10の新しい版を書く",
       cell("telemetry", "latest", "2026-10-01T10:10:00Z"),
+    ),
+    MissionStep.run(
+      "最大1版・保持1時間のGCルールを列ファミリーに設定する",
       "sim bigtable families set-gc data --instance=telemetry --cluster=primary --table=readings --max-versions=1 --max-age-seconds=3600",
+    ),
+    MissionStep.run(
+      "10:20の時点でGCを評価する",
       "sim bigtable gc readings --instance=telemetry --cluster=primary --at=2026-10-01T10:20:00Z",
-      btRead("telemetry"),
-    ],
-    bigtableReplication: [
-      bt("replicated"),
-      table("replicated"),
+      "実環境のGCは非同期で、ルールを設定してもすぐには消えません。",
+    ),
+    MissionStep.run("最新の版だけが残ったことを読んで確かめる", btRead("telemetry")),
+  ],
+  bigtableReplication: [
+    ...btSeed("replicated"),
+    MissionStep.run(
+      "別ゾーンにセカンダリクラスタを追加する",
       "gcloud bigtable clusters create secondary --instance=replicated --zone=us-central1-b --num-nodes=2",
-      cell("replicated", "replicated"),
+      "クラスタが2つになると、クラスタ間で複製されます。",
+    ),
+    MissionStep.run("primaryクラスタに値を書く", cell("replicated", "replicated")),
+    MissionStep.run(
+      "複製を進める",
       "sim bigtable replication advance --instance=replicated",
+      "実環境の複製は非同期で、反映までに遅れがあります。",
+    ),
+    MissionStep.run(
+      "セカンダリクラスタから値を読む",
       btRead("replicated", "readings", "secondary"),
-    ],
-    bigtableRestore: [
-      bt("restore-bigtable"),
-      table("restore-bigtable"),
-      cell("restore-bigtable", "before"),
+    ),
+  ],
+  bigtableRestore: [
+    ...btSeed("restore-bigtable"),
+    MissionStep.run("セルに値beforeを書く", cell("restore-bigtable", "before")),
+    MissionStep.run(
+      "テーブルのバックアップを取る",
       "gcloud bigtable backups create bt-copy --instance=restore-bigtable --cluster=primary --table=readings",
+    ),
+    MissionStep.run(
+      "誤って行を削除する",
       "sim bigtable rows delete sensor-1 --instance=restore-bigtable --cluster=primary --table=readings --quiet",
+    ),
+    MissionStep.run(
+      "バックアップを新しいテーブルrecoveredへ復元する",
       "sim bigtable backups restore bt-copy --instance=restore-bigtable --cluster=primary --table=recovered",
-      btRead("restore-bigtable", "recovered"),
-    ],
-    redisTtl: [
-      redis("ttl-cache"),
-      cache("ttl-cache", "set", "--value=1 --ttl=10"),
+    ),
+    MissionStep.run("復元したテーブルから値を読む", btRead("restore-bigtable", "recovered")),
+  ],
+  redisTtl: [
+    MissionStep.run("BASIC tierのRedisインスタンスを作る", redis("ttl-cache")),
+    MissionStep.run("期限10秒でキーvisitsを書く", cache("ttl-cache", "set", "--value=1 --ttl=10")),
+    MissionStep.run("期限前に値を読めることを確かめる", cache("ttl-cache", "get")),
+    MissionStep.run("仮想時計を10秒進める", "sim databases time advance --seconds=10"),
+    MissionStep.run(
+      "期限切れでcache missになることを確かめる",
       cache("ttl-cache", "get"),
-      "sim databases time advance --seconds=10",
-      cache("ttl-cache", "get"),
-    ],
-    redisHa: [
+      "キャッシュは永続DBではないため、期限が切れた値は戻りません。",
+    ),
+  ],
+  redisHa: [
+    MissionStep.run(
+      "STANDARD_HA tierのRedisインスタンスを作る",
       redis("ha-cache", "STANDARD_HA"),
-      cache("ha-cache", "set", "--value=1"),
+      "別ゾーンにレプリカを持ち、障害時に切り替わる構成です。",
+    ),
+    MissionStep.run("カウンタvisitsに1を書く", cache("ha-cache", "set", "--value=1")),
+    MissionStep.run(
+      "手動でフェイルオーバーする",
       "gcloud redis instances failover ha-cache --region=us-central1",
-      cache("ha-cache", "increment"),
-      cache("ha-cache", "get"),
-    ],
-    functionsFirestore: [
-      ...worker,
-      fs("function-docs"),
+    ),
+    MissionStep.run("切替後にカウンタを1増やす", cache("ha-cache", "increment")),
+    MissionStep.run("カウンタが2になったことを確かめる", cache("ha-cache", "get")),
+  ],
+  functionsFirestore: [
+    ...worker,
+    MissionStep.run("関数が読むfunction-docsデータベースを作る", fs("function-docs")),
+    MissionStep.run(
+      "読み取り対象の文書を書く",
       doc("function-docs", "orders/one", { note: "runtime-read" }),
+    ),
+    MissionStep.run(
+      "実行SAにFirestoreを読む権限を与える",
       `gcloud projects add-iam-policy-binding ${p} --member=serviceAccount:${sa} --role=roles/datastore.viewer`,
+    ),
+    MissionStep.run(
+      "読むデータベースを環境変数で渡して関数をデプロイする",
       fn("document-reader", "--set-env-vars=FIRESTORE_DATABASE=function-docs"),
+    ),
+    MissionStep.run(
+      "関数を呼んで文書を読ませる",
       "sim functions database read document-reader --region=us-central1 --document=orders/one",
-    ],
-    functionsRedis: [
-      ...worker,
-      redis("function-cache"),
+      "関数は実行SAの権限でFirestoreを読みます。",
+    ),
+  ],
+  functionsRedis: [
+    ...worker,
+    MissionStep.run("関数が使うRedisインスタンスを作る", redis("function-cache")),
+    MissionStep.run(
+      "Redisと同じVPCにServerless VPC Accessコネクタを作る",
       "gcloud compute networks vpc-access connectors create database-connector --region=us-central1 --network=default --range=10.9.0.0/28",
+      "関数はコネクタを通ってRedisのprivate IPへ届きます。",
+    ),
+    MissionStep.run(
+      "コネクタとRedisを指定して関数をデプロイする",
       fn(
         "cache-counter",
         "--vpc-connector=database-connector --set-env-vars=REDIS_INSTANCE=function-cache",
       ),
+    ),
+    MissionStep.run(
+      "関数を呼んでカウンタを1にする",
       "sim functions database increment-cache cache-counter --region=us-central1 --key=visits",
+    ),
+    MissionStep.run(
+      "もう一度呼んでカウンタを2にする",
       "sim functions database increment-cache cache-counter --region=us-central1 --key=visits",
-    ],
-    vector: [
-      spanner("vector-spanner"),
+    ),
+  ],
+  vector: [
+    MissionStep.run("単一リージョンのSpannerインスタンスを作る", spanner("vector-spanner")),
+    MissionStep.run(
+      "ベクトル列を持つitemsテーブルのデータベースを作る",
       "gcloud spanner databases create app --instance=vector-spanner --ddl='CREATE TABLE items (id INT64 NOT NULL, title STRING(MAX), embedding ARRAY<FLOAT64>) PRIMARY KEY (id)'",
+    ),
+    MissionStep.run(
+      "ベクトル[1,0,0]の行eastを書く",
       spSql("vector-spanner", "INSERT INTO items VALUES (1, 'east', [1,0,0])"),
+    ),
+    MissionStep.run(
+      "ベクトル[4,1,0]の行nearを書く",
       spSql("vector-spanner", "INSERT INTO items VALUES (2, 'near', [4,1,0])"),
+    ),
+    MissionStep.run(
+      "ベクトル[0,1,0]の行northを書く",
       spSql("vector-spanner", "INSERT INTO items VALUES (3, 'north', [0,1,0])"),
+    ),
+    MissionStep.run(
+      "idの等価条件で1行を照会する",
       spSql("vector-spanner", "SELECT id, title FROM items WHERE id = 3"),
+    ),
+    MissionStep.run(
+      "[1,0,0]とのcosine距離が近い順に2件照会する",
       spSql(
         "vector-spanner",
         "SELECT id, title, COSINE_DISTANCE(embedding, [1,0,0]) AS distance FROM items ORDER BY distance LIMIT 2",
       ),
-    ],
-    selection: [
+      "idで引いた行とは別の、向きが近い行（1と2）が返ります。",
+    ),
+  ],
+  selection: [
+    MissionStep.run(
+      "モバイル向けのドキュメントDBにFirestoreを選ぶ",
       "sim databases choose mobile-documents --service=firestore",
+    ),
+    MissionStep.run(
+      "大量の時系列データにBigtableを選ぶ",
       "sim databases choose telemetry --service=bigtable",
+    ),
+    MissionStep.run(
+      "一時的なセッションキャッシュにRedisを選ぶ",
       "sim databases choose session-cache --service=redis",
+    ),
+    MissionStep.run(
+      "大域トランザクションにSpannerを選ぶ",
       "sim databases choose global-transactions --service=spanner",
-    ],
-  };
+    ),
+  ],
+};
+/** 各レッスンの解答を端末の行だけで並べたもの（テストがそのまま流す）。 */
+export const ManagedDatabaseSolutions = Object.fromEntries(
+  Object.entries(ManagedDatabaseSteps).map(([lesson, steps]) => [lesson, MissionStep.lines(steps)]),
+) as Readonly<Record<ManagedDatabaseLesson, readonly string[]>>;
 const definitions: readonly [ManagedDatabaseLesson, string, string][] = [
   [
     "document",
@@ -259,7 +432,7 @@ export const ManagedDatabaseMissions: readonly Mission[] = definitions.map(
       { kind: "setPrincipal", principal: F.owner },
       { kind: "setProject", projectId: p },
     ],
-    hints: [...ManagedDatabasePrelude, ...ManagedDatabaseSolutions[lesson]],
+    steps: [...ManagedDatabasePreludeSteps, ...ManagedDatabaseSteps[lesson]],
     assertions: [{ kind: "managedDatabaseLesson", lesson }],
   }),
 );
