@@ -6,6 +6,7 @@ import { KubePod } from "@/engine/domains/kubernetes";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
 import { Result } from "@/utils/Result";
 
 export type KubeStorageAssertion = Readonly<{
@@ -23,13 +24,65 @@ export const KubeStorageMissions: readonly Mission[] = [
     setup,
     description:
       "storage-gkeへPVC app-dataとstorage-webを配置すると、StorageClass archiveの欠落でPodはFailedMountとなります。archive-class.yamlをapplyして割り当てを復旧し、要求容量を1Giから2Giへ拡張してください。教材用のwrite-fileで/data/message.txtへsurvives-restartを書き、rollout restart後も同じPVと内容を保持したnginx:1・1 PodをReadyにします。",
-    hints: [
-      "gcloud services enable container.googleapis.com → gcloud container clusters create-auto storage-gke --region=us-central1 → sim files load kubernetes-storage",
-      "kubectl apply -f storage-claim.yaml → kubectl apply -f storage-web.yaml → kubectl describe pvc app-data → kubectl get pods。StorageClass archiveが欠落しています。",
-      "kubectl apply -f archive-class.yaml → kubectl get sc → kubectl get pvc → kubectl get pv。WaitForFirstConsumerは利用Podの作成後に割り当てます。",
-      "sim files replace storage-claim.yaml --search=1Gi --replacement=2Gi → kubectl apply -f storage-claim.yaml。allowVolumeExpansionがtrueなら容量を増やせます。縮小はできません。",
-      "sim kubernetes write-file storage-web --path=/data/message.txt --content=survives-restart → kubectl exec deployment/storage-web -- cat /data/message.txt。アプリ書き込みを模擬する教材操作です。",
-      "kubectl rollout restart deployment/storage-web → kubectl rollout status deployment/storage-web → kubectl exec deployment/storage-web -- cat /data/message.txt → kubectl get pvc → kubectl get pv。Pod名は変わってもPVと内容は残ります。",
+    steps: [
+      MissionStep.run("GKEのAPIを有効にする", "gcloud services enable container.googleapis.com"),
+      MissionStep.run(
+        "Autopilotクラスタstorage-gkeを作る",
+        "gcloud container clusters create-auto storage-gke --region=us-central1",
+      ),
+      MissionStep.run(
+        "ストレージ教材のマニフェストを用意する",
+        "sim files load kubernetes-storage",
+      ),
+      MissionStep.run("PVC app-dataを作る", "kubectl apply -f storage-claim.yaml"),
+      MissionStep.run("PVCを使うstorage-webを作る", "kubectl apply -f storage-web.yaml"),
+      MissionStep.run("PVCが割り当てられない理由を調べる", "kubectl describe pvc app-data"),
+      MissionStep.run(
+        "PodがFailedMountで止まっているか確かめる",
+        "kubectl get pods",
+        "StorageClass archiveが欠落しています。",
+      ),
+      MissionStep.run(
+        "欠けていたStorageClass archiveを作る",
+        "kubectl apply -f archive-class.yaml",
+      ),
+      MissionStep.run("StorageClassの設定を確かめる", "kubectl get sc"),
+      MissionStep.run("PVCがBoundになったか確かめる", "kubectl get pvc"),
+      MissionStep.run(
+        "割り当てられたPVを確かめる",
+        "kubectl get pv",
+        "WaitForFirstConsumerは利用Podの作成後に割り当てます。",
+      ),
+      MissionStep.run(
+        "PVCの要求容量を2Giに書き換える",
+        "sim files replace storage-claim.yaml --search=1Gi --replacement=2Gi",
+      ),
+      MissionStep.run(
+        "PVCの容量を拡張する",
+        "kubectl apply -f storage-claim.yaml",
+        "allowVolumeExpansionがtrueなら容量を増やせます。縮小はできません。",
+      ),
+      MissionStep.run(
+        "ボリュームにsurvives-restartを書く",
+        "sim kubernetes write-file storage-web --path=/data/message.txt --content=survives-restart",
+        "アプリ書き込みを模擬する教材操作です。",
+      ),
+      MissionStep.run(
+        "書いた内容を読み出す",
+        "kubectl exec deployment/storage-web -- cat /data/message.txt",
+      ),
+      MissionStep.run("Podを作り直す", "kubectl rollout restart deployment/storage-web"),
+      MissionStep.run("新しいPodの起動を待つ", "kubectl rollout status deployment/storage-web"),
+      MissionStep.run(
+        "再起動後も内容が残っているか確かめる",
+        "kubectl exec deployment/storage-web -- cat /data/message.txt",
+      ),
+      MissionStep.run("PVCが同じまま残っているか確かめる", "kubectl get pvc"),
+      MissionStep.run(
+        "同じPVを使い続けているか確かめる",
+        "kubectl get pv",
+        "Pod名は変わってもPVと内容は残ります。",
+      ),
     ],
     assertions: [{ kind: "kubePersistentDataReady" }],
   },
@@ -40,12 +93,52 @@ export const KubeStorageMissions: readonly Mission[] = [
     setup,
     description:
       "retain-gkeへarchive-class・app-data・storage-webを配置し、/data/message.txtへkeep-meを書きます。利用中のPVCを削除するとTerminatingで保護されます。storage-webを0レプリカにしてPodを取り除き、PVCを削除完了させてください。Retainを持つPVがReleasedとなり、ファイルを保持していることを確認します。Released PVの手動再利用は対象外です。",
-    hints: [
-      "gcloud services enable container.googleapis.com → gcloud container clusters create-auto retain-gke --region=us-central1 → sim files load kubernetes-storage",
-      "kubectl apply -f archive-class.yaml → kubectl apply -f storage-claim.yaml → kubectl get pvc。まだ利用PodがなくPendingです。",
-      "kubectl apply -f storage-web.yaml → kubectl get pvc → sim kubernetes write-file storage-web --path=/data/message.txt --content=keep-me → kubectl exec deployment/storage-web -- cat /data/message.txt",
-      "kubectl delete pvc app-data → kubectl get pvc。利用Podが残る間はTerminatingで、PVとデータは削除されません。",
-      "kubectl scale deployment/storage-web --replicas=0 → kubectl get pvc → kubectl get pv。PVのSTATUSはReleased、RECLAIM POLICYはRetainです。ツリーのpvを選ぶとmessage.txtの7 bytesを確認できます。",
+    steps: [
+      MissionStep.run("GKEのAPIを有効にする", "gcloud services enable container.googleapis.com"),
+      MissionStep.run(
+        "Autopilotクラスタretain-gkeを作る",
+        "gcloud container clusters create-auto retain-gke --region=us-central1",
+      ),
+      MissionStep.run(
+        "ストレージ教材のマニフェストを用意する",
+        "sim files load kubernetes-storage",
+      ),
+      MissionStep.run(
+        "Retainを持つStorageClass archiveを作る",
+        "kubectl apply -f archive-class.yaml",
+      ),
+      MissionStep.run("PVC app-dataを作る", "kubectl apply -f storage-claim.yaml"),
+      MissionStep.run(
+        "PVCがPendingのまま待つことを確かめる",
+        "kubectl get pvc",
+        "まだ利用PodがなくPendingです。",
+      ),
+      MissionStep.run("PVCを使うstorage-webを作る", "kubectl apply -f storage-web.yaml"),
+      MissionStep.run("PVCがBoundになったか確かめる", "kubectl get pvc"),
+      MissionStep.run(
+        "ボリュームにkeep-meを書く",
+        "sim kubernetes write-file storage-web --path=/data/message.txt --content=keep-me",
+      ),
+      MissionStep.run(
+        "書いた内容を読み出す",
+        "kubectl exec deployment/storage-web -- cat /data/message.txt",
+      ),
+      MissionStep.run("利用中のPVCを削除する", "kubectl delete pvc app-data"),
+      MissionStep.run(
+        "PVCがTerminatingで保護されているか確かめる",
+        "kubectl get pvc",
+        "利用Podが残る間はTerminatingで、PVとデータは削除されません。",
+      ),
+      MissionStep.run(
+        "storage-webを0レプリカにしてPodを取り除く",
+        "kubectl scale deployment/storage-web --replicas=0",
+      ),
+      MissionStep.run("PVCの削除が完了したか確かめる", "kubectl get pvc"),
+      MissionStep.run(
+        "PVがReleasedで残っているか確かめる",
+        "kubectl get pv",
+        "PVのSTATUSはReleased、RECLAIM POLICYはRetainです。ツリーのpvを選ぶとmessage.txtの7 bytesを確認できます。",
+      ),
     ],
     assertions: [{ kind: "kubeRetainedDataReady" }],
   },

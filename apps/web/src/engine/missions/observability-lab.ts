@@ -6,6 +6,7 @@ import { ObserveCpuMetric } from "@/engine/domains/observability-lab/model";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
 
 const p = F.devProjectId;
 const z = "us-central1-a";
@@ -36,61 +37,123 @@ export const ObservePolicyFile = (
   `sim files write ${label}.json --content='${JSON.stringify({ displayName: label, combiner, conditions, notificationChannels: channels.map((c) => `projects/${p}/notificationChannels/${c}`) })}'`,
   `gcloud monitoring policies create --policy-from-file=${label}.json`,
 ];
-const tick = (seconds = 60) => `sim monitoring clock advance --seconds=${seconds}`;
-const vm = `gcloud compute instances create observe-vm --zone=${z}`;
+const run = MissionStep.run;
+/** ポリシー定義をファイルに書き、そのファイルからポリシーを作る 2 手順。 */
+const policySteps = (
+  what: string,
+  label: string,
+  conditions: readonly unknown[],
+  combiner = "OR",
+  channels: readonly string[] = [],
+) => {
+  const note = channels.length ? `通知先に${channels.join("・")}を結びます。` : undefined;
+  return ObservePolicyFile(label, conditions, combiner, channels).map((line, i) =>
+    i === 0 ? run(what, line) : run(`${label}.jsonからアラートポリシーを作る`, line, note),
+  );
+};
+const tick = (seconds = 60, what = `仮想時計を${seconds}秒進める`, note?: string) =>
+  run(what, `sim monitoring clock advance --seconds=${seconds}`, note);
+const vm = (what = "監視対象のVM observe-vmを作る") =>
+  run(what, `gcloud compute instances create observe-vm --zone=${z}`);
 const point = (
+  what: string,
   value = 0.9,
   type = ObserveCpuMetric,
   resource = "observe-vm",
   resourceType = "gce_instance",
   project: string = p,
 ) =>
-  `sim monitoring time-series write --metric=${type} --resource=${resource} --resource-type=${resourceType} --value=${value} --project=${project}`;
-const evaluate = (policy: string) => `sim monitoring policies evaluate ${policy}`;
+  run(
+    what,
+    `sim monitoring time-series write --metric=${type} --resource=${resource} --resource-type=${resourceType} --value=${value} --project=${project}`,
+  );
+const evaluate = (policy: string, what: string, note?: string) =>
+  run(what, `sim monitoring policies evaluate ${policy}`, note);
 const account = `observe-agent@${p}.iam.gserviceaccount.com`;
 const writer = [
-  "gcloud iam service-accounts create observe-agent",
-  `gcloud iam service-accounts add-iam-policy-binding ${account} --member=user:${F.owner} --role=roles/iam.serviceAccountUser`,
-  `gcloud projects add-iam-policy-binding ${p} --member=serviceAccount:${account} --role=roles/monitoring.metricWriter`,
-  `gcloud projects add-iam-policy-binding ${p} --member=serviceAccount:${account} --role=roles/logging.logWriter`,
+  run("収集に使うサービスアカウントを作る", "gcloud iam service-accounts create observe-agent"),
+  run(
+    "自分がそのサービスアカウントを使えるようにする",
+    `gcloud iam service-accounts add-iam-policy-binding ${account} --member=user:${F.owner} --role=roles/iam.serviceAccountUser`,
+    "VMやクラスタにサービスアカウントを付けるにはserviceAccountUserが要ります。",
+  ),
+  run(
+    "サービスアカウントに指標の書き込みを許可する",
+    `gcloud projects add-iam-policy-binding ${p} --member=serviceAccount:${account} --role=roles/monitoring.metricWriter`,
+  ),
+  run(
+    "サービスアカウントにログの書き込みを許可する",
+    `gcloud projects add-iam-policy-binding ${p} --member=serviceAccount:${account} --role=roles/logging.logWriter`,
+  ),
 ];
-export const ObservePrelude = [
-  "gcloud services enable monitoring.googleapis.com logging.googleapis.com compute.googleapis.com bigquery.googleapis.com container.googleapis.com",
+const preludeSteps = [
+  run(
+    "Monitoring・Logging・Compute・BigQuery・GKEのAPIを有効にする",
+    "gcloud services enable monitoring.googleapis.com logging.googleapis.com compute.googleapis.com bigquery.googleapis.com container.googleapis.com",
+  ),
 ];
-export const ObserveSolutions = {
+const auditCategories = [
+  ["ADMIN_ACTIVITY", "管理アクティビティ", "_Required"],
+  ["DATA_ACCESS", "データアクセス", "_Default"],
+  ["SYSTEM_EVENT", "システムイベント", "_Required"],
+  ["POLICY_DENIED", "ポリシー拒否", "_Default"],
+] as const;
+const lessonSteps = {
   notification: [
-    vm,
-    "gcloud monitoring channels create --display-name=oncall --type=email --channel-labels=email_address=oncall@example.com",
-    ...ObservePolicyFile("cpu-high", [ObserveThreshold()], "OR", ["oncall"]),
-    point(),
+    vm(),
+    run(
+      "oncall宛てのメール通知チャネルを作る",
+      "gcloud monitoring channels create --display-name=oncall --type=email --channel-labels=email_address=oncall@example.com",
+      "作った直後のチャネルは未検証です。",
+    ),
+    ...policySteps(
+      "CPU 0.8超えが60秒続く条件をcpu-high.jsonに書く",
+      "cpu-high",
+      [ObserveThreshold()],
+      "OR",
+      ["oncall"],
+    ),
+    point("observe-vmにCPU 0.9のサンプルを書く"),
     tick(),
-    point(),
-    evaluate("cpu-high"),
-    "sim monitoring channels verify oncall",
-    evaluate("cpu-high"),
+    point("60秒後もCPU 0.9のサンプルを書く"),
+    evaluate("cpu-high", "cpu-highを評価して未検証のチャネルに通知されないことを確かめる"),
+    run("oncallチャネルを検証済みにする", "sim monitoring channels verify oncall"),
+    evaluate("cpu-high", "cpu-highを再評価してoncallに通知が届くことを確かめる"),
   ],
   missing: [
-    vm,
-    ...ObservePolicyFile("missing-data", [
+    vm(),
+    ...policySteps("欠測を異常として扱う条件をmissing-data.jsonに書く", "missing-data", [
       ObserveThreshold(ObserveCpuMetric, "gce_instance", "ACTIVE"),
     ]),
-    point(0.2),
-    tick(120),
-    evaluate("missing-data"),
+    point("しきい値未満のCPU 0.2を1回だけ書く", 0.2),
+    tick(120, "サンプルが途絶えたまま120秒進める"),
+    evaluate(
+      "missing-data",
+      "missing-dataを評価して欠測で発火することを確かめる",
+      "欠測モードがACTIVEなので、データが無い状態を異常として扱います。",
+    ),
   ],
   absence: [
-    vm,
-    ...ObservePolicyFile("no-samples", [
+    vm(),
+    ...policySteps("サンプルが120秒届かないと発火する条件をno-samples.jsonに書く", "no-samples", [
       { displayName: "absent", conditionAbsent: { filter: filter(), duration: "120s" } },
     ]),
-    point(0.2),
-    tick(120),
-    evaluate("no-samples"),
+    point("observe-vmにサンプルを1回だけ書く", 0.2),
+    tick(120, "サンプルが途絶えたまま120秒進める"),
+    evaluate(
+      "no-samples",
+      "no-samplesを評価してサンプルの消失を検知する",
+      "一度も届いていない系列は発火しません。",
+    ),
   ],
   combiner: [
-    vm,
-    "gcloud compute instances create observe-other --zone=us-central1-a",
-    ...ObservePolicyFile(
+    vm(),
+    run(
+      "比較用のVM observe-otherを作る",
+      "gcloud compute instances create observe-other --zone=us-central1-a",
+    ),
+    ...policySteps(
+      "高負荷と低負荷の2条件をANDで結んでcpu-combined.jsonに書く",
       "cpu-combined",
       [
         ObserveThreshold(),
@@ -106,26 +169,49 @@ export const ObserveSolutions = {
       ],
       "AND",
     ),
-    point(),
-    point(0.2, ObserveCpuMetric, "observe-other"),
+    point("observe-vmにCPU 0.9のサンプルを書く"),
+    point("observe-otherにCPU 0.2のサンプルを書く", 0.2, ObserveCpuMetric, "observe-other"),
     tick(),
-    point(),
-    point(0.2, ObserveCpuMetric, "observe-other"),
-    evaluate("cpu-combined"),
+    point("60秒後もobserve-vmにCPU 0.9のサンプルを書く"),
+    point("60秒後もobserve-otherにCPU 0.2のサンプルを書く", 0.2, ObserveCpuMetric, "observe-other"),
+    evaluate(
+      "cpu-combined",
+      "cpu-combinedを評価して別リソースの条件がANDで成立することを確かめる",
+      "AND_WITH_MATCHING_RESOURCEなら同じリソースで両方の条件が要るため発火しません。",
+    ),
   ],
   scope: [
-    `gcloud services enable monitoring.googleapis.com --project=${F.prodProjectId}`,
-    `sim monitoring metric-descriptors create latency --type=${metric} --resource-type=generic_task --project=${F.prodProjectId}`,
-    ...ObservePolicyFile("latency-high", [ObserveThreshold(metric, "generic_task", "INACTIVE", 5)]),
-    point(10, metric, "api", "generic_task", F.prodProjectId),
+    run(
+      "本番プロジェクトでMonitoring APIを有効にする",
+      `gcloud services enable monitoring.googleapis.com --project=${F.prodProjectId}`,
+    ),
+    run(
+      "本番プロジェクトにlatencyのカスタム指標を定義する",
+      `sim monitoring metric-descriptors create latency --type=${metric} --resource-type=generic_task --project=${F.prodProjectId}`,
+    ),
+    ...policySteps("latencyが5を超える条件をlatency-high.jsonに書く", "latency-high", [
+      ObserveThreshold(metric, "generic_task", "INACTIVE", 5),
+    ]),
+    point("本番側のapiにlatency 10を書く", 10, metric, "api", "generic_task", F.prodProjectId),
     tick(),
-    point(10, metric, "api", "generic_task", F.prodProjectId),
-    `gcloud beta monitoring metrics-scopes create projects/${F.prodProjectId}`,
-    evaluate("latency-high"),
+    point(
+      "60秒後も本番側のapiにlatency 10を書く",
+      10,
+      metric,
+      "api",
+      "generic_task",
+      F.prodProjectId,
+    ),
+    run(
+      "本番プロジェクトを開発側のmetrics scopeに加える",
+      `gcloud beta monitoring metrics-scopes create projects/${F.prodProjectId}`,
+      "データはコピーされず、開発側から本番の指標を参照できるようになります。",
+    ),
+    evaluate("latency-high", "latency-highを評価して本番の値で発火することを確かめる"),
   ],
   promql: [
-    vm,
-    ...ObservePolicyFile("promql-high", [
+    vm(),
+    ...policySteps("CPU 0.8超えを見るPromQL条件をpromql-high.jsonに書く", "promql-high", [
       {
         displayName: "promql",
         conditionPrometheusQueryLanguage: {
@@ -136,65 +222,157 @@ export const ObserveSolutions = {
         },
       },
     ]),
-    point(),
+    point("observe-vmにCPU 0.9のサンプルを書く"),
     tick(),
-    point(),
-    evaluate("promql-high"),
+    point("60秒後もCPU 0.9のサンプルを書く"),
+    evaluate("promql-high", "promql-highを評価して発火することを確かめる"),
   ],
   slo: [
-    "sim monitoring slos create availability --goal=0.99 --rolling-days=1 --model=request",
-    "sim monitoring slos create windows --goal=0.9 --rolling-days=1 --model=windows",
-    "sim monitoring slos record availability --good=98 --total=100",
-    "sim monitoring slos record windows --good=98 --total=100",
+    run(
+      "リクエスト比率で目標0.99のSLOを作る",
+      "sim monitoring slos create availability --goal=0.99 --rolling-days=1 --model=request",
+    ),
+    run(
+      "時間区間の比率で目標0.9のSLOを作る",
+      "sim monitoring slos create windows --goal=0.9 --rolling-days=1 --model=windows",
+    ),
+    run(
+      "availabilityに成功98件・全100件の結果を記録する",
+      "sim monitoring slos record availability --good=98 --total=100",
+    ),
+    run(
+      "windowsに同じ98/100の結果を記録して状態を比べる",
+      "sim monitoring slos record windows --good=98 --total=100",
+    ),
   ],
   agent: [
     ...writer,
-    `gcloud compute instances create observe-vm --zone=${z} --service-account=${account} --scopes=cloud-platform`,
-    `sim monitoring collectors configure agent --kind=ops-agent --resource=observe-vm --location=${z} --service-account=${account}`,
-    "sim monitoring collectors collect agent",
+    run(
+      "observe-agentを付けてVMを作る",
+      `gcloud compute instances create observe-vm --zone=${z} --service-account=${account} --scopes=cloud-platform`,
+      "cloud-platformスコープが無いと、権限があってもAPIへ書き込めません。",
+    ),
+    run(
+      "VMにOps Agentの収集設定をする",
+      `sim monitoring collectors configure agent --kind=ops-agent --resource=observe-vm --location=${z} --service-account=${account}`,
+    ),
+    run("Ops Agentからサンプルを収集する", "sim monitoring collectors collect agent"),
   ],
   prometheus: [
     ...writer,
-    `gcloud container clusters create-auto observe-gke --region=us-central1 --service-account=${account}`,
-    "kubectl create deployment observe-app --image=gcr.io/google-samples/hello-app:1.0 --replicas=1",
-    `sim monitoring collectors configure prometheus --kind=managed-prometheus --resource=observe-gke --location=us-central1 --service-account=${account} --namespace=default --selector=app=observe-app --port=8080`,
-    "sim monitoring collectors collect prometheus",
+    run(
+      "observe-agentをノードのIDにしてAutopilotクラスタを作る",
+      `gcloud container clusters create-auto observe-gke --region=us-central1 --service-account=${account}`,
+    ),
+    run(
+      "収集対象のobserve-appをデプロイする",
+      "kubectl create deployment observe-app --image=gcr.io/google-samples/hello-app:1.0 --replicas=1",
+    ),
+    run(
+      "observe-appの8080番をManaged Prometheusで収集する設定をする",
+      `sim monitoring collectors configure prometheus --kind=managed-prometheus --resource=observe-gke --location=us-central1 --service-account=${account} --namespace=default --selector=app=observe-app --port=8080`,
+      "PodMonitoringに相当する設定で、namespace・ラベル・ポートが一致する必要があります。",
+    ),
+    run("Managed Prometheusからサンプルを収集する", "sim monitoring collectors collect prometheus"),
   ],
   routing: [
-    "gcloud logging buckets create archive --location=us-central1 --retention-days=7 --enable-analytics",
-    `gcloud logging sinks create archive-sink logging.googleapis.com/projects/${p}/locations/us-central1/buckets/archive --log-filter='resource.type="gce_instance"'`,
-    "sim logging exclusions configure skip-data --sink=archive-sink --log-filter='logName:cloudaudit.googleapis.com%2Fdata_access'",
-    "gcloud logging views create compute --bucket=archive --location=us-central1 --log-filter='resource.type=" +
-      '"gce_instance"' +
-      "'",
-    "bq mk observe_logs --dataset --location=us-central1",
-    "sim logging analytics links create linked --bucket=archive --location=us-central1 --dataset=observe_logs",
-    `gcloud logging sinks create bq-sink bigquery.googleapis.com/projects/${p}/datasets/observe_logs --log-filter='severity=NOTICE'`,
-    "sim logging sinks grant-writer bq-sink --location=us-central1",
-    vm,
-    "sim logging sinks export bq-sink --location=us-central1 --table=observe_logs.audit",
+    run(
+      "保持7日でAnalytics有効のログバケットarchiveを作る",
+      "gcloud logging buckets create archive --location=us-central1 --retention-days=7 --enable-analytics",
+    ),
+    run(
+      "VMのログをarchiveへ送るシンクを作る",
+      `gcloud logging sinks create archive-sink logging.googleapis.com/projects/${p}/locations/us-central1/buckets/archive --log-filter='resource.type="gce_instance"'`,
+    ),
+    run(
+      "archive-sinkからData Accessログを除外する",
+      "sim logging exclusions configure skip-data --sink=archive-sink --log-filter='logName:cloudaudit.googleapis.com%2Fdata_access'",
+    ),
+    run(
+      "archiveにVMのログだけを見せるビューを作る",
+      "gcloud logging views create compute --bucket=archive --location=us-central1 --log-filter='resource.type=" +
+        '"gce_instance"' +
+        "'",
+    ),
+    run(
+      "リンク先のBigQueryデータセットを作る",
+      "bq mk observe_logs --dataset --location=us-central1",
+    ),
+    run(
+      "archiveをobserve_logsにリンクする",
+      "sim logging analytics links create linked --bucket=archive --location=us-central1 --dataset=observe_logs",
+      "バケットのログをBigQueryから読めるようになります。",
+    ),
+    run(
+      "NOTICEのログをBigQueryへ送るシンクを作る",
+      `gcloud logging sinks create bq-sink bigquery.googleapis.com/projects/${p}/datasets/observe_logs --log-filter='severity=NOTICE'`,
+    ),
+    run(
+      "bq-sinkの書き込み主体にデータセットへの書き込みを許可する",
+      "sim logging sinks grant-writer bq-sink --location=us-central1",
+    ),
+    vm("新しいVMを作って転送されるログを発生させる"),
+    run(
+      "bq-sinkのログをobserve_logs.auditへ書き出す",
+      "sim logging sinks export bq-sink --location=us-central1 --table=observe_logs.audit",
+    ),
   ],
   audit: [
-    "sim logging audit configure --scope=projects/ace-dev-01 --service=compute.googleapis.com --data-read",
-    ...["ADMIN_ACTIVITY", "DATA_ACCESS", "SYSTEM_EVENT", "POLICY_DENIED"].map(
-      (category) =>
+    run(
+      "ComputeのData Access（読み取り）監査ログを有効にする",
+      "sim logging audit configure --scope=projects/ace-dev-01 --service=compute.googleapis.com --data-read",
+    ),
+    ...auditCategories.map(([category, name, bucket]) =>
+      run(
+        `${name}の監査ログを1件発生させる`,
         `sim logging audit emit --category=${category} --service=compute.googleapis.com`,
+        `${bucket}バケットに保存されます。`,
+      ),
     ),
   ],
   diagnosis: [
-    "gcloud compute networks create observe-net --subnet-mode=custom",
-    "gcloud compute networks subnets create observe-subnet --network=observe-net --region=us-central1 --range=10.61.0.0/24 --enable-flow-logs",
-    ...["client", "server"].map(
-      (name) =>
-        `gcloud compute instances create observe-${name} --zone=${z} --network=observe-net --subnet=observe-subnet --no-address`,
+    run(
+      "カスタムモードのVPC observe-netを作る",
+      "gcloud compute networks create observe-net --subnet-mode=custom",
     ),
-    "gcloud compute firewall-rules create observe-deny --network=observe-net --action=DENY --rules=tcp:80 --priority=500 --source-ranges=10.61.0.0/24 --enable-logging",
-    `sim network connectivity observe-client --zone=${z} --destination=observe-server --port=80`,
-    "gcloud compute firewall-rules create observe-allow --network=observe-net --allow=tcp:80 --priority=100 --source-ranges=10.61.0.0/24 --enable-logging",
-    `sim network connectivity observe-client --zone=${z} --destination=observe-server --port=80`,
+    run(
+      "フローログを有効にしたサブネットを作る",
+      "gcloud compute networks subnets create observe-subnet --network=observe-net --region=us-central1 --range=10.61.0.0/24 --enable-flow-logs",
+    ),
+    ...["client", "server"].map((name) =>
+      run(
+        `外部IPなしのVM observe-${name}を作る`,
+        `gcloud compute instances create observe-${name} --zone=${z} --network=observe-net --subnet=observe-subnet --no-address`,
+      ),
+    ),
+    run(
+      "80番を拒否してログを残すfirewallルールを作る",
+      "gcloud compute firewall-rules create observe-deny --network=observe-net --action=DENY --rules=tcp:80 --priority=500 --source-ranges=10.61.0.0/24 --enable-logging",
+    ),
+    run(
+      "clientからserverの80番へ通信を試す",
+      `sim network connectivity observe-client --zone=${z} --destination=observe-server --port=80`,
+      "拒否され、firewallログに拒否の記録が残ります。",
+    ),
+    run(
+      "優先度100で80番を許可するルールを作る",
+      "gcloud compute firewall-rules create observe-allow --network=observe-net --allow=tcp:80 --priority=100 --source-ranges=10.61.0.0/24 --enable-logging",
+      "priorityの数値が小さいルールが優先されます。",
+    ),
+    run(
+      "通信が復旧したことを確かめる",
+      `sim network connectivity observe-client --zone=${z} --destination=observe-server --port=80`,
+    ),
   ],
-} as const;
-export type ObserveLesson = keyof typeof ObserveSolutions;
+} satisfies Record<string, readonly MissionStep[]>;
+
+/** 全レッスン共通の API 有効化の行（テスト・Storybook で流す）。 */
+export const ObservePrelude = MissionStep.lines(preludeSteps);
+/** 各レッスンの端末の行（テスト・Storybook で流す）。 */
+export const ObserveSolutions = Object.fromEntries(
+  Object.entries(lessonSteps).map(([lesson, steps]) => [lesson, MissionStep.lines(steps)]),
+) as Record<keyof typeof lessonSteps, readonly string[]>;
+export type ObserveLesson = keyof typeof lessonSteps;
 export type ObserveAssertion = Readonly<{ kind: "observationLesson"; lesson: ObserveLesson }>;
 const descriptions: Record<ObserveLesson, readonly [string, string]> = {
   notification: [
@@ -253,7 +431,7 @@ export const ObserveMissions: readonly Mission[] = (
   domain: "運用の維持",
   title: descriptions[lesson][0],
   description: `${descriptions[lesson][1]} すべて教材内の仮想データ。`,
-  hints: [...ObservePrelude, ...ObserveSolutions[lesson]],
+  steps: [...preludeSteps, ...lessonSteps[lesson]],
   setup: [
     { kind: "setPrincipal", principal: F.owner },
     { kind: "setProject", projectId: p },

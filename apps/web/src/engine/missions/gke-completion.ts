@@ -7,6 +7,7 @@ import { KubePod } from "@/engine/domains/kubernetes";
 import { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
@@ -28,22 +29,114 @@ const setup = [
   { kind: "setPrincipal", principal: F.owner },
   { kind: "setProject", projectId: F.devProjectId },
 ] as const;
-const load = "sim files load kubernetes-gke-final";
-const multiHints = (cluster: string) => [
-  `gcloud services enable container.googleapis.com → gcloud container clusters create ${cluster} --zone=us-central1-a → ${load}`,
-  "kubectl apply -f multi-app.json → kubectl apply -f multi-service.json → kubectl get pods。2つのコンテナにreadinessがあり、最初は0/2です。",
-  "sim kubernetes probe multi-app --container=app --status-code=200 → sim kubernetes probe multi-app --container=agent --status-code=200 → kubectl get endpoints multi-app",
-  "kubectl exec deployment/multi-app -c app -- printenv ROLE → kubectl exec deployment/multi-app -c agent -- printenv ROLE。コンテナごとにfrontend / metricsを確認できます。",
+const enable = MissionStep.run(
+  "Kubernetes Engine APIを有効にする",
+  "gcloud services enable container.googleapis.com",
+);
+const load = MissionStep.run("教材のマニフェストを読み込む", "sim files load kubernetes-gke-final");
+const multiSteps = (cluster: string) => [
+  enable,
+  MissionStep.run(
+    `教材用のクラスタ${cluster}を作る`,
+    `gcloud container clusters create ${cluster} --zone=us-central1-a`,
+  ),
+  load,
+  MissionStep.run(
+    "app・agentの2コンテナを持つDeploymentを配置する",
+    "kubectl apply -f multi-app.json",
+  ),
+  MissionStep.run("multi-appの接続先になるServiceを作る", "kubectl apply -f multi-service.json"),
+  MissionStep.run(
+    "Podのコンテナがまだ準備中であることを確かめる",
+    "kubectl get pods",
+    "2つのコンテナにreadinessがあり、最初は0/2です。",
+  ),
+  MissionStep.run(
+    "appコンテナのreadinessを成功させる",
+    "sim kubernetes probe multi-app --container=app --status-code=200",
+  ),
+  MissionStep.run(
+    "agentコンテナのreadinessを成功させる",
+    "sim kubernetes probe multi-app --container=agent --status-code=200",
+  ),
+  MissionStep.run("Serviceの接続先が2つそろったか確かめる", "kubectl get endpoints multi-app"),
+  MissionStep.run(
+    "appコンテナの環境変数ROLEを確かめる",
+    "kubectl exec deployment/multi-app -c app -- printenv ROLE",
+  ),
+  MissionStep.run(
+    "agentコンテナの環境変数ROLEを確かめる",
+    "kubectl exec deployment/multi-app -c agent -- printenv ROLE",
+    "コンテナごとにfrontend / metricsを確認できます。",
+  ),
 ];
-const identityHints = (standard: boolean) => [
-  "gcloud services enable container.googleapis.com iamcredentials.googleapis.com → gcloud iam service-accounts create lesson-reader → gcloud storage buckets create gs://ace-workload-data --location=us-central1",
-  standard
-    ? `gcloud container clusters create identity-standard --zone=us-central1-a → gcloud container clusters update identity-standard --zone=us-central1-a --workload-pool=${F.devProjectId}.svc.id.goog → gcloud container node-pools update default-pool --cluster=identity-standard --zone=us-central1-a --workload-metadata=GKE_METADATA`
-    : "gcloud container clusters create-auto identity-gke --region=us-central1。AutopilotはWorkload Identityが有効です。",
-  `${load} → kubectl apply -f identity-account.json → kubectl apply -f identity-app.json`,
-  `gcloud iam service-accounts add-iam-policy-binding lesson-reader@${F.devProjectId}.iam.gserviceaccount.com --role=roles/iam.workloadIdentityUser --member='serviceAccount:${F.devProjectId}.svc.id.goog[default/bucket-reader]'`,
-  `kubectl annotate serviceaccount bucket-reader iam.gke.io/gcp-service-account=lesson-reader@${F.devProjectId}.iam.gserviceaccount.com → gcloud storage buckets add-iam-policy-binding gs://ace-workload-data --member=serviceAccount:lesson-reader@${F.devProjectId}.iam.gserviceaccount.com --role=roles/storage.objectViewer`,
-  "sim kubernetes check-access identity-app --bucket=ace-workload-data --permission=storage.objects.list → sim kubernetes check-access identity-app --bucket=ace-workload-data --permission=storage.objects.delete。閲覧はALLOW、削除はDENYが目標です。鍵を作る必要はありません。",
+const identitySteps = (standard: boolean) => [
+  MissionStep.run(
+    "GKEとIAM Service Account Credentials APIを有効にする",
+    "gcloud services enable container.googleapis.com iamcredentials.googleapis.com",
+  ),
+  MissionStep.run(
+    "Podが借りるIAMサービスアカウントを作る",
+    "gcloud iam service-accounts create lesson-reader",
+  ),
+  MissionStep.run(
+    "閲覧させるバケットを作る",
+    "gcloud storage buckets create gs://ace-workload-data --location=us-central1",
+  ),
+  ...(standard
+    ? [
+        MissionStep.run(
+          "Standardクラスタを作る",
+          "gcloud container clusters create identity-standard --zone=us-central1-a",
+        ),
+        MissionStep.run(
+          "クラスタにWorkload Identity poolを設定する",
+          `gcloud container clusters update identity-standard --zone=us-central1-a --workload-pool=${F.devProjectId}.svc.id.goog`,
+        ),
+        MissionStep.run(
+          "default-poolのノードでGKEメタデータサーバを使う",
+          "gcloud container node-pools update default-pool --cluster=identity-standard --zone=us-central1-a --workload-metadata=GKE_METADATA",
+          "クラスタのpool設定だけでは、既存のノードプールはGKEメタデータサーバを使いません。",
+        ),
+      ]
+    : [
+        MissionStep.run(
+          "Autopilotクラスタを作る",
+          "gcloud container clusters create-auto identity-gke --region=us-central1",
+          "AutopilotはWorkload Identityが有効です。",
+        ),
+      ]),
+  load,
+  MissionStep.run(
+    "Kubernetesサービスアカウントbucket-readerを作る",
+    "kubectl apply -f identity-account.json",
+  ),
+  MissionStep.run(
+    "bucket-readerで動くidentity-appを配置する",
+    "kubectl apply -f identity-app.json",
+  ),
+  MissionStep.run(
+    "bucket-readerがlesson-readerを借りられるようにする",
+    `gcloud iam service-accounts add-iam-policy-binding lesson-reader@${F.devProjectId}.iam.gserviceaccount.com --role=roles/iam.workloadIdentityUser --member='serviceAccount:${F.devProjectId}.svc.id.goog[default/bucket-reader]'`,
+    "memberは「プロジェクトID.svc.id.goog[namespace/Kubernetesサービスアカウント名]」の形です。",
+  ),
+  MissionStep.run(
+    "bucket-readerに借りるIAMサービスアカウントを書き込む",
+    `kubectl annotate serviceaccount bucket-reader iam.gke.io/gcp-service-account=lesson-reader@${F.devProjectId}.iam.gserviceaccount.com`,
+  ),
+  MissionStep.run(
+    "lesson-readerにバケットの閲覧権限だけを付ける",
+    `gcloud storage buckets add-iam-policy-binding gs://ace-workload-data --member=serviceAccount:lesson-reader@${F.devProjectId}.iam.gserviceaccount.com --role=roles/storage.objectViewer`,
+  ),
+  MissionStep.run(
+    "Podからオブジェクト一覧を取れるか確かめる",
+    "sim kubernetes check-access identity-app --bucket=ace-workload-data --permission=storage.objects.list",
+  ),
+  MissionStep.run(
+    "Podからオブジェクトを削除できないか確かめる",
+    "sim kubernetes check-access identity-app --bucket=ace-workload-data --permission=storage.objects.delete",
+    "閲覧はALLOW、削除はDENYが目標です。鍵を作る必要はありません。",
+  ),
 ];
 
 export const GkeCompletionMissions: readonly Mission[] = [
@@ -54,7 +147,7 @@ export const GkeCompletionMissions: readonly Mission[] = [
     setup,
     description:
       "multi-gkeでmulti-appのapp/agentを個別に確認し、2 Podの両コンテナをReadyにしてください。環境変数はapp=frontend、agent=metricsを維持し、Serviceの2接続先をそろえます。",
-    hints: multiHints("multi-gke"),
+    steps: multiSteps("multi-gke"),
     assertions: [{ kind: "gkeCompletion", lesson: "multiReady" }],
   },
   {
@@ -64,9 +157,19 @@ export const GkeCompletionMissions: readonly Mission[] = [
     setup,
     description:
       "multi-repairでmulti-appを構築します。先頭Podのagentだけをlivenessで1回再起動し、appともう1つのPodの再起動回数を0に保ったまま、全コンテナをReadyへ戻してください。",
-    hints: [
-      ...multiHints("multi-repair"),
-      "kubectl get podsで先頭Pod名を確認 → sim kubernetes probe multi-app --container=agent --kind=liveness --pod=POD_NAME --status-code=500 → sim kubernetes probe multi-app --container=agent --status-code=200。appは再起動せず、agentのreadinessだけ再確認します。",
+    steps: [
+      ...multiSteps("multi-repair"),
+      MissionStep.run("先頭Podの名前を調べる", "kubectl get pods"),
+      MissionStep.run(
+        "先頭Podのagentだけlivenessで再起動させる",
+        "sim kubernetes probe multi-app --container=agent --kind=liveness --pod=POD_NAME --status-code=500",
+        "POD_NAMEには前の手順で調べた先頭Podの名前を入れます。",
+      ),
+      MissionStep.run(
+        "再起動したagentのreadinessを成功させる",
+        "sim kubernetes probe multi-app --container=agent --status-code=200",
+        "appは再起動せず、agentのreadinessだけ再確認します。",
+      ),
     ],
     assertions: [{ kind: "gkeCompletion", lesson: "multiRestart" }],
   },
@@ -77,7 +180,7 @@ export const GkeCompletionMissions: readonly Mission[] = [
     setup,
     description:
       "identity-gkeのidentity-appをbucket-readerで実行し、lesson-readerのIAM連携を設定します。ace-workload-dataの閲覧だけを許可し、作成・削除を拒否してください。サービスアカウントキーを作らずに完了させます。",
-    hints: identityHints(false),
+    steps: identitySteps(false),
     assertions: [{ kind: "gkeCompletion", lesson: "identity" }],
   },
   {
@@ -87,7 +190,7 @@ export const GkeCompletionMissions: readonly Mission[] = [
     setup,
     description:
       "identity-standardでWorkload Identity poolとdefault-poolのGKE_METADATAを有効にします。Kubernetes SAとIAM SAを連携し、identity-appへace-workload-dataの閲覧だけを許可してください。クラスタ設定だけ、annotationだけでは完了しません。",
-    hints: identityHints(true),
+    steps: identitySteps(true),
     assertions: [{ kind: "gkeCompletion", lesson: "metadata" }],
   },
   {
@@ -97,11 +200,35 @@ export const GkeCompletionMissions: readonly Mission[] = [
     setup,
     description:
       "vpa-gkeのrightsize-appを2レプリカで構築します。VPA OffモードでCPU 250m・メモリ100Miの教材使用量を評価し、推奨された300m・120Miをtunerのrequestsへ手動反映してください。VPAの評価だけではPodもレプリカも変わりません。",
-    hints: [
-      "gcloud services enable container.googleapis.com → gcloud container clusters create vpa-gke --zone=us-central1-a --enable-vertical-pod-autoscaling",
-      `${load} → kubectl apply -f rightsize-app.json → kubectl apply -f rightsize-vpa.json`,
-      "sim kubernetes recommend-vpa rightsize --cpu=250m --memory=100Mi → kubectl describe vpa rightsize → kubectl get deployment rightsize-app",
-      "kubectl set resources deployment/rightsize-app --containers=tuner --requests=cpu=300m,memory=120Mi → kubectl get vpa → kubectl get pods。2レプリカを保ち、Offモードの推奨とlive requestsを照合します。",
+    steps: [
+      enable,
+      MissionStep.run(
+        "VPAを有効にしたクラスタを作る",
+        "gcloud container clusters create vpa-gke --zone=us-central1-a --enable-vertical-pod-autoscaling",
+      ),
+      load,
+      MissionStep.run("2レプリカのrightsize-appを配置する", "kubectl apply -f rightsize-app.json"),
+      MissionStep.run("OffモードのVPAを作る", "kubectl apply -f rightsize-vpa.json"),
+      MissionStep.run(
+        "教材用の使用量でVPAの推奨値を出す",
+        "sim kubernetes recommend-vpa rightsize --cpu=250m --memory=100Mi",
+      ),
+      MissionStep.run("VPAの推奨値を確かめる", "kubectl describe vpa rightsize"),
+      MissionStep.run(
+        "Deploymentがまだ変わっていないことを確かめる",
+        "kubectl get deployment rightsize-app",
+        "Offモードは推奨を出すだけで、Podもrequestsも変えません。",
+      ),
+      MissionStep.run(
+        "推奨値をtunerのrequestsへ手で反映する",
+        "kubectl set resources deployment/rightsize-app --containers=tuner --requests=cpu=300m,memory=120Mi",
+      ),
+      MissionStep.run("VPAの推奨を見直す", "kubectl get vpa"),
+      MissionStep.run(
+        "Podのrequestsとレプリカ数を確かめる",
+        "kubectl get pods",
+        "2レプリカを保ち、Offモードの推奨とlive requestsを照合します。",
+      ),
     ],
     assertions: [{ kind: "gkeCompletion", lesson: "vpa" }],
   },
@@ -112,11 +239,36 @@ export const GkeCompletionMissions: readonly Mission[] = [
     setup,
     description:
       "admission-gkeでdefault-appとsmall-appを構築します。明示的なAutopilot教材評価を実行し、未指定のdefault-appは500m/2Gi、small-appの30m/32Miは50m/52Miへ補正してください。small-appのlimitsもrequests以上へそろえます。",
-    hints: [
-      "gcloud services enable container.googleapis.com → gcloud container clusters create-auto admission-gke --region=us-central1",
-      `${load} → kubectl apply -f autopilot-default.json → kubectl apply -f autopilot-small.json`,
-      "sim kubernetes admit-autopilot default-app → sim kubernetes admit-autopilot small-app → kubectl get deployment -o json",
-      "General-purposeのbursting対応プロファイルです。CPU/メモリの比率から不足側も増やします。実際のGKEの自動admission、他ComputeClassや複数コンテナ配分は再現しません。",
+    steps: [
+      enable,
+      MissionStep.run(
+        "Autopilotクラスタを作る",
+        "gcloud container clusters create-auto admission-gke --region=us-central1",
+      ),
+      load,
+      MissionStep.run(
+        "リソース未指定のdefault-appを配置する",
+        "kubectl apply -f autopilot-default.json",
+      ),
+      MissionStep.run(
+        "30m/32Miを指定したsmall-appを配置する",
+        "kubectl apply -f autopilot-small.json",
+      ),
+      MissionStep.run(
+        "default-appにAutopilotの既定値を当てる",
+        "sim kubernetes admit-autopilot default-app",
+        "未指定のrequestsは500m/2Giになります。",
+      ),
+      MissionStep.run(
+        "small-appを最小リソースへ補正する",
+        "sim kubernetes admit-autopilot small-app",
+        "30m/32Miは50m/52Miへ補正され、limitsもrequests以上へそろいます。",
+      ),
+      MissionStep.run("補正後のrequestsとlimitsを確かめる", "kubectl get deployment -o json"),
+      MissionStep.say(
+        "教材評価で再現する範囲を押さえる",
+        "General-purposeのbursting対応プロファイルです。CPU/メモリの比率から不足側も増やします。実際のGKEの自動admission、他ComputeClassや複数コンテナ配分は再現しません。",
+      ),
     ],
     assertions: [{ kind: "gkeCompletion", lesson: "autopilot" }],
   },
@@ -127,11 +279,30 @@ export const GkeCompletionMissions: readonly Mission[] = [
     setup,
     description:
       "regional-gkeをus-central1の3 zone、zoneごとに1ノードで構築します。regional-appを3レプリカで実行し、3つのService接続先を確認してください。制御プレーンのregional設定、worker配置、アプリのレプリカ数は別々の条件です。",
-    hints: [
-      "gcloud services enable container.googleapis.com → gcloud container clusters create regional-gke --region=us-central1 --num-nodes=1 --node-locations=us-central1-a,us-central1-b,us-central1-c",
-      `${load} → kubectl apply -f regional-app.json → kubectl apply -f regional-service.json`,
-      "gcloud container clusters describe regional-gke --region=us-central1 → kubectl get nodes -o json → kubectl get deployments → kubectl get endpoints regional-app",
-      "総ノード数は1×3=3です。実際のzone障害、Pod配置・再配置・可用性保証は再現せず、教材上の構成とReadyな接続先を確認します。",
+    steps: [
+      enable,
+      MissionStep.run(
+        "3 zoneに1ノードずつ置くregionalクラスタを作る",
+        "gcloud container clusters create regional-gke --region=us-central1 --num-nodes=1 --node-locations=us-central1-a,us-central1-b,us-central1-c",
+        "--num-nodesはzoneごとの数です。",
+      ),
+      load,
+      MissionStep.run("3レプリカのregional-appを配置する", "kubectl apply -f regional-app.json"),
+      MissionStep.run("regional-appのServiceを作る", "kubectl apply -f regional-service.json"),
+      MissionStep.run(
+        "制御プレーンの場所とノード配置を確かめる",
+        "gcloud container clusters describe regional-gke --region=us-central1",
+      ),
+      MissionStep.run("ノードが3 zoneに分かれたか確かめる", "kubectl get nodes -o json"),
+      MissionStep.run("アプリのレプリカ数を確かめる", "kubectl get deployments"),
+      MissionStep.run(
+        "Serviceの接続先が3つそろったか確かめる",
+        "kubectl get endpoints regional-app",
+      ),
+      MissionStep.say(
+        "教材で確かめる範囲を押さえる",
+        "総ノード数は1×3=3です。実際のzone障害、Pod配置・再配置・可用性保証は再現せず、教材上の構成とReadyな接続先を確認します。",
+      ),
     ],
     assertions: [{ kind: "gkeCompletion", lesson: "regional" }],
   },
@@ -142,11 +313,34 @@ export const GkeCompletionMissions: readonly Mission[] = [
     setup,
     description:
       "vpa-initialでrightsize-appを2レプリカで構築し、VPA Initialの推奨値300m/120Miを評価します。3レプリカへ増やし、元の2 Podは1 CPU/512Mi、新しいPodだけ300m/120Miになったことを確認してください。Deploymentのテンプレートは維持します。",
-    hints: [
-      "gcloud services enable container.googleapis.com → gcloud container clusters create vpa-initial --zone=us-central1-a --enable-vertical-pod-autoscaling",
-      `${load} → kubectl apply -f rightsize-app.json → kubectl apply -f rightsize-initial.json`,
-      "sim kubernetes recommend-vpa rightsize --cpu=250m --memory=100Mi → kubectl get pods -o json。既存Podのrequestsは変わりません。",
-      "kubectl scale deployment/rightsize-app --replicas=3 → kubectl get pods -o json → kubectl get deployment rightsize-app -o json。新規Podへのadmissionとテンプレートを照合します。",
+    steps: [
+      enable,
+      MissionStep.run(
+        "VPAを有効にしたクラスタを作る",
+        "gcloud container clusters create vpa-initial --zone=us-central1-a --enable-vertical-pod-autoscaling",
+      ),
+      load,
+      MissionStep.run("2レプリカのrightsize-appを配置する", "kubectl apply -f rightsize-app.json"),
+      MissionStep.run("InitialモードのVPAを作る", "kubectl apply -f rightsize-initial.json"),
+      MissionStep.run(
+        "教材用の使用量でVPAの推奨値を出す",
+        "sim kubernetes recommend-vpa rightsize --cpu=250m --memory=100Mi",
+      ),
+      MissionStep.run(
+        "既存Podのrequestsが変わらないことを確かめる",
+        "kubectl get pods -o json",
+        "既存Podのrequestsは変わりません。",
+      ),
+      MissionStep.run(
+        "3レプリカへ増やして新しいPodを作る",
+        "kubectl scale deployment/rightsize-app --replicas=3",
+      ),
+      MissionStep.run("新しいPodだけに推奨値が入ったか確かめる", "kubectl get pods -o json"),
+      MissionStep.run(
+        "Deploymentのテンプレートが元のままか確かめる",
+        "kubectl get deployment rightsize-app -o json",
+        "新規Podへのadmissionとテンプレートを照合します。",
+      ),
     ],
     assertions: [{ kind: "gkeCompletion", lesson: "vpaInitial" }],
   },
@@ -157,11 +351,29 @@ export const GkeCompletionMissions: readonly Mission[] = [
     setup,
     description:
       "vpa-recreateでrightsize-appを2レプリカで構築し、VPA Recreateの推奨値300m/120Miを評価します。2 Podを再作成して推奨値を適用し、レプリカ数とDeploymentの1 CPU/512Miのテンプレートを維持してください。",
-    hints: [
-      "gcloud services enable container.googleapis.com → gcloud container clusters create vpa-recreate --zone=us-central1-a --enable-vertical-pod-autoscaling",
-      `${load} → kubectl apply -f rightsize-app.json → kubectl apply -f rightsize-recreate.json → kubectl get pods`,
-      "sim kubernetes recommend-vpa rightsize --cpu=250m --memory=100Mi → kubectl get pods -o json → kubectl get deployment rightsize-app -o json",
-      "明示評価でPod名が変わり、全Podのrequestsは300m/120Miになります。水平スケールやテンプレートのrolloutではありません。",
+    steps: [
+      enable,
+      MissionStep.run(
+        "VPAを有効にしたクラスタを作る",
+        "gcloud container clusters create vpa-recreate --zone=us-central1-a --enable-vertical-pod-autoscaling",
+      ),
+      load,
+      MissionStep.run("2レプリカのrightsize-appを配置する", "kubectl apply -f rightsize-app.json"),
+      MissionStep.run("RecreateモードのVPAを作る", "kubectl apply -f rightsize-recreate.json"),
+      MissionStep.run("作り直す前のPod名を控える", "kubectl get pods"),
+      MissionStep.run(
+        "推奨値を出してPodを作り直させる",
+        "sim kubernetes recommend-vpa rightsize --cpu=250m --memory=100Mi",
+      ),
+      MissionStep.run("Pod名とrequestsが変わったか確かめる", "kubectl get pods -o json"),
+      MissionStep.run(
+        "Deploymentのテンプレートが元のままか確かめる",
+        "kubectl get deployment rightsize-app -o json",
+      ),
+      MissionStep.say(
+        "Recreateで起きることを押さえる",
+        "明示評価でPod名が変わり、全Podのrequestsは300m/120Miになります。水平スケールやテンプレートのrolloutではありません。",
+      ),
     ],
     assertions: [{ kind: "gkeCompletion", lesson: "vpaRecreate" }],
   },

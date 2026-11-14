@@ -1,6 +1,7 @@
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
 import { Option } from "@/utils/Option";
 
 export type KubeHpaAssertion = Readonly<{ kind: "kubeHpaScaled" }>;
@@ -15,12 +16,51 @@ export const KubeHpaMissions: readonly Mission[] = [
     ],
     description:
       "hpa-gkeにhpa-webを2レプリカで作り、CPU requestを250mに設定します。HPAの範囲を1〜5、目標をrequestの50%とし、1 Podあたり250mの教材用使用量で評価して4レプリカへ増やしてください。CPU使用率の分母はlimitではなくrequestです。",
-    hints: [
-      "gcloud services enable container.googleapis.com → gcloud container clusters create-auto hpa-gke --region=us-central1 → kubectl create deployment hpa-web --image=nginx:1 --replicas=2",
-      "kubectl autoscale deployment/hpa-web --min=1 --max=5 --cpu-percent=50 → sim kubernetes reconcile hpa-web --cpu=250m。requestがないのでMissingCpuRequestになり、レプリカ数は変わりません。",
-      "kubectl set resources deployment/hpa-web --requests=cpu=250m → kubectl get hpa。設定変更だけでは教材評価を再実行しません。",
-      "sim kubernetes reconcile hpa-web --cpu=250m → kubectl get deployment hpa-web → kubectl describe hpa hpa-web。CPU使用率は250m/250m=100%、必要数はceil(2×100/50)=4です。",
-      "クリア後はsim kubernetes reconcile hpa-web --cpu=10mで最小数への縮小も試せます。毎回、評価前の全Podに同じ使用量を与えます。実測・定期実行・スケール速度制限・縮小の安定化待機は再現しません。",
+    steps: [
+      MissionStep.run(
+        "Kubernetes Engine APIを有効にする",
+        "gcloud services enable container.googleapis.com",
+      ),
+      MissionStep.run(
+        "Autopilotクラスタを作る",
+        "gcloud container clusters create-auto hpa-gke --region=us-central1",
+      ),
+      MissionStep.run(
+        "2レプリカのhpa-webを作る",
+        "kubectl create deployment hpa-web --image=nginx:1 --replicas=2",
+      ),
+      MissionStep.run(
+        "1〜5レプリカ・CPU目標50%のHPAを作る",
+        "kubectl autoscale deployment/hpa-web --min=1 --max=5 --cpu-percent=50",
+      ),
+      MissionStep.run(
+        "CPU requestが無いまま評価する",
+        "sim kubernetes reconcile hpa-web --cpu=250m",
+        "requestがないのでMissingCpuRequestになり、レプリカ数は変わりません。",
+      ),
+      MissionStep.run(
+        "CPU requestを250mに設定する",
+        "kubectl set resources deployment/hpa-web --requests=cpu=250m",
+      ),
+      MissionStep.run(
+        "HPAの状態を確かめる",
+        "kubectl get hpa",
+        "設定変更だけでは教材評価を再実行しません。",
+      ),
+      MissionStep.run(
+        "1 Podあたり250mの使用量で再評価する",
+        "sim kubernetes reconcile hpa-web --cpu=250m",
+      ),
+      MissionStep.run("4レプリカへ増えたか確かめる", "kubectl get deployment hpa-web"),
+      MissionStep.run(
+        "HPAの評価結果を確かめる",
+        "kubectl describe hpa hpa-web",
+        "CPU使用率は250m/250m=100%、必要数はceil(2×100/50)=4です。",
+      ),
+      MissionStep.say(
+        "クリア後に最小数への縮小も試す",
+        "クリア後はsim kubernetes reconcile hpa-web --cpu=10mで最小数への縮小も試せます。毎回、評価前の全Podに同じ使用量を与えます。実測・定期実行・スケール速度制限・縮小の安定化待機は再現しません。",
+      ),
     ],
     assertions: [{ kind: "kubeHpaScaled" }],
   },

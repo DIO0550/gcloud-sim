@@ -5,14 +5,22 @@ import { Now, run, type Session, session } from "@/engine/__tests__/fixture-setu
 import { SchemaVersion, Snapshot } from "@/engine/__tests__/fixture-snapshot";
 import { CommandRegistry } from "@/engine/cli/registry";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
-import { AiMissions, aceSatisfied, aiSolutions } from "@/engine/missions/ace-support";
+import {
+  type AiLesson,
+  AiMissions,
+  aceSatisfied,
+  aiSolutions,
+} from "@/engine/missions/ace-support";
+import { MissionStep } from "@/engine/missions/mission-step";
+
+const aiLines = (kind: AiLesson): readonly string[] => MissionStep.lines(aiSolutions(kind));
 
 const deny = (s: Session, line: string, reason = "ERROR:") => {
   const next = run(s, line);
   expect(next.text, line).toContain(reason);
   expect(next.world).toEqual(s.world);
 };
-const configured = () => run(session(), ...aiSolutions("notebook").slice(0, 7));
+const configured = () => run(session(), ...aiLines("notebook").slice(0, 7));
 const target = "ace-notebook --region=us-central1";
 const satisfied = (s: Session) => aceSatisfied(s.world, { kind: "aiLesson", lesson: "notebook" });
 const execute = (s: Session, ...lines: readonly string[]) =>
@@ -30,7 +38,7 @@ const roundtrip = (s: Session) => {
   return session(imported.value);
 };
 test("unsupported fields, wrong kind/region/project/SA, API and idle setting are rejected atomically", () => {
-  const steps = aiSolutions("notebook");
+  const steps = aiLines("notebook");
   const ready = run(session(), ...steps.slice(0, 6));
   const create = steps[6] as string;
   for (const line of [
@@ -91,7 +99,7 @@ test("unknown choices, empty explanations and actual AI execution are rejected; 
   expect(other.world).toEqual(s.world);
 });
 test("v42 keeps progress; malformed references, lifecycle and settings cannot be imported as a solution", () => {
-  const completed = run(session(), ...aiSolutions("notebook"));
+  const completed = run(session(), ...aiLines("notebook"));
   const a = AiMissions[1]?.assertions[0];
   if (a?.kind !== "aiLesson") {
     throw new Error("Missing AI mission");
@@ -151,7 +159,7 @@ test("new paths, flags, scenario names and choices are discoverable", () => {
 });
 
 test("completion requires public start/stop followed by private update/restart, including saved history", () => {
-  const steps = aiSolutions("notebook");
+  const steps = aiLines("notebook");
   const wrongOrder = execute(
     configured(),
     steps[9] as string,
@@ -180,7 +188,7 @@ test("completion requires public start/stop followed by private update/restart, 
 });
 
 test("runtime SA must have only Storage read permissions, including inherited and custom roles", () => {
-  const completed = execute(session(), ...aiSolutions("notebook"));
+  const completed = execute(session(), ...aiLines("notebook"));
   expect(satisfied(completed)).toBe(true);
   const member = "serviceAccount:ace-notebook@ace-dev-01.iam.gserviceaccount.com";
   for (const role of ["roles/storage.admin", "roles/storage.objectAdmin", "roles/owner"]) {
@@ -237,7 +245,7 @@ test("Terraform cannot destroy a referenced subnet, but cleanup succeeds after A
 });
 
 test("Terraform auto-mode VPC deletion also protects the AI's automatically created subnet", () => {
-  const steps = aiSolutions("notebook");
+  const steps = aiLines("notebook");
   const ready = execute(
     session(),
     steps[0] as string,
@@ -265,12 +273,12 @@ test("Terraform auto-mode VPC deletion also protects the AI's automatically crea
 test("AI resource creation respects the inherited resource location organization policy", () => {
   const ready = execute(
     session(),
-    ...aiSolutions("notebook").slice(0, 6),
+    ...aiLines("notebook").slice(0, 6),
     "gcloud services enable orgpolicy.googleapis.com",
     `sim files write policy.json --content='${JSON.stringify({ name: `organizations/${F.organizationId}/policies/gcp.resourceLocations`, spec: { rules: [{ values: { deniedValues: ["is:us-central1"] } }] } })}'`,
     "gcloud org-policies set-policy policy.json",
   );
-  deny(ready, aiSolutions("notebook")[6] as string, "gcp.resourceLocations");
+  deny(ready, aiLines("notebook")[6] as string, "gcp.resourceLocations");
   roundtrip(ready);
 });
 

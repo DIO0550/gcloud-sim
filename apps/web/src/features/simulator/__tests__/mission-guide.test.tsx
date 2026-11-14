@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { expect, test } from "vitest";
 import { Engine } from "@/engine";
 import { MissionGuides } from "@/engine/missions/learning-guides";
+import { MissionStep } from "@/engine/missions/mission-step";
 import { MissionGuideView } from "@/features/simulator/components/MissionGuideView";
 import { MissionPanel } from "@/features/simulator/components/MissionPanel";
 import { Option } from "@/utils/Option";
@@ -15,7 +16,7 @@ const guide = (id: string) => {
 };
 
 test("設定の作成、値の指定、結果確認を理由と構文説明とともに順番に表示する", () => {
-  render(<MissionGuideView guide={guide("m-setup-002")} />);
+  render(<MissionGuideView guide={guide("m-setup-002")} onInsert={() => {}} />);
   expect(screen.getAllByRole("heading", { level: 6 }).map((h) => h.textContent)).toEqual([
     "1. 本番用の設定を作成する",
     "2. プロジェクトとゾーンを設定する",
@@ -34,7 +35,7 @@ test("設定の作成、値の指定、結果確認を理由と構文説明と�
 });
 
 test("ファイル変更は変更前と変更後を分け、エラー観察は意図を明示する", () => {
-  render(<MissionGuideView guide={guide("m-gke-018")} />);
+  render(<MissionGuideView guide={guide("m-gke-018")} onInsert={() => {}} />);
   expect(screen.getAllByText("変更前")).toHaveLength(2);
   expect(screen.getAllByText("変更後")).toHaveLength(2);
   expect(screen.getAllByText("エラーを観察する操作")).toHaveLength(2);
@@ -42,7 +43,7 @@ test("ファイル変更は変更前と変更後を分け、エラー観察は�
   expect(screen.getByText("kubectl rollout restart deployment/frozen-web")).toBeInTheDocument();
 });
 
-test("ミッション画面はヒント文字列を貼り直さず、専用の学習手順を表示する", () => {
+test("学習手順があるミッションは、簡易の手順カードではなく専用の学習手順を表示する", () => {
   const original = Engine.missions().find((m) => m.id === "m-setup-002");
   if (!original) {
     throw new Error("対象ミッションがありません");
@@ -50,14 +51,15 @@ test("ミッション画面はヒント文字列を貼り直さず、専用の�
   render(
     <MissionPanel
       world={Engine.initialWorld("2026-10-18T00:00:00Z")}
-      missions={[{ ...original, hints: ["古いヒント本文"] }]}
+      missions={[{ ...original, steps: [MissionStep.say("簡易の手順本文")] }]}
       selectedId={Option.some(original.id)}
       onSelect={() => {}}
       onStart={() => {}}
       onAbandon={() => {}}
+      onInsert={() => {}}
     />,
   );
-  expect(screen.queryByText("古いヒント本文")).not.toBeInTheDocument();
+  expect(screen.queryByText("簡易の手順本文")).not.toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "1. 本番用の設定を作成する" })).toBeInTheDocument();
   expect(screen.getByText("この演習で押さえること")).toBeInTheDocument();
 });

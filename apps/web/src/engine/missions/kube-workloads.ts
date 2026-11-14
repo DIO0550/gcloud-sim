@@ -5,6 +5,7 @@ import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
 import { Result } from "@/utils/Result";
 
 export type KubeWorkloadAssertion = Readonly<{ kind: "kubeWorkloadApplied" }>;
@@ -19,12 +20,53 @@ export const KubeWorkloadMissions: readonly Mission[] = [
     ],
     description:
       "manifest-gkeに教材のDeploymentとServiceをapplyします。nginx:1からnginx:2へ更新し、Serviceの間違ったselectorを直してください。2つのPodが接続先に表示され、編集したファイルとクラスタの状態が一致すれば達成です。",
-    hints: [
-      "gcloud services enable container.googleapis.com → gcloud container clusters create-auto manifest-gke --region=us-central1 → sim files load kubernetes-workload。既存ファイルの上書きは --force を明示します。",
-      "sim files read web-deployment.yaml → sim files read web-service.yaml → kubectl apply -f web-deployment.yaml → kubectl apply -f web-service.yaml",
-      "kubectl get pods → kubectl describe service manifest-svc。Podは起動していてもselectorがwrong-appのためendpointsは<none>です。",
-      "sim files replace web-deployment.yaml --search=nginx:1 --replacement=nginx:2 → kubectl apply -f web-deployment.yaml → kubectl rollout history deployment/manifest-web",
-      "sim files replace web-service.yaml --search=wrong-app --replacement=manifest-web → kubectl apply -f web-service.yaml → kubectl describe service manifest-svc → kubectl rollout status deployment/manifest-web。ServiceのIPを保ったまま接続先が2つになります。",
+    steps: [
+      MissionStep.run("GKEのAPIを有効にする", "gcloud services enable container.googleapis.com"),
+      MissionStep.run(
+        "Autopilotクラスタmanifest-gkeを作る",
+        "gcloud container clusters create-auto manifest-gke --region=us-central1",
+      ),
+      MissionStep.run(
+        "教材のマニフェストを用意する",
+        "sim files load kubernetes-workload",
+        "既存ファイルの上書きは --force を明示します。",
+      ),
+      MissionStep.run(
+        "Deploymentのイメージとレプリカ数を確かめる",
+        "sim files read web-deployment.yaml",
+      ),
+      MissionStep.run("Serviceのselectorを確かめる", "sim files read web-service.yaml"),
+      MissionStep.run("Deployment manifest-webを作る", "kubectl apply -f web-deployment.yaml"),
+      MissionStep.run("Service manifest-svcを作る", "kubectl apply -f web-service.yaml"),
+      MissionStep.run("Podが起動しているか確かめる", "kubectl get pods"),
+      MissionStep.run(
+        "Serviceに接続先が無い原因を調べる",
+        "kubectl describe service manifest-svc",
+        "Podは起動していてもselectorがwrong-appのためendpointsは<none>です。",
+      ),
+      MissionStep.run(
+        "イメージをnginx:2に書き換える",
+        "sim files replace web-deployment.yaml --search=nginx:1 --replacement=nginx:2",
+      ),
+      MissionStep.run("書き換えたDeploymentを適用する", "kubectl apply -f web-deployment.yaml"),
+      MissionStep.run(
+        "更新がrevisionとして残ったか確かめる",
+        "kubectl rollout history deployment/manifest-web",
+      ),
+      MissionStep.run(
+        "Serviceのselectorをmanifest-webに直す",
+        "sim files replace web-service.yaml --search=wrong-app --replacement=manifest-web",
+      ),
+      MissionStep.run("直したServiceを適用する", "kubectl apply -f web-service.yaml"),
+      MissionStep.run(
+        "接続先が2つになったか確かめる",
+        "kubectl describe service manifest-svc",
+        "ServiceのIPを保ったまま接続先が2つになります。",
+      ),
+      MissionStep.run(
+        "nginx:2への更新完了を確かめる",
+        "kubectl rollout status deployment/manifest-web",
+      ),
     ],
     assertions: [{ kind: "kubeWorkloadApplied" }],
   },

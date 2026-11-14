@@ -4,11 +4,14 @@ import { NavItemButton } from "@/components/NavItemButton";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SectionHeading } from "@/components/SectionHeading";
+import { TextButton } from "@/components/TextButton";
 import { type MissionStatus, MissionStatuses } from "@/engine/domains/mission-progress";
 import { World } from "@/engine/domains/world";
 import { Mission, MissionDomains } from "@/engine/missions";
+import { isConsoleMission } from "@/engine/missions/console";
 import { ExamSections, examSectionOf } from "@/engine/missions/exam-sections";
 import { MissionGuides } from "@/engine/missions/learning-guides";
+import type { MissionStep, StepDetail } from "@/engine/missions/mission-step";
 import { MissionGuideView } from "@/features/simulator/components/MissionGuideView";
 import { Option } from "@/utils/Option";
 
@@ -19,7 +22,14 @@ type MissionPanelProps = Readonly<{
   onSelect: (id: string) => void;
   onStart: (id: string) => void;
   onAbandon: (id: string) => void;
+  /** 手順のコマンドを端末の入力行へ入れる */
+  onInsert: (line: string) => void;
+  /** 最初に絞り込む操作の種類（Console 表示では Console の演習から見せる） */
+  initialVia?: ViaFilter;
 }>;
+
+/** 演習を進める画面での絞り込み。 */
+export type ViaFilter = "all" | "cli" | "console";
 
 const StatusBadge = ({ status }: Readonly<{ status: MissionStatus }>): ReactElement => {
   switch (status) {
@@ -227,18 +237,104 @@ const assertionLabel = (assertion: Mission["assertions"][number]): string => {
   }
 };
 
+/** JSON なら字下げして読みやすくする。それ以外はそのまま。 */
+const prettyContent = (content: string): string => {
+  try {
+    return JSON.stringify(JSON.parse(content), null, 2);
+  } catch {
+    return content;
+  }
+};
+
+const StepDetailView = ({
+  detail,
+  onInsert,
+}: Readonly<{ detail: StepDetail; onInsert: (line: string) => void }>): ReactElement => {
+  switch (detail.kind) {
+    case "cli":
+      return (
+        <div className="border-line border-t bg-code px-3 pt-1.5 pb-2.5">
+          <div className="mb-1 flex items-center justify-between gap-2 text-muted text-xs">
+            <span>ターミナルで実行</span>
+            <TextButton
+              className="text-xs"
+              ariaLabel={`${detail.line} を入力行に入れる`}
+              onClick={() => onInsert(detail.line)}
+            >
+              入力行に入れる
+            </TextButton>
+          </div>
+          <code className="block whitespace-pre-wrap break-words font-mono text-[13px] text-ink leading-relaxed">
+            {detail.line}
+          </code>
+        </div>
+      );
+    case "file":
+      return (
+        <div className="border-line border-t bg-code px-3 pt-1.5 pb-2.5">
+          <p className="mb-1 text-muted text-xs">
+            ファイル画面で「<span className="font-mono">{detail.name}</span>」に保存する内容
+          </p>
+          <pre className="whitespace-pre-wrap break-words font-mono text-[13px] text-ink leading-relaxed">
+            {prettyContent(detail.content)}
+          </pre>
+        </div>
+      );
+    case "action":
+      return (
+        <p className="border-line border-t bg-code px-3 py-2 text-ink">
+          <span className="mr-2 text-muted text-xs">操作</span>
+          {detail.text}
+        </p>
+      );
+  }
+};
+
+/** 手順の 1 ステップ: 番号と「何をするか」、打つもの（画面の操作）、補足。 */
+const StepCard = ({
+  step,
+  index,
+  onInsert,
+}: Readonly<{
+  step: MissionStep;
+  index: number;
+  onInsert: (line: string) => void;
+}>): ReactElement => (
+  <li className="overflow-hidden rounded-lg border border-line bg-surface">
+    <p className="flex items-start gap-2.5 px-3 py-2">
+      <span
+        aria-hidden="true"
+        className="mt-0.5 flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-accent-soft px-1 font-semibold text-accent text-xs"
+      >
+        {index + 1}
+      </span>
+      <span className="font-semibold">{step.what}</span>
+    </p>
+    {Option.isSome(step.detail) && (
+      <StepDetailView detail={step.detail.value} onInsert={onInsert} />
+    )}
+    {Option.isSome(step.note) && (
+      <p className="border-line border-t px-3 py-2 text-muted text-xs leading-relaxed">
+        {step.note.value}
+      </p>
+    )}
+  </li>
+);
+
 const MissionBrief = ({
   world,
   mission,
   onStart,
   onAbandon,
+  onInsert,
 }: Readonly<
-  { world: World; mission: Mission } & Pick<MissionPanelProps, "onStart" | "onAbandon">
+  { world: World; mission: Mission } & Pick<MissionPanelProps, "onStart" | "onAbandon" | "onInsert">
 >): ReactElement => {
   const progress = World.findMissionProgress(world, mission.id);
   const status = Option.isSome(progress) ? progress.value.status : MissionStatuses.Available;
   const results = Mission.assertionResults(world, mission);
   const guide = MissionGuides.find(mission.id);
+  const viaConsole = isConsoleMission(mission);
   return (
     <section aria-label={mission.title} className="border-line border-t p-4">
       <div className="mb-2 flex items-center gap-2">
@@ -259,9 +355,28 @@ const MissionBrief = ({
       </ul>
       <h5 className="mb-2 font-semibold">実行手順</h5>
       <p className="mb-3 text-sm text-muted">
-        「開始」を押して演習を準備したら、各段階の目的を読み、操作後の結果を確認しながら進めます。
+        {guide
+          ? "「開始」を押して演習を準備したら、各段階の目的を読み、操作後の結果を確認しながら進めます。"
+          : viaConsole
+            ? "開始すると演習の初期状態が用意されます。Console の画面で、上から順に操作してください。"
+            : "開始すると演習の初期状態が用意されます。各手順の目的を確かめてから、上から順に実行してください。"}
       </p>
-      <div className="mb-4">{guide && <MissionGuideView guide={guide} />}</div>
+      {guide ? (
+        <div className="mb-4">
+          <MissionGuideView guide={guide} onInsert={onInsert} />
+        </div>
+      ) : (
+        <ol aria-label="実行手順" className="mb-4 space-y-2.5 text-sm leading-relaxed">
+          {mission.steps.map((step, index) => (
+            <StepCard
+              key={`${index.toString()}-${step.what}`}
+              step={step}
+              index={index}
+              onInsert={onInsert}
+            />
+          ))}
+        </ol>
+      )}
       <div className="flex flex-wrap gap-2">
         {status !== MissionStatuses.InProgress && (
           <PrimaryButton onClick={() => onStart(mission.id)}>
@@ -284,29 +399,50 @@ export const MissionPanel = ({
   onSelect,
   onStart,
   onAbandon,
+  onInsert,
+  initialVia,
 }: MissionPanelProps): ReactElement => {
   const [classification, setClassification] = useState<"exam" | "practice">("exam");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [via, setVia] = useState<ViaFilter>(initialVia ?? "all");
   const categoryOf = (mission: Mission): string =>
     classification === "exam" ? examSectionOf(mission) : mission.domain;
   const categories =
     classification === "exam" ? Object.values(ExamSections) : Object.values(MissionDomains);
+  const shown = missions.filter(
+    (m) => via === "all" || (via === "console") === isConsoleMission(m),
+  );
   const classificationSelector = (
-    <label className="mb-3 block text-sm">
-      分類
-      <select
-        aria-label="ミッション分類"
-        className="ml-2 rounded border border-line bg-surface p-2"
-        value={classification}
-        onChange={(event) => {
-          setClassification(event.target.value as "exam" | "practice");
-          setView({ kind: "categories" });
-        }}
-      >
-        <option value="exam">添付試験ガイドの4セクション</option>
-        <option value="practice">学習分野の5カテゴリ</option>
-      </select>
-    </label>
+    <div className="mb-3 flex flex-wrap gap-x-4 gap-y-2 text-sm">
+      <label className="block">
+        分類
+        <select
+          aria-label="ミッション分類"
+          className="ml-2 rounded border border-line bg-surface p-2"
+          value={classification}
+          onChange={(event) => {
+            setClassification(event.target.value as "exam" | "practice");
+            setView({ kind: "categories" });
+          }}
+        >
+          <option value="exam">添付試験ガイドの4セクション</option>
+          <option value="practice">学習分野の5カテゴリ</option>
+        </select>
+      </label>
+      <label className="block">
+        操作
+        <select
+          aria-label="ミッションの操作"
+          className="ml-2 rounded border border-line bg-surface p-2"
+          value={via}
+          onChange={(event) => setVia(event.target.value as ViaFilter)}
+        >
+          <option value="all">すべて</option>
+          <option value="cli">ターミナル（CLI）</option>
+          <option value="console">Console の画面</option>
+        </select>
+      </label>
+    </div>
   );
   const [view, setView] = useState<
     { kind: "categories" } | { kind: "list"; domain: string } | { kind: "detail" }
@@ -331,7 +467,13 @@ export const MissionPanel = ({
           </SecondaryButton>
         </nav>
         <p className="px-4 text-sm text-muted">{categoryOf(selected)}</p>
-        <MissionBrief world={world} mission={selected} onStart={onStart} onAbandon={onAbandon} />
+        <MissionBrief
+          world={world}
+          mission={selected}
+          onStart={onStart}
+          onAbandon={onAbandon}
+          onInsert={onInsert}
+        />
       </div>
     );
   if (view.kind === "list")
@@ -359,7 +501,7 @@ export const MissionPanel = ({
           ミッションを1つ選ぶと、達成条件と手順を確認できます。
         </p>
         <ul className="space-y-2">
-          {missions
+          {shown
             .filter((m) => categoryOf(m) === view.domain)
             .filter((m) => statusFilter === "all" || statusOf(m.id) === statusFilter)
             .map((mission) => (
@@ -373,6 +515,11 @@ export const MissionPanel = ({
                   }}
                 >
                   <span className="min-w-0 flex-1 text-left">{mission.title}</span>
+                  {isConsoleMission(mission) && (
+                    <Badge className="shrink-0 whitespace-nowrap" tone="muted">
+                      Console
+                    </Badge>
+                  )}
                   <StatusBadge status={statusOf(mission.id)} />
                 </NavItemButton>
               </li>
@@ -387,7 +534,7 @@ export const MissionPanel = ({
       <p className="mb-3 text-sm text-muted">学習したい分野から、ミッションを選んで進めます。</p>
       <ul className="space-y-2">
         {categories.map((domain) => {
-          const items = missions.filter((m) => categoryOf(m) === domain);
+          const items = shown.filter((m) => categoryOf(m) === domain);
           if (!items.length) return null;
           const completed = items.filter(
             (m) => statusOf(m.id) === MissionStatuses.Completed,

@@ -4,10 +4,12 @@ import { Engine, Shell, type ShellState } from "@/engine";
 import { Now } from "@/engine/__tests__/fixture-setup";
 import { ConfigurationFiles } from "@/engine/domains/configuration-files";
 import { Mission } from "@/engine/missions";
+import { isConsoleMission } from "@/engine/missions/console";
 import { MissionGuides } from "@/engine/missions/learning-guides";
 import { Result } from "@/utils/Result";
 
-test.each(Mission.all())(
+// Console の画面で進めるミッションは画面操作の手順（Mission.steps）をそのまま表示する。
+test.each(Mission.all().filter((mission) => !isConsoleMission(mission)))(
   "$id: 掲載された手順を初期状態から順に進めると達成条件を満たす",
   (mission) => {
     const guide = MissionGuides.find(mission.id);

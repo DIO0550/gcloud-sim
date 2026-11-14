@@ -8,6 +8,8 @@ import { TfResources } from "@/engine/domains/terraform/resources";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
+import { TerraformPreludeSteps } from "@/engine/missions/terraform-lessons";
 import { Option } from "@/utils/Option";
 
 export type TerraformAssertion =
@@ -45,6 +47,10 @@ const setup = [
   { kind: "setProject", projectId: F.devProjectId },
 ] as const;
 
+const run = MissionStep.run;
+const applyAll = (what: string, note?: string) =>
+  run(what, "terraform apply -auto-approve", note ?? "確認なしで適用します。");
+
 const infrastructure = TfConfiguration.compile({
   "main.tf": TerraformInfrastructureExample,
 }).resources;
@@ -57,10 +63,24 @@ export const TerraformMissions: readonly Mission[] = [
     description:
       "教材のHCL構成を読み込み、ace-dev-01にtf-lab-vpcとus-central1のtf-lab-subnet（10.42.0.0/24）を作成します。構成・state・実リソースの一致が必要です。planだけでは完了しません。",
     setup,
-    hints: [
-      "sim files load terraform-network でmain.tfを用意し、sim files read main.tfで確認します。既存ファイルがある場合は読み、必要に応じて編集してください。",
-      "gcloud auth application-default login → terraform init → terraform validate → terraform plan -out=tfplan",
-      "terraform show tfplan → terraform apply tfplan → terraform state list → terraform plan。最後はリソース差分なしになります。",
+    steps: [
+      run("VPCとサブネットの構成例をmain.tfとして読み込む", "sim files load terraform-network"),
+      run(
+        "main.tfのresourceと値を確かめる",
+        "sim files read main.tf",
+        "既存ファイルがある場合は読み、必要に応じて編集してください。",
+      ),
+      ...TerraformPreludeSteps,
+      run("構成の文法と参照を検証する", "terraform validate"),
+      run("変更計画を作ってtfplanに保存する", "terraform plan -out=tfplan"),
+      run("保存した計画で作られるリソースを確かめる", "terraform show tfplan"),
+      run("保存した計画どおりに適用する", "terraform apply tfplan"),
+      run("stateに載ったリソースを一覧する", "terraform state list"),
+      run(
+        "もう一度planして差分が無いことを確かめる",
+        "terraform plan",
+        "最後はリソース差分なしになります。",
+      ),
     ],
     assertions: [
       { kind: "terraformManaged", resource: network },
@@ -74,10 +94,18 @@ export const TerraformMissions: readonly Mission[] = [
     description:
       "Terraformのtf-lab-subnetを10.43.0.0/24、Private Google Access有効にします。初期状態からはterraform-networkの例を読み込み、ADCログインとinitを実施してください。変更内容がHCL・state・実リソースで一致すると完了です。",
     setup,
-    hints: [
-      "sim files write terraform.tfvars --content='subnet_cidr = \"10.43.0.0/24\"' で変数を上書きします。",
-      "sim files replace main.tf --search='private_ip_google_access = false' --replacement='private_ip_google_access = true'",
-      "terraform planで差分を確認し、terraform apply、yesで適用します。CIDR変更はこのシミュレーターでは置換です。",
+    steps: [
+      run(
+        "サブネットのCIDRを変数ファイルで上書きする",
+        "sim files write terraform.tfvars --content='subnet_cidr = \"10.43.0.0/24\"'",
+      ),
+      run(
+        "main.tfでPrivate Google Accessを有効にする",
+        "sim files replace main.tf --search='private_ip_google_access = false' --replacement='private_ip_google_access = true'",
+      ),
+      run("変更の差分を確かめる", "terraform plan", "CIDR変更はこのシミュレーターでは置換です。"),
+      run("変更を適用する", "terraform apply", "適用してよいか確認を求められます。"),
+      run("適用の確認にyesと答える", "yes"),
     ],
     assertions: [
       { kind: "terraformManaged", resource: network },
@@ -94,10 +122,25 @@ export const TerraformMissions: readonly Mission[] = [
     description:
       "gcloudで作成したカスタムVPC tf-import-netを、ace-dev-01のgoogle_compute_network.importedとして管理します。対応するHCLとstateが必要です。既存の学習用ファイルがある場合は構成に競合がないことも確認してください。",
     setup,
-    hints: [
-      "gcloud compute networks create tf-import-net --subnet-mode=custom。既に存在すれば再作成は不要です。",
-      'sim files write import.tf --content=\'resource "google_compute_network" "imported" { project = "ace-dev-01" name = "tf-import-net" auto_create_subnetworks = false }\'',
-      "gcloud auth application-default login → terraform init → terraform import google_compute_network.imported projects/ace-dev-01/global/networks/tf-import-net。state showで確認します。",
+    steps: [
+      run(
+        "取り込む対象のカスタムVPCをgcloudで作る",
+        "gcloud compute networks create tf-import-net --subnet-mode=custom",
+        "既に存在すれば再作成は不要です。",
+      ),
+      run(
+        "取り込み先になるresourceをimport.tfに書く",
+        'sim files write import.tf --content=\'resource "google_compute_network" "imported" { project = "ace-dev-01" name = "tf-import-net" auto_create_subnetworks = false }\'',
+      ),
+      ...TerraformPreludeSteps,
+      run(
+        "既存VPCをstateのgoogle_compute_network.importedに取り込む",
+        "terraform import google_compute_network.imported projects/ace-dev-01/global/networks/tf-import-net",
+      ),
+      run(
+        "取り込んだ属性をstateで確かめる",
+        "terraform state show google_compute_network.imported",
+      ),
     ],
     assertions: [
       {
@@ -113,10 +156,33 @@ export const TerraformMissions: readonly Mission[] = [
     description:
       "tf-lab-vpcとtf-lab-subnet（us-central1、10.42.0.0/24、Private Google Access無効）をルートのlabからmodule.network内のlabへ移します。movedで保存した移行planと、移行後の構成・state・実リソースの一致が必要です。新規にmoduleを作成するだけでは完了しません。",
     setup,
-    hints: [
-      "初期状態からは sim files load terraform-network → gcloud auth application-default login → terraform init → terraform apply -auto-approve で移行前の環境を用意します。既存ファイルやtfvarsがある場合は内容を確認してください。",
-      "sim files load terraform-modules --force でmain.tfとmodules/network/main.tfを読み込みます。sim files readで両方を確認し、入力・出力・movedの対応を確認してください。",
-      "terraform init → terraform plan -out=module-plan。2つの has moved to があり、追加・変更・削除がないことを確認して terraform apply module-plan。terraform state listでmodule.networkのアドレスを確認します。",
+    steps: [
+      run(
+        "移行前のVPCとサブネットの構成例を読み込む",
+        "sim files load terraform-network",
+        "初期状態から始めるときの準備です。既存ファイルやtfvarsがある場合は内容を確認してください。",
+      ),
+      ...TerraformPreludeSteps,
+      applyAll("移行前のVPCとサブネットを作る"),
+      run(
+        "モジュール版の構成で既存ファイルを置き換える",
+        "sim files load terraform-modules --force",
+        "main.tfとmodules/network/main.tfを読み込みます。",
+      ),
+      run("ルート側のmodule呼び出しとmovedを確かめる", "sim files read main.tf"),
+      run(
+        "モジュール側の入力と出力を確かめる",
+        "sim files read modules/network/main.tf",
+        "入力・出力・movedの対応を確認してください。",
+      ),
+      run("モジュールを認識させるため再度初期化する", "terraform init"),
+      run(
+        "移行計画を作ってmodule-planに保存する",
+        "terraform plan -out=module-plan",
+        "2つの has moved to があり、追加・変更・削除がないことを確認します。",
+      ),
+      run("保存した移行計画を適用する", "terraform apply module-plan"),
+      run("stateのアドレスがmodule.network配下に移ったことを確かめる", "terraform state list"),
     ],
     assertions: [
       {
@@ -138,10 +204,25 @@ export const TerraformMissions: readonly Mission[] = [
     description:
       "ace-dev-01にVPC/subnet、HTTP/HTTPS用firewall、e2-microのVM、版管理と公開アクセス防止を有効にしたbucketを作成します。5つのリソースの構成・state・実リソースをそろえます。",
     setup,
-    hints: [
-      "sim files load terraform-infrastructure で例を読み込み、sim files read main.tf で各resourceと参照を確認します。既存main.tfがあれば内容を確認し、必要に応じて --force で置き換えます。",
-      "gcloud auth application-default login → terraform init → terraform plan -out=infra-plan → terraform apply infra-plan",
-      "terraform state list と gcloud compute instances describe tf-lab-vm --zone=us-central1-a、gcloud storage buckets describe gs://ace-dev-01-tf-lab-assets で確認します。",
+    steps: [
+      run(
+        "VM・firewall・bucketを含む構成例を読み込む",
+        "sim files load terraform-infrastructure",
+        "既存のmain.tfがあれば内容を確認し、必要に応じて同名ファイルを置き換えて読み込みます。",
+      ),
+      run("各resourceと参照のつながりを確かめる", "sim files read main.tf"),
+      ...TerraformPreludeSteps,
+      run("変更計画を作ってinfra-planに保存する", "terraform plan -out=infra-plan"),
+      run("保存した計画どおりに5つのリソースを作る", "terraform apply infra-plan"),
+      run("stateに5つのリソースが載ったことを確かめる", "terraform state list"),
+      run(
+        "作られたVMの設定を確かめる",
+        "gcloud compute instances describe tf-lab-vm --zone=us-central1-a",
+      ),
+      run(
+        "bucketの版管理と公開アクセス防止を確かめる",
+        "gcloud storage buckets describe gs://ace-dev-01-tf-lab-assets",
+      ),
     ],
     assertions: infrastructure.map((resource) => ({ kind: "terraformManaged" as const, resource })),
   },
@@ -152,10 +233,26 @@ export const TerraformMissions: readonly Mission[] = [
     description:
       "terraform-infrastructureの5リソースを用意し、destroy planを保存・確認して適用します。初めから空の状態やstate rmだけでは完了しません。",
     setup,
-    hints: [
-      "初期状態では sim files load terraform-infrastructure → gcloud auth application-default login → terraform init → terraform apply -auto-approve で対象を用意します。",
-      "terraform plan -destroy -out=cleanup-plan → terraform show cleanup-plan。VM/firewallを先に、subnet/VPCを後に削除する計画を確認します。",
-      "terraform apply cleanup-plan → terraform state list。bucketが空でない場合はオブジェクトを削除するか、force_destroy = trueを構成に指定して通常のapplyを行ってからdestroy planを作り直します。",
+    steps: [
+      run(
+        "片付ける対象の構成例を読み込む",
+        "sim files load terraform-infrastructure",
+        "初期状態から始めるときの準備です。",
+      ),
+      ...TerraformPreludeSteps,
+      applyAll("片付ける対象の5つのリソースを作る"),
+      run("削除計画を作ってcleanup-planに保存する", "terraform plan -destroy -out=cleanup-plan"),
+      run(
+        "削除の順番を確かめる",
+        "terraform show cleanup-plan",
+        "VM/firewallを先に、subnet/VPCを後に削除する計画を確認します。",
+      ),
+      run(
+        "保存した削除計画を適用する",
+        "terraform apply cleanup-plan",
+        "bucketが空でない場合はオブジェクトを削除するか、force_destroy = trueを構成に指定して通常のapplyを行ってからdestroy planを作り直します。",
+      ),
+      run("stateが空になったことを確かめる", "terraform state list"),
     ],
     assertions: [{ kind: "terraformDestroyed", resources: infrastructure }],
   },
@@ -166,10 +263,32 @@ export const TerraformMissions: readonly Mission[] = [
     description:
       "tf-lab-vpcとtf-lab-subnetをローカルstateで管理した後、版管理を有効にしたace-dev-01-tf-stateのterraform/labへstateを移します。実リソースを保持した移行が必要です。最初からGCSで作成するだけでは完了しません。",
     setup,
-    hints: [
-      "sim files load terraform-network → gcloud auth application-default login → terraform init → terraform apply -auto-approve で移行前の環境を用意します。",
-      "gcloud storage buckets create gs://ace-dev-01-tf-state --location=us-central1 --uniform-bucket-level-access → gcloud storage buckets update gs://ace-dev-01-tf-state --versioning。既に存在するbucketは再作成不要です。",
-      "sim files load terraform-backend → sim files read backend.tf → terraform init -migrate-state → yes。terraform state pull、sim terraform backend、gcloud storage ls gs://ace-dev-01-tf-state/terraform/lab/ で確認します。",
+    steps: [
+      run("移行前のVPCとサブネットの構成例を読み込む", "sim files load terraform-network"),
+      ...TerraformPreludeSteps,
+      applyAll("ローカルstateでVPCとサブネットを作る"),
+      run(
+        "stateを置くbucketを作る",
+        "gcloud storage buckets create gs://ace-dev-01-tf-state --location=us-central1 --uniform-bucket-level-access",
+        "既に存在するbucketは再作成不要です。",
+      ),
+      run(
+        "bucketの版管理を有効にする",
+        "gcloud storage buckets update gs://ace-dev-01-tf-state --versioning",
+      ),
+      run("GCS backendの設定を読み込む", "sim files load terraform-backend"),
+      run("backend.tfの移行先bucketとprefixを確かめる", "sim files read backend.tf"),
+      run(
+        "backendを切り替えてローカルstateをGCSへ移す",
+        "terraform init -migrate-state",
+        "既存のstateを新しいbackendへコピーするか確認を求められます。",
+      ),
+      run("移行の確認にyesと答える", "yes"),
+      run("移行後のstateを取り出して中身を確かめる", "terraform state pull"),
+      run(
+        "bucketにstateのファイルができたことを確かめる",
+        "gcloud storage ls gs://ace-dev-01-tf-state/terraform/lab/",
+      ),
     ],
     assertions: [
       {

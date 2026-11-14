@@ -4,6 +4,7 @@ import { KubePod } from "@/engine/domains/kubernetes";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
 import { Result } from "@/utils/Result";
 
 export type KubeBinaryDataAssertion = Readonly<{ kind: "kubeBinaryDataSeparated" }>;
@@ -19,12 +20,45 @@ export const KubeBinaryDataMissions: readonly Mission[] = [
     ],
     description:
       "binary-gkeにasset-settingsとasset-webを配置します。ConfigMapにはdataのMODE=productionと、binaryDataのasset.bin（AP+AAQ==、4 bytes）が入っています。asset-webは誤ってasset.binを環境変数として参照して起動できません。asset-web.yamlの参照キーをMODEへ直してapplyし、nginx:1・2レプリカをReadyにしてください。binaryDataは環境変数へ注入できません。バイナリを保存したまま、テキスト設定だけを使います。ファイルとして使うvolumeマウントは別のミッションで扱います。",
-    hints: [
-      "gcloud services enable container.googleapis.com → gcloud container clusters create-auto binary-gke --region=us-central1 → sim files load kubernetes-binary-data",
-      "kubectl apply -f asset-settings.yaml → kubectl apply -f asset-web.yaml → kubectl get pods。binaryDataのキーはconfigMapKeyRefから読めず、CreateContainerConfigErrorになります。",
-      "kubectl get cm asset-settings -o yaml → kubectl describe cm asset-settings。getはbase64のbinaryDataを返し、describeとプロパティはasset.binを4 bytesと表示します。dataのMODEと区別してください。",
-      "sim files replace asset-web.yaml --search='key: asset.bin' --replacement='key: MODE' → kubectl apply -f asset-web.yaml。ConfigMapのbinaryDataは消さず、参照だけをテキストキーへ変更します。",
-      "kubectl rollout status deployment/asset-web → kubectl exec deployment/asset-web -- printenv MODE。ファイル・クラスタの参照がMODEになり、2つのPodがproductionを取得してReadyになると達成します。",
+    steps: [
+      MissionStep.run(
+        "Kubernetes Engine APIを有効にする",
+        "gcloud services enable container.googleapis.com",
+      ),
+      MissionStep.run(
+        "Autopilotクラスタを作る",
+        "gcloud container clusters create-auto binary-gke --region=us-central1",
+      ),
+      MissionStep.run("教材のマニフェストを読み込む", "sim files load kubernetes-binary-data"),
+      MissionStep.run("binaryDataを含むConfigMapを作る", "kubectl apply -f asset-settings.yaml"),
+      MissionStep.run("誤ったキーを参照するasset-webを配置する", "kubectl apply -f asset-web.yaml"),
+      MissionStep.run(
+        "Podが起動できない理由を確かめる",
+        "kubectl get pods",
+        "binaryDataのキーはconfigMapKeyRefから読めず、CreateContainerConfigErrorになります。",
+      ),
+      MissionStep.run(
+        "ConfigMapの中身をYAMLで確かめる",
+        "kubectl get cm asset-settings -o yaml",
+        "getはbase64のbinaryDataを返します。",
+      ),
+      MissionStep.run(
+        "ConfigMapのキーとサイズを確かめる",
+        "kubectl describe cm asset-settings",
+        "describeとプロパティはasset.binを4 bytesと表示します。dataのMODEと区別してください。",
+      ),
+      MissionStep.run(
+        "参照するキーをasset.binからMODEへ直す",
+        "sim files replace asset-web.yaml --search='key: asset.bin' --replacement='key: MODE'",
+        "ConfigMapのbinaryDataは消さず、参照だけをテキストキーへ変更します。",
+      ),
+      MissionStep.run("直したasset-webを適用する", "kubectl apply -f asset-web.yaml"),
+      MissionStep.run("Podの作り直し完了を待つ", "kubectl rollout status deployment/asset-web"),
+      MissionStep.run(
+        "PodがMODEの値を読めたか確かめる",
+        "kubectl exec deployment/asset-web -- printenv MODE",
+        "ファイル・クラスタの参照がMODEになり、2つのPodがproductionを取得してReadyになると達成します。",
+      ),
     ],
     assertions: [{ kind: "kubeBinaryDataSeparated" }],
   },

@@ -4,6 +4,7 @@ import { KubeServiceRouting } from "@/engine/domains/kube-service-routing";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
@@ -12,6 +13,11 @@ const setup = [
   { kind: "setPrincipal", principal: F.owner },
   { kind: "setProject", projectId: F.devProjectId },
 ] as const;
+const enable = MissionStep.run(
+  "Kubernetes Engine APIを有効にする",
+  "gcloud services enable container.googleapis.com",
+);
+const load = MissionStep.run("教材のマニフェストを読み込む", "sim files load kubernetes-ingress");
 export const KubeIngressMissions: readonly Mission[] = [
   {
     id: "m-gke-026",
@@ -20,12 +26,48 @@ export const KubeIngressMissions: readonly Mission[] = [
     setup,
     description:
       "ingress-gkeで3つのNodePort Serviceを起動します。ingress-routes.jsonの参照先を直し、app.example.testの/をweb、/api以下をapi、/api/healthの完全一致をhealthへ振り分けてください。/apixはweb、別ホストは未一致のままにします。",
-    hints: [
-      "gcloud services enable container.googleapis.com → gcloud container clusters create-auto ingress-gke --region=us-central1 → sim files load kubernetes-ingress → kubectl apply -f ingress-workloads.yaml → kubectl apply -f ingress-routes.json",
-      "kubectl describe ing app-entry → sim kubernetes request app-entry --host=app.example.test --path=/api/users。存在しないServiceを確認します。",
-      "sim files replace ingress-routes.json --search=wrong-api --replacement=api → kubectl apply -f ingress-routes.json",
-      "sim kubernetes request app-entry --host=app.example.test --path=/api/health → sim kubernetes request app-entry --host=app.example.test --path=/api/health/detail。Exactと最長Prefixの違いを確認します。",
-      "sim kubernetes request app-entry --host=app.example.test --path=/apix → sim kubernetes request app-entry --host=other.example.test --path=/ → kubectl get ing。Prefixは文字列だけでなくパス要素単位で一致します。",
+    steps: [
+      enable,
+      MissionStep.run(
+        "Autopilotクラスタを作る",
+        "gcloud container clusters create-auto ingress-gke --region=us-central1",
+      ),
+      load,
+      MissionStep.run(
+        "web・api・healthのDeploymentとServiceを起動する",
+        "kubectl apply -f ingress-workloads.yaml",
+      ),
+      MissionStep.run("振り分けルールを持つIngressを作る", "kubectl apply -f ingress-routes.json"),
+      MissionStep.run("Ingressのルールと参照先を確かめる", "kubectl describe ing app-entry"),
+      MissionStep.run(
+        "/api/usersへのリクエストの行き先を試す",
+        "sim kubernetes request app-entry --host=app.example.test --path=/api/users",
+        "存在しないServiceを確認します。",
+      ),
+      MissionStep.run(
+        "参照先をwrong-apiからapiへ直す",
+        "sim files replace ingress-routes.json --search=wrong-api --replacement=api",
+      ),
+      MissionStep.run("直したIngressを適用する", "kubectl apply -f ingress-routes.json"),
+      MissionStep.run(
+        "/api/healthが完全一致でhealthへ届くか確かめる",
+        "sim kubernetes request app-entry --host=app.example.test --path=/api/health",
+      ),
+      MissionStep.run(
+        "/api/health/detailがapiへ届くか確かめる",
+        "sim kubernetes request app-entry --host=app.example.test --path=/api/health/detail",
+        "Exactと最長Prefixの違いを確認します。",
+      ),
+      MissionStep.run(
+        "/apixがwebへ届くか確かめる",
+        "sim kubernetes request app-entry --host=app.example.test --path=/apix",
+        "Prefixは文字列だけでなくパス要素単位で一致します。",
+      ),
+      MissionStep.run(
+        "別ホストがどのルールにも一致しないか確かめる",
+        "sim kubernetes request app-entry --host=other.example.test --path=/",
+      ),
+      MissionStep.run("Ingressの一覧を確かめる", "kubectl get ing"),
     ],
     assertions: [{ kind: "kubeIngressRouted" }],
   },
@@ -36,12 +78,57 @@ export const KubeIngressMissions: readonly Mission[] = [
     setup,
     description:
       "ingress-fix-gkeでrecovery-entryを復旧します。Ingressが参照するService port、Service selector、Pod readinessを順に確認し、ファイルのポートとラベルを修正してapply、readinessを成功させてください。Service portは80、targetPortは8080、Readyな接続先は2個にそろえます。",
-    hints: [
-      "gcloud services enable container.googleapis.com → gcloud container clusters create-auto ingress-fix-gke --region=us-central1 → sim files load kubernetes-ingress → kubectl apply -f ingress-recovery.yaml → kubectl apply -f ingress-broken.json",
-      "sim kubernetes request recovery-entry --host=app.example.test --path=/ → kubectl describe ing recovery-entry → kubectl describe svc recovery。IngressはtargetPortではなくService portを参照します。",
-      "sim files replace ingress-broken.json --search=8080 --replacement=80 → kubectl apply -f ingress-broken.json",
-      "sim files replace ingress-recovery.yaml --search=wrong-recovery --replacement=recovery → kubectl apply -f ingress-recovery.yaml → kubectl get pods → kubectl get endpoints recovery。selector修正だけではreadiness待ちが残ります。",
-      "sim kubernetes probe recovery --status-code=200 → kubectl get endpoints recovery → sim kubernetes request recovery-entry --host=app.example.test --path=/。2個のReadyな接続先を確認します。",
+    steps: [
+      enable,
+      MissionStep.run(
+        "Autopilotクラスタを作る",
+        "gcloud container clusters create-auto ingress-fix-gke --region=us-central1",
+      ),
+      load,
+      MissionStep.run(
+        "recoveryのDeploymentとServiceを配置する",
+        "kubectl apply -f ingress-recovery.yaml",
+      ),
+      MissionStep.run("誤りを含むIngressを作る", "kubectl apply -f ingress-broken.json"),
+      MissionStep.run(
+        "Ingress経由のリクエストが失敗するか試す",
+        "sim kubernetes request recovery-entry --host=app.example.test --path=/",
+      ),
+      MissionStep.run(
+        "Ingressが参照するService portを確かめる",
+        "kubectl describe ing recovery-entry",
+      ),
+      MissionStep.run(
+        "Serviceのportとselectorを確かめる",
+        "kubectl describe svc recovery",
+        "IngressはtargetPortではなくService portを参照します。",
+      ),
+      MissionStep.run(
+        "Ingressの参照portを8080から80へ直す",
+        "sim files replace ingress-broken.json --search=8080 --replacement=80",
+      ),
+      MissionStep.run("直したIngressを適用する", "kubectl apply -f ingress-broken.json"),
+      MissionStep.run(
+        "Service selectorのラベルをrecoveryへ直す",
+        "sim files replace ingress-recovery.yaml --search=wrong-recovery --replacement=recovery",
+      ),
+      MissionStep.run("直したServiceを適用する", "kubectl apply -f ingress-recovery.yaml"),
+      MissionStep.run("Podの準備状況を確かめる", "kubectl get pods"),
+      MissionStep.run(
+        "Serviceの接続先を確かめる",
+        "kubectl get endpoints recovery",
+        "selector修正だけではreadiness待ちが残ります。",
+      ),
+      MissionStep.run(
+        "Podのreadinessを成功させる",
+        "sim kubernetes probe recovery --status-code=200",
+      ),
+      MissionStep.run("接続先が2個そろったか確かめる", "kubectl get endpoints recovery"),
+      MissionStep.run(
+        "Ingress経由で接続できるか確かめる",
+        "sim kubernetes request recovery-entry --host=app.example.test --path=/",
+        "2個のReadyな接続先を確認します。",
+      ),
     ],
     assertions: [{ kind: "kubeIngressRecovered" }],
   },

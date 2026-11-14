@@ -5,19 +5,30 @@ import { storageAllows } from "@/engine/domains/storage-lab/model";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
 import { gkeCompletionSatisfied } from "./gke-completion";
 
 const p = F.devProjectId;
 const org = `organizations/${F.organizationId}`;
 const folder = `folders/${F.devFolderId}`;
 const worker = `admin-worker@${p}.iam.gserviceaccount.com`;
-const policy = (scope: string, constraint: string, spec: object) => [
-  `sim files write admin-policy.json --content='${JSON.stringify({ name: `${scope}/policies/${constraint}`, spec })}'`,
-  "gcloud org-policies set-policy admin-policy.json",
+const policy = (what: string, scope: string, constraint: string, spec: object) => [
+  MissionStep.run(
+    "ポリシーの定義をファイルに書く",
+    `sim files write admin-policy.json --content='${JSON.stringify({ name: `${scope}/policies/${constraint}`, spec })}'`,
+    `admin-policy.json に制約 ${constraint} と適用先 ${scope} を書きます。`,
+  ),
+  MissionStep.run(what, "gcloud org-policies set-policy admin-policy.json"),
 ];
-const bucket = (lesson: string, flags = "") => [
-  `gcloud storage buckets create gs://admin-${lesson} --location=us-central1 ${flags}`,
-  `gcloud storage cp ./report.json gs://admin-${lesson}/report.json`,
+const bucket = (lesson: string, flags = "", what = "教材用のバケットを作る") => [
+  MissionStep.run(
+    what,
+    `gcloud storage buckets create gs://admin-${lesson} --location=us-central1 ${flags}`,
+  ),
+  MissionStep.run(
+    "確認用のreport.jsonをバケットに置く",
+    `gcloud storage cp ./report.json gs://admin-${lesson}/report.json`,
+  ),
 ];
 const binding = (lesson: string, member: string, role = "roles/storage.objectViewer") =>
   `gcloud storage buckets add-iam-policy-binding gs://admin-${lesson} --member='${member}' --role=${role}`;
@@ -25,116 +36,334 @@ const budget = (name: string) =>
   `gcloud billing budgets create --billing-account=${F.billingAccountId} --display-name=${name} --budget-amount=1000 --threshold-rule=percent=0.8 --filter-projects=${p}`;
 const workloadPath = "projects/481200000001/locations/global/workloadIdentityPools/admin-workload";
 const workforcePath = "locations/global/workforcePools/admin-workforce";
-export const AdminPrelude = [
+const noKeyPolicy = policy(
+  "組織でサービスアカウントキーの作成を禁止する",
+  org,
+  "iam.disableServiceAccountKeyCreation",
+  { rules: [{ enforce: true }] },
+);
+const createWorker = MissionStep.run(
+  "処理用のサービスアカウントを作る",
+  "gcloud iam service-accounts create admin-worker",
+);
+const privateBucket = "非公開（均一アクセス・公開防止）のバケットを作る";
+const preludeStep = MissionStep.run(
+  "管理系の演習で使うAPIをまとめて有効にする",
   "gcloud services enable orgpolicy.googleapis.com cloudidentity.googleapis.com cloudidentityscim.googleapis.com iam.googleapis.com iamcredentials.googleapis.com cloudquotas.googleapis.com cloudasset.googleapis.com billingbudgets.googleapis.com bigquery.googleapis.com compute.googleapis.com storage.googleapis.com container.googleapis.com",
-];
-export const AdminSolutions = {
+  "組織ポリシー・Cloud Identity・IAM・Quotas・Asset Inventory・予算などのAPIです。",
+);
+/** 全レッスンの前に流す行（テスト・Storybook 用）。 */
+export const AdminPrelude = MissionStep.lines([preludeStep]);
+/** レッスンごとの解き方の手順。 */
+export const AdminSteps = {
   orgPap: [
     ...bucket("pap"),
-    binding("pap", "allUsers"),
-    ...policy(org, "storage.publicAccessPrevention", { rules: [{ enforce: true }] }),
-    "sim storage access check gs://admin-pap/report.json --principal=anonymous",
+    MissionStep.run(
+      "あえてallUsersに読み取りを公開する",
+      binding("pap", "allUsers"),
+      "公開IAMが残ったバケットの状態を作ります。",
+    ),
+    ...policy("組織全体で公開アクセス防止を強制する", org, "storage.publicAccessPrevention", {
+      rules: [{ enforce: true }],
+    }),
+    MissionStep.run(
+      "匿名の読み取りが拒否されるか確かめる",
+      "sim storage access check gs://admin-pap/report.json --principal=anonymous",
+      "組織の制約はプロジェクトとバケットへ継承され、公開IAMより優先されます。",
+    ),
   ],
   locations: [
-    ...policy(folder, "gcp.resourceLocations", {
+    ...policy("フォルダで保存先をus-central1に限定する", folder, "gcp.resourceLocations", {
       rules: [{ values: { allowedValues: ["is:us-central1"] } }],
     }),
-    "gcloud storage buckets create gs://admin-locations --location=us-central1",
+    MissionStep.run(
+      "子プロジェクトの許可リージョンにバケットを作る",
+      "gcloud storage buckets create gs://admin-locations --location=us-central1",
+      "フォルダの制約は配下のプロジェクトへ継承されます。",
+    ),
   ],
   group: [
-    "sim identity users create student@example.com --customer=C01simulator --given-name=Cloud --family-name=Student",
-    "gcloud identity groups create admin-readers@example.com --customer=C01simulator",
-    "gcloud identity groups memberships add --group-email=admin-readers@example.com --member-email=student@example.com",
-    ...bucket("group", "--uniform-bucket-level-access"),
-    "gcloud iam roles create AdminObjectReader --permissions=storage.objects.get --title=Reader",
-    binding("group", "group:admin-readers@example.com", `projects/${p}/roles/AdminObjectReader`),
-    "sim storage access check gs://admin-group/report.json --principal=student@example.com",
+    MissionStep.run(
+      "教材用のユーザーを作る",
+      "sim identity users create student@example.com --customer=C01simulator --given-name=Cloud --family-name=Student",
+    ),
+    MissionStep.run(
+      "読み取り用のグループを作る",
+      "gcloud identity groups create admin-readers@example.com --customer=C01simulator",
+    ),
+    MissionStep.run(
+      "ユーザーをグループに加える",
+      "gcloud identity groups memberships add --group-email=admin-readers@example.com --member-email=student@example.com",
+    ),
+    ...bucket("group", "--uniform-bucket-level-access", "均一アクセスのバケットを作る"),
+    MissionStep.run(
+      "オブジェクト取得だけのカスタムロールを作る",
+      "gcloud iam roles create AdminObjectReader --permissions=storage.objects.get --title=Reader",
+      "storage.objects.get だけなので、書き込みはできません。",
+    ),
+    MissionStep.run(
+      "グループにカスタムロールを付ける",
+      binding("group", "group:admin-readers@example.com", `projects/${p}/roles/AdminObjectReader`),
+    ),
+    MissionStep.run(
+      "グループのユーザーで読み取れるか確かめる",
+      "sim storage access check gs://admin-group/report.json --principal=student@example.com",
+    ),
   ],
   impersonation: [
-    "gcloud iam service-accounts create admin-worker",
-    ...policy(org, "iam.disableServiceAccountKeyCreation", { rules: [{ enforce: true }] }),
-    `gcloud iam service-accounts add-iam-policy-binding ${worker} --member=user:${F.developer} --role=roles/iam.serviceAccountTokenCreator`,
-    "gcloud auth print-access-token --impersonate-service-account=admin-worker@ace-dev-01.iam.gserviceaccount.com --account=dev@example.com --lifetime=60s",
-    "sim auth credentials check SIMULATED-credential-11",
-    "sim storage time advance --seconds=61",
-    "sim auth credentials check SIMULATED-credential-11",
+    createWorker,
+    ...noKeyPolicy,
+    MissionStep.run(
+      "開発者にSAのToken Creatorを付ける",
+      `gcloud iam service-accounts add-iam-policy-binding ${worker} --member=user:${F.developer} --role=roles/iam.serviceAccountTokenCreator`,
+      "SAになりすまして短期のトークンを発行できるようになります。",
+    ),
+    MissionStep.run(
+      "SAになりすまして60秒のトークンを発行する",
+      "gcloud auth print-access-token --impersonate-service-account=admin-worker@ace-dev-01.iam.gserviceaccount.com --account=dev@example.com --lifetime=60s",
+    ),
+    MissionStep.run(
+      "発行した認証情報が有効か確かめる",
+      "sim auth credentials check SIMULATED-credential-11",
+      "SIMULATED-credential-11 は直前の発行で返るIDです。",
+    ),
+    MissionStep.run("仮想時間を61秒進める", "sim storage time advance --seconds=61"),
+    MissionStep.run(
+      "認証情報が期限切れになったか確かめる",
+      "sim auth credentials check SIMULATED-credential-11",
+    ),
   ],
   runtime: [
-    "gcloud iam service-accounts create admin-worker",
-    `gcloud iam service-accounts add-iam-policy-binding ${worker} --member=user:${F.developer} --role=roles/iam.serviceAccountUser`,
-    `sim iam runtime check --service-account=${worker} --operation=attach --account=${F.developer}`,
-    `sim iam runtime check --service-account=${worker} --operation=token --account=${F.developer}`,
+    createWorker,
+    MissionStep.run(
+      "開発者にSAのService Account Userを付ける",
+      `gcloud iam service-accounts add-iam-policy-binding ${worker} --member=user:${F.developer} --role=roles/iam.serviceAccountUser`,
+      "SAをリソースへ割り当てる actAs は付きますが、トークン発行の権限は付きません。",
+    ),
+    MissionStep.run(
+      "SAをリソースへ割り当てられるか確かめる",
+      `sim iam runtime check --service-account=${worker} --operation=attach --account=${F.developer}`,
+      "allowed になります。",
+    ),
+    MissionStep.run(
+      "SAのトークンを発行できないか確かめる",
+      `sim iam runtime check --service-account=${worker} --operation=token --account=${F.developer}`,
+      "denied になります。",
+    ),
   ],
   workload: [
-    "gcloud iam workload-identity-pools create admin-workload --location=global",
-    "gcloud iam workload-identity-pools providers create-oidc admin-provider --workload-identity-pool=admin-workload --location=global --issuer-uri=https://id.example.com --allowed-audiences=admin-app --attribute-mapping=google.subject=assertion.sub",
-    "gcloud iam service-accounts create admin-worker",
-    `gcloud iam service-accounts add-iam-policy-binding ${worker} --member='principalSet://iam.googleapis.com/${workloadPath}/*' --role=roles/iam.workloadIdentityUser`,
-    ...bucket("workload", "--uniform-bucket-level-access --public-access-prevention"),
-    binding("workload", `serviceAccount:${worker}`),
-    `sim identity federation exchange --kind=workload --pool=admin-workload --provider=admin-provider --issuer=https://id.example.com --audience=admin-app --subject=build-agent --service-account=${worker}`,
-    "sim identity federation access gs://admin-workload/report.json --token=SIMULATED-credential-11",
+    MissionStep.run(
+      "外部ワークロード用のプールを作る",
+      "gcloud iam workload-identity-pools create admin-workload --location=global",
+    ),
+    MissionStep.run(
+      "プールにOIDCプロバイダを登録する",
+      "gcloud iam workload-identity-pools providers create-oidc admin-provider --workload-identity-pool=admin-workload --location=global --issuer-uri=https://id.example.com --allowed-audiences=admin-app --attribute-mapping=google.subject=assertion.sub",
+      "issuer と audience が一致するトークンだけを受け付けます。",
+    ),
+    createWorker,
+    MissionStep.run(
+      "プール内の主体にSAの利用を許可する",
+      `gcloud iam service-accounts add-iam-policy-binding ${worker} --member='principalSet://iam.googleapis.com/${workloadPath}/*' --role=roles/iam.workloadIdentityUser`,
+      "principalSet の * はプール内のすべての主体を指します。",
+    ),
+    ...bucket(
+      "workload",
+      "--uniform-bucket-level-access --public-access-prevention",
+      privateBucket,
+    ),
+    MissionStep.run(
+      "SAにバケットの閲覧を許可する",
+      binding("workload", `serviceAccount:${worker}`),
+    ),
+    MissionStep.run(
+      "外部トークンを交換してSAの認証情報を得る",
+      `sim identity federation exchange --kind=workload --pool=admin-workload --provider=admin-provider --issuer=https://id.example.com --audience=admin-app --subject=build-agent --service-account=${worker}`,
+    ),
+    MissionStep.run(
+      "得た認証情報で非公開オブジェクトを読む",
+      "sim identity federation access gs://admin-workload/report.json --token=SIMULATED-credential-11",
+      "SIMULATED-credential-11 は直前の交換で返る値です。",
+    ),
   ],
   workforce: [
-    `gcloud iam workforce-pools create admin-workforce --organization=${F.organizationId} --location=global`,
-    "gcloud iam workforce-pools providers create-oidc admin-provider --workforce-pool=admin-workforce --location=global --issuer-uri=https://id.example.com --client-id=admin-console --attribute-mapping=google.subject=assertion.sub --web-sso-response-type=id-token --web-sso-assertion-claims-behavior=only-id-token-claims",
-    ...bucket("workforce", "--uniform-bucket-level-access --public-access-prevention"),
-    binding("workforce", `principal://iam.googleapis.com/${workforcePath}/subject/student`),
-    "sim identity federation exchange --kind=workforce --pool=admin-workforce --provider=admin-provider --issuer=https://id.example.com --audience=admin-console --subject=student",
-    "sim identity federation access gs://admin-workforce/report.json --token=SIMULATED-credential-10",
+    MissionStep.run(
+      "社外の人用のWorkforceプールを作る",
+      `gcloud iam workforce-pools create admin-workforce --organization=${F.organizationId} --location=global`,
+    ),
+    MissionStep.run(
+      "Web SSO付きのOIDCプロバイダを登録する",
+      "gcloud iam workforce-pools providers create-oidc admin-provider --workforce-pool=admin-workforce --location=global --issuer-uri=https://id.example.com --client-id=admin-console --attribute-mapping=google.subject=assertion.sub --web-sso-response-type=id-token --web-sso-assertion-claims-behavior=only-id-token-claims",
+    ),
+    ...bucket(
+      "workforce",
+      "--uniform-bucket-level-access --public-access-prevention",
+      privateBucket,
+    ),
+    MissionStep.run(
+      "外部IDのstudentに直接閲覧を許可する",
+      binding("workforce", `principal://iam.googleapis.com/${workforcePath}/subject/student`),
+      "サービスアカウントを介さず、外部IDの主体そのものにIAMを付けます。",
+    ),
+    MissionStep.run(
+      "外部IDのトークンを交換する",
+      "sim identity federation exchange --kind=workforce --pool=admin-workforce --provider=admin-provider --issuer=https://id.example.com --audience=admin-console --subject=student",
+    ),
+    MissionStep.run(
+      "得た認証情報で非公開オブジェクトを読む",
+      "sim identity federation access gs://admin-workforce/report.json --token=SIMULATED-credential-10",
+      "SIMULATED-credential-10 は直前の交換で返る値です。",
+    ),
   ],
   quota: [
-    "gcloud quotas preferences create --preference-id=admin-cpus --service=compute.googleapis.com --quota-id=CpusPerProjectPerRegion --preferred-value=32 --dimensions=region=us-central1 --email=owner@example.com",
-    "sim quotas evaluate --region=us-central1 --additional-cpus=30",
-    "sim quotas resolve admin-cpus --granted-value=32",
-    "sim quotas evaluate --region=us-central1 --additional-cpus=30",
+    MissionStep.run(
+      "CPUクォータを32に増やすよう申請する",
+      "gcloud quotas preferences create --preference-id=admin-cpus --service=compute.googleapis.com --quota-id=CpusPerProjectPerRegion --preferred-value=32 --dimensions=region=us-central1 --email=owner@example.com",
+      "申請中は承認値が24のまま変わりません。",
+    ),
+    MissionStep.run(
+      "承認前に30 CPUを追加できるか評価する",
+      "sim quotas evaluate --region=us-central1 --additional-cpus=30",
+      "まだ承認されていないので拒否されます。",
+    ),
+    MissionStep.run(
+      "教材として申請を32で承認する",
+      "sim quotas resolve admin-cpus --granted-value=32",
+    ),
+    MissionStep.run(
+      "承認後に30 CPUを再評価する",
+      "sim quotas evaluate --region=us-central1 --additional-cpus=30",
+    ),
   ],
   assets: [
-    "gcloud storage buckets create gs://admin-assets --location=us-central1",
-    `gcloud asset search-all-resources --scope=${org} --query=name:admin-assets`,
+    MissionStep.run(
+      "検索対象のバケットを作る",
+      "gcloud storage buckets create gs://admin-assets --location=us-central1",
+    ),
+    MissionStep.run(
+      "組織全体からバケットを名前で検索する",
+      `gcloud asset search-all-resources --scope=${org} --query=name:admin-assets`,
+      "組織スコープで検索すると、子プロジェクトのリソースも見つかります。",
+    ),
   ],
   export: [
-    "bq mk --dataset --location=us-central1 admin_costs",
-    `sim billing export configure --billing-account=${F.billingAccountId} --dataset=admin_costs --location=us-central1`,
-    `sim billing export run --billing-account=${F.billingAccountId}`,
+    MissionStep.run(
+      "エクスポート先のデータセットを作る",
+      "bq mk --dataset --location=us-central1 admin_costs",
+    ),
+    MissionStep.run(
+      "課金エクスポートの出力先を設定する",
+      `sim billing export configure --billing-account=${F.billingAccountId} --dataset=admin_costs --location=us-central1`,
+      "データセットと同じロケーションを指定します。",
+    ),
+    MissionStep.run(
+      "合成のコスト行を書き出す",
+      `sim billing export run --billing-account=${F.billingAccountId}`,
+      "実際の料金ではなく教材用の固定データです。",
+    ),
   ],
   budget: [
-    budget("admin-budget"),
-    `gcloud billing budgets update 7a35-budget --billing-account=${F.billingAccountId} --budget-amount=2000 --add-threshold-rule=percent=50,basis=current-spend`,
-    `sim billing budgets evaluate 7a35-budget --billing-account=${F.billingAccountId} --spend=1200`,
+    MissionStep.run("80%で通知する予算を作る", budget("admin-budget")),
+    MissionStep.run(
+      "予算を2,000に上げて50%通知を足す",
+      `gcloud billing budgets update 7a35-budget --billing-account=${F.billingAccountId} --budget-amount=2000 --add-threshold-rule=percent=50,basis=current-spend`,
+      "7a35-budget は作成時に返る予算IDです。",
+    ),
+    MissionStep.run(
+      "1,200の支出で通知が出るか確かめる",
+      `sim billing budgets evaluate 7a35-budget --billing-account=${F.billingAccountId} --spend=1200`,
+      "予算の通知はアラートだけで、課金やリソースは止まりません。",
+    ),
   ],
   placement: [
-    "gcloud storage buckets create gs://admin-placement --location=us-central1 --default-storage-class=NEARLINE",
-    budget("admin-placement"),
-    "sim billing placement evaluate --bucket=admin-placement --data-region=us-central1 --access-pattern=infrequent --budget-id=7a35-budget",
+    MissionStep.run(
+      "低頻度アクセス向けのバケットを作る",
+      "gcloud storage buckets create gs://admin-placement --location=us-central1 --default-storage-class=NEARLINE",
+      "NEARLINE は月1回程度のアクセスを想定したクラスです。",
+    ),
+    MissionStep.run("対象プロジェクトの予算を作る", budget("admin-placement")),
+    MissionStep.run(
+      "場所とアクセス頻度から保存先を評価する",
+      "sim billing placement evaluate --bucket=admin-placement --data-region=us-central1 --access-pattern=infrequent --budget-id=7a35-budget",
+      "7a35-budget は作成した予算のIDです。",
+    ),
   ],
   hierarchy: [
-    ...bucket("hierarchy", "--uniform-bucket-level-access"),
-    "gcloud iam roles create AdminHierarchyReader --permissions=storage.objects.get --title=Reader",
-    `gcloud resource-manager folders add-iam-policy-binding ${F.devFolderId} --member=user:student@example.com --role=projects/${p}/roles/AdminHierarchyReader`,
-    "sim storage access check gs://admin-hierarchy/report.json --principal=student@example.com",
+    ...bucket("hierarchy", "--uniform-bucket-level-access", "均一アクセスのバケットを作る"),
+    MissionStep.run(
+      "オブジェクト取得だけのカスタムロールを作る",
+      "gcloud iam roles create AdminHierarchyReader --permissions=storage.objects.get --title=Reader",
+    ),
+    MissionStep.run(
+      "フォルダでstudentにカスタムロールを付ける",
+      `gcloud resource-manager folders add-iam-policy-binding ${F.devFolderId} --member=user:student@example.com --role=projects/${p}/roles/AdminHierarchyReader`,
+      "フォルダに付けたロールは子プロジェクトのバケットへ継承されます。",
+    ),
+    MissionStep.run(
+      "子プロジェクトのバケットを読めるか確かめる",
+      "sim storage access check gs://admin-hierarchy/report.json --principal=student@example.com",
+    ),
   ],
   apiBilling: [
-    `gcloud billing projects link ${F.prodProjectId} --billing-account=${F.billingAccountId}`,
-    `gcloud services enable compute.googleapis.com --project=${F.prodProjectId}`,
-    `gcloud compute instances create admin-prod --project=${F.prodProjectId} --zone=us-central1-a`,
+    MissionStep.run(
+      "本番プロジェクトに課金アカウントをリンクする",
+      `gcloud billing projects link ${F.prodProjectId} --billing-account=${F.billingAccountId}`,
+    ),
+    MissionStep.run(
+      "本番プロジェクトでCompute APIを有効にする",
+      `gcloud services enable compute.googleapis.com --project=${F.prodProjectId}`,
+      "課金がリンクされていないとCompute APIを有効にできません。",
+    ),
+    MissionStep.run(
+      "本番プロジェクトにVMを作る",
+      `gcloud compute instances create admin-prod --project=${F.prodProjectId} --zone=us-central1-a`,
+    ),
   ],
   gkeIdentity: [
-    ...policy(org, "iam.disableServiceAccountKeyCreation", { rules: [{ enforce: true }] }),
-    "gcloud iam service-accounts create lesson-reader",
-    "gcloud storage buckets create gs://ace-workload-data --location=us-central1",
-    "gcloud container clusters create-auto identity-gke --region=us-central1",
-    "sim files load kubernetes-gke-final",
-    "kubectl apply -f identity-account.json",
-    "kubectl apply -f identity-app.json",
-    `gcloud iam service-accounts add-iam-policy-binding lesson-reader@${p}.iam.gserviceaccount.com --role=roles/iam.workloadIdentityUser --member='serviceAccount:${p}.svc.id.goog[default/bucket-reader]'`,
-    `kubectl annotate serviceaccount bucket-reader iam.gke.io/gcp-service-account=lesson-reader@${p}.iam.gserviceaccount.com`,
-    `gcloud storage buckets add-iam-policy-binding gs://ace-workload-data --member=serviceAccount:lesson-reader@${p}.iam.gserviceaccount.com --role=roles/storage.objectViewer`,
-    "sim kubernetes check-access identity-app --bucket=ace-workload-data --permission=storage.objects.list",
-    "sim kubernetes check-access identity-app --bucket=ace-workload-data --permission=storage.objects.delete",
+    ...noKeyPolicy,
+    MissionStep.run(
+      "Podが使うIAMサービスアカウントを作る",
+      "gcloud iam service-accounts create lesson-reader",
+    ),
+    MissionStep.run(
+      "Podが読むバケットを作る",
+      "gcloud storage buckets create gs://ace-workload-data --location=us-central1",
+    ),
+    MissionStep.run(
+      "Autopilotクラスタを作る",
+      "gcloud container clusters create-auto identity-gke --region=us-central1",
+    ),
+    MissionStep.run("Kubernetesのマニフェストを読み込む", "sim files load kubernetes-gke-final"),
+    MissionStep.run("KubernetesのServiceAccountを作る", "kubectl apply -f identity-account.json"),
+    MissionStep.run("アプリをデプロイする", "kubectl apply -f identity-app.json"),
+    MissionStep.run(
+      "KSAにIAM SAの利用を許可する",
+      `gcloud iam service-accounts add-iam-policy-binding lesson-reader@${p}.iam.gserviceaccount.com --role=roles/iam.workloadIdentityUser --member='serviceAccount:${p}.svc.id.goog[default/bucket-reader]'`,
+      "[default/bucket-reader] は名前空間とKubernetes SAの名前です。",
+    ),
+    MissionStep.run(
+      "KSAに対応するIAM SAを注釈で結び付ける",
+      `kubectl annotate serviceaccount bucket-reader iam.gke.io/gcp-service-account=lesson-reader@${p}.iam.gserviceaccount.com`,
+    ),
+    MissionStep.run(
+      "IAM SAにバケットの閲覧を許可する",
+      `gcloud storage buckets add-iam-policy-binding gs://ace-workload-data --member=serviceAccount:lesson-reader@${p}.iam.gserviceaccount.com --role=roles/storage.objectViewer`,
+    ),
+    MissionStep.run(
+      "アプリから一覧が許可されるか確かめる",
+      "sim kubernetes check-access identity-app --bucket=ace-workload-data --permission=storage.objects.list",
+    ),
+    MissionStep.run(
+      "アプリから削除が拒否されるか確かめる",
+      "sim kubernetes check-access identity-app --bucket=ace-workload-data --permission=storage.objects.delete",
+    ),
   ],
-} as const;
-export type AdminLesson = keyof typeof AdminSolutions;
+} as const satisfies Record<string, readonly MissionStep[]>;
+export type AdminLesson = keyof typeof AdminSteps;
+/** レッスンごとに端末へ流す行（テスト・Storybook 用）。 */
+export const AdminSolutions = Object.fromEntries(
+  Object.entries(AdminSteps).map(([lesson, steps]) => [lesson, MissionStep.lines(steps)]),
+) as Record<AdminLesson, readonly string[]>;
 export type AdminAssertion = Readonly<{ kind: "adminLesson"; lesson: AdminLesson }>;
 const titles: Record<AdminLesson, readonly [string, string, Mission["domain"]]> = {
   orgPap: [
@@ -213,7 +442,7 @@ const titles: Record<AdminLesson, readonly [string, string, Mission["domain"]]> 
     "アクセスとセキュリティ",
   ],
 };
-export const AdminMissions: readonly Mission[] = Object.keys(AdminSolutions).map((key) => {
+export const AdminMissions: readonly Mission[] = Object.keys(AdminSteps).map((key) => {
   const lesson = key as AdminLesson;
   return {
     id: `admin-${lesson.toLowerCase()}`,
@@ -224,7 +453,7 @@ export const AdminMissions: readonly Mission[] = Object.keys(AdminSolutions).map
       { kind: "setProject", projectId: p },
       { kind: "setPrincipal", principal: F.owner },
     ],
-    hints: [...AdminPrelude, ...AdminSolutions[lesson]],
+    steps: [preludeStep, ...AdminSteps[lesson]],
     assertions: [{ kind: "adminLesson", lesson }],
   };
 });

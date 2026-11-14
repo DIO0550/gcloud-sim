@@ -4,6 +4,7 @@ import { Engine, Shell, type ShellState } from "@/engine";
 import { ConfigurationFiles, type FileEdit } from "@/engine/domains/configuration-files";
 import { World } from "@/engine/domains/world";
 import { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
 import { Snapshot } from "@/engine/snapshot";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -33,7 +34,10 @@ test("独自コマンドは登録・実行・ヘルプ・補完・公開ミッ�
     expect(result.completed).toEqual([]);
   }
   for (const mission of Engine.missions()) {
-    expect([mission.description, ...mission.hints].join("\n"), mission.id).not.toMatch(/\bsim\s/);
+    expect(
+      [mission.description, ...mission.steps.map(MissionStep.text)].join("\n"),
+      mission.id,
+    ).not.toMatch(/\bsim\s/);
     expect(mission.assertions.some((a) => a.kind === "aceDecision" || a.kind === "aiLesson")).toBe(
       false,
     );

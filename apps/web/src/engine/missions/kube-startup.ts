@@ -7,6 +7,7 @@ import { KubePod } from "@/engine/domains/kubernetes";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
 import { Option } from "@/utils/Option";
 
 export type KubeStartupAssertion = Readonly<{ kind: "kubeStartupGated" }>;
@@ -21,13 +22,48 @@ export const KubeStartupMissions: readonly Mission[] = [
     ],
     description:
       "startup-gkeに教材のslow-webを2レプリカとslow-serviceを作ります。startupの失敗閾値は3、livenessは1です。全Podへstartupの503を2回指定しても再起動しないことを確認し、1つのPodだけstartupとreadinessを200で成功させてください。もう1つは起動待ち、RESTARTSはどちらも0、Service接続先は1つにします。HTTP応答は手動指定で、実通信や起動時間は再現しません。",
-    hints: [
-      "gcloud services enable container.googleapis.com → gcloud container clusters create startup-gke --zone=us-central1-a → sim files load kubernetes-startup",
-      "sim files read slow-web.yaml → kubectl apply -f slow-web.yaml → kubectl apply -f slow-service.yaml。startupの成功前はreadiness/livenessを指定してもStartupProbePendingとなり、評価は進みません。",
-      "sim kubernetes probe slow-web --kind=startup --status-code=503 を2回実行します。startupの失敗閾値3に届かず、RESTARTSは0です。livenessの失敗閾値1はまだ使われません。",
-      "kubectl get podsで1つのPod名をコピーします。sim kubernetes probe slow-web --kind=startup --pod=コピーしたPod名 --status-code=200。起動確認は済みますが、readinessはまだ未評価です。",
-      "同じPodに sim kubernetes probe slow-web --pod=コピーしたPod名 --status-code=200 → kubectl describe service slow-service。接続先が1つとなり、もう1つのPodはstartup連続失敗2で起動待ちなら達成です。",
-      "クリア後は起動待ちPodにstartupの200→readinessの200を指定すれば接続先へ加わります。503をもう1回指定するとコンテナ再起動です。startup成功後は再起動までstartupを再評価できず、livenessで再起動した場合もstartupからやり直します。",
+    steps: [
+      MissionStep.run("GKEのAPIを有効にする", "gcloud services enable container.googleapis.com"),
+      MissionStep.run(
+        "Standardクラスタstartup-gkeを作る",
+        "gcloud container clusters create startup-gke --zone=us-central1-a",
+      ),
+      MissionStep.run("startup教材のマニフェストを用意する", "sim files load kubernetes-startup"),
+      MissionStep.run("3種類のprobeの設定を確かめる", "sim files read slow-web.yaml"),
+      MissionStep.run("slow-webを2レプリカで作る", "kubectl apply -f slow-web.yaml"),
+      MissionStep.run(
+        "Service slow-serviceを作る",
+        "kubectl apply -f slow-service.yaml",
+        "startupの成功前はreadiness/livenessを指定してもStartupProbePendingとなり、評価は進みません。",
+      ),
+      MissionStep.run(
+        "全Podのstartupを閾値未満で失敗させる",
+        "sim kubernetes probe slow-web --kind=startup --status-code=503",
+        "2回実行します。startupの失敗閾値3に届かず、RESTARTSは0です。livenessの失敗閾値1はまだ使われません。",
+      ),
+      MissionStep.run(
+        "起動させるPodの名前を1つ控える",
+        "kubectl get pods",
+        "表示されたPod名を1つコピーします。",
+      ),
+      MissionStep.run(
+        "控えたPodのstartupを成功させる",
+        "sim kubernetes probe slow-web --kind=startup --pod=コピーしたPod名 --status-code=200",
+        "「コピーしたPod名」は控えたPod名に置き換えます。起動確認は済みますが、readinessはまだ未評価です。",
+      ),
+      MissionStep.run(
+        "同じPodのreadinessを成功させる",
+        "sim kubernetes probe slow-web --pod=コピーしたPod名 --status-code=200",
+      ),
+      MissionStep.run(
+        "接続先が1つだけか確かめる",
+        "kubectl describe service slow-service",
+        "接続先が1つとなり、もう1つのPodはstartup連続失敗2で起動待ちなら達成です。",
+      ),
+      MissionStep.say(
+        "クリア後の起動待ちPodの扱いを押さえる",
+        "クリア後は起動待ちPodにstartupの200→readinessの200を指定すれば接続先へ加わります。503をもう1回指定するとコンテナ再起動です。startup成功後は再起動までstartupを再評価できず、livenessで再起動した場合もstartupからやり直します。",
+      ),
     ],
     assertions: [{ kind: "kubeStartupGated" }],
   },

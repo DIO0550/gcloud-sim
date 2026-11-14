@@ -11,6 +11,7 @@ import {
   aceSatisfied,
   aiSolutions,
 } from "@/engine/missions/ace-support";
+import { MissionStep } from "@/engine/missions/mission-step";
 
 for (const mission of [...AceDecisionMissions, ...AiMissions]) {
   test(`${mission.title}: initial, incomplete, solution and saved state`, () => {
@@ -39,9 +40,9 @@ for (const mission of [...AceDecisionMissions, ...AiMissions]) {
       );
       expect(s.text).toContain("INCORRECT");
       expect(aceSatisfied(s.world, a)).toBe(false);
-      steps = [mission.hints[1] as string];
+      steps = [MissionStep.lines(mission.steps)[1] as string];
     } else {
-      steps = aiSolutions(a.lesson);
+      steps = MissionStep.lines(aiSolutions(a.lesson));
     }
     for (const [i, line] of steps.entries()) {
       s = run(s, line);

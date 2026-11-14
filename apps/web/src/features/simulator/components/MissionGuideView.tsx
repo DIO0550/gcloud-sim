@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { TextButton } from "@/components/TextButton";
 import type { GuideAction, MissionGuide } from "@/engine/missions/learning-guides/model";
 
 const Code = ({ text }: Readonly<{ text: string }>): ReactElement => (
@@ -7,7 +8,33 @@ const Code = ({ text }: Readonly<{ text: string }>): ReactElement => (
   </pre>
 );
 
-const Action = ({ action }: Readonly<{ action: GuideAction }>): ReactElement => {
+type Insert = (line: string) => void;
+
+/** 端末に打つ行。ラベルと「入力行に入れる」を添える。 */
+const TerminalLine = ({
+  label,
+  text,
+  onInsert,
+}: Readonly<{ label: string; text: string; onInsert: Insert }>): ReactElement => (
+  <div>
+    <div className="mb-1 flex items-center justify-between gap-2 text-muted text-xs">
+      <span>{label}</span>
+      <TextButton
+        className="text-xs"
+        ariaLabel={`${text} を入力行に入れる`}
+        onClick={() => onInsert(text)}
+      >
+        入力行に入れる
+      </TextButton>
+    </div>
+    <Code text={text} />
+  </div>
+);
+
+const Action = ({
+  action,
+  onInsert,
+}: Readonly<{ action: GuideAction; onInsert: Insert }>): ReactElement => {
   switch (action.kind) {
     case "command":
       return (
@@ -15,16 +42,11 @@ const Action = ({ action }: Readonly<{ action: GuideAction }>): ReactElement => 
           {action.expectFailure && (
             <p className="mb-1 text-warn-ink text-xs">エラーを観察する操作</p>
           )}
-          <Code text={action.text} />
+          <TerminalLine label="ターミナルで実行" text={action.text} onInsert={onInsert} />
         </div>
       );
     case "answer":
-      return (
-        <div>
-          <p className="mb-1 text-muted text-xs">確認プロンプトへの回答</p>
-          <Code text={action.text} />
-        </div>
-      );
+      return <TerminalLine label="確認プロンプトへの回答" text={action.text} onInsert={onInsert} />;
     case "load":
       return (
         <p className="rounded border border-line bg-canvas p-3 text-sm">
@@ -59,10 +81,13 @@ const Action = ({ action }: Readonly<{ action: GuideAction }>): ReactElement => 
 };
 
 /** 各段階の目的、操作、構文の意味、結果を一続きで読める教材表示。 */
-export const MissionGuideView = ({ guide }: Readonly<{ guide: MissionGuide }>): ReactElement => (
+export const MissionGuideView = ({
+  guide,
+  onInsert,
+}: Readonly<{ guide: MissionGuide; onInsert: Insert }>): ReactElement => (
   <div className="space-y-5 text-sm leading-relaxed">
     <p>{guide.introduction}</p>
-    <ol className="space-y-5">
+    <ol aria-label="実行手順" className="space-y-5">
       {guide.steps.map((step, index) => (
         <li key={step.title} className="rounded-lg border border-line p-3">
           <h6 className="mb-2 font-semibold text-base">
@@ -71,7 +96,7 @@ export const MissionGuideView = ({ guide }: Readonly<{ guide: MissionGuide }>): 
           <p className="mb-3">{step.explanation}</p>
           <div className="space-y-2">
             {step.actions.map((action) => (
-              <Action key={JSON.stringify(action)} action={action} />
+              <Action key={JSON.stringify(action)} action={action} onInsert={onInsert} />
             ))}
           </div>
           <p className="mt-4 mb-2 font-semibold">コマンド・設定のポイント</p>

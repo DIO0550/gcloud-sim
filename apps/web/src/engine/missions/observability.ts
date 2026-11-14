@@ -1,6 +1,7 @@
 import { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
 import { Option } from "@/utils/Option";
 
 export type ObservabilityAssertion =
@@ -51,10 +52,17 @@ export const ObservabilityMissions: readonly Mission[] = [
     description:
       "ace-dev-01 に user_errors というログベースのカウンタ指標を作成してください。フィルタは severity>=ERROR とします。ログの件数を監視できる設定を学ぶ演習です（実際のメトリクス取り込みは再現しません）。",
     setup,
-    hints: [
-      "logging.googleapis.com が必要です。",
-      "gcloud logging metrics create user_errors --log-filter='severity>=ERROR'",
-      "gcloud logging metrics describe user_errors でフィルタとmetricDescriptorを確認します。",
+    steps: [
+      MissionStep.run(
+        "ERROR以上のログを数えるカウンタ指標を作る",
+        "gcloud logging metrics create user_errors --log-filter='severity>=ERROR'",
+        "logging.googleapis.com が必要です。",
+      ),
+      MissionStep.run(
+        "指標のフィルタと種類を確かめる",
+        "gcloud logging metrics describe user_errors",
+        "フィルタとmetricDescriptorを確認します。",
+      ),
     ],
     assertions: [
       {
@@ -72,10 +80,18 @@ export const ObservabilityMissions: readonly Mission[] = [
     description:
       "ace-dev-01 で表示名 public-web、対象 example.com/healthz、HTTPS 443番、5分間隔の稼働時間チェックを設定してください。設定のみを再現し、実際のURLには接続しません。",
     setup,
-    hints: [
-      "gcloud monitoring uptime create DISPLAY_NAME --resource-type=uptime-url --resource-labels=host=HOST,project_id=PROJECT を使います。",
-      "gcloud monitoring uptime create public-web --resource-type=uptime-url --resource-labels=host=example.com,project_id=ace-dev-01 --protocol=https --path=/healthz --period=5",
-      "gcloud monitoring uptime list でIDを調べ、describe IDで設定を確認します。",
+    steps: [
+      MissionStep.run(
+        "example.com/healthzを5分ごとにHTTPSで確かめるチェックを作る",
+        "gcloud monitoring uptime create public-web --resource-type=uptime-url --resource-labels=host=example.com,project_id=ace-dev-01 --protocol=https --path=/healthz --period=5",
+        "書式は gcloud monitoring uptime create DISPLAY_NAME --resource-type=uptime-url --resource-labels=host=HOST,project_id=PROJECT です。",
+      ),
+      MissionStep.run("作成したチェックのIDを調べる", "gcloud monitoring uptime list"),
+      MissionStep.run(
+        "チェックの設定を確かめる",
+        "gcloud monitoring uptime describe ID",
+        "IDには前の手順の一覧で調べたチェックのIDを入れます。",
+      ),
     ],
     assertions: [
       {
@@ -96,10 +112,17 @@ export const ObservabilityMissions: readonly Mission[] = [
     description:
       "ace-dev-01 に表示名 VM CPU のダッシュボードを作成してください。組み込みの cpu-dashboard.json は Compute Engine のCPU使用率を対象にした1チャートの設定です。validate-onlyと作成を区別します。",
     setup,
-    hints: [
-      "gcloud monitoring dashboards create --config-from-file=cpu-dashboard.json --validate-only は保存しません。",
-      "gcloud monitoring dashboards create --config-from-file=cpu-dashboard.json",
-      "gcloud monitoring dashboards list で作成を確認します。",
+    steps: [
+      MissionStep.run(
+        "保存せずに設定ファイルを検証する",
+        "gcloud monitoring dashboards create --config-from-file=cpu-dashboard.json --validate-only",
+        "--validate-only は検証だけで、ダッシュボードは保存しません。",
+      ),
+      MissionStep.run(
+        "設定ファイルからダッシュボードを作る",
+        "gcloud monitoring dashboards create --config-from-file=cpu-dashboard.json",
+      ),
+      MissionStep.run("作成されたことを一覧で確かめる", "gcloud monitoring dashboards list"),
     ],
     assertions: [
       {
@@ -117,10 +140,12 @@ export const ObservabilityMissions: readonly Mission[] = [
     description:
       "ace-dev-01 に CPU high という有効なアラートポリシーを作成してください。gce_instance の compute.googleapis.com/instance/cpu/utilization が0.8を超える状態が300秒続く条件とします。実際の評価・インシデント・通知は再現しません。",
     setup,
-    hints: [
-      "--if='> 0.8' と --duration=300s でしきい値と継続時間を指定します。",
-      `gcloud monitoring policies create --display-name='CPU high' --condition-display-name='CPU > 80%' --condition-filter='${cpuFilter}' --if='> 0.8' --duration=300s`,
-      "--no-enabled を付けた無効なポリシーでは完了しません。",
+    steps: [
+      MissionStep.run(
+        "CPU使用率0.8超えが300秒続くと発火するポリシーを作る",
+        `gcloud monitoring policies create --display-name='CPU high' --condition-display-name='CPU > 80%' --condition-filter='${cpuFilter}' --if='> 0.8' --duration=300s`,
+        "--if='> 0.8' と --duration=300s でしきい値と継続時間を指定します。--no-enabled を付けた無効なポリシーでは完了しません。",
+      ),
     ],
     assertions: [
       {
@@ -140,11 +165,24 @@ export const ObservabilityMissions: readonly Mission[] = [
     description:
       "ace-dev-01 に ace-audit-logs バケットと audit-export シンクを作り、severity>=ERROR の転送先をそのバケットに設定してください。シンクのwriterIdentityに、そのバケットのStorage Object Creatorを付与します。転送設定のみの演習で、実際のログ配送は再現しません。",
     setup,
-    hints: [
-      "gcloud storage buckets create gs://ace-audit-logs --location=asia-northeast1",
-      "gcloud logging sinks create audit-export storage.googleapis.com/ace-audit-logs --log-filter='severity>=ERROR'",
-      "gcloud logging sinks describe audit-export --format='value(writerIdentity)' で主体を確認します。",
-      "gcloud storage buckets add-iam-policy-binding gs://ace-audit-logs --member=取得したwriterIdentity --role=roles/storage.objectCreator",
+    steps: [
+      MissionStep.run(
+        "ログの転送先にするバケットを作る",
+        "gcloud storage buckets create gs://ace-audit-logs --location=asia-northeast1",
+      ),
+      MissionStep.run(
+        "ERROR以上のログをバケットへ送るシンクを作る",
+        "gcloud logging sinks create audit-export storage.googleapis.com/ace-audit-logs --log-filter='severity>=ERROR'",
+      ),
+      MissionStep.run(
+        "シンクの書き込み主体を調べる",
+        "gcloud logging sinks describe audit-export --format='value(writerIdentity)'",
+      ),
+      MissionStep.run(
+        "書き込み主体にバケットへの書き込みを許可する",
+        "gcloud storage buckets add-iam-policy-binding gs://ace-audit-logs --member=取得したwriterIdentity --role=roles/storage.objectCreator",
+        "「取得したwriterIdentity」には、前の手順で表示された serviceAccount:… の値をそのまま入れます。",
+      ),
     ],
     assertions: [
       {

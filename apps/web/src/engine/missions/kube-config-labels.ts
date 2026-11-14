@@ -5,6 +5,7 @@ import { KubePod } from "@/engine/domains/kubernetes";
 import type { World } from "@/engine/domains/world";
 import { InitialWorldFixture as F } from "@/engine/initial-world";
 import type { Mission } from "@/engine/missions";
+import { MissionStep } from "@/engine/missions/mission-step";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 
@@ -20,12 +21,59 @@ export const KubeConfigLabelsMissions: readonly Mission[] = [
     ],
     description:
       "labels-gkeへ設定サンプルをapplyし、settings-devをenvironment=staging、settings-prodとcredentialsをenvironment=productionに分類します。3つともapp=webを付け、settings-prodのtemporaryラベルを削除してください。設定データと、参照で動くwebのnginx:1・1レプリカ・revision 1を保ちます。ラベルは設定の分類に使い、Podへ渡す値は変更しません。",
-    hints: [
-      "gcloud services enable container.googleapis.com → gcloud container clusters create-auto labels-gke --region=us-central1 → sim files load kubernetes-config-labels → kubectl apply -f labeled-configs.yaml",
-      "kubectl get cm -o yaml → kubectl describe secret credentials。settings-prodのenvironmentは誤ってstagingになっています。Secretのdescribeでは値の代わりにバイト数を表示します。",
-      "kubectl label cm settings-dev app=web environment=staging → kubectl label cm settings-prod app=web environment=production --overwrite。既存ラベルの別の値への変更には--overwriteが必要です。",
-      "kubectl label cm/settings-prod temporary- → kubectl label secret/credentials app=web environment=production。ラベル削除はKEY-で指定します。",
-      "kubectl get cm -l app=web,environment=production → kubectl get secrets -l environment=production。複数条件はANDです。kubectl exec deployment/web -- printenv MODEとkubectl get deployment web -o jsonで設定値とrevisionを確認します。",
+    steps: [
+      MissionStep.run(
+        "Kubernetes Engine APIを有効にする",
+        "gcloud services enable container.googleapis.com",
+      ),
+      MissionStep.run(
+        "Autopilotクラスタを作る",
+        "gcloud container clusters create-auto labels-gke --region=us-central1",
+      ),
+      MissionStep.run("教材のマニフェストを読み込む", "sim files load kubernetes-config-labels"),
+      MissionStep.run(
+        "ConfigMap・Secretとそれを参照するwebを配置する",
+        "kubectl apply -f labeled-configs.yaml",
+      ),
+      MissionStep.run(
+        "ConfigMapの今のラベルを確かめる",
+        "kubectl get cm -o yaml",
+        "settings-prodのenvironmentは誤ってstagingになっています。",
+      ),
+      MissionStep.run(
+        "Secretの今のラベルを確かめる",
+        "kubectl describe secret credentials",
+        "Secretのdescribeでは値の代わりにバイト数を表示します。",
+      ),
+      MissionStep.run(
+        "settings-devを検証環境として分類する",
+        "kubectl label cm settings-dev app=web environment=staging",
+      ),
+      MissionStep.run(
+        "settings-prodのenvironmentを本番へ書き換える",
+        "kubectl label cm settings-prod app=web environment=production --overwrite",
+        "既存ラベルの別の値への変更には--overwriteが必要です。",
+      ),
+      MissionStep.run(
+        "settings-prodからtemporaryラベルを外す",
+        "kubectl label cm/settings-prod temporary-",
+        "ラベル削除はKEY-で指定します。",
+      ),
+      MissionStep.run(
+        "credentialsを本番として分類する",
+        "kubectl label secret/credentials app=web environment=production",
+      ),
+      MissionStep.run(
+        "webの本番用ConfigMapだけを絞り込む",
+        "kubectl get cm -l app=web,environment=production",
+        "複数条件はANDです。",
+      ),
+      MissionStep.run("本番用のSecretを絞り込む", "kubectl get secrets -l environment=production"),
+      MissionStep.run(
+        "Podへ渡る設定値が変わっていないか確かめる",
+        "kubectl exec deployment/web -- printenv MODE",
+      ),
+      MissionStep.run("webのrevisionが1のままか確かめる", "kubectl get deployment web -o json"),
     ],
     assertions: [{ kind: "kubeConfigLabelsClassified" }],
   },

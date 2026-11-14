@@ -11,7 +11,7 @@ import { ChangeLog } from "@/features/simulator/components/ChangeLog";
 import { FileWorkspace } from "@/features/simulator/components/FileWorkspace";
 import { Header } from "@/features/simulator/components/Header";
 import { HierarchyCreateDialog } from "@/features/simulator/components/HierarchyCreateDialog";
-import { MissionPanel } from "@/features/simulator/components/MissionPanel";
+import { MissionPanel, type ViaFilter } from "@/features/simulator/components/MissionPanel";
 import { PanelResizeHandle } from "@/features/simulator/components/PanelResizeHandle";
 import { PropertiesPanel } from "@/features/simulator/components/PropertiesPanel";
 import { ResourceTree } from "@/features/simulator/components/ResourceTree";
@@ -66,6 +66,7 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
   const [state, dispatch] = useSimulator(start);
   const [navigationOpen, setNavigationOpen] = useState(true);
   const [terminalMaximized, setTerminalMaximized] = useState(false);
+  const [consoleMissionsOpen, setConsoleMissionsOpen] = useState(false);
   const panels = usePanelWidths();
   const { world, saveState } = state;
   const namespace = Option.flatMap(WorldOps.currentProjectId(world), (projectId) =>
@@ -141,6 +142,39 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
     confirm: io.confirm,
     changeScreen: (screen) => dispatch({ type: "consoleScreenChanged", screen }),
   };
+  const insert = (line: string): void => dispatch({ type: "insertRequested", text: line });
+  const celebrationBanner = Option.isSome(state.celebration) && (
+    <div
+      className="flex items-center justify-between bg-ok-soft px-4 py-2 text-ok-ink text-sm"
+      role="status"
+    >
+      <span>✓ ミッションクリア「{state.celebration.value.title}」</span>
+      <TextButton
+        tone="inherit"
+        className="text-xs underline"
+        onClick={() => dispatch({ type: "celebrationDismissed" })}
+      >
+        閉じる
+      </TextButton>
+    </div>
+  );
+  const missionPanel = (initialVia: ViaFilter): ReactElement => (
+    <>
+      <p className="border-line border-b px-3 py-2 text-right text-xs text-muted">
+        {counts.completed}/{counts.total} クリア
+      </p>
+      <MissionPanel
+        world={world}
+        missions={Engine.missions()}
+        selectedId={state.selectedMissionId}
+        onSelect={(id) => dispatch({ type: "missionSelected", id })}
+        onStart={(id) => dispatch({ type: "missionStarted", id })}
+        onAbandon={(id) => dispatch({ type: "missionAbandoned", id })}
+        onInsert={insert}
+        initialVia={initialVia}
+      />
+    </>
+  );
   // Console でも端末は同じ位置に置いたまま（下のドロワーになる）。別の位置に描くと端末が作り直され、
   // 打った行の映りが消える。
   return (
@@ -157,6 +191,8 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
         onTerminalToggle={() =>
           dispatch({ type: "consoleTerminalToggled", open: !state.consoleTerminalOpen })
         }
+        isMissionsOpen={consoleMissionsOpen}
+        onMissionsToggle={() => setConsoleMissionsOpen((open) => !open)}
         isNavigationOpen={navigationOpen}
         onNavigationToggle={() => setNavigationOpen((open) => !open)}
         onNavigate={consoleHandlers.changeScreen}
@@ -190,7 +226,7 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
         ref={panels.containerRef}
         data-testid="simulator-layout"
         style={panelLayout}
-        className={`relative grid min-h-0 flex-1 ${isConsole ? "grid-cols-[minmax(0,1fr)]" : "grid-cols-1 content-start overflow-y-auto lg:grid-cols-[var(--cli-left-width)_minmax(0,1fr)_var(--cli-right-width)] lg:content-normal lg:overflow-hidden"}`}
+        className={`relative grid min-h-0 flex-1 ${isConsole ? `grid-cols-[minmax(0,1fr)] ${consoleMissionsOpen ? "md:grid-cols-[minmax(0,1fr)_min(26rem,45%)]" : ""}` : "grid-cols-1 content-start overflow-y-auto lg:grid-cols-[var(--cli-left-width)_minmax(0,1fr)_var(--cli-right-width)] lg:content-normal lg:overflow-hidden"}`}
       >
         {!isConsole && (
           <div hidden={!navigationOpen} className={navigationOpen ? "contents" : "hidden"}>
@@ -272,48 +308,20 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
                 </Tab>
               ))}
             </div>
-            {Option.isSome(state.celebration) && (
-              <div
-                className="flex items-center justify-between bg-ok-soft px-4 py-2 text-ok-ink text-sm"
-                role="status"
-              >
-                <span>✓ ミッションクリア「{state.celebration.value.title}」</span>
-                <TextButton
-                  tone="inherit"
-                  className="text-xs underline"
-                  onClick={() => dispatch({ type: "celebrationDismissed" })}
-                >
-                  閉じる
-                </TextButton>
-              </div>
-            )}
+            {celebrationBanner}
             <div className="min-h-0 flex-1 overflow-auto">
               {state.panelTab === PanelTabs.Properties && (
                 <PropertiesPanel
                   world={world}
                   selection={state.selection}
-                  onInsert={(command) => dispatch({ type: "insertRequested", text: command })}
+                  onInsert={insert}
                   onOpenConsole={(screen) => {
                     dispatch({ type: "viewChanged", view: Views.Console });
                     dispatch({ type: "consoleScreenChanged", screen });
                   }}
                 />
               )}
-              {state.panelTab === PanelTabs.Missions && (
-                <>
-                  <p className="border-line border-b px-3 py-2 text-right text-xs text-muted">
-                    {counts.completed}/{counts.total} クリア
-                  </p>
-                  <MissionPanel
-                    world={world}
-                    missions={Engine.missions()}
-                    selectedId={state.selectedMissionId}
-                    onSelect={(id) => dispatch({ type: "missionSelected", id })}
-                    onStart={(id) => dispatch({ type: "missionStarted", id })}
-                    onAbandon={(id) => dispatch({ type: "missionAbandoned", id })}
-                  />
-                </>
-              )}
+              {state.panelTab === PanelTabs.Missions && missionPanel("all")}
               {state.panelTab === PanelTabs.Log && (
                 <ChangeLog world={world} transcript={state.transcript} />
               )}
@@ -331,6 +339,25 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
                 />
               )}
             </div>
+          </aside>
+        )}
+        {isConsole && consoleMissionsOpen && (
+          // 狭い画面では Console に重ね、md 以上では右の列に置く（フォームを隠さない）。
+          <aside
+            aria-label="ミッション"
+            className="absolute inset-y-0 right-0 z-40 flex min-h-0 w-full min-w-0 flex-col border-line border-l bg-surface md:relative md:z-auto md:w-auto"
+          >
+            <div className="flex shrink-0 items-center justify-between border-line border-b px-4 py-2.5">
+              <h2 className="font-semibold text-sm">ミッション</h2>
+              <TextButton
+                ariaLabel="ミッションを閉じる"
+                onClick={() => setConsoleMissionsOpen(false)}
+              >
+                閉じる
+              </TextButton>
+            </div>
+            {celebrationBanner}
+            <div className="min-h-0 flex-1 overflow-auto">{missionPanel("console")}</div>
           </aside>
         )}
         {!isConsole && (
