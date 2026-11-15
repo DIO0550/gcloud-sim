@@ -10,7 +10,9 @@ import { World } from "@/engine/domains/world";
 import { Mission, MissionDomains } from "@/engine/missions";
 import { isConsoleMission } from "@/engine/missions/console";
 import { ExamSections, examSectionOf } from "@/engine/missions/exam-sections";
+import { MissionGuides } from "@/engine/missions/learning-guides";
 import type { MissionStep, StepDetail } from "@/engine/missions/mission-step";
+import { MissionGuideView } from "@/features/simulator/components/MissionGuideView";
 import { Option } from "@/utils/Option";
 
 type MissionPanelProps = Readonly<{
@@ -331,6 +333,7 @@ const MissionBrief = ({
   const progress = World.findMissionProgress(world, mission.id);
   const status = Option.isSome(progress) ? progress.value.status : MissionStatuses.Available;
   const results = Mission.assertionResults(world, mission);
+  const guide = MissionGuides.find(mission.id);
   const viaConsole = isConsoleMission(mission);
   return (
     <section aria-label={mission.title} className="border-line border-t p-4">
@@ -352,20 +355,28 @@ const MissionBrief = ({
       </ul>
       <h5 className="mb-2 font-semibold">実行手順</h5>
       <p className="mb-3 text-sm text-muted">
-        {viaConsole
-          ? "開始すると演習の初期状態が用意されます。Console の画面で、上から順に操作してください。"
-          : "開始すると演習の初期状態が用意されます。各手順の目的を確かめてから、上から順に実行してください。"}
+        {guide
+          ? "「開始」を押して演習を準備したら、各段階の目的を読み、操作後の結果を確認しながら進めます。"
+          : viaConsole
+            ? "開始すると演習の初期状態が用意されます。Console の画面で、上から順に操作してください。"
+            : "開始すると演習の初期状態が用意されます。各手順の目的を確かめてから、上から順に実行してください。"}
       </p>
-      <ol aria-label="実行手順" className="mb-4 space-y-2.5 text-sm leading-relaxed">
-        {mission.steps.map((step, index) => (
-          <StepCard
-            key={`${index.toString()}-${step.what}`}
-            step={step}
-            index={index}
-            onInsert={onInsert}
-          />
-        ))}
-      </ol>
+      {guide ? (
+        <div className="mb-4">
+          <MissionGuideView guide={guide} onInsert={onInsert} />
+        </div>
+      ) : (
+        <ol aria-label="実行手順" className="mb-4 space-y-2.5 text-sm leading-relaxed">
+          {mission.steps.map((step, index) => (
+            <StepCard
+              key={`${index.toString()}-${step.what}`}
+              step={step}
+              index={index}
+              onInsert={onInsert}
+            />
+          ))}
+        </ol>
+      )}
       <div className="flex flex-wrap gap-2">
         {status !== MissionStatuses.InProgress && (
           <PrimaryButton onClick={() => onStart(mission.id)}>
