@@ -17,7 +17,10 @@ import {
   ScreenTitle,
   TextInput,
 } from "@/features/simulator/features/console/components/ConsoleParts";
-import { FirewallCreateForm } from "@/features/simulator/features/console/domains/equivalent-command";
+import {
+  DeleteCommand,
+  FirewallCreateForm,
+} from "@/features/simulator/features/console/domains/equivalent-command";
 import { useCreateForm } from "@/features/simulator/features/console/hooks/use-create-form";
 import type { ScreenProps } from "@/features/simulator/features/console/types/screen-props";
 import { Option } from "@/utils/Option";
@@ -54,6 +57,14 @@ export const FirewallScreen = ({ world, project, handlers }: ScreenProps): React
       next: Option.none,
     });
     editor.close();
+  };
+  const remove = (name: string): void => {
+    if (!handlers.confirm(`ファイアウォール ルール ${name} を削除しますか？`)) return;
+    handlers.submit({
+      line: DeleteCommand.firewallRule(name, projectId),
+      note: `ファイアウォール ルールを削除 (${name})`,
+      next: Option.none,
+    });
   };
   return (
     <div>
@@ -166,6 +177,7 @@ export const FirewallScreen = ({ world, project, handlers }: ScreenProps): React
         rows={World.firewallRulesOf(world, projectId)}
         keyOf={(r) => r.name}
         empty="ルールはありません。"
+        onDelete={(r) => remove(r.name)}
         columns={[
           { header: "名前", cell: (r) => <span className="font-mono">{r.name}</span> },
           { header: "ネットワーク", cell: (r) => r.network },
@@ -190,24 +202,36 @@ export const FirewallScreen = ({ world, project, handlers }: ScreenProps): React
 };
 
 /** VPC ネットワーク › サブネット: 一覧。 */
-export const SubnetsScreen = ({ world, project }: ScreenProps): ReactElement => (
-  <div>
-    <ScreenTitle eyebrow="VPC ネットワーク" title="サブネット" />
-    <ResourceTable
-      label="サブネット"
-      rows={World.subnetsOf(world, project.projectId)}
-      keyOf={(s) => `${s.region}/${s.name}`}
-      empty="サブネットはありません。"
-      columns={[
-        { header: "名前", cell: (s) => <span className="font-mono">{s.name}</span> },
-        { header: "リージョン", cell: (s) => s.region },
-        { header: "ネットワーク", cell: (s) => s.network },
-        { header: "IP 範囲", cell: (s) => <span className="font-mono">{s.ipCidrRange}</span> },
-        {
-          header: "限定公開の Google アクセス",
-          cell: (s) => (s.privateIpGoogleAccess ? "オン" : "オフ"),
-        },
-      ]}
-    />
-  </div>
-);
+export const SubnetsScreen = ({ world, project, handlers }: ScreenProps): ReactElement => {
+  const remove = (subnet: Readonly<{ name: string; region: string }>): void => {
+    if (!handlers.confirm(`サブネット ${subnet.name}（${subnet.region}）を削除しますか？`)) return;
+    handlers.submit({
+      line: DeleteCommand.subnet(subnet, project.projectId),
+      note: `サブネットを削除 (${subnet.name})`,
+      next: Option.none,
+    });
+  };
+  return (
+    <div>
+      <ScreenTitle eyebrow="VPC ネットワーク" title="サブネット" />
+      <ResourceTable
+        label="サブネット"
+        rows={World.subnetsOf(world, project.projectId)}
+        keyOf={(s) => `${s.region}/${s.name}`}
+        nameOf={(s) => `${s.name}（${s.region}）`}
+        empty="サブネットはありません。"
+        onDelete={remove}
+        columns={[
+          { header: "名前", cell: (s) => <span className="font-mono">{s.name}</span> },
+          { header: "リージョン", cell: (s) => s.region },
+          { header: "ネットワーク", cell: (s) => s.network },
+          { header: "IP 範囲", cell: (s) => <span className="font-mono">{s.ipCidrRange}</span> },
+          {
+            header: "限定公開の Google アクセス",
+            cell: (s) => (s.privateIpGoogleAccess ? "オン" : "オフ"),
+          },
+        ]}
+      />
+    </div>
+  );
+};

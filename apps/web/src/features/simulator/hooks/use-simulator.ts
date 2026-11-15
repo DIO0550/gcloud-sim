@@ -82,6 +82,7 @@ export type SimulatorAction =
   | Readonly<{ type: "hierarchyToggled"; open: boolean }>
   | Readonly<{ type: "hierarchyNoticeCleared" }>
   | Readonly<{ type: "hierarchySubmitted"; input: HierarchyCreation; now: string }>
+  | Readonly<{ type: "organizationDeleted"; id: string }>
   | Readonly<{ type: "submitted"; line: string; now: string; origin: "cli" | "ui" }>
   | Readonly<{
       type: "consoleSubmitted";
@@ -245,6 +246,24 @@ const consoleSubmitted = (
   };
 };
 
+/** 学習用組織の削除（作成と同じく gcloud コマンドを通さない学習環境の操作）。 */
+const organizationDeleted = (
+  state: SimulatorState,
+  action: Extract<SimulatorAction, { type: "organizationDeleted" }>,
+): SimulatorState => {
+  const organization = World.findOrganization(state.world, action.id);
+  const name = Option.isSome(organization) ? organization.value.displayName : action.id;
+  const deleted = World.deleteOrganization(state.world, action.id);
+  if (!Result.isOk(deleted)) {
+    return append(state, [uiLine(`gcloud-sim: ${deleted.error}`, "error")]);
+  }
+  return {
+    ...append(state, [uiLine(`gcloud-sim: 学習用組織「${name}」を削除しました。`, "success")]),
+    world: deleted.value,
+    selection: Option.none,
+  };
+};
+
 const hierarchySubmitted = (
   state: SimulatorState,
   action: Extract<SimulatorAction, { type: "hierarchySubmitted" }>,
@@ -350,6 +369,8 @@ export const simulatorReducer = (
       return { ...state, hierarchyNotice: Option.none };
     case "hierarchySubmitted":
       return hierarchySubmitted(state, action);
+    case "organizationDeleted":
+      return organizationDeleted(state, action);
     case "submitted":
       return submitted(state, action);
     case "consoleSubmitted":

@@ -765,4 +765,48 @@ export const TreeSelection = {
         return Option.some(iamDescribeCommand(selection.target));
     }
   },
+
+  /**
+   * プロパティパネルの「delete を挿入」に出す削除コマンドの候補。describe コマンドの `describe` を
+   * `delete` に置き換えて作る（同じ位置引数とフラグで引ける）。そのコマンドが本当にあるかは
+   * 呼び出し側（`Engine.deleteCommand`）が登録簿で確かめる。
+   *
+   * @param selection 選択
+   * @returns 削除コマンドの候補。組織・請求・IAM・Terraform など、ツリーから消す操作が無いものは `none`
+   */
+  deleteCommand(selection: TreeSelection): Option<string> {
+    switch (selection.kind) {
+      case "organization":
+      case "billing":
+      case "iam":
+      case "terraform":
+      case "app-engine":
+      case "app-version":
+      case "ace-support":
+      case "observability-lab":
+      case "admin-lab":
+        return Option.none;
+      case "container-lab":
+        return selection.collection === "containers"
+          ? Option.some(`docker rm ${selection.id}`)
+          : Option.flatMap(TreeSelection.describeCommand(selection), swapToDelete);
+      default:
+        return Option.flatMap(TreeSelection.describeCommand(selection), swapToDelete);
+    }
+  },
+
+  /** 選択が属するプロジェクト（プロジェクトの外のものは `none`）。 */
+  projectIdOf(selection: TreeSelection): Option<string> {
+    return "projectId" in selection && typeof selection.projectId === "string"
+      ? Option.some(selection.projectId)
+      : Option.none;
+  },
 } as const;
+
+/** `gcloud … describe …` / `kubectl describe …` を delete に置き換える。それ以外の形は `none`。 */
+const swapToDelete = (command: string): Option<string> => {
+  if (!/^(gcloud|kubectl) /.test(command) || !command.includes(" describe ")) {
+    return Option.none;
+  }
+  return Option.some(command.replace(" describe ", " delete "));
+};

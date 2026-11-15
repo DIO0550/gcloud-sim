@@ -25,7 +25,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 
 実在するCLIの構文だけを登録します。アプリ独自のコマンドは受け付けません。HCL・YAML・JSONはCLI画面の「ファイル」タブで編集します。
 
-## 実装済み（674）
+## 実装済み（678）
 
 ### gcloud compute
 
@@ -456,6 +456,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 | `gcloud resource-manager folders list` | List folders under a parent. |
 | `gcloud resource-manager folders create` | Create a new folder. |
 | `gcloud resource-manager folders describe` | Show metadata for a folder. |
+| `gcloud resource-manager folders delete` | Delete a folder. The folder must not contain active folders or projects. |
 | `gcloud resource-manager folders get-iam-policy` | Get the IAM policy for a resource. |
 | `gcloud resource-manager folders add-iam-policy-binding` | Add an IAM policy binding to a resource. |
 | `gcloud resource-manager folders remove-iam-policy-binding` | Remove an IAM policy binding from a resource. |
@@ -614,8 +615,10 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 | `gcloud iam roles describe` | Show metadata for a role, including the permissions gcloud-sim records for it. |
 | `gcloud iam roles create` | Create a custom role for a project. |
 | `gcloud iam roles copy` | Create a role from an existing role. |
+| `gcloud iam roles delete` | Delete a custom role from a project. |
 | `gcloud iam service-accounts keys create` | Create a private key for a service account (the key is recorded, not written to disk). |
 | `gcloud iam service-accounts keys list` | List the keys for a service account. |
+| `gcloud iam service-accounts keys delete` | Delete a user-managed key from a service account. |
 | `gcloud iam service-accounts get-iam-policy` | Get the IAM policy for a resource. |
 | `gcloud iam service-accounts add-iam-policy-binding` | Add an IAM policy binding to a resource. |
 | `gcloud iam service-accounts remove-iam-policy-binding` | Remove an IAM policy binding from a resource. |
@@ -642,6 +645,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 | `gsutil ls` | List providers, buckets, or objects (alias of gcloud storage ls). |
 | `gsutil cp` | Copy files and objects (alias of gcloud storage cp). |
 | `gsutil rm` | Remove objects (alias of gcloud storage rm). |
+| `gsutil rb` | Remove empty buckets (alias of gcloud storage buckets delete). |
 | `gsutil iam get` | Get the IAM policy of a bucket (alias of gcloud storage buckets get-iam-policy). |
 | `gsutil iam ch` | Change a bucket's IAM policy, e.g. gsutil iam ch allUsers:objectViewer gs://BUCKET. |
 | `gsutil rsync` | Synchronize content of two buckets/directories (alias of gcloud storage rsync). |

@@ -1,4 +1,4 @@
-import { CommandFailure } from "@/engine/cli/command-failure";
+import { CommandFailure, ErrorCodes } from "@/engine/cli/command-failure";
 import {
   type AuthorizedContext,
   Column,
@@ -424,6 +424,62 @@ export const FolderCommands: readonly CommandSpec[] = [
         ),
         (folder) => ({ world: ctx.world, output: CommandOutput.yaml(Folder.toRecord(folder)) }),
       ),
+  }),
+  targetCommand({
+    path: ["gcloud", "resource-manager", "folders", "delete"],
+    summary: "Delete a folder. The folder must not contain active folders or projects.",
+    positionals: [Positional.required("FOLDER_ID", "ID of the folder.", Candidates.folders)],
+    destructive: true,
+    permission: "resourcemanager.folders.delete",
+    resolveTarget: folderTarget,
+    run: (ctx) => {
+      const folder = World.findFolder(ctx.world, ctx.target.id);
+      if (!Option.isSome(folder)) {
+        return Result.err(CommandFailure.notFound(PolicyTarget.toPath(ctx.target)));
+      }
+      const parent: ParentRef = { type: "folder", id: folder.value.id };
+      const children = [
+        ...World.foldersUnder(ctx.world, parent).map((f) => `folders/${f.id}`),
+        ...World.projectsUnder(ctx.world, parent).map((p) => `projects/${p.projectId}`),
+      ];
+      if (children.length > 0) {
+        return Result.err(
+          CommandFailure.create(
+            ErrorCodes.InvalidState,
+            `FAILED_PRECONDITION: Folder [folders/${folder.value.id}] is not empty. It contains: ${children.join(", ")}.`,
+            [
+              "中のプロジェクトを gcloud projects delete（または gcloud projects move）し、中のフォルダを先に削除してから実行してください。",
+            ],
+          ),
+        );
+      }
+      // 削除要求中のプロジェクトは親を失うと戻せない（権限も辿れない）ので、フォルダと一緒に消し切る。
+      const pending = ctx.world.projects.filter((p) => PolicyTarget.equals(p.parent, parent));
+      const world = World.withoutFolder(
+        {
+          ...ctx.world,
+          projects: ctx.world.projects.filter((p) => !pending.includes(p)),
+        },
+        folder.value.id,
+      );
+      return Result.ok({
+        world,
+        output: CommandOutput.messages(
+          OutputMessage.plain(`Waiting for [operations/fd.${folder.value.id}] to finish...done.`),
+          OutputMessage.plain(`Deleted [folders/${folder.value.id}].`),
+          OutputMessage.hint(
+            "gcloud-sim: 本物のフォルダは DELETE_REQUESTED になり、30 日間は gcloud resource-manager folders undelete で戻せます。シミュレータでは一覧から消すだけです。",
+          ),
+          ...(pending.length > 0
+            ? [
+                OutputMessage.hint(
+                  `gcloud-sim: このフォルダ内の削除要求中のプロジェクト（${pending.map((p) => p.projectId).join(", ")}）も完全に削除しました。`,
+                ),
+              ]
+            : []),
+        ),
+      });
+    },
   }),
   ...iamBindingCommands({
     group: ["gcloud", "resource-manager", "folders"],

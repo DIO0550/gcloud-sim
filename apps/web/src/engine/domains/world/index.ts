@@ -468,6 +468,42 @@ export const World = {
   },
 
   /**
+   * 学習用に足した組織を消す（作成と同じく学習環境の操作。gcloud コマンドとしては公開しない）。
+   * 最初からある組織は消せない。中にフォルダや操作できるプロジェクトが残っていれば消せない
+   * （削除要求中のプロジェクトは、フォルダの削除と同じく一緒に消し切る）。
+   *
+   * @param world 元
+   * @param id 消す組織の ID
+   * @returns 消した World。消せなければその理由
+   */
+  deleteOrganization(world: World, id: string): Result<World, string> {
+    if (world.organization.id === id) {
+      return Result.err("最初からある組織は削除できません。");
+    }
+    const organization = world.additionalOrganizations.find((o) => o.id === id);
+    if (organization === undefined) {
+      return Result.err("組織が見つかりません。");
+    }
+    const parent: ParentRef = { type: "organization", id };
+    const children = [
+      ...world.folders
+        .filter((f) => PolicyTarget.equals(f.parent, parent))
+        .map((f) => f.displayName),
+      ...World.projectsUnder(world, parent).map((p) => p.projectId),
+    ];
+    if (children.length > 0) {
+      return Result.err(
+        `組織「${organization.displayName}」の中に ${children.join(", ")} が残っています。先にフォルダとプロジェクトを削除してください。`,
+      );
+    }
+    return Result.ok({
+      ...world,
+      projects: world.projects.filter((p) => !PolicyTarget.equals(p.parent, parent)),
+      additionalOrganizations: world.additionalOrganizations.filter((o) => o.id !== id),
+    });
+  },
+
+  /**
    * 通し番号を 1 つ払い出す。id・projectNumber・オペレーション名の採番に使う。
    *
    * @param world 元
@@ -649,6 +685,10 @@ export const World = {
       PolicyTarget.toPath({ type: "folder", id: folder.id }),
       () => ({ ...world, folders: [...world.folders, folder] }),
     );
+  },
+
+  withoutFolder(world: World, folderId: string): World {
+    return { ...world, folders: world.folders.filter((f) => f.id !== folderId) };
   },
 
   canCreateFolderUnder(world: World, parent: ParentRef): boolean {
@@ -905,6 +945,13 @@ export const World = {
     return { ...world, serviceAccountKeys: [...world.serviceAccountKeys, key] };
   },
 
+  withoutServiceAccountKey(world: World, keyId: string): World {
+    return {
+      ...world,
+      serviceAccountKeys: world.serviceAccountKeys.filter((k) => k.keyId !== keyId),
+    };
+  },
+
   /** `--key-file` の名前で書き出した鍵を引く。同じ名前で何度も書き出したら最後のもの。 */
   findKeyByFile(world: World, file: string): Option<ServiceAccountKey> {
     return Option.fromNullable(world.serviceAccountKeys.findLast((k) => k.file === file));
@@ -955,6 +1002,11 @@ export const World = {
       CustomRole.name(role),
       () => ({ ...world, customRoles: [...world.customRoles, role] }),
     );
+  },
+
+  withoutCustomRole(world: World, role: CustomRole): World {
+    const name = CustomRole.name(role);
+    return { ...world, customRoles: world.customRoles.filter((r) => CustomRole.name(r) !== name) };
   },
 
   // --- Compute ---

@@ -291,6 +291,87 @@ test("ファイアウォール・バケット・予算の作成も同じ経路�
   );
 });
 
+test("Console で作ったファイアウォール・バケット・予算は行の「削除」で確認してから --quiet で消える", async () => {
+  const user = userEvent.setup();
+  const { terminal } = renderSimulator();
+  await typeLine(
+    terminal,
+    "gcloud compute firewall-rules create allow-http --network=default --allow=tcp:80",
+  );
+  await typeLine(terminal, "gcloud storage buckets create gs://ace-dev-01-logs");
+  await typeLine(terminal, "gcloud storage cp report.csv gs://ace-dev-01-logs/");
+  await waitFor(() => expect(screenText(terminal)).toContain("Copying file://report.csv"));
+  await openConsole(user);
+  await navigateConsole(user, "ファイアウォール");
+  const rules = screen.getByRole("table", { name: "ファイアウォール ルール" });
+  await user.click(within(rules).getByRole("button", { name: "allow-http を削除" }));
+  await waitFor(() => expect(within(rules).queryByText("allow-http")).not.toBeInTheDocument());
+  expect(screenText(terminal)).toContain(
+    "$ gcloud compute firewall-rules delete allow-http --project=ace-dev-01 --quiet",
+  );
+  // 中身のあるバケットはオブジェクトごと消す（本物の Console と同じ）。
+  await navigateConsole(user, "バケット");
+  const buckets = screen.getByRole("table", { name: "バケット" });
+  await user.click(within(buckets).getByRole("button", { name: "ace-dev-01-logs を削除" }));
+  await waitFor(() =>
+    expect(within(buckets).queryByText("ace-dev-01-logs")).not.toBeInTheDocument(),
+  );
+  expect(screenText(terminal)).toContain(
+    "$ gcloud storage rm --recursive gs://ace-dev-01-logs --project=ace-dev-01 --quiet",
+  );
+  await navigateConsole(user, "予算とアラート");
+  await user.click(screen.getByRole("button", { name: "予算を作成" }));
+  await user.type(screen.getByLabelText("名前"), "Dev budget");
+  await user.click(screen.getByRole("button", { name: "作成" }));
+  const budgets = screen.getByRole("table", { name: "予算" });
+  await waitFor(() => expect(within(budgets).getByText("Dev budget")).toBeInTheDocument());
+  await user.click(within(budgets).getByRole("button", { name: "Dev budget を削除" }));
+  await waitFor(() => expect(within(budgets).queryByText("Dev budget")).not.toBeInTheDocument());
+  expect(screenText(terminal)).not.toContain("Do you want to continue");
+});
+
+test("サービスアカウントとカスタムロールも一覧から消せ、事前定義ロールには削除が無い", async () => {
+  const user = userEvent.setup();
+  const { terminal } = renderSimulator();
+  await typeLine(terminal, "gcloud iam service-accounts create batch-runner");
+  await typeLine(
+    terminal,
+    "gcloud iam roles create vmReader --project=ace-dev-01 --permissions=compute.instances.get",
+  );
+  await waitFor(() => expect(screenText(terminal)).toContain("Created role [vmReader]."));
+  await openConsole(user);
+  await navigateConsole(user, "サービスアカウント");
+  const accounts = screen.getByRole("table", { name: "サービスアカウント" });
+  const email = "batch-runner@ace-dev-01.iam.gserviceaccount.com";
+  await user.click(within(accounts).getByRole("button", { name: `${email} を削除` }));
+  await waitFor(() => expect(within(accounts).queryByText(email)).not.toBeInTheDocument());
+  await navigateConsole(user, "ロール");
+  const roles = screen.getByRole("table", { name: "ロール" });
+  expect(within(roles).queryByRole("button", { name: "roles/viewer を削除" })).toBeNull();
+  await user.click(
+    within(roles).getByRole("button", { name: "projects/ace-dev-01/roles/vmReader を削除" }),
+  );
+  await waitFor(() =>
+    expect(within(roles).queryByText("projects/ace-dev-01/roles/vmReader")).not.toBeInTheDocument(),
+  );
+  expect(screenText(terminal)).toContain(
+    "$ gcloud iam roles delete vmReader --project=ace-dev-01 --quiet",
+  );
+});
+
+test("確認ダイアログでキャンセルすると削除しない", async () => {
+  const user = userEvent.setup();
+  const { terminal } = renderSimulator({ confirmAnswer: false });
+  await typeLine(terminal, "gcloud storage buckets create gs://ace-dev-01-keep");
+  await waitFor(() => expect(screenText(terminal)).toContain("Creating gs://ace-dev-01-keep/"));
+  await openConsole(user);
+  await navigateConsole(user, "バケット");
+  const buckets = screen.getByRole("table", { name: "バケット" });
+  await user.click(within(buckets).getByRole("button", { name: "ace-dev-01-keep を削除" }));
+  expect(within(buckets).getByText("ace-dev-01-keep")).toBeInTheDocument();
+  expect(screenText(terminal)).not.toContain("buckets delete");
+});
+
 test("同等のコマンドラインの「コピー」はクリップボードへ、「ターミナルに貼り付け」は入力行へ入る", async () => {
   const user = userEvent.setup();
   const { terminal, copied } = renderSimulator();

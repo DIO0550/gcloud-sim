@@ -11,7 +11,10 @@ import {
   ScreenTitle,
   TextInput,
 } from "@/features/simulator/features/console/components/ConsoleParts";
-import { BucketCreateForm } from "@/features/simulator/features/console/domains/equivalent-command";
+import {
+  BucketCreateForm,
+  DeleteCommand,
+} from "@/features/simulator/features/console/domains/equivalent-command";
 import { useCreateForm } from "@/features/simulator/features/console/hooks/use-create-form";
 import type { ScreenProps } from "@/features/simulator/features/console/types/screen-props";
 import { Option } from "@/utils/Option";
@@ -30,6 +33,19 @@ export const BucketsScreen = ({ world, project, handlers }: ScreenProps): ReactE
       next: Option.none,
     });
     editor.close();
+  };
+  const remove = (bucket: Readonly<{ name: string; objects: readonly unknown[] }>): void => {
+    const contents =
+      bucket.objects.length > 0 ? `（中のオブジェクト ${bucket.objects.length} 件も消えます）` : "";
+    if (!handlers.confirm(`バケット gs://${bucket.name} を削除しますか？${contents}`)) return;
+    handlers.submit({
+      line: DeleteCommand.bucket(
+        { name: bucket.name, objectCount: bucket.objects.length },
+        projectId,
+      ),
+      note: `バケットを削除 (${bucket.name})`,
+      next: Option.none,
+    });
   };
   return (
     <div>
@@ -106,6 +122,7 @@ export const BucketsScreen = ({ world, project, handlers }: ScreenProps): ReactE
         rows={World.bucketsOf(world, projectId)}
         keyOf={(b) => b.name}
         empty="バケットはまだありません。"
+        onDelete={remove}
         columns={[
           { header: "名前", cell: (b) => <span className="font-mono">{b.name}</span> },
           { header: "ロケーション", cell: (b) => b.location },

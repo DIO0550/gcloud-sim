@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { Badge } from "@/components/Badge";
 import { SecondaryButton } from "@/components/SecondaryButton";
+import { Engine } from "@/engine";
 import { Instance } from "@/engine/domains/compute";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { World } from "@/engine/domains/world";
@@ -79,6 +80,8 @@ type PropertiesPanelProps = Readonly<{
   onInsert: (command: string) => void;
   /** 「Console で開く」: Console ビューのその種別の画面へ移る */
   onOpenConsole: (screen: ConsoleScreen) => void;
+  /** 学習用に足した組織を消す（gcloud には無い操作なので、コマンドを挟まず直接消す） */
+  onDeleteOrganization: (id: string) => void;
 }>;
 
 const Body = ({
@@ -464,6 +467,7 @@ export const PropertiesPanel = ({
   selection,
   onInsert,
   onOpenConsole,
+  onDeleteOrganization,
 }: PropertiesPanelProps): ReactElement => {
   if (!Option.isSome(selection)) {
     return (
@@ -486,6 +490,11 @@ export const PropertiesPanel = ({
     );
   }
   const describe = TreeSelection.describeCommand(selection.value);
+  const remove = Engine.deleteCommand(world, selection.value);
+  const learningOrganization =
+    selection.value.kind === "organization" && selection.value.id !== world.organization.id
+      ? Option.map(World.findOrganization(world, selection.value.id), (o) => o.id)
+      : Option.none;
   const status = statusOf(world, selection.value);
   const createdAt = createdAtOf(world, selection.value);
   const consoleScreen = consoleScreenOf(selection.value);
@@ -511,7 +520,10 @@ export const PropertiesPanel = ({
         <p className="mb-3 break-all font-mono text-[13px] text-muted">
           {kindLabel(selection.value)}
         </p>
-        {(Option.isSome(describe) || Option.isSome(consoleScreen)) && (
+        {(Option.isSome(describe) ||
+          Option.isSome(consoleScreen) ||
+          Option.isSome(remove) ||
+          Option.isSome(learningOrganization)) && (
           <div className="flex flex-wrap gap-2">
             {Option.isSome(describe) && (
               <>
@@ -526,6 +538,16 @@ export const PropertiesPanel = ({
             {Option.isSome(consoleScreen) && (
               <SecondaryButton onClick={() => onOpenConsole(consoleScreen.value)}>
                 Console で開く →
+              </SecondaryButton>
+            )}
+            {Option.isSome(remove) && (
+              <SecondaryButton onClick={() => onInsert(remove.value)}>
+                delete を挿入
+              </SecondaryButton>
+            )}
+            {Option.isSome(learningOrganization) && (
+              <SecondaryButton onClick={() => onDeleteOrganization(learningOrganization.value)}>
+                学習用組織を削除
               </SecondaryButton>
             )}
           </div>

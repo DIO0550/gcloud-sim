@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import { Checkbox } from "@/components/Checkbox";
 import { Select } from "@/components/Select";
-
+import { Budget } from "@/engine/domains/billing-budget";
 import { World } from "@/engine/domains/world";
 import {
   CreateFormSection,
@@ -11,7 +11,10 @@ import {
   ScreenTitle,
   TextInput,
 } from "@/features/simulator/features/console/components/ConsoleParts";
-import { BudgetCreateForm } from "@/features/simulator/features/console/domains/equivalent-command";
+import {
+  BudgetCreateForm,
+  DeleteCommand,
+} from "@/features/simulator/features/console/domains/equivalent-command";
 import { useCreateForm } from "@/features/simulator/features/console/hooks/use-create-form";
 import type { ScreenProps } from "@/features/simulator/features/console/types/screen-props";
 import { Option } from "@/utils/Option";
@@ -53,6 +56,14 @@ export const BudgetsScreen = ({ world, project, handlers }: ScreenProps): ReactE
       next: Option.none,
     });
     editor.close();
+  };
+  const remove = (budget: Budget): void => {
+    if (!handlers.confirm(`予算「${budget.displayName}」を削除しますか？`)) return;
+    handlers.submit({
+      line: DeleteCommand.budget(Budget.id(budget), accountId, project.projectId),
+      note: `予算を削除 (${budget.displayName})`,
+      next: Option.none,
+    });
   };
   const toggleThreshold = (ratio: number): void =>
     editor.set(
@@ -132,6 +143,8 @@ export const BudgetsScreen = ({ world, project, handlers }: ScreenProps): ReactE
         rows={World.budgetsOf(world, accountId)}
         keyOf={(b) => b.name}
         empty="予算はまだありません。"
+        nameOf={(b) => b.displayName}
+        onDelete={remove}
         columns={[
           { header: "名前", cell: (b) => b.displayName },
           { header: "予算額", cell: (b) => `${b.amount.toLocaleString("ja-JP")} JPY` },

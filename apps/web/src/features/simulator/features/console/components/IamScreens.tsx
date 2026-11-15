@@ -20,6 +20,7 @@ import {
   TextInput,
 } from "@/features/simulator/features/console/components/ConsoleParts";
 import {
+  DeleteCommand,
   IamGrantForm,
   RoleCreateForm,
   ServiceAccountCreateForm,
@@ -532,6 +533,14 @@ export const ServiceAccountsScreen = ({ world, project, handlers }: ScreenProps)
     });
     editor.close();
   };
+  const remove = (email: string): void => {
+    if (!handlers.confirm(`サービスアカウント ${email} を削除しますか？`)) return;
+    handlers.submit({
+      line: DeleteCommand.serviceAccount(email, projectId),
+      note: `サービスアカウントを削除 (${email})`,
+      next: Option.none,
+    });
+  };
   const form = Option.unwrapOr(editor.form, ServiceAccountCreateForm.create());
   return (
     <div>
@@ -585,6 +594,7 @@ export const ServiceAccountsScreen = ({ world, project, handlers }: ScreenProps)
         rows={World.serviceAccountsOf(world, projectId)}
         keyOf={(s) => s.email}
         empty="サービスアカウントはまだありません。"
+        onDelete={(s) => remove(s.email)}
         columns={[
           { header: "メール", cell: (s) => <span className="font-mono text-xs">{s.email}</span> },
           { header: "名前", cell: (s) => s.displayName },
@@ -610,15 +620,25 @@ export const RolesScreen = ({ world, project, handlers }: ScreenProps): ReactEle
     });
     editor.close();
   };
+  const remove = (roleId: string): void => {
+    if (!handlers.confirm(`カスタムロール ${roleId} を削除しますか？`)) return;
+    handlers.submit({
+      line: DeleteCommand.customRole(roleId, projectId),
+      note: `カスタムロールを削除 (${roleId})`,
+      next: Option.none,
+    });
+  };
   const form = Option.unwrapOr(editor.form, RoleCreateForm.create());
   const rows = [
     ...World.customRolesOf(world, projectId).map((r) => ({
+      roleId: Option.some(r.roleId),
       name: CustomRole.name(r),
       title: r.title,
       permissions: r.includedPermissions.length,
       kind: "カスタム",
     })),
     ...RoleCatalog.all().map((r) => ({
+      roleId: Option.none,
       name: r.name,
       title: r.title,
       permissions: r.includedPermissions.length,
@@ -669,6 +689,10 @@ export const RolesScreen = ({ world, project, handlers }: ScreenProps): ReactEle
         rows={rows}
         keyOf={(r) => r.name}
         empty="ロールはありません。"
+        deletable={(r) => Option.isSome(r.roleId)}
+        onDelete={(r) => {
+          if (Option.isSome(r.roleId)) remove(r.roleId.value);
+        }}
         columns={[
           { header: "種類", cell: (r) => <span className="text-muted text-xs">{r.kind}</span> },
           { header: "タイトル", cell: (r) => r.title },
