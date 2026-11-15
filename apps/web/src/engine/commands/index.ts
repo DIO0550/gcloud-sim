@@ -30,6 +30,7 @@ import {
 import { AppCommands } from "@/engine/commands/functions-app-engine";
 import { GkeLessonCommands } from "@/engine/commands/gke-lessons";
 import { IamCommands } from "@/engine/commands/iam";
+import { InfraManagerCommands } from "@/engine/commands/infra-manager";
 import {
   DeploymentManagerCommands,
   DnsCommands,
@@ -178,6 +179,7 @@ const implemented: readonly CommandSpec[] = [
   ...KmsCommands,
   ...DnsCommands,
   ...DeploymentManagerCommands,
+  ...InfraManagerCommands,
 ];
 
 /** 登録するすべてのコマンド。実装済みが先、未実装のスタブが後（今は 0 件。機構は DJ-005 のまま残す）。 */

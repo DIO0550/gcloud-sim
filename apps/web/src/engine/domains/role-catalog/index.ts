@@ -633,6 +633,13 @@ const DeploymentManagerPermissions = [
   "deploymentmanager.deployments.get",
 ] as const;
 
+const InfraManagerPermissions = [
+  "config.deployments.create",
+  "config.deployments.list",
+  "config.deployments.get",
+  "config.deployments.delete",
+] as const;
+
 const BuildReadPermissions = ["cloudbuild.builds.get", "cloudbuild.builds.list"];
 const BuildWritePermissions = [
   ...BuildReadPermissions,
@@ -725,6 +732,7 @@ const ViewerPermissions = [
   "cloudkms.keyRings.list",
   "dns.managedZones.list",
   "deploymentmanager.deployments.list",
+  "config.deployments.list",
   "compute.instanceTemplates.list",
   "compute.instanceGroupManagers.list",
   "compute.addresses.list",
@@ -742,6 +750,7 @@ const ViewerPermissions = [
   "cloudkms.keyRings.get",
   "dns.managedZones.get",
   "deploymentmanager.deployments.get",
+  "config.deployments.get",
   "pubsub.subscriptions.get",
   "compute.projects.get",
   "compute.disks.get",
@@ -790,6 +799,7 @@ const EditorPermissions = [
   ...KmsPermissions,
   ...DnsPermissions,
   ...DeploymentManagerPermissions,
+  ...InfraManagerPermissions,
   "resourcemanager.projects.update",
 ] as const;
 
@@ -1269,6 +1279,7 @@ const Roles: readonly Role[] = [
   ]),
   role("roles/dns.admin", "DNS Administrator", DnsPermissions),
   role("roles/deploymentmanager.editor", "Deployment Manager Editor", DeploymentManagerPermissions),
+  role("roles/config.admin", "Cloud Infrastructure Manager Admin", InfraManagerPermissions),
   role("roles/billing.costsManager", "Billing Account Costs Manager", [
     "billing.accounts.get",
     "billing.accounts.list",

@@ -61,6 +61,7 @@ import {
   type GkePrivateNetwork,
 } from "@/engine/domains/gke-control-plane";
 import { type IamBinding, IamMember, type IamPolicy, RoleName } from "@/engine/domains/iam-policy";
+import type { DeployedResource, InfraDeployment } from "@/engine/domains/infra-manager";
 import type {
   Autoscaling,
   InstanceTemplate,
@@ -188,13 +189,14 @@ import { migrateTerraform } from "./terraform-migration";
  * v34 は索引・Spanner・Bigtable・Redisデータと明示的な読取/復旧履歴を持つ。
  * v35 はBigQueryの表/入力・Pub/Sub配送・処理ジョブ・Kafka・exportの教材状態を持つ。
  * v45 は既定組織に加えて、追加した学習用組織を保持する。
+ * v46 は Cloud Marketplace からデプロイした Infrastructure Manager のデプロイメントを持つ。
  */
-export const SchemaVersion = 45;
+export const SchemaVersion = 46;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
 const MigratableVersions = [
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-  28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44,
+  28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45,
 ] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
@@ -1270,6 +1272,24 @@ const dmDeployment = D.object<DmDeployment>({
   insertTime: string,
 });
 
+const deployedResource = D.object<DeployedResource>({
+  type: D.literal(["google_compute_instance", "google_compute_firewall"]),
+  name: string,
+  zone: D.option(string),
+});
+
+const infraDeployment = D.object<InfraDeployment>({
+  projectId: string,
+  name: string,
+  location: region,
+  solution: string,
+  source: string,
+  serviceAccount: string,
+  inputs: stringMap,
+  resources: D.array(deployedResource),
+  createTime: string,
+});
+
 const budget = D.object<Budget>({
   billingAccountId: string,
   name: string,
@@ -1391,6 +1411,7 @@ const world = D.object<World>({
   kmsKeyRings: D.array(kmsKeyRing),
   dnsZones: D.array(dnsZone),
   dmDeployments: D.array(dmDeployment),
+  infraDeployments: D.array(infraDeployment),
   budgets: D.array(budget),
   customRoles: D.array(customRole),
   config,
@@ -1915,12 +1936,20 @@ const migrateV44 = (version: number, value: unknown): unknown => {
   };
 };
 
-const migrate = (version: number, value: unknown): unknown => {
+const migrateV45 = (version: number, value: unknown): unknown => {
   const previous = migrateV44(version, value);
   if (version >= 45 || !isRecord(previous)) {
     return previous;
   }
   return { ...previous, additionalOrganizations: [] };
+};
+
+const migrate = (version: number, value: unknown): unknown => {
+  const previous = migrateV45(version, value);
+  if (version >= 46 || !isRecord(previous)) {
+    return previous;
+  }
+  return { ...previous, infraDeployments: [] };
 };
 
 export const Snapshot = {

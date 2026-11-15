@@ -69,19 +69,29 @@ test("v1 の Snapshot を import すると、足した集合が空で復元さ�
   expect(imported.buckets[0]?.objects[0]?.name).toBe("a.log");
 });
 
-test("現行の Snapshot は v45 で、export → import が同一になる", () => {
+test("現行の Snapshot は v46 で、export → import が同一になる", () => {
   const s = run(
     session(),
     "gcloud compute disks create d --zone=asia-northeast1-a",
     "gcloud iam roles create r1 --project=ace-dev-01 --permissions=compute.instances.list",
-    "gcloud services enable pubsub.googleapis.com",
+    "gcloud services enable pubsub.googleapis.com config.googleapis.com",
     "gcloud pubsub topics create t",
+    "gcloud infra-manager deployments apply lamp-1 --location=asia-northeast1 --service-account=projects/ace-dev-01/serviceAccounts/481200000001-compute@developer.gserviceaccount.com --gcs-source=gs://gcloud-sim-marketplace/lamp-stack-ubuntu/blueprint.tar.gz --input-values=zone=asia-northeast1-a",
   );
+  expect(s.world.infraDeployments).toHaveLength(1);
   const snapshot = Snapshot.create(s.world, Now);
   expect(snapshot.schemaVersion).toBe(SchemaVersion);
-  expect(SchemaVersion).toBe(45);
+  expect(SchemaVersion).toBe(46);
   const imported = Result.unwrap(Snapshot.fromUnknown(JSON.parse(JSON.stringify(snapshot))));
   expect(imported).toEqual(s.world);
+});
+
+test("v45 の Snapshot は Marketplace のデプロイメントを空で復元する", () => {
+  const { infraDeployments: _, ...v45World } = session().world;
+  const imported = Result.unwrap(
+    Snapshot.fromUnknown(JSON.parse(JSON.stringify({ schemaVersion: 45, world: v45World }))),
+  );
+  expect(imported.infraDeployments).toEqual([]);
 });
 
 test("次の版以降は unsupportedVersion", () => {

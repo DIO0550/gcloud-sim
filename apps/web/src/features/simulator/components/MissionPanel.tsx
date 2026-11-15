@@ -5,6 +5,7 @@ import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SectionHeading } from "@/components/SectionHeading";
 import { TextButton } from "@/components/TextButton";
+import { MarketplaceSolution } from "@/engine/domains/infra-manager";
 import { type MissionStatus, MissionStatuses } from "@/engine/domains/mission-progress";
 import { World } from "@/engine/domains/world";
 import { Mission, MissionDomains } from "@/engine/missions";
@@ -234,6 +235,10 @@ const assertionLabel = (assertion: Mission["assertions"][number]): string => {
       return `MIG ${assertion.name}（${assertion.targetSize} 台${assertion.autoscaled ? ", 自動スケール" : ""}）がある`;
     case "customRoleExists":
       return `カスタムロール ${assertion.roleId}（${assertion.permissions.join(", ")}）がある`;
+    case "infraDeploymentExists": {
+      const solution = MarketplaceSolution.find(assertion.solution);
+      return `Marketplace のデプロイ ${assertion.name}（${Option.isSome(solution) ? solution.value.title : assertion.solution}, ${assertion.location}）がある`;
+    }
   }
 };
 

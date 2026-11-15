@@ -22,6 +22,8 @@ export const ConsoleScreens = {
   Buckets: "buckets",
   Clusters: "clusters",
   RunServices: "run-services",
+  Marketplace: "marketplace",
+  SolutionDeployments: "solution-deployments",
 } as const;
 export type ConsoleScreen = ValueOf<typeof ConsoleScreens>;
 
@@ -34,6 +36,7 @@ export const ConsoleSections = {
   Storage: "storage",
   Gke: "gke",
   Run: "run",
+  Marketplace: "marketplace",
 } as const;
 export type ConsoleSection = ValueOf<typeof ConsoleSections>;
 
@@ -72,6 +75,8 @@ const Placements: Readonly<Record<ConsoleScreen, ReturnType<typeof place>>> = {
   buckets: place("storage", Option.none),
   clusters: place("gke", Option.some("container.googleapis.com")),
   "run-services": place("run", Option.some("run.googleapis.com")),
+  marketplace: place("marketplace", Option.none),
+  "solution-deployments": place("marketplace", Option.none),
 };
 
 const placementOf = (screen: ConsoleScreen): Placement => {

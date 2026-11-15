@@ -158,6 +158,7 @@ export const EmptyCollections = {
   kmsKeyRings: [],
   dnsZones: [],
   dmDeployments: [],
+  infraDeployments: [],
   budgets: [],
   customRoles: [],
 } as const satisfies Partial<World>;

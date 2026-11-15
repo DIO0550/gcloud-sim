@@ -14,6 +14,10 @@ import {
   RolesScreen,
   ServiceAccountsScreen,
 } from "@/features/simulator/features/console/components/IamScreens";
+import {
+  MarketplaceScreen,
+  SolutionDeploymentsScreen,
+} from "@/features/simulator/features/console/components/MarketplaceScreens";
 import { BucketsScreen } from "@/features/simulator/features/console/components/StorageScreens";
 import {
   FirewallScreen,
@@ -58,5 +62,9 @@ export const ScreenRouter = ({
       return <ClustersScreen {...props} />;
     case "run-services":
       return <RunServicesScreen {...props} />;
+    case "marketplace":
+      return <MarketplaceScreen {...props} />;
+    case "solution-deployments":
+      return <SolutionDeploymentsScreen {...props} />;
   }
 };

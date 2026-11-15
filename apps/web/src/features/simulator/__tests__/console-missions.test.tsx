@@ -13,8 +13,10 @@ import { renderSimulator } from "@/features/simulator/__tests__/setup";
 import {
   BucketCreateForm,
   BudgetCreateForm,
+  enableApisCommand,
   FirewallCreateForm,
   IamGrantForm,
+  MarketplaceDeployForm,
   RoleCreateForm,
   ServiceAccountCreateForm,
   VmAction,
@@ -37,6 +39,21 @@ const consoleLines: Readonly<Record<string, (world: World) => readonly string[]>
     FirewallCreateForm.toCommand(
       { ...FirewallCreateForm.create(), name: "console-allow-http", targetTags: "http-server" },
       p,
+    ),
+  ],
+  "m-console-marketplace": () => [
+    enableApisCommand(["config.googleapis.com"], p),
+    MarketplaceDeployForm.toCommand(
+      {
+        ...MarketplaceDeployForm.create({
+          zone: "asia-northeast1-a",
+          serviceAccount: ServiceAccount.defaultComputeEmail(projectNumber),
+        }),
+        zone: "asia-northeast1-b",
+        machineType: "e2-medium",
+      },
+      p,
+      "gs://gcloud-sim-marketplace/lamp-stack-ubuntu/blueprint.tar.gz",
     ),
   ],
   "m-console-bucket": () => [

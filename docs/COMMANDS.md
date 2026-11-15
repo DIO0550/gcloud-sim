@@ -25,7 +25,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 
 実在するCLIの構文だけを登録します。アプリ独自のコマンドは受け付けません。HCL・YAML・JSONはCLI画面の「ファイル」タブで編集します。
 
-## 実装済み（678）
+## 実装済み（682）
 
 ### gcloud compute
 
@@ -969,6 +969,15 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 | `gcloud deployment-manager deployments create` | Create a deployment (sample config.yaml only). |
 | `gcloud deployment-manager deployments list` | List deployments in a project. |
 | `gcloud deployment-manager deployments describe` | Provide information about a deployment. |
+
+### gcloud infra-manager
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud infra-manager deployments apply` | Create or update a deployment (Cloud Marketplace blueprints only). |
+| `gcloud infra-manager deployments list` | List deployments in a location. |
+| `gcloud infra-manager deployments describe` | Describe a deployment. |
+| `gcloud infra-manager deployments delete` | Delete a deployment and the resources it created. |
 
 ## 解決はできるが未実装（0）
 
