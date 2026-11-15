@@ -733,6 +733,26 @@ export const GsutilCommands: readonly CommandSpec[] = [
     run: copy,
   }),
   storageCommand({
+    path: ["gsutil", "rb"],
+    summary: "Remove empty buckets (alias of gcloud storage buckets delete).",
+    positionals: [UrlPositional],
+    flags: [Flag.boolean("f", "Continue despite errors (ignored).", { aliases: ["-f"] })],
+    permission: "storage.buckets.delete",
+    destructive: true,
+    run: (ctx, args) => {
+      const url = storageUrl(ParsedArgs.requiredPositional(args, 0));
+      if (!Result.isOk(url)) return url;
+      if (url.value.object !== "") {
+        return Result.err(
+          CommandFailure.invalidArgumentWith(
+            `"rb" command requires a bucket URL, not an object URL: ${ParsedArgs.requiredPositional(args, 0)}`,
+          ),
+        );
+      }
+      return remove(ctx, args);
+    },
+  }),
+  storageCommand({
     path: ["gsutil", "rm"],
     summary: "Remove objects (alias of gcloud storage rm).",
     positionals: [ObjectUrlPositional],

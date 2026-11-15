@@ -289,6 +289,7 @@ const ServiceAccountPermissions = [
 
 const ServiceAccountKeyPermissions = [
   "iam.serviceAccountKeys.create",
+  "iam.serviceAccountKeys.delete",
   "iam.serviceAccountKeys.list",
 ] as const;
 

@@ -8,6 +8,7 @@ import {
   Now,
   renderSimulator,
   resourceTree,
+  screenText,
 } from "@/features/simulator/__tests__/setup";
 
 test("画面で組織→フォルダ→プロジェクトを作成し、選択・既定プロジェクト・保存に反映する", async () => {
@@ -88,4 +89,51 @@ test("Consoleからも作成でき、プロジェクト切り替えを外せば�
       true,
     ),
   );
+});
+
+test("作ったフォルダは「delete を挿入」で消せ、空になった学習用組織はプロパティから削除できる", async () => {
+  const user = userEvent.setup();
+  const { terminal, saved } = renderSimulator();
+  await user.click(screen.getByRole("button", { name: "階層にリソースを追加" }));
+  await chooseOption(user, "作成する種類", "組織（学習用）");
+  await user.type(screen.getByRole("textbox", { name: "名前" }), "learning.example");
+  await user.click(screen.getByRole("button", { name: "作成" }));
+  const details = screen.getByRole("complementary", { name: "詳細" });
+  await user.click(screen.getByRole("button", { name: "階層にリソースを追加" }));
+  await chooseOption(user, "作成する種類", "フォルダ");
+  await user.type(screen.getByRole("textbox", { name: "名前" }), "Sandbox");
+  await user.click(screen.getByRole("button", { name: "作成" }));
+  const folderId = saved.at(-1)?.folders.at(-1)?.id ?? "";
+  await user.click(within(details).getByRole("button", { name: "delete を挿入" }));
+  await waitFor(() =>
+    expect(terminal.written.at(-1)).toContain(`gcloud resource-manager folders delete ${folderId}`),
+  );
+  terminal.type("\r");
+  await waitFor(() => expect(screenText(terminal)).toContain("Do you want to continue (Y/n)?"));
+  terminal.type("y\r");
+  await waitFor(() => expect(screenText(terminal)).toContain(`Deleted [folders/${folderId}].`));
+  expect(
+    within(resourceTree()).queryByRole("button", { name: /フォルダ\s*Sandbox/ }),
+  ).not.toBeInTheDocument();
+
+  await user.click(
+    within(resourceTree()).getByRole("button", { name: /組織\s*learning\.example/ }),
+  );
+  await user.click(within(details).getByRole("button", { name: "学習用組織を削除" }));
+  await waitFor(() =>
+    expect(
+      within(resourceTree()).queryByRole("button", { name: /組織\s*learning\.example/ }),
+    ).not.toBeInTheDocument(),
+  );
+  expect(screenText(terminal)).toContain("学習用組織「learning.example」を削除しました。");
+  await waitFor(() => expect(saved.at(-1)?.additionalOrganizations).toEqual([]));
+});
+
+test("最初からある組織には「学習用組織を削除」が出ない", async () => {
+  const user = userEvent.setup();
+  renderSimulator();
+  await user.click(within(resourceTree()).getByRole("button", { name: /組織\s*example\.com/ }));
+  const details = screen.getByRole("complementary", { name: "詳細" });
+  expect(within(details).queryByRole("button", { name: "学習用組織を削除" })).toBeNull();
+  expect(within(details).queryByRole("button", { name: "delete を挿入" })).toBeNull();
 });

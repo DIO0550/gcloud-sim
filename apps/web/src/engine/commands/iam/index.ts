@@ -366,6 +366,36 @@ export const IamCommands: readonly CommandSpec[] = [
     run: copyRole,
   }),
   projectCommand({
+    path: ["gcloud", "iam", "roles", "delete"],
+    summary: "Delete a custom role from a project.",
+    positionals: [
+      Positional.required("ROLE_ID", "The ID of the custom role to delete.", (world, projectId) =>
+        Option.isSome(projectId)
+          ? World.customRolesOf(world, projectId.value).map((r) => r.roleId)
+          : [],
+      ),
+    ],
+    destructive: true,
+    permission: "iam.roles.delete",
+    run: (ctx, args) => {
+      const raw = ParsedArgs.requiredPositional(args, 0);
+      const roleId = raw.replace(/^projects\/[^/]+\/roles\//, "");
+      const role = World.findCustomRoleById(ctx.world, ctx.project.projectId, roleId);
+      if (!Option.isSome(role)) return Result.err(unknownRole(raw));
+      return Result.ok({
+        world: World.withoutCustomRole(ctx.world, role.value),
+        output: CommandOutput.yaml({ ...CustomRole.toRecord(role.value), deleted: true }, [
+          OutputMessage.plain(
+            `deleted role [${role.value.roleId}] in project [${ctx.project.projectId}]`,
+          ),
+          OutputMessage.hint(
+            "gcloud-sim: 本物は削除後 7 日間は gcloud iam roles undelete で戻せ、同じ ID は完全に消えるまで再利用できません。シミュレータでは一覧から消すだけです。",
+          ),
+        ]),
+      });
+    },
+  }),
+  projectCommand({
     path: ["gcloud", "iam", "service-accounts", "keys", "create"],
     summary:
       "Create a private key for a service account (the key is recorded, not written to disk).",
@@ -401,6 +431,44 @@ export const IamCommands: readonly CommandSpec[] = [
             disabled: false,
           })),
           KeyColumns,
+        ),
+      });
+    },
+  }),
+  projectCommand({
+    path: ["gcloud", "iam", "service-accounts", "keys", "delete"],
+    summary: "Delete a user-managed key from a service account.",
+    positionals: [
+      Positional.required("KEY_ID", "The key to delete.", (world) =>
+        world.serviceAccountKeys.map((k) => k.keyId),
+      ),
+    ],
+    flags: [
+      Flag.string("iam-account", "The service account from which to delete a key.", {
+        required: true,
+      }),
+    ],
+    destructive: true,
+    permission: "iam.serviceAccountKeys.delete",
+    run: (ctx, args) => {
+      const email = ParsedArgs.requiredString(args, "iam-account");
+      if (!Option.isSome(World.findServiceAccount(ctx.world, email))) {
+        return Result.err(unknownServiceAccount(email));
+      }
+      const raw = ParsedArgs.requiredPositional(args, 0);
+      const keyId = raw.split("/").at(-1) ?? raw;
+      const key = World.keysOf(ctx.world, email).find((k) => k.keyId === keyId);
+      if (key === undefined) {
+        return Result.err(
+          CommandFailure.notFoundWith(
+            `NOT_FOUND: Service account key projects/-/serviceAccounts/${email}/keys/${keyId} does not exist.`,
+          ),
+        );
+      }
+      return Result.ok({
+        world: World.withoutServiceAccountKey(ctx.world, key.keyId),
+        output: CommandOutput.messages(
+          OutputMessage.plain(`deleted key [${key.keyId}] for service account [${email}]`),
         ),
       });
     },

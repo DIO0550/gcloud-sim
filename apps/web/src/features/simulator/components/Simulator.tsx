@@ -315,6 +315,10 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
                   world={world}
                   selection={state.selection}
                   onInsert={insert}
+                  onDeleteOrganization={(id) => {
+                    if (!io.confirm("この学習用組織を削除します。よろしいですか？")) return;
+                    dispatch({ type: "organizationDeleted", id });
+                  }}
                   onOpenConsole={(screen) => {
                     dispatch({ type: "viewChanged", view: Views.Console });
                     dispatch({ type: "consoleScreenChanged", screen });

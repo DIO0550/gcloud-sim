@@ -72,54 +72,84 @@ export const Field = ({
 
 type Column<T> = Readonly<{ header: string; cell: (row: T) => ReactNode; className?: string }>;
 
-/** リソースの一覧の表。行が無ければ `empty` を出す。 */
+/**
+ * リソースの一覧の表。行が無ければ `empty` を出す。`onDelete` を渡すと行の末尾に「削除」を出す
+ * （`deletable` が偽の行には出さない: 事前定義ロールなど消せないもの）。
+ */
 export const ResourceTable = <T,>({
   label,
   columns,
   rows,
   keyOf,
   empty,
+  onDelete,
+  deletable,
+  nameOf,
 }: Readonly<{
   label: string;
   columns: readonly Column<T>[];
   rows: readonly T[];
   keyOf: (row: T) => string;
   empty: string;
-}>): ReactElement => (
-  <table className="w-full text-sm" aria-label={label}>
-    <thead className="text-left text-muted text-xs">
-      <tr>
-        {columns.map((c) => (
-          <th
-            key={c.header}
-            className={`border-line border-b py-2 pr-3 font-medium ${c.className ?? ""}`}
-          >
-            {c.header}
-          </th>
-        ))}
-      </tr>
-    </thead>
-    <tbody>
-      {rows.length === 0 ? (
+  onDelete?: (row: T) => void;
+  deletable?: (row: T) => boolean;
+  /** 削除ボタンの読み上げ名に使う名前（既定は `keyOf`） */
+  nameOf?: (row: T) => string;
+}>): ReactElement => {
+  const span = columns.length + (onDelete === undefined ? 0 : 1);
+  return (
+    <table className="w-full text-sm" aria-label={label}>
+      <thead className="text-left text-muted text-xs">
         <tr>
-          <td colSpan={columns.length} className="py-6 text-center text-muted">
-            {empty}
-          </td>
+          {columns.map((c) => (
+            <th
+              key={c.header}
+              className={`border-line border-b py-2 pr-3 font-medium ${c.className ?? ""}`}
+            >
+              {c.header}
+            </th>
+          ))}
+          {onDelete !== undefined && (
+            <th className="border-line border-b py-2">
+              <span className="sr-only">操作</span>
+            </th>
+          )}
         </tr>
-      ) : (
-        rows.map((row) => (
-          <tr key={keyOf(row)} className="border-line border-b">
-            {columns.map((c) => (
-              <td key={c.header} className={`py-2 pr-3 align-top ${c.className ?? ""}`}>
-                {c.cell(row)}
-              </td>
-            ))}
+      </thead>
+      <tbody>
+        {rows.length === 0 ? (
+          <tr>
+            <td colSpan={span} className="py-6 text-center text-muted">
+              {empty}
+            </td>
           </tr>
-        ))
-      )}
-    </tbody>
-  </table>
-);
+        ) : (
+          rows.map((row) => (
+            <tr key={keyOf(row)} className="border-line border-b">
+              {columns.map((c) => (
+                <td key={c.header} className={`py-2 pr-3 align-top ${c.className ?? ""}`}>
+                  {c.cell(row)}
+                </td>
+              ))}
+              {onDelete !== undefined && (
+                <td className="py-1.5 text-right align-top">
+                  {(deletable === undefined || deletable(row)) && (
+                    <SecondaryButton
+                      ariaLabel={`${(nameOf ?? keyOf)(row)} を削除`}
+                      onClick={() => onDelete(row)}
+                    >
+                      削除
+                    </SecondaryButton>
+                  )}
+                </td>
+              )}
+            </tr>
+          ))
+        )}
+      </tbody>
+    </table>
+  );
+};
 
 /** 「同等のコマンドライン」（UI 案 s1）。コピーはクリップボードへ、貼り付けは端末の入力行へ。 */
 export const EquivalentCommandPanel = ({

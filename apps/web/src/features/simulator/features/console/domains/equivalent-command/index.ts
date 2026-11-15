@@ -4,7 +4,7 @@ import {
   BucketLocation,
   type MachineTypeName,
   StorageClass,
-  type Zone,
+  Zone,
 } from "@/engine/domains/catalog";
 import {
   type BootDiskType,
@@ -518,3 +518,48 @@ export const enableApiCommand = (api: ApiName, projectId: string): string =>
   `gcloud services enable ${api} ${flag("project", projectId)}`;
 
 export { StorageClass };
+
+// --- 削除（一覧の行の「削除」） ---
+
+/**
+ * 一覧の行から消すときのコマンドライン。Console は確認ダイアログで確かめてから流すので、
+ * どれも `--quiet` を付ける（shell の Y/n に落ちない: VM の削除と同じ）。
+ */
+export const DeleteCommand = {
+  /** 中身があれば `storage rm --recursive`（本物の Console もオブジェクトごと消す）、空なら `buckets delete`。 */
+  bucket(bucket: Readonly<{ name: string; objectCount: number }>, projectId: string): string {
+    return bucket.objectCount > 0
+      ? `gcloud storage rm --recursive gs://${bucket.name} ${flag("project", projectId)} --quiet`
+      : `gcloud storage buckets delete gs://${bucket.name} ${flag("project", projectId)} --quiet`;
+  },
+
+  firewallRule(name: string, projectId: string): string {
+    return `gcloud compute firewall-rules delete ${quote(name)} ${flag("project", projectId)} --quiet`;
+  },
+
+  subnet(subnet: Readonly<{ name: string; region: string }>, projectId: string): string {
+    return `gcloud compute networks subnets delete ${quote(subnet.name)} ${flag("region", subnet.region)} ${flag("project", projectId)} --quiet`;
+  },
+
+  serviceAccount(email: string, projectId: string): string {
+    return `gcloud iam service-accounts delete ${quote(email)} ${flag("project", projectId)} --quiet`;
+  },
+
+  customRole(roleId: string, projectId: string): string {
+    return `gcloud iam roles delete ${quote(roleId)} ${flag("project", projectId)} --quiet`;
+  },
+
+  budget(budgetId: string, billingAccountId: string, projectId: string): string {
+    return `gcloud billing budgets delete ${quote(budgetId)} ${flag("billing-account", billingAccountId)} ${flag("project", projectId)} --quiet`;
+  },
+
+  /** クラスタの置き場がゾーンなら `--zone`、リージョンなら `--region`。 */
+  cluster(cluster: Readonly<{ name: string; location: string }>, projectId: string): string {
+    const scope = Option.isSome(Zone.parse(cluster.location)) ? "zone" : "region";
+    return `gcloud container clusters delete ${quote(cluster.name)} ${flag(scope, cluster.location)} ${flag("project", projectId)} --quiet`;
+  },
+
+  runService(service: Readonly<{ name: string; region: string }>, projectId: string): string {
+    return `gcloud run services delete ${quote(service.name)} ${flag("region", service.region)} ${flag("project", projectId)} --quiet`;
+  },
+} as const;
