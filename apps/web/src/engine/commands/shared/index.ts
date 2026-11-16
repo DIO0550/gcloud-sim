@@ -145,6 +145,7 @@ export const Candidates = {
   kmsKeyRings: named("kmsKeyRings"),
   dnsZones: named("dnsZones"),
   dmDeployments: named("dmDeployments"),
+  infraDeployments: named("infraDeployments"),
   diskSnapshots: named("diskSnapshots"),
   /** kubectl が扱うのは `container/cluster` のクラスタだけなので、候補もそのクラスタのもの */
   kubeNamespaces: inProject((world, projectId) => {

@@ -79,6 +79,76 @@ export const ConsoleMissions: readonly Mission[] = [
     ],
   },
   {
+    id: "m-console-marketplace",
+    domain: "デプロイと実装",
+    title: "ConsoleでMarketplaceからLAMPをデプロイする",
+    description:
+      "Cloud Marketplace で提供元が Cloud Infrastructure Services の「LAMP Stack Server on Ubuntu」を選び、デプロイ名 lamp-1 で asia-northeast1-b に e2-medium の VM としてデプロイしてください。必要な API は画面の案内に沿って有効にします。デプロイできたら lamp-1-vm の外部 IP（サイトのアドレス）を確かめます。",
+    steps: [
+      act(
+        "Marketplace を開く",
+        "左ナビの「すべてのプロダクト」を押してから、「Marketplace」›「プロダクトを検索」を選ぶ",
+      ),
+      act("LAMP を検索する", "検索バーに LAMP と入れて Enter を押す"),
+      act(
+        "製品を選ぶ",
+        "検索結果から、提供元が Cloud Infrastructure Services の「LAMP Stack Server on Ubuntu」を押す",
+        "名前の似た LAMP が並びます。別の製品を選ぶとデプロイできません。",
+      ),
+      act("使い始める", "製品のページで「使ってみる」を押す"),
+      act(
+        "利用規約に同意する",
+        "「利用規約への同意」にチェックを入れて「同意する」を押し、出てきた「利用規約に同意しました」の「デプロイ」を押す",
+      ),
+      act(
+        "必要な API を有効にする",
+        "Infrastructure Manager API（足りなければ Compute Engine API も）の案内で「有効にする」を押す",
+        "Marketplace のデプロイは Infrastructure Manager が Terraform のブループリントを適用して行います。",
+      ),
+      act("ゾーンを選ぶ", "「ゾーン」で asia-northeast1-b を選ぶ"),
+      act(
+        "マシンタイプを e2-medium にする",
+        "「シリーズ」が E2 であることを確かめ、「マシンタイプ」で e2-medium を選ぶ",
+      ),
+      act(
+        "デプロイする",
+        "残りは既定のまま、右の「同等のコマンドライン」が gcloud infra-manager deployments apply になっていることを確かめて「デプロイ」を押す",
+        "既定でポート 80 / 443 を開けるファイアウォール ルール（lamp-1-tcp-80 / lamp-1-tcp-443）も作られます。",
+      ),
+      act(
+        "デプロイを確認する",
+        "「lamp-1 をデプロイしました」と出たら、サイトのアドレスと外部 IP を確かめ、「lamp-1-vm」を押して VM インスタンスの一覧でも外部 IP を見る",
+      ),
+    ],
+    setup: devSetup,
+    assertions: [
+      { kind: "apiEnabled", projectId: p, api: "config.googleapis.com" },
+      {
+        kind: "infraDeploymentExists",
+        projectId: p,
+        location: "asia-northeast1",
+        name: "lamp-1",
+        solution: "lamp-stack-ubuntu",
+      },
+      {
+        kind: "instanceExists",
+        projectId: p,
+        name: "lamp-1-vm",
+        zone: "asia-northeast1-b",
+        machineType: Option.some("e2-medium"),
+        tags: ["lamp-1-deployment"],
+        status: Option.none,
+      },
+      {
+        kind: "firewallRuleExists",
+        projectId: p,
+        name: "lamp-1-tcp-80",
+        allow: "tcp:80",
+        targetTag: "lamp-1-deployment",
+      },
+    ],
+  },
+  {
     id: "m-console-bucket",
     domain: "デプロイと実装",
     title: "Consoleでアーカイブ用のバケットを作る",

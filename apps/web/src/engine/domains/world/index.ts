@@ -40,6 +40,7 @@ import {
 } from "@/engine/domains/gke-completion";
 import { GkeControlPlane } from "@/engine/domains/gke-control-plane";
 import { IamPolicy, type RoleName } from "@/engine/domains/iam-policy";
+import type { InfraDeployment } from "@/engine/domains/infra-manager";
 import type { InstanceTemplate, ManagedInstanceGroup } from "@/engine/domains/instance-groups";
 import type { KmsKeyRing } from "@/engine/domains/kms";
 import { KubeConfig } from "@/engine/domains/kube-config";
@@ -199,6 +200,7 @@ export type World = Readonly<{
   kmsKeyRings: readonly KmsKeyRing[];
   dnsZones: readonly DnsManagedZone[];
   dmDeployments: readonly DmDeployment[];
+  infraDeployments: readonly InfraDeployment[];
   budgets: readonly Budget[];
   customRoles: readonly CustomRole[];
   config: GcloudConfig;
@@ -381,6 +383,7 @@ const NamedCollectionKeys = [
   "kmsKeyRings",
   "dnsZones",
   "dmDeployments",
+  "infraDeployments",
 ] as const satisfies readonly NamedCollection[];
 type UnlistedCollection = Exclude<NamedCollection, (typeof NamedCollectionKeys)[number]>;
 const _everyNamedCollectionIsListed: UnlistedCollection extends never ? true : never = true;

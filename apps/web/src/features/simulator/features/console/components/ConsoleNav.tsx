@@ -29,6 +29,8 @@ const sectionText = (section: ConsoleSection): string => {
       return "Kubernetes Engine";
     case "run":
       return "Cloud Run";
+    case "marketplace":
+      return "Marketplace";
   }
 };
 
@@ -71,6 +73,10 @@ export const screenText = (screen: ConsoleScreen): string => {
       return "クラスタ";
     case "run-services":
       return "サービス";
+    case "marketplace":
+      return "プロダクトを検索";
+    case "solution-deployments":
+      return "ソリューションのデプロイ";
   }
 };
 

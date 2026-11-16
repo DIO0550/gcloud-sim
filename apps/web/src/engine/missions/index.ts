@@ -356,6 +356,14 @@ export type MissionAssertion =
       projectId: string;
       roleId: string;
       permissions: readonly string[];
+    }>
+  | Readonly<{
+      kind: "infraDeploymentExists";
+      projectId: string;
+      location: string;
+      name: string;
+      /** Marketplace の製品 id */
+      solution: string;
     }>;
 
 /** ミッション開始時に World へ当てる変更（設計書 6.2 Mission.setup）。 */
@@ -1300,6 +1308,13 @@ const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
         assertion.permissions.every((p) => role.value.includedPermissions.includes(p))
       );
     }
+    case "infraDeploymentExists":
+      return World.namedOf(world, "infraDeployments", assertion.projectId).some(
+        (d) =>
+          d.name === assertion.name &&
+          d.location === assertion.location &&
+          d.solution === assertion.solution,
+      );
   }
 };
 

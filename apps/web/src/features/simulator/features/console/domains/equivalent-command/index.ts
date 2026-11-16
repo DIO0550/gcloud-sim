@@ -562,4 +562,69 @@ export const DeleteCommand = {
   runService(service: Readonly<{ name: string; region: string }>, projectId: string): string {
     return `gcloud run services delete ${quote(service.name)} ${flag("region", service.region)} ${flag("project", projectId)} --quiet`;
   },
+
+  /** Marketplace のデプロイ。作った VM とファイアウォール ルールも一緒に消える。 */
+  infraDeployment(
+    deployment: Readonly<{ name: string; location: string }>,
+    projectId: string,
+  ): string {
+    return `gcloud infra-manager deployments delete ${quote(deployment.name)} ${flag("location", deployment.location)} ${flag("project", projectId)} --quiet`;
+  },
+} as const;
+
+// --- Cloud Marketplace のデプロイ ---
+
+/** 複数の API をまとめて有効にする 1 行（Marketplace の「有効にする」）。 */
+export const enableApisCommand = (apis: readonly ApiName[], projectId: string): string =>
+  `gcloud services enable ${apis.join(" ")} ${flag("project", projectId)}`;
+
+/** Marketplace のデプロイ設定（Click to Deploy のフォーム）。 */
+export type MarketplaceDeployForm = Readonly<{
+  /** デプロイ名。VM は `{名前}-vm`、ルールは `{名前}-tcp-80` になる */
+  name: string;
+  zone: Zone;
+  machineType: MachineTypeName;
+  /** VM を動かす（デプロイを実行する）サービスアカウントのメール */
+  serviceAccount: string;
+  http: boolean;
+  https: boolean;
+}>;
+
+export const MarketplaceDeployForm = {
+  /** 既定値（デプロイ名 lamp-1・e2-small・HTTP と HTTPS を許可）。 */
+  create(seed: Readonly<{ zone: Zone; serviceAccount: string }>): MarketplaceDeployForm {
+    return {
+      name: "lamp-1",
+      zone: seed.zone,
+      machineType: "e2-small",
+      serviceAccount: seed.serviceAccount,
+      http: true,
+      https: true,
+    };
+  },
+
+  collectErrors(form: MarketplaceDeployForm): FieldErrors<MarketplaceDeployForm> {
+    return collect<MarketplaceDeployForm>([["name", errorOf(ResourceName.parse(form.name))]]);
+  },
+
+  /**
+   * 同等のコマンドライン。デプロイメントの置き場はゾーンのリージョン。
+   *
+   * @param source 製品のブループリントの置き場（`--gcs-source`）
+   */
+  toCommand(form: MarketplaceDeployForm, projectId: string, source: string): string {
+    const location = Zone.region(form.zone);
+    const inputs = [
+      `zone=${form.zone}`,
+      `machine_type=${form.machineType}`,
+      `enable_tcp_80=${form.http}`,
+      `enable_tcp_443=${form.https}`,
+    ].join(",");
+    return [
+      `gcloud infra-manager deployments apply ${quote(`projects/${projectId}/locations/${location}/deployments/${form.name}`)}`,
+      flag("service-account", `projects/${projectId}/serviceAccounts/${form.serviceAccount}`),
+      flag("gcs-source", source),
+      flag("input-values", inputs),
+    ].join(" ");
+  },
 } as const;

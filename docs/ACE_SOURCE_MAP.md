@@ -50,7 +50,7 @@
 | 基礎コース/05_Storage_and_Database_Services_v2.2.7_JA.pdf | object/file/SQL/Spanner/AlloyDB/Firestore/Bigtable/cache/BigQueryの用途比較、Storage/SQL演習 | コマンド演習未対応 | — | コマンド演習未対応 |
 | 基礎コース/08_Interconnecting_Networks_2.2.7_JA.pdf | HA VPN/Interconnect/peering、Shared VPC、要件に応じた接続選定 | コマンド演習未対応 | — | コマンド演習未対応 |
 | 基礎コース/09_Load_Balancing_and_Autoscaling_2.2.7_JA.pdf | MIG/autoscale、Application/proxy/passthrough/internal LB、CDN、LB選定 | コマンド演習未対応 | — | コマンド演習未対応 |
-| 基礎コース/01_Interacting_with_Google_Cloud_JA.pdf | Console/Cloud Shell/CLI/API/mobileの使い分け、Marketplace配置、project/API/事前確認 | `admin-apibilling` | gcloud config / services | 部分対応。詳細は公開ミッションと[対応コマンド](COMMANDS.md)を参照 |
+| 基礎コース/01_Interacting_with_Google_Cloud_JA.pdf | Console/Cloud Shell/CLI/API/mobileの使い分け、Marketplace配置、project/API/事前確認 | `admin-apibilling` / `m-console-marketplace` | gcloud config / services / infra-manager | 部分対応。詳細は公開ミッションと[対応コマンド](COMMANDS.md)を参照 |
 | 基礎コース/00_Course_Introduction_JA.pdf | Compute中心学習の全体像、IaaS/PaaS/SaaS/compute選定/region-zone、公式ラボ手続き除外 | コマンド演習未対応 | — | コマンド演習未対応 |
 | 基礎コース/T-ESSCIF-I-4-l1-ja-file-45.ja.pdf | foundationのcloud操作/VPC/VMリンク集 | `compute-custom` | gcloud config / compute | 部分対応。詳細は公開ミッションと[対応コマンド](COMMANDS.md)を参照 |
 | 基礎コース/07_Resource_Monitoring_2.2.7_JA.pdf | Monitoring/Logging/Error Reporting/Trace/Profiler、resource監視の演習と診断選定 | `m-observe-003` | gcloud monitoring | 部分対応。詳細は公開ミッションと[対応コマンド](COMMANDS.md)を参照 |

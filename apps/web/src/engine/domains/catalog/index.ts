@@ -307,6 +307,7 @@ const ApiServices = [
     title: "Cloud Deployment Manager V2 API",
     billingRequired: true,
   },
+  { name: "config.googleapis.com", title: "Infrastructure Manager API", billingRequired: true },
 ] as const;
 
 export type ApiName = (typeof ApiServices)[number]["name"];
