@@ -3,6 +3,7 @@ import {
   type ApiName,
   BucketLocation,
   type MachineTypeName,
+  type Region,
   StorageClass,
   Zone,
 } from "@/engine/domains/catalog";
@@ -21,6 +22,7 @@ import {
   ProvisioningModels,
   ResourceName,
 } from "@/engine/domains/compute";
+import { Ipv4 } from "@/engine/domains/gke-control-plane";
 import { IamMember, RoleName } from "@/engine/domains/iam-policy";
 import { CustomRole } from "@/engine/domains/role-catalog";
 import { ServiceAccount } from "@/engine/domains/service-account";
@@ -109,6 +111,10 @@ export type VmCreateForm = Readonly<{
   serviceAccount: string;
   scopes: "default" | "cloud-platform";
   tags: string;
+  /** VPC ネットワーク。`default` 以外のときだけコマンドに出す */
+  network: string;
+  /** ネットワークのサブネットのうちゾーンのリージョンにあるもの。空なら指定しない */
+  subnet: string;
   externalIp: boolean;
 }>;
 
@@ -132,6 +138,8 @@ export const VmCreateForm = {
       serviceAccount: seed.serviceAccount,
       scopes: "default",
       tags: "",
+      network: "default",
+      subnet: "",
       externalIp: true,
     };
   },
@@ -181,6 +189,12 @@ export const VmCreateForm = {
       flagPart("service-account", form.serviceAccount, "plain"),
       flagPart("scopes", form.scopes, changed("scopes")),
       ...(tags.length === 0 ? [] : [flagPart("tags", tags.join(","), "plain")]),
+      ...(form.network === "default"
+        ? []
+        : [
+            flagPart("network", form.network, "changed"),
+            ...(form.subnet === "" ? [] : [flagPart("subnet", form.subnet, "changed")]),
+          ]),
       flagPart("image-family", form.imageFamily, changed("imageFamily")),
       flagPart("image-project", form.imageProject, changed("imageProject")),
       flagPart(
@@ -465,6 +479,123 @@ export const FirewallCreateForm = {
   },
 } as const;
 
+// --- VPC ネットワーク ---
+
+/** Console の作成画面のサブネット作成モード。自動はリージョンごとに 1 つずつ作られる。 */
+export type NetworkSubnetMode = "auto" | "custom";
+
+export type NetworkCreateForm = Readonly<{
+  name: string;
+  subnetMode: NetworkSubnetMode;
+  /** カスタムのときだけ使う、最初の 1 つのサブネット */
+  subnetName: string;
+  subnetRegion: Region;
+  subnetRange: string;
+  allowIcmp: boolean;
+  allowCustom: boolean;
+  allowRdp: boolean;
+  allowSsh: boolean;
+}>;
+
+/** 自動モードのサブネットがすべて収まる範囲（`-allow-custom` の既定の送信元）。 */
+export const AutoModeRange = "10.128.0.0/9";
+
+type FirewallPreset = Readonly<{
+  key: "allowIcmp" | "allowCustom" | "allowRdp" | "allowSsh";
+  suffix: string;
+  allow: string;
+  label: string;
+}>;
+
+/**
+ * 作成画面の「ファイアウォール ルール」で選べる 4 つ（default ネットワークの標準のルールと同じ）。
+ * どれも優先度 65534 で、暗黙の deny-all-ingress / allow-all-egress（65535）より先に評価される。
+ */
+export const NetworkFirewallPresets: readonly FirewallPreset[] = [
+  { key: "allowIcmp", suffix: "allow-icmp", allow: "icmp", label: "ICMP（ping など）" },
+  { key: "allowCustom", suffix: "allow-custom", allow: "all", label: "ネットワーク内のすべて" },
+  { key: "allowRdp", suffix: "allow-rdp", allow: "tcp:3389", label: "RDP（tcp:3389）" },
+  { key: "allowSsh", suffix: "allow-ssh", allow: "tcp:22", label: "SSH（tcp:22）" },
+];
+
+/** プリセットのルールの送信元。`-allow-custom` だけはネットワークの内側から。 */
+export const presetSourceRange = (preset: FirewallPreset, form: NetworkCreateForm): string => {
+  if (preset.key !== "allowCustom") return "0.0.0.0/0";
+  return form.subnetMode === "auto" ? AutoModeRange : form.subnetRange;
+};
+
+export const NetworkCreateForm = {
+  create(): NetworkCreateForm {
+    return {
+      name: "",
+      subnetMode: "auto",
+      subnetName: "",
+      subnetRegion: "us-central1",
+      subnetRange: "",
+      allowIcmp: false,
+      allowCustom: false,
+      allowRdp: false,
+      allowSsh: false,
+    };
+  },
+
+  /** 名前は RFC1035。カスタムならサブネットの名前と CIDR も見る。 */
+  collectErrors(form: NetworkCreateForm): FieldErrors<NetworkCreateForm> {
+    const custom = form.subnetMode === "custom";
+    return collect<NetworkCreateForm>([
+      ["name", errorOf(ResourceName.parse(form.name))],
+      ["subnetName", custom ? errorOf(ResourceName.parse(form.subnetName)) : Option.none],
+      [
+        "subnetRange",
+        custom && !Option.isSome(Ipv4.range(form.subnetRange))
+          ? Option.some("10.0.0.0/24 のような CIDR にしてください。")
+          : Option.none,
+      ],
+    ]);
+  },
+
+  /**
+   * 「作成」が順に流すコマンド。ネットワーク → （カスタムなら）サブネット → 選んだファイアウォール ルール。
+   *
+   * @param form フォームの値
+   * @param projectId 対象プロジェクト
+   * @returns 1 行ずつのコマンドと、端末に出す説明
+   */
+  toSteps(
+    form: NetworkCreateForm,
+    projectId: string,
+  ): readonly Readonly<{ line: string; note: string }>[] {
+    const network = {
+      line: `gcloud compute networks create ${quote(form.name)} ${flag("project", projectId)} ${flag("subnet-mode", form.subnetMode)}`,
+      note: `VPC ネットワークを作成 (${form.name})`,
+    };
+    const subnet =
+      form.subnetMode === "custom"
+        ? [
+            {
+              line: `gcloud compute networks subnets create ${quote(form.subnetName)} ${flag("project", projectId)} ${flag("network", form.name)} ${flag("region", form.subnetRegion)} ${flag("range", form.subnetRange)}`,
+              note: `サブネットを作成 (${form.subnetName})`,
+            },
+          ]
+        : [];
+    const rules = NetworkFirewallPresets.filter((p) => form[p.key]).map((p) => {
+      const name = `${form.name}-${p.suffix}`;
+      return {
+        line: `gcloud compute firewall-rules create ${quote(name)} ${flag("project", projectId)} ${flag("network", form.name)} --direction=INGRESS --priority=65534 ${flag("allow", p.allow)} ${flag("source-ranges", presetSourceRange(p, form))}`,
+        note: `ファイアウォール ルールを作成 (${name})`,
+      };
+    });
+    return [network, ...subnet, ...rules];
+  },
+
+  /** 同等のコマンドライン（1 行に 1 コマンド）。 */
+  toCommand(form: NetworkCreateForm, projectId: string): string {
+    return NetworkCreateForm.toSteps(form, projectId)
+      .map((s) => s.line)
+      .join("\n");
+  },
+} as const;
+
 // --- バケット ---
 
 export type BucketCreateForm = Readonly<{
@@ -531,6 +662,10 @@ export const DeleteCommand = {
     return bucket.objectCount > 0
       ? `gcloud storage rm --recursive gs://${bucket.name} ${flag("project", projectId)} --quiet`
       : `gcloud storage buckets delete gs://${bucket.name} ${flag("project", projectId)} --quiet`;
+  },
+
+  network(name: string, projectId: string): string {
+    return `gcloud compute networks delete ${quote(name)} ${flag("project", projectId)} --quiet`;
   },
 
   firewallRule(name: string, projectId: string): string {

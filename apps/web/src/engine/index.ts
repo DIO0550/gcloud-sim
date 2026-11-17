@@ -147,10 +147,13 @@ export const Engine = {
     return Mission.all();
   },
 
-  startMission(world: World, id: string): Result<World, MissionSetupFailure> {
+  /**
+   * @param now 開始した時刻。setup が「何分前の操作」を作るときの基準（省略時は World 内の最新の時刻）
+   */
+  startMission(world: World, id: string, now?: string): Result<World, MissionSetupFailure> {
     const mission = Mission.find(id);
     return Option.isSome(mission)
-      ? Mission.start(world, mission.value)
+      ? Mission.start(world, mission.value, now)
       : Result.err({ missionId: id, reason: "unknown mission" });
   },
 

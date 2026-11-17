@@ -63,6 +63,8 @@ export const screenText = (screen: ConsoleScreen): string => {
       return "オペレーション";
     case "zones":
       return "ゾーン";
+    case "vpc-networks":
+      return "VPC ネットワーク";
     case "firewall":
       return "ファイアウォール";
     case "subnets":

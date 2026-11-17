@@ -186,6 +186,13 @@ import {
 import { type NetworkAssertion, NetworkMissions, networkSatisfied } from "./network-lab";
 import { type ObserveAssertion, ObserveMissions, observeSatisfied } from "./observability-lab";
 import { practiceCatalog } from "./practice-catalog";
+import {
+  applyPracticePatch,
+  type PracticeAssertion,
+  PracticeMissions,
+  type PracticePatch,
+  practiceSatisfied,
+} from "./practice-labs";
 import { type RelationalAssertion, RelationalMissions, relationalSatisfied } from "./relational";
 import { type ServerlessAssertion, ServerlessMissions, serverlessSatisfied } from "./serverless";
 import { type StorageAssertion, StorageMissions, storageSatisfied } from "./storage-lab";
@@ -215,6 +222,7 @@ export type MissionAssertion =
   | AdminAssertion
   | StorageAssertion
   | NetworkAssertion
+  | PracticeAssertion
   | ComputeAssertion
   | DataAssertion
   | ManagedDatabaseAssertion
@@ -373,7 +381,8 @@ export type WorldPatch =
   | Readonly<{ kind: "setPrincipal"; principal: Principal }>
   | Readonly<{ kind: "setProject"; projectId: string }>
   | Readonly<{ kind: "removeBinding"; target: PolicyTarget; role: RoleName; member: IamMember }>
-  | Readonly<{ kind: "ensureInstance"; projectId: string; name: string; zone: Zone }>;
+  | Readonly<{ kind: "ensureInstance"; projectId: string; name: string; zone: Zone }>
+  | PracticePatch;
 
 export type Mission = Readonly<{
   id: string;
@@ -1031,6 +1040,7 @@ export const ScenarioMissions: readonly Mission[] = [
       },
     ],
   },
+  ...PracticeMissions,
   ...ConsoleMissions,
 ];
 
@@ -1056,6 +1066,14 @@ const isSatisfied = (world: World, assertion: MissionAssertion): boolean => {
       return storageSatisfied(world, assertion.lesson);
     case "networkLesson":
       return networkSatisfied(world, assertion.lesson);
+    case "networkFirewallRule":
+    case "instanceInNetwork":
+    case "subnetAbsent":
+    case "connectivityTestResult":
+    case "iapSshReady":
+    case "bigQueryRows":
+    case "bigQueryQueryJob":
+      return practiceSatisfied(world, assertion);
     case "computeLesson":
       return computeSatisfied(world, assertion.lesson);
     case "dataProcessingLesson":
@@ -1362,7 +1380,7 @@ const ensureInstance = (
   );
 };
 
-const applyPatch = (world: World, patch: WorldPatch): Result<World, string> => {
+const applyPatch = (world: World, patch: WorldPatch, now: string): Result<World, string> => {
   switch (patch.kind) {
     case "ensureContainerCleanupLab":
       return ensureContainerCleanupLab(world);
@@ -1390,8 +1408,22 @@ const applyPatch = (world: World, patch: WorldPatch): Result<World, string> => {
     }
     case "ensureInstance":
       return ensureInstance(world, patch);
+    case "grantBinding":
+    case "stopInstance":
+    case "auditTrail":
+    case "csvObject":
+      return applyPracticePatch(world, patch, now);
   }
 };
+
+/**
+ * setup の基準時刻を省略したとき（テストや古い呼び出し）の代わり。World に残る最新の時刻を使う。
+ */
+const latestTime = (world: World): string =>
+  [...world.projects.map((p) => p.createTime), ...world.operations.map((o) => o.insertTime)].reduce(
+    (latest, t) => (t > latest ? t : latest),
+    "2026-01-01T00:00:00.000Z",
+  );
 
 export type MissionEvaluation = Readonly<{ world: World; completed: readonly Mission[] }>;
 
@@ -1409,11 +1441,13 @@ export const Mission = {
    *
    * @param world 元
    * @param mission 始めるミッション
+   * @param now 開始した時刻（setup が作る監査ログの基準）。省略時は World 内の最新の時刻
    * @returns 始めた後の World。setup が不変条件を壊すなら E-015（World は変えない）
    */
-  start(world: World, mission: Mission): Result<World, MissionSetupFailure> {
+  start(world: World, mission: Mission, now?: string): Result<World, MissionSetupFailure> {
+    const at = now ?? latestTime(world);
     const patched = mission.setup.reduce<Result<World, string>>(
-      (acc, patch) => Result.flatMap(acc, (w) => applyPatch(w, patch)),
+      (acc, patch) => Result.flatMap(acc, (w) => applyPatch(w, patch, at)),
       Result.ok(world),
     );
     const validated = Result.flatMap(patched, World.validate);

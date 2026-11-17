@@ -190,13 +190,14 @@ import { migrateTerraform } from "./terraform-migration";
  * v35 はBigQueryの表/入力・Pub/Sub配送・処理ジョブ・Kafka・exportの教材状態を持つ。
  * v45 は既定組織に加えて、追加した学習用組織を保持する。
  * v46 は Cloud Marketplace からデプロイした Infrastructure Manager のデプロイメントを持つ。
+ * v47 は VPC の接続テスト（`gcloud network-management connectivity-tests`）を networkLab に持つ。
  */
-export const SchemaVersion = 46;
+export const SchemaVersion = 47;
 
 /** 読める旧バージョン。`migrate` が現行の形に写す（設計書 11.3: 1 つ前から復元できる）。 */
 const MigratableVersions = [
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-  28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45,
+  28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46,
 ] as const;
 
 /** export / import で扱う JSON の形（UC-005）。 */
@@ -1944,12 +1945,20 @@ const migrateV45 = (version: number, value: unknown): unknown => {
   return { ...previous, additionalOrganizations: [] };
 };
 
-const migrate = (version: number, value: unknown): unknown => {
+const migrateV46 = (version: number, value: unknown): unknown => {
   const previous = migrateV45(version, value);
   if (version >= 46 || !isRecord(previous)) {
     return previous;
   }
   return { ...previous, infraDeployments: [] };
+};
+
+const migrate = (version: number, value: unknown): unknown => {
+  const previous = migrateV46(version, value);
+  if (version >= 47 || !isRecord(previous) || !isRecord(previous.networkLab)) {
+    return previous;
+  }
+  return { ...previous, networkLab: { ...previous.networkLab, connectivityTests: [] } };
 };
 
 export const Snapshot = {

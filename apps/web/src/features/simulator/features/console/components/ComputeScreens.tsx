@@ -416,7 +416,15 @@ export const VmCreateScreen = ({
     ...(form.name !== "" && live.name !== undefined ? { name: NameRuleText } : {}),
   };
   const canCreate = FieldErrors.isEmpty(live);
-  const parts = VmCreateForm.toParts(form, projectId);
+  // サブネットはネットワークとゾーンのリージョンで決まる。ゾーンを変えて合わなくなったら、そのリージョンの最初のものにする。
+  const subnetChoices = World.subnetsOf(world, projectId)
+    .filter((s) => s.network === form.network && s.region === Zone.region(form.zone))
+    .map((s) => s.name);
+  const withSubnet = (f: VmCreateForm): VmCreateForm => ({
+    ...f,
+    subnet: subnetChoices.includes(f.subnet) ? f.subnet : (subnetChoices[0] ?? ""),
+  });
+  const parts = VmCreateForm.toParts(withSubnet(form), projectId);
   const accounts = [
     defaultAccount,
     ...World.serviceAccountsOf(world, projectId).map((s) => s.email),
@@ -442,7 +450,7 @@ export const VmCreateScreen = ({
     const valid = editor.submit();
     if (!Option.isSome(valid)) return;
     handlers.submit({
-      line: VmCreateForm.toCommand(valid.value, projectId),
+      line: VmCreateForm.toCommand(withSubnet(valid.value), projectId),
       note: `インスタンスを作成 (${valid.value.name})`,
       next: Option.some(ConsoleScreens.VmList),
     });
@@ -720,6 +728,38 @@ export const VmCreateScreen = ({
         {activeSection === "network" && (
           <section>
             <h3 className="mb-4 font-medium text-xl">ネットワーキング</h3>
+            <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="ネットワーク">
+                {(id) => (
+                  <Select
+                    id={id}
+                    variant="outlined"
+                    value={form.network}
+                    onChange={(network) => set("network", network)}
+                    options={World.networksOf(world, projectId).map((n) => ({
+                      value: n.name,
+                      label: n.name,
+                    }))}
+                  />
+                )}
+              </Field>
+              <Field
+                label="サブネットワーク"
+                hint={
+                  subnetChoices.length === 0 ? "このリージョンにサブネットがありません" : undefined
+                }
+              >
+                {(id) => (
+                  <Select
+                    id={id}
+                    variant="outlined"
+                    value={withSubnet(form).subnet}
+                    onChange={(subnet) => set("subnet", subnet)}
+                    options={subnetChoices.map((name) => ({ value: name, label: name }))}
+                  />
+                )}
+              </Field>
+            </div>
             <Field label="ネットワーク タグ">
               {(id) => (
                 <TagInput id={id} value={form.tags} onChange={(tags) => set("tags", tags)} />

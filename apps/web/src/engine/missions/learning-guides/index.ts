@@ -7,6 +7,7 @@ import { KubernetesGuides } from "./kubernetes";
 import { MessagingGuides } from "./messaging";
 import type { MissionGuide } from "./model";
 import { ObservabilityGuides } from "./observability";
+import { PracticeGuides } from "./practice";
 import { StorageGuides } from "./storage";
 import { TerraformGuides } from "./terraform";
 
@@ -21,6 +22,7 @@ const Guides: Readonly<Record<string, MissionGuide>> = {
   ...ContainersGuides,
   ...KubernetesGuides,
   ...ConfigurationGuides,
+  ...PracticeGuides,
 };
 
 export const MissionGuides = {

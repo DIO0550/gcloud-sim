@@ -274,3 +274,41 @@ export const select = (sql: string, table: DataTable): Result<readonly Row[], st
   }
   return Result.ok(output.slice(0, limit));
 };
+
+/** 1 セルの課金上のバイト数（BigQuery のオンデマンド課金と同じ数え方の簡易版）。 */
+const cellBytes = (field: Field, value: Scalar): number => {
+  if (value === null) return 0;
+  switch (field.type) {
+    case "STRING":
+      return 2 + new TextEncoder().encode(String(value)).length;
+    case "INT64":
+    case "FLOAT64":
+      return 8;
+    case "BOOL":
+      return 1;
+  }
+};
+
+/**
+ * クエリが読む列。BigQuery は列指向なので、参照した列だけが処理バイト数（≒費用）に入る。
+ * `SELECT *` ならすべての列。それ以外はクエリに名前が出てくる列。
+ */
+export const referencedFields = (sql: string, table: DataTable): readonly Field[] => {
+  const selectAll = /\bSELECT\s+(?:DISTINCT\s+)?\*/i.test(sql);
+  return selectAll
+    ? table.schema
+    : table.schema.filter((f) => new RegExp(`\\b${f.name}\\b`, "i").test(sql));
+};
+
+/**
+ * ドライランの見積もり（`bq query --dry_run`）。WHERE や LIMIT があっても、参照した列は全行を読む。
+ *
+ * @returns 処理する上限のバイト数
+ */
+export const dryRunBytes = (sql: string, table: DataTable): number => {
+  const fields = referencedFields(sql, table);
+  return table.rows.reduce(
+    (sum, row) => sum + fields.reduce((acc, f) => acc + cellBytes(f, row[f.name] ?? null), 0),
+    0,
+  );
+};

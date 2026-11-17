@@ -69,7 +69,7 @@ test("v1 の Snapshot を import すると、足した集合が空で復元さ�
   expect(imported.buckets[0]?.objects[0]?.name).toBe("a.log");
 });
 
-test("現行の Snapshot は v46 で、export → import が同一になる", () => {
+test("現行の Snapshot は v47 で、export → import が同一になる", () => {
   const s = run(
     session(),
     "gcloud compute disks create d --zone=asia-northeast1-a",
@@ -81,9 +81,18 @@ test("現行の Snapshot は v46 で、export → import が同一になる", ()
   expect(s.world.infraDeployments).toHaveLength(1);
   const snapshot = Snapshot.create(s.world, Now);
   expect(snapshot.schemaVersion).toBe(SchemaVersion);
-  expect(SchemaVersion).toBe(46);
+  expect(SchemaVersion).toBe(47);
   const imported = Result.unwrap(Snapshot.fromUnknown(JSON.parse(JSON.stringify(snapshot))));
   expect(imported).toEqual(s.world);
+});
+
+test("v46 の Snapshot は VPC の接続テストを空で復元する", () => {
+  const { connectivityTests: _, ...networkLab } = session().world.networkLab;
+  const v46World = { ...session().world, networkLab };
+  const imported = Result.unwrap(
+    Snapshot.fromUnknown(JSON.parse(JSON.stringify({ schemaVersion: 46, world: v46World }))),
+  );
+  expect(imported.networkLab.connectivityTests).toEqual([]);
 });
 
 test("v45 の Snapshot は Marketplace のデプロイメントを空で復元する", () => {

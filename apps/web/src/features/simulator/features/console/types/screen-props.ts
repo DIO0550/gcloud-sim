@@ -5,8 +5,18 @@ import type { Option } from "@/utils/Option";
 
 /** Console の画面が親（Simulator）に頼む操作。すべて CLI と同じ経路（DJ-011）。 */
 export type ConsoleHandlers = Readonly<{
-  /** コマンドを流す。`note` は端末に `# Console: ...` として先に出す説明。`next` は成功したら移る画面 */
-  submit: (seed: Readonly<{ line: string; note: string; next: Option<ConsoleScreen> }>) => void;
+  /**
+   * コマンドを流す。`note` は端末に `# Console: ...` として先に出す説明。`next` は成功したら移る画面。
+   * `rest` は続けて流すコマンド（VPC の作成のように 1 回の操作が何行にもなるとき）。どれかが失敗したらそこで止める
+   */
+  submit: (
+    seed: Readonly<{
+      line: string;
+      note: string;
+      next: Option<ConsoleScreen>;
+      rest?: readonly Readonly<{ line: string; note: string }>[];
+    }>,
+  ) => void;
   /** 端末の入力行に入れる（実行はしない） */
   insert: (line: string) => void;
   copy: (text: string) => void;

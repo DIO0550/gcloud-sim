@@ -92,6 +92,8 @@ export type SimulatorAction =
       note: string;
       /** 成功したら移る画面（フォーム → 一覧） */
       next: Option<ConsoleScreen>;
+      /** 続けて流すコマンド。どれかが失敗したらそこで止める */
+      rest?: readonly Readonly<{ line: string; note: string }>[];
     }>
   | Readonly<{ type: "viewChanged"; view: View }>
   | Readonly<{ type: "consoleTerminalToggled"; open: boolean }>
@@ -105,7 +107,7 @@ export type SimulatorAction =
   | Readonly<{ type: "filesChanged"; world: World }>
   | Readonly<{ type: "settingsToggled"; open: boolean }>
   | Readonly<{ type: "missionSelected"; id: string }>
-  | Readonly<{ type: "missionStarted"; id: string }>
+  | Readonly<{ type: "missionStarted"; id: string; now?: string }>
   | Readonly<{ type: "missionAbandoned"; id: string }>
   | Readonly<{ type: "hintRevealed"; id: string }>
   | Readonly<{ type: "worldReplaced"; world: World; reason: "import" | "reset" }>
@@ -232,16 +234,25 @@ const consoleSubmitted = (
   state: SimulatorState,
   action: Extract<SimulatorAction, { type: "consoleSubmitted" }>,
 ): SimulatorState => {
-  const { state: next, outcome } = executed(state, {
-    line: action.line,
-    now: action.now,
-    origin: "console",
-    note: Option.some(action.note),
-  });
-  const moveTo = outcome.kind === "succeeded" ? action.next : Option.none;
+  const steps = [{ line: action.line, note: action.note }, ...(action.rest ?? [])];
+  let current = state;
+  let last: ConsoleOutcome | undefined;
+  for (const step of steps) {
+    const { state: next, outcome } = executed(current, {
+      line: step.line,
+      now: action.now,
+      origin: "console",
+      note: Option.some(step.note),
+    });
+    current = next;
+    last = { line: step.line, outcome };
+    if (outcome.kind !== "succeeded") break;
+  }
+  if (last === undefined) return state;
+  const moveTo = last.outcome.kind === "succeeded" ? action.next : Option.none;
   return {
-    ...next,
-    consoleOutcome: Option.some({ line: action.line, outcome }),
+    ...current,
+    consoleOutcome: Option.some(last),
     consoleScreen: Option.unwrapOr(moveTo, state.consoleScreen),
   };
 };
@@ -326,8 +337,8 @@ const hierarchySubmitted = (
   };
 };
 
-const missionStarted = (state: SimulatorState, id: string): SimulatorState => {
-  const started = Engine.startMission(state.world, id);
+const missionStarted = (state: SimulatorState, id: string, now?: string): SimulatorState => {
+  const started = Engine.startMission(state.world, id, now);
   if (Result.isOk(started)) {
     const mission = Engine.missions().find((m) => m.id === id);
     return {
@@ -414,7 +425,7 @@ export const simulatorReducer = (
     case "missionSelected":
       return { ...state, selectedMissionId: Option.some(action.id), panelTab: PanelTabs.Missions };
     case "missionStarted":
-      return missionStarted(state, action.id);
+      return missionStarted(state, action.id, action.now);
     case "missionAbandoned":
       return { ...state, world: Engine.abandonMission(state.world, action.id) };
     case "hintRevealed":

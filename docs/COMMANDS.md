@@ -25,7 +25,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 
 実在するCLIの構文だけを登録します。アプリ独自のコマンドは受け付けません。HCL・YAML・JSONはCLI画面の「ファイル」タブで編集します。
 
-## 実装済み（682）
+## 実装済み（687）
 
 ### gcloud compute
 
@@ -236,6 +236,16 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 | `gcloud dns managed-zones create` | Create a Cloud DNS managed-zone. |
 | `gcloud dns managed-zones list` | View the list of all your managed-zones. |
 | `gcloud dns managed-zones describe` | View the details of a Cloud DNS managed-zone. |
+
+### gcloud network-management
+
+| コマンド | 内容 |
+|---|---|
+| `gcloud network-management connectivity-tests create` | Create a connectivity test (configuration analysis only; no packets are sent). |
+| `gcloud network-management connectivity-tests describe` | Describe a connectivity test and its reachability result. |
+| `gcloud network-management connectivity-tests list` | List connectivity tests. |
+| `gcloud network-management connectivity-tests rerun` | Rerun a connectivity test against the current configuration. |
+| `gcloud network-management connectivity-tests delete` | Delete a connectivity test. |
 
 ### bq
 

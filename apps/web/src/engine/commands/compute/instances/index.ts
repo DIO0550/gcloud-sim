@@ -72,6 +72,7 @@ import {
 import { OsLoginSshKey } from "@/engine/domains/credentials";
 import { firewallDecision } from "@/engine/domains/network-lab/model";
 import { Operation, OperationTypes } from "@/engine/domains/operation";
+import { allows } from "@/engine/domains/serverless-lab/runtime";
 import { World } from "@/engine/domains/world";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -264,7 +265,13 @@ const updated = (
 /** `compute ssh` / `scp` の接続の前提。どれか欠けると本物と同じ `Connection timed out`。 */
 const SshPort = 22;
 
-type SshTarget = Readonly<{ instance: Instance; viaExternalIp: boolean }>;
+/** 接続の経路。external = 外部 IP、internal = `--internal-ip`、iap = `--tunnel-through-iap`。 */
+type SshRoute = "external" | "internal" | "iap";
+
+type SshTarget = Readonly<{ instance: Instance; route: SshRoute }>;
+
+/** IAP の TCP 転送が VM へ接続するときの送信元（35.235.240.0/20 の中のアドレス）。 */
+const IapForwardingOrigin = "35.235.240.10";
 
 const resolveSshTarget = (
   ctx: ProjectContext,
@@ -281,9 +288,63 @@ const resolveSshTarget = (
       ),
   );
   if (!Result.isOk(instance)) return instance;
-  const viaExternalIp =
-    !ParsedArgs.boolean(args, "internal-ip") && !ParsedArgs.boolean(args, "tunnel-through-iap");
-  return Result.ok({ instance: instance.value, viaExternalIp });
+  const route: SshRoute = ParsedArgs.boolean(args, "tunnel-through-iap")
+    ? "iap"
+    : ParsedArgs.boolean(args, "internal-ip")
+      ? "internal"
+      : "external";
+  return Result.ok({ instance: instance.value, route });
+};
+
+/**
+ * IAP の TCP 転送で接続できるか。外部 IP は要らないが、操作する人に IAP のトンネル権限
+ * （roles/iap.tunnelResourceAccessor）があり、IAP の送信元範囲 35.235.240.0/20 から tcp:22 を
+ * 許すファイアウォールが VM に当たっている必要がある。足りなければ本物と同じ 4033 / 4003。
+ */
+const iapReachable = (
+  ctx: ProjectContext,
+  instance: Instance,
+  address: string,
+): Result<string, CommandFailure> => {
+  const failed = (code: string, reason: string) =>
+    CommandFailure.notFoundWith(
+      `ERROR: (gcloud.compute.start-iap-tunnel) Error while connecting [${code}].\nERROR: (gcloud.compute.ssh) [/usr/bin/ssh] exited with return code [255].\ngcloud-sim: ${reason}`,
+    );
+  if (
+    !allows(ctx.world, ctx.project.projectId, ctx.principal, "iap.tunnelInstances.accessViaIAP")
+  ) {
+    return Result.err(
+      failed(
+        "4033: 'not authorized'",
+        `${ctx.principal} に iap.tunnelInstances.accessViaIAP がありません（roles/iap.tunnelResourceAccessor を付けます）。`,
+      ),
+    );
+  }
+  if (!Instance.isRunning(instance)) {
+    return Result.err(
+      failed(
+        "4003: 'failed to connect to backend'",
+        `インスタンスが ${instance.status} です。RUNNING のときだけ接続できます。`,
+      ),
+    );
+  }
+  const { allowed } = firewallDecision(
+    ctx.world,
+    instance,
+    "INGRESS",
+    IapForwardingOrigin,
+    "tcp",
+    SshPort,
+  );
+  if (!allowed) {
+    return Result.err(
+      failed(
+        "4003: 'failed to connect to backend'",
+        "IAP の送信元範囲 35.235.240.0/20 から tcp:22 を許可するファイアウォールルールがこのインスタンスに当たっていません。",
+      ),
+    );
+  }
+  return Result.ok(address);
 };
 
 /**
@@ -295,9 +356,13 @@ const resolveSshTarget = (
 const checkReachable = (ctx: ProjectContext, target: SshTarget): Result<string, CommandFailure> => {
   const { instance } = target;
   const nic = instance.networkInterfaces[0];
-  const address = target.viaExternalIp
+  const viaExternalIp = target.route === "external";
+  const address = viaExternalIp
     ? Option.unwrapOr(nic === undefined ? Option.none : ExternalIp.address(nic.externalIP), "")
     : (nic?.networkIP ?? "");
+  if (target.route === "iap") {
+    return iapReachable(ctx, instance, address);
+  }
   const timedOut = (reason: string) =>
     CommandFailure.notFoundWith(
       `ssh: connect to host ${address === "" ? instance.name : address} port ${SshPort}: Connection timed out\nERROR: (gcloud.compute.ssh) [/usr/bin/ssh] exited with return code [255].\ngcloud-sim: ${reason}`,
@@ -314,7 +379,7 @@ const checkReachable = (ctx: ProjectContext, target: SshTarget): Result<string, 
       ),
     );
   }
-  const originIp = target.viaExternalIp ? "203.0.113.10" : (nic?.networkIP ?? "");
+  const originIp = viaExternalIp ? "203.0.113.10" : (nic?.networkIP ?? "");
   const { allowed } = firewallDecision(ctx.world, instance, "INGRESS", originIp, "tcp", SshPort);
   if (!allowed) {
     return Result.err(
