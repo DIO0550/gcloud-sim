@@ -32,12 +32,14 @@ import {
   configArgs,
   deploymentArg,
   deploymentRecord,
+  FunctionFlags,
   finish,
   finishInvocation,
   identity,
   invalid,
   labCandidates,
-  RuntimeFlags,
+  RunJobFlags,
+  RunServiceFlags,
   regionFlag,
   requirePermission,
 } from "./shared";
@@ -398,7 +400,10 @@ const resourceCommands = (kind: TargetKind): readonly CommandSpec[] => {
     projectCommand({
       path: [...group, "list"],
       summary: "List regional lesson resources.",
-      flags: [regionFlag, Flag.list("regions", "Function regions.")],
+      flags:
+        kind === "function"
+          ? [regionFlag, Flag.list("regions", "Function regions.")]
+          : [regionFlag],
       permission: `${permission}.list`,
       requiredApis: [kind === "function" ? "cloudfunctions.googleapis.com" : "run.googleapis.com"],
       run: (ctx, args) => {
@@ -483,14 +488,51 @@ const resourceCommands = (kind: TargetKind): readonly CommandSpec[] => {
     ...bindingCommands(kind),
   ];
 };
-const invocationCommand = (kind: "run" | "function"): CommandSpec =>
+const invokeHandler =
+  (kind: "run" | "function") =>
+  (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+    const found = deploymentArg(ctx, args, kind);
+    if (!Result.isOk(found)) {
+      return found;
+    }
+    if (found.value.trigger.kind !== "http") {
+      return invalid(
+        "Event functions require a source event; they cannot be called over HTTP in this lesson.",
+      );
+    }
+    const data = ParsedArgs.string(args, "data");
+    if (data.some) {
+      try {
+        JSON.parse(data.value);
+      } catch {
+        return invalid("--data must be JSON.");
+      }
+    }
+    const result = invoke(
+      ctx.world,
+      found.value,
+      ParsedArgs.boolean(args, "anonymous") ? "anonymous" : ctx.principal,
+      Option.unwrapOr(ParsedArgs.string(args, "source"), "external"),
+      Option.unwrapOr(ParsedArgs.string(args, "revision"), ""),
+    );
+    const output = {
+      ...result.invocation,
+      result:
+        result.invocation.status === "SUCCEEDED"
+          ? `Hello from ${found.value.name} (${latestRevision(found.value).image})`
+          : undefined,
+    };
+    return finishInvocation(result.world, result.invocation, output);
+  };
+const simInvocationCommand = (kind: "run" | "function"): CommandSpec =>
   projectCommand({
-    path: kind === "function" ? ["gcloud", "functions", "call"] : ["sim", "run", "invoke"],
+    path: kind === "function" ? ["sim", "functions", "call"] : ["sim", "run", "invoke"],
     summary:
       "Evaluate authentication, ingress and runtime dependencies using the fixed lesson handler.",
     positionals: [Positional.required("NAME", "Resource name.", labCandidates("deployments"))],
     flags: [
       regionFlag,
+      Flag.string("account", "Authenticated account.", { candidates: Candidates.accounts }),
       Flag.boolean("anonymous", "Call without authentication."),
       Flag.enum("source", "Simulated request source.", ["external", "internal", "load-balancer"]),
       Flag.string("revision", "Serving revision to evaluate."),
@@ -498,41 +540,17 @@ const invocationCommand = (kind: "run" | "function"): CommandSpec =>
     ],
     permissions: [],
     requiredApis: [kind === "function" ? "cloudfunctions.googleapis.com" : "run.googleapis.com"],
-    run: (ctx, args) => {
-      const found = deploymentArg(ctx, args, kind);
-      if (!Result.isOk(found)) {
-        return found;
-      }
-      if (found.value.trigger.kind !== "http") {
-        return invalid(
-          "Event functions require a source event; they cannot be called over HTTP in this lesson.",
-        );
-      }
-      const data = ParsedArgs.string(args, "data");
-      if (data.some) {
-        try {
-          JSON.parse(data.value);
-        } catch {
-          return invalid("--data must be JSON.");
-        }
-      }
-      const result = invoke(
-        ctx.world,
-        found.value,
-        ParsedArgs.boolean(args, "anonymous") ? "anonymous" : ctx.principal,
-        Option.unwrapOr(ParsedArgs.string(args, "source"), "external"),
-        Option.unwrapOr(ParsedArgs.string(args, "revision"), ""),
-      );
-      const output = {
-        ...result.invocation,
-        result:
-          result.invocation.status === "SUCCEEDED"
-            ? `Hello from ${found.value.name} (${latestRevision(found.value).image})`
-            : undefined,
-      };
-      return finishInvocation(result.world, result.invocation, output);
-    },
+    run: invokeHandler(kind),
   });
+const publicFunctionCallCommand: CommandSpec = projectCommand({
+  path: ["gcloud", "functions", "call"],
+  summary: "Triggers execution of a Google Cloud Function (fixed lesson handler).",
+  positionals: [Positional.required("NAME", "Function name.", labCandidates("deployments"))],
+  flags: [regionFlag, Flag.string("data", "JSON data to pass to the function.")],
+  permissions: [],
+  requiredApis: ["cloudfunctions.googleapis.com"],
+  run: invokeHandler("function"),
+});
 export const ExtendedRunCommands: readonly CommandSpec[] = [
   projectCommand({
     path: ["gcloud", "run", "deploy"],
@@ -540,7 +558,7 @@ export const ExtendedRunCommands: readonly CommandSpec[] = [
     positionals: [Positional.required("SERVICE", "Service name.")],
     flags: [
       regionFlag,
-      ...RuntimeFlags,
+      ...RunServiceFlags,
       Flag.string("image", "Container image."),
       Flag.enum("platform", "Only managed Cloud Run is supported.", ["managed"]),
       Flag.boolean("allow-unauthenticated", "Grant allUsers the Invoker role."),
@@ -556,7 +574,7 @@ export const ExtendedRunCommands: readonly CommandSpec[] = [
     positionals: [Positional.required("SERVICE", "Service name.", Candidates.runServices)],
     flags: [
       regionFlag,
-      ...RuntimeFlags,
+      ...RunServiceFlags,
       Flag.string("image", "Container image."),
       Flag.boolean("no-traffic", "Leave traffic on existing revisions."),
     ],
@@ -565,7 +583,7 @@ export const ExtendedRunCommands: readonly CommandSpec[] = [
     run: deploy("run", true),
   }),
   ...resourceCommands("run"),
-  invocationCommand("run"),
+  simInvocationCommand("run"),
   projectCommand({
     path: ["gcloud", "run", "services", "update-traffic"],
     summary: "Route percentages to existing revisions.",
@@ -619,7 +637,7 @@ export const ExtendedFunctionCommands: readonly CommandSpec[] = [
     positionals: [Positional.required("NAME", "Function name.")],
     flags: [
       regionFlag,
-      ...RuntimeFlags,
+      ...FunctionFlags,
       Flag.string("runtime", "Supported function runtime."),
       Flag.string("entry-point", "Fixed handler entry point."),
       Flag.string("source", "Built-in lesson source (hello or . only)."),
@@ -638,7 +656,8 @@ export const ExtendedFunctionCommands: readonly CommandSpec[] = [
     run: deploy("function"),
   }),
   ...resourceCommands("function"),
-  invocationCommand("function"),
+  publicFunctionCallCommand,
+  simInvocationCommand("function"),
 ];
 export const JobCommands: readonly CommandSpec[] = [
   ...["create", "update"].map((action) =>
@@ -648,7 +667,7 @@ export const JobCommands: readonly CommandSpec[] = [
       positionals: [Positional.required("NAME", "Job name.")],
       flags: [
         regionFlag,
-        ...RuntimeFlags,
+        ...RunJobFlags,
         Flag.string("image", "Image label."),
         Flag.integer("tasks", "Tasks (1–100)."),
       ],

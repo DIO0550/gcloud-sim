@@ -142,6 +142,43 @@ const resourcePrefixes: Readonly<Record<ResourceLabelKind, string>> = {
   budget: "budget",
 };
 
+const badgeTooltip = (badge: TreeBadge): string | undefined => {
+  switch (badge) {
+    case "project":
+      return "プロジェクト";
+    case "billing":
+      return "請求先アカウント";
+    default:
+      return undefined;
+  }
+};
+
+const resourceTooltips: Readonly<Record<ResourceLabelKind, string>> = {
+  snapshot: "スナップショット (Snapshot)",
+  "instance-template": "インスタンス テンプレート (Instance Template)",
+  "instance-group": "マネージド インスタンス グループ (MIG)",
+  "health-check": "ヘルスチェック (Health Check)",
+  "backend-service": "バックエンド サービス (Backend Service)",
+  "forwarding-rule": "転送ルール (Forwarding Rule)",
+  address: "IP アドレス (Address)",
+  firewall: "ファイアウォール ルール (Firewall Rule)",
+  subnet: "サブネット (Subnet)",
+  router: "Cloud Router",
+  "node-pool": "ノードプール (Node Pool)",
+  "kube-statefulset": "Kubernetes StatefulSet",
+  "kube-deployment": "Kubernetes Deployment",
+  "kube-service": "Kubernetes Service",
+  "kube-hpa": "HorizontalPodAutoscaler (HPA)",
+  pvc: "PersistentVolumeClaim (PVC)",
+  "kube-ingress": "Kubernetes Ingress",
+  "kube-network-policy": "Kubernetes NetworkPolicy",
+  "kube-namespace": "Kubernetes Namespace",
+  storageclass: "Kubernetes StorageClass",
+  pv: "PersistentVolume (PV)",
+  subscription: "Pub/Sub サブスクリプション",
+  budget: "請求予算 (Budget)",
+};
+
 const labelText = (label: TreeLabel): string => {
   switch (label.kind) {
     case "text":
@@ -152,6 +189,11 @@ const labelText = (label: TreeLabel): string => {
       return groupText(label.group);
   }
 };
+
+const labelTooltip = (label: TreeLabel): string | undefined =>
+  label.kind === "text" && label.resource !== undefined
+    ? `${resourceTooltips[label.resource]}: ${label.text}`
+    : undefined;
 
 const containsSelection = (node: TreeNode, selection: TreeSelection): boolean => {
   if (Option.isSome(node.selection) && TreeSelection.equals(node.selection.value, selection)) {
@@ -179,6 +221,7 @@ const Node = ({
     }
   }, [selection, selectedDescendant]);
   const label = labelText(node.label);
+  const tooltip = labelTooltip(node.label);
   const badge = badgeText(node.badge);
   const isSelected =
     Option.isSome(selection) &&
@@ -190,12 +233,17 @@ const Node = ({
     Option.isSome(currentProjectId) &&
     node.selection.value.projectId === currentProjectId.value;
   const hasChildren = node.children.length > 0;
+  const isGroupToggle = !Option.isSome(node.selection) && hasChildren;
   const badgeColor = isCurrentProject ? "text-accent" : "text-muted";
   // 組織・フォルダ・種別グループは名前（プロポーショナル）、プロジェクトとリソースは ID（等幅）で書く。
   const isName =
     node.label.kind === "group" || node.badge === "organization" || node.badge === "folder";
   const select = (): void => {
-    if (Option.isSome(node.selection)) onSelect(node.selection.value);
+    if (Option.isSome(node.selection)) {
+      onSelect(node.selection.value);
+    } else if (hasChildren) {
+      setOpen((v) => !v);
+    }
   };
   const insert = (): void => {
     const command = Option.flatMap(node.selection, TreeSelection.describeCommand);
@@ -222,13 +270,15 @@ const Node = ({
         )}
         <button
           type="button"
-          className={`flex min-w-0 flex-1 items-center gap-2 text-left ${Option.isSome(node.selection) ? "" : "cursor-default"}`}
+          className={`flex min-w-0 flex-1 items-center gap-2 text-left ${Option.isSome(node.selection) || isGroupToggle ? "cursor-pointer" : "cursor-default"}`}
           onClick={select}
           onDoubleClick={insert}
+          title={tooltip}
           aria-current={isSelected ? "true" : undefined}
         >
           {badge !== "" && (
             <span
+              title={badgeTooltip(node.badge)}
               className={`shrink-0 rounded-md px-2 py-0.5 text-sm leading-5 ${isSelected ? "bg-surface text-accent" : `bg-canvas ${badgeColor}`}`}
             >
               {badge}

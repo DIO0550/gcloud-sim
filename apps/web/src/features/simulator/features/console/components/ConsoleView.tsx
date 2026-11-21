@@ -1,6 +1,5 @@
 import type { ReactElement } from "react";
 
-import type { ExecutionStatus } from "@/engine";
 import { ApiService } from "@/engine/domains/catalog";
 import { World } from "@/engine/domains/world";
 import { ConsoleNav } from "@/features/simulator/features/console/components/ConsoleNav";
@@ -15,17 +14,21 @@ import {
   type ConsoleScreen as Screen,
 } from "@/features/simulator/features/console/domains/console-screen";
 import { enableApiCommand } from "@/features/simulator/features/console/domains/equivalent-command";
-import type { ConsoleHandlers } from "@/features/simulator/features/console/types/screen-props";
+import type {
+  ConsoleHandlers,
+  ConsoleOutcome,
+} from "@/features/simulator/features/console/types/screen-props";
 import { Option } from "@/utils/Option";
 
 type ConsoleViewProps = Readonly<{
   world: World;
   screen: Screen;
   /** 直近にこの Console から流したコマンドの結果。失敗なら画面の上に赤帯で出す */
-  outcome: Option<ExecutionStatus>;
+  outcome: Option<ConsoleOutcome>;
   handlers: ConsoleHandlers;
   onOutcomeDismiss: () => void;
   navigationOpen: boolean;
+  onCloseNavigation?: () => void;
   terminalOpen: boolean;
 }>;
 
@@ -40,6 +43,7 @@ export const ConsoleView = ({
   handlers,
   onOutcomeDismiss,
   navigationOpen,
+  onCloseNavigation,
   terminalOpen,
 }: ConsoleViewProps): ReactElement => {
   const project = Option.flatMap(World.currentProjectId(world), (id) =>
@@ -47,18 +51,31 @@ export const ConsoleView = ({
   );
   const api = ConsoleScreen.requiredApi(screen);
   const apiTitle = Option.map(api, (a) => ApiService.find(a).title);
-  const enableApi = (projectId: string): void => {
-    if (!Option.isSome(api) || !Option.isSome(apiTitle)) return;
+  const enableApi = (projectId: string, overrideApiName?: string, overrideTitle?: string): void => {
+    const parsedOverride =
+      overrideApiName !== undefined ? ApiService.parse(overrideApiName) : Option.none;
+    const targetApi = Option.isSome(parsedOverride)
+      ? parsedOverride.value.name
+      : Option.isSome(api)
+        ? api.value
+        : undefined;
+    if (targetApi === undefined) return;
+    const targetTitle =
+      overrideTitle ??
+      (Option.isSome(parsedOverride)
+        ? parsedOverride.value.title
+        : Option.unwrapOr(apiTitle, targetApi));
     handlers.submit({
-      line: enableApiCommand(api.value, projectId),
-      note: `${apiTitle.value} を有効にする`,
+      line: enableApiCommand(targetApi, projectId),
+      note: `${targetTitle} を有効にする`,
       next: Option.none,
     });
   };
+  const isVmCreate = screen === ConsoleScreens.VmCreate;
   const body = (): ReactElement => {
     if (!Option.isSome(project)) {
       return (
-        <p className="text-muted text-sm">
+        <p className="p-5 text-muted text-sm">
           プロジェクトが選ばれていません。ヘッダーでプロジェクトを選ぶか、CLI で gcloud config set
           project PROJECT_ID を実行してください。
         </p>
@@ -69,18 +86,24 @@ export const ConsoleView = ({
       Option.isSome(api) ? !World.hasApi(world, projectId, api.value) : false,
     );
     if (Option.isSome(missingApi)) {
-      return <EnableApiPrompt apiTitle={missingApi.value} onEnable={() => enableApi(projectId)} />;
+      return (
+        <div className={isVmCreate ? "p-5" : ""}>
+          <EnableApiPrompt apiTitle={missingApi.value} onEnable={() => enableApi(projectId)} />
+        </div>
+      );
     }
     return (
       <>
         <FailureBanner
-          outcome={outcome}
-          onEnableApi={() => enableApi(projectId)}
+          outcome={Option.map(outcome, (o) => o.outcome)}
+          onEnableApi={(name, title) => enableApi(projectId, name, title)}
           onDismiss={onOutcomeDismiss}
+          className={isVmCreate ? "mx-5 mt-4 mb-0" : ""}
         />
         <ScreenRouter
+          key={projectId}
           screen={screen}
-          props={{ world, project: project.value, handlers, navigationOpen }}
+          props={{ world, project: project.value, handlers, navigationOpen, outcome }}
         />
       </>
     );
@@ -90,11 +113,11 @@ export const ConsoleView = ({
       className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] md:grid-cols-[var(--console-nav-width)_minmax(0,1fr)]"
       data-testid="console-view"
     >
-      {navigationOpen && screen !== ConsoleScreens.VmCreate && (
-        <ConsoleNav screen={screen} onChange={handlers.changeScreen} />
+      {navigationOpen && !isVmCreate && (
+        <ConsoleNav screen={screen} onChange={handlers.changeScreen} onClose={onCloseNavigation} />
       )}
       <main
-        className={`min-h-0 min-w-0 overflow-auto bg-surface md:col-start-2 ${screen === ConsoleScreens.VmCreate ? "xl:overflow-hidden" : "px-5 py-5"} ${terminalOpen ? "pb-[var(--console-terminal-height)]" : ""}`}
+        className={`min-h-0 min-w-0 bg-surface md:col-start-2 ${isVmCreate ? "flex flex-col overflow-auto xl:overflow-hidden" : "overflow-auto px-5 py-5"} ${terminalOpen ? "pb-[var(--console-terminal-height)]" : ""}`}
         aria-label="Console"
       >
         {body()}

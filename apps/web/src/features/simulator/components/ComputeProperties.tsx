@@ -57,7 +57,7 @@ export const InstanceProperties = ({
   const i = instance.value;
   const nic = i.networkInterfaces[0];
   const rules = World.firewallRulesOf(world, i.projectId).filter(
-    (r) => FirewallRule.appliesTo(r, i) && r.targetTags.length > 0,
+    (r) => !r.disabled && FirewallRule.appliesTo(r, i) && r.targetTags.length > 0,
   );
   const operations = World.operationsOfTarget(world, Instance.selfLink(i));
   const metadata = Object.entries(i.metadata);
@@ -123,17 +123,21 @@ export const InstanceProperties = ({
       />
       {rules.length > 0 && (
         <div className="-mt-2 mb-5 flex flex-col gap-1 rounded-md bg-ok-soft px-3 py-2.5 text-sm">
-          {rules.map((r) => (
-            <p
-              key={r.name}
-              className="grid grid-cols-[1.25rem_auto_auto_1fr] items-baseline gap-x-2"
-            >
-              <span className="text-ok">↳</span>
-              <span>適用されるファイアウォール：</span>
-              <span className="font-bold font-mono">{r.name}</span>
-              <span className="text-muted">{protocolText(r.allowed)} · タグ一致</span>
-            </p>
-          ))}
+          {rules.map((r) => {
+            const isDeny = r.denied.length > 0;
+            const summary = isDeny ? `拒否: ${protocolText(r.denied)}` : protocolText(r.allowed);
+            return (
+              <p
+                key={r.name}
+                className="grid grid-cols-[1.25rem_auto_auto_1fr] items-baseline gap-x-2"
+              >
+                <span className={isDeny ? "text-danger" : "text-ok"}>↳</span>
+                <span>適用されるファイアウォール：</span>
+                <span className="font-bold font-mono">{r.name}</span>
+                <span className={isDeny ? "text-danger" : "text-muted"}>{summary} · タグ一致</span>
+              </p>
+            );
+          })}
         </div>
       )}
       <Section
@@ -278,7 +282,7 @@ export const InstanceGroupProperties = ({
     ? [
         {
           label: "autoscaling",
-          value: `${g.autoscaling.value.minReplicas}〜${g.autoscaling.value.maxReplicas} 台 · CPU ${g.autoscaling.value.targetCpuUtilization * 100}% · cooldown ${g.autoscaling.value.coolDownPeriodSec}s`,
+          value: `${g.autoscaling.value.minReplicas}〜${g.autoscaling.value.maxReplicas} 台 · CPU ${Math.round(g.autoscaling.value.targetCpuUtilization * 100)}% · cooldown ${g.autoscaling.value.coolDownPeriodSec}s`,
         },
       ]
     : [{ label: "autoscaling", value: "なし" }];

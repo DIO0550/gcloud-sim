@@ -85,18 +85,18 @@ test("Shared VPC describe links identify the host project and SSH uses its firew
     );
   }
 });
-for (const prefix of ["10.20.0.0/25", "10.22.0.0/23", "10.20.0.1/23", "10.20.0.0/24"]) {
-  test(`subnet expansion rejects ${prefix} atomically`, () =>
+for (const prefixLength of [25, 24, 30, 7]) {
+  test(`subnet expansion rejects --prefix-length=${prefixLength} atomically`, () =>
     reject(
       solved("subnet", 2),
-      `gcloud compute networks subnets expand-ip-range private-subnet --region=us-central1 --prefix=${prefix}`,
+      `gcloud compute networks subnets expand-ip-range private-subnet --region=us-central1 --prefix-length=${prefixLength}`,
     ));
 }
 test("expansion and new subnet reject overlap in active peer VPC even with equal subnet names", () => {
   const s = solved("peering");
   reject(
     s,
-    "gcloud compute networks subnets expand-ip-range left-subnet --region=us-central1 --prefix=10.30.0.0/15",
+    "gcloud compute networks subnets expand-ip-range left-subnet --region=us-central1 --prefix-length=15",
   );
   reject(
     s,

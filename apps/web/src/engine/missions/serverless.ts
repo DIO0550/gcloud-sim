@@ -75,11 +75,11 @@ export const ServerlessSteps: Readonly<Record<ServerlessLesson, readonly Mission
     ),
     MissionStep.run(
       "未認証の呼び出しが失敗することを確かめる",
-      "gcloud functions call private-api --region=us-central1 --anonymous",
+      "sim functions call private-api --region=us-central1 --anonymous",
     ),
     MissionStep.run(
       "開発者として内部から呼べるか確かめる",
-      `gcloud functions call private-api --region=us-central1 --source=internal --account=${F.developer}`,
+      `sim functions call private-api --region=us-central1 --source=internal --account=${F.developer}`,
     ),
   ],
   canary: [
@@ -248,12 +248,12 @@ export const ServerlessSteps: Readonly<Record<ServerlessLesson, readonly Mission
     fn(
       "シークレットとCMEKを使う関数をデプロイする",
       "secret-api",
-      `--trigger-http --set-secrets=PASSWORD=lesson-password:1 --key=projects/${p}/locations/${r}/keyRings/lesson-ring/cryptoKeys/lesson-key`,
+      `--trigger-http --set-secrets=PASSWORD=lesson-password:1 --kms-key=projects/${p}/locations/${r}/keyRings/lesson-ring/cryptoKeys/lesson-key`,
       "環境変数PASSWORDにシークレットのバージョン1が入ります。",
     ),
     MissionStep.run(
       "鍵のバージョン1を無効にする",
-      "gcloud kms keys versions update 1 --location=us-central1 --keyring=lesson-ring --key=lesson-key --state=disabled",
+      "gcloud kms keys versions disable 1 --location=us-central1 --keyring=lesson-ring --key=lesson-key",
     ),
     MissionStep.run(
       "鍵が無効だと呼び出しが失敗することを確かめる",
@@ -261,7 +261,7 @@ export const ServerlessSteps: Readonly<Record<ServerlessLesson, readonly Mission
     ),
     MissionStep.run(
       "鍵のバージョン1を有効に戻す",
-      "gcloud kms keys versions update 1 --location=us-central1 --keyring=lesson-ring --key=lesson-key --state=enabled",
+      "gcloud kms keys versions enable 1 --location=us-central1 --keyring=lesson-ring --key=lesson-key",
     ),
     MissionStep.run(
       "呼び出しが復旧したか確かめる",

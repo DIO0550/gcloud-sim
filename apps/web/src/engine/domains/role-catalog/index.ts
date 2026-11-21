@@ -1477,6 +1477,11 @@ export const RoleCatalog = {
     return KnownPermissions.has(permission);
   },
 
+  /** 基本ロール（owner / editor / viewer）かどうか。 */
+  isBasic(name: RoleName): boolean {
+    return name === "roles/owner" || name === "roles/editor" || name === "roles/viewer";
+  },
+
   all(): readonly Role[] {
     return Roles;
   },

@@ -16,6 +16,8 @@ type SuggestInputProps = Readonly<{
   className?: string;
   /** 一度に出す候補の数 */
   limit?: number;
+  /** 入力に一致する候補が 0 件のときに表示する案内（省略時は何も出さない） */
+  emptyMessage?: string;
 }>;
 
 /** 打った文字を値か説明に含む候補（大文字小文字は区別しない）。空なら全部。 */
@@ -41,6 +43,7 @@ export const SuggestInput = ({
   onChange,
   className = `${TextInputClass} font-mono`,
   limit = 50,
+  emptyMessage,
 }: SuggestInputProps): ReactElement => {
   const listId = useId();
   const [open, setOpen] = useState(false);
@@ -48,6 +51,7 @@ export const SuggestInput = ({
   const listRef = useRef<HTMLDivElement>(null);
   const shown = matches(suggestions, value).slice(0, limit);
   const isOpen = open && shown.length > 0;
+  const showEmpty = open && shown.length === 0 && value.trim() !== "" && emptyMessage !== undefined;
   const optionId = (index: number): string => `${listId}-${index}`;
 
   useEffect(() => {
@@ -85,7 +89,7 @@ export const SuggestInput = ({
         return;
       }
       case "Escape":
-        if (!isOpen) return;
+        if (!isOpen && !showEmpty) return;
         event.preventDefault();
         setOpen(false);
         setActive(undefined);
@@ -145,6 +149,11 @@ export const SuggestInput = ({
               <span className="block text-muted text-xs">{suggestion.description}</span>
             </div>
           ))}
+        </div>
+      )}
+      {showEmpty && (
+        <div className="absolute top-full left-0 z-30 mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-muted text-xs shadow-lg">
+          {emptyMessage}
         </div>
       )}
     </div>

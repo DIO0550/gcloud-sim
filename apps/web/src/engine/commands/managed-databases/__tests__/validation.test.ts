@@ -183,18 +183,18 @@ test("Spanner restore validates backup affiliation and config; primary key/schem
   const s = lesson("spannerRestore");
   rejected(
     s,
-    "gcloud spanner databases restore other --instance=restore-spanner --backup=spanner-copy --backup-instance=wrong",
+    "gcloud spanner databases restore --destination-database=other --destination-instance=restore-spanner --source-backup=spanner-copy --source-instance=wrong",
     "source",
   );
   const incompatible = run(s, "gcloud spanner instances create other --config=nam3");
   rejected(
     incompatible,
-    "gcloud spanner databases restore recovered --instance=other --backup=spanner-copy --backup-instance=restore-spanner",
+    "gcloud spanner databases restore --destination-database=recovered --destination-instance=other --source-backup=spanner-copy --source-instance=restore-spanner",
     "compatible",
   );
   rejected(
     s,
-    "gcloud spanner databases restore recovered --instance=restore-spanner --backup=spanner-copy",
+    "gcloud spanner databases restore --destination-database=recovered --destination-instance=restore-spanner --source-backup=spanner-copy --source-instance=restore-spanner",
     "new",
   );
   expect(s.world.managedDatabases.spannerCopies[0]?.tables[0]?.rows[0]?.note).toBe("before");

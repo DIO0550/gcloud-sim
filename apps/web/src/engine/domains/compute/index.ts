@@ -113,6 +113,11 @@ export const DiskSizeGb = {
       );
     }
     const amount = Number(match[1]);
+    if (amount <= 0) {
+      return Result.err(
+        `Invalid value for [--boot-disk-size]: ${value}. Size must be greater than 0.`,
+      );
+    }
     const unit = (match[2] ?? "GB").toUpperCase();
     return Result.ok(unit === "TB" ? amount * 1024 : amount);
   },
@@ -714,11 +719,23 @@ export const FirewallRule = {
    */
   create(seed: FirewallRuleSeed): Result<FirewallRule, string> {
     const isIngress = seed.direction === Directions.Ingress;
+    if (isIngress && seed.destinationRanges.length > 0) {
+      return Result.err("Cannot specify --destination-ranges for INGRESS firewall rules.");
+    }
+    if (!isIngress && seed.sourceRanges.length > 0) {
+      return Result.err("Cannot specify --source-ranges for EGRESS firewall rules.");
+    }
     const sourceRanges =
       isIngress && seed.sourceRanges.length === 0
         ? ["0.0.0.0/0"]
         : isIngress
           ? seed.sourceRanges
+          : [];
+    const destinationRanges =
+      !isIngress && seed.destinationRanges.length === 0
+        ? ["0.0.0.0/0"]
+        : !isIngress
+          ? seed.destinationRanges
           : [];
     const priority = FirewallRule.parsePriority(Option.unwrapOr(seed.priority, 1000));
     if (!Result.isOk(priority)) return priority;
@@ -729,7 +746,7 @@ export const FirewallRule = {
       direction: seed.direction,
       priority: priority.value,
       sourceRanges,
-      destinationRanges: isIngress ? [] : seed.destinationRanges,
+      destinationRanges,
       targetTags: seed.targetTags,
       allowed: seed.action === FirewallActions.Allow ? seed.rules : [],
       denied: seed.action === FirewallActions.Deny ? seed.rules : [],

@@ -135,8 +135,8 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
     if (!Result.isOk(copied)) dispatch({ type: "copyFailed", reason: copied.error });
   };
   const consoleHandlers: ConsoleHandlers = {
-    submit: ({ line, note, next, rest }) =>
-      dispatch({ type: "consoleSubmitted", line, now: io.now(), note, next, rest }),
+    submit: ({ line, note, next, rest, openTerminal }) =>
+      dispatch({ type: "consoleSubmitted", line, now: io.now(), note, next, rest, openTerminal }),
     insert: (line) => dispatch({ type: "insertRequested", text: line }),
     copy: (text) => void copy(text),
     confirm: io.confirm,
@@ -244,13 +244,15 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
           className={`relative flex min-w-0 flex-col ${isConsole ? "min-h-0" : "order-2 h-96 lg:order-none lg:col-start-2 lg:h-auto lg:min-h-0"}`}
           style={consoleLayout}
         >
+          {isConsole && !consoleMissionsOpen && celebrationBanner}
           {isConsole && (
             <ConsoleView
               world={world}
               screen={state.consoleScreen}
-              outcome={Option.map(state.consoleOutcome, (o) => o.outcome)}
+              outcome={state.consoleOutcome}
               handlers={consoleHandlers}
               navigationOpen={navigationOpen}
+              onCloseNavigation={() => setNavigationOpen(false)}
               terminalOpen={state.consoleTerminalOpen}
               onOutcomeDismiss={() => dispatch({ type: "consoleOutcomeCleared" })}
             />
@@ -319,7 +321,11 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
                     if (!io.confirm("この学習用組織を削除します。よろしいですか？")) return;
                     dispatch({ type: "organizationDeleted", id });
                   }}
-                  onOpenConsole={(screen) => {
+                  onOpenConsole={(screen, projectId) => {
+                    const currentProject = Option.unwrapOr(WorldOps.currentProjectId(world), "");
+                    if (projectId !== undefined && projectId !== currentProject) {
+                      submitFromUi(`gcloud config set project ${projectId}`);
+                    }
                     dispatch({ type: "viewChanged", view: Views.Console });
                     dispatch({ type: "consoleScreenChanged", screen });
                   }}

@@ -40,10 +40,11 @@ const lifecycle = <K extends Collection>(
     resource: string;
     api: "logging.googleapis.com" | "monitoring.googleapis.com";
     record: (item: NamedItem<K>, world?: World) => JsonRecord;
+    listVerb?: string;
   }>,
 ): readonly CommandSpec[] => [
   projectCommand({
-    path: [...seed.path, "list"],
+    path: [...seed.path, seed.listVerb ?? "list"],
     summary: `List ${seed.resource}.`,
     permission: `${seed.permission}.list`,
     requiredApis: [seed.api],
@@ -298,6 +299,7 @@ export const MonitoringResourceCommands: readonly CommandSpec[] = [
     resource: "uptimeCheckConfigs",
     api: "monitoring.googleapis.com",
     record: UptimeCheck.toRecord,
+    listVerb: "list-configs",
   }),
   projectCommand({
     path: ["gcloud", "monitoring", "dashboards", "create"],

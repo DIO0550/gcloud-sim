@@ -8,7 +8,11 @@ import {
   HierarchyCreate,
   type HierarchyCreation,
 } from "@/features/simulator/domains/hierarchy-create";
-import { type ConsoleScreen, ConsoleScreens } from "@/features/simulator/features/console";
+import {
+  type ConsoleOutcome,
+  type ConsoleScreen,
+  ConsoleScreens,
+} from "@/features/simulator/features/console";
 import type { ValueOf } from "@/types/ValueOf";
 import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
@@ -29,11 +33,7 @@ export type TranscriptLine = Readonly<{
 export const Views = { Cli: "cli", Console: "console" } as const;
 export type View = ValueOf<typeof Views>;
 
-/**
- * Console のフォームから流したコマンドの結果。成功なら一覧へ戻り、失敗ならフォームに赤帯を出す
- * （UC-008 例外フロー）。`line` は何を流したか。
- */
-export type ConsoleOutcome = Readonly<{ line: string; outcome: ExecutionStatus }>;
+export type { ConsoleOutcome };
 
 /** 保存しておく行数の上限。超えた分は古いものから捨てる（端末側は id で差分を取るので消えても困らない）。 */
 export const TranscriptLimit = 2000;
@@ -94,6 +94,8 @@ export type SimulatorAction =
       next: Option<ConsoleScreen>;
       /** 続けて流すコマンド。どれかが失敗したらそこで止める */
       rest?: readonly Readonly<{ line: string; note: string }>[];
+      /** 実行後に下のターミナルドロワーを開くか（SSH 接続など） */
+      openTerminal?: boolean;
     }>
   | Readonly<{ type: "viewChanged"; view: View }>
   | Readonly<{ type: "consoleTerminalToggled"; open: boolean }>
@@ -245,7 +247,7 @@ const consoleSubmitted = (
       note: Option.some(step.note),
     });
     current = next;
-    last = { line: step.line, outcome };
+    last = { id: current.nextLineId, line: step.line, outcome };
     if (outcome.kind !== "succeeded") break;
   }
   if (last === undefined) return state;
@@ -254,6 +256,7 @@ const consoleSubmitted = (
     ...current,
     consoleOutcome: Option.some(last),
     consoleScreen: Option.unwrapOr(moveTo, state.consoleScreen),
+    consoleTerminalOpen: action.openTerminal ? true : current.consoleTerminalOpen,
   };
 };
 

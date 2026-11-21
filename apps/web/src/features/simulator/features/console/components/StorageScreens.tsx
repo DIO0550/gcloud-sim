@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import { Select } from "@/components/Select";
 
-import { StorageClasses } from "@/engine/domains/catalog";
+import { BucketLocation, StorageClasses } from "@/engine/domains/catalog";
 import { World } from "@/engine/domains/world";
 import {
   CreateFormSection,
@@ -19,10 +19,37 @@ import { useCreateForm } from "@/features/simulator/features/console/hooks/use-c
 import type { ScreenProps } from "@/features/simulator/features/console/types/screen-props";
 import { Option } from "@/utils/Option";
 
+const locationLabel = (location: BucketLocation): string => {
+  switch (location) {
+    case "ASIA":
+      return "ASIA（マルチリージョン）";
+    case "US":
+      return "US（マルチリージョン）";
+    case "EU":
+      return "EU（マルチリージョン）";
+    case "ASIA1":
+      return "ASIA1（デュアルリージョン: 東京/大阪）";
+    case "NAM4":
+      return "NAM4（デュアルリージョン: アイオワ/サウスカロライナ）";
+    case "EUR4":
+      return "EUR4（デュアルリージョン: フィンランド/オランダ）";
+    case "ASIA-NORTHEAST1":
+      return "ASIA-NORTHEAST1（リージョン: 東京）";
+    case "ASIA-NORTHEAST2":
+      return "ASIA-NORTHEAST2（リージョン: 大阪）";
+    case "US-CENTRAL1":
+      return "US-CENTRAL1（リージョン: アイオワ）";
+    case "US-EAST1":
+      return "US-EAST1（リージョン: サウスカロライナ）";
+    case "EUROPE-WEST1":
+      return "EUROPE-WEST1（リージョン: ベルギー）";
+  }
+};
+
 /** Cloud Storage › バケット: 一覧と作成。 */
-export const BucketsScreen = ({ world, project, handlers }: ScreenProps): ReactElement => {
+export const BucketsScreen = ({ world, project, handlers, outcome }: ScreenProps): ReactElement => {
   const projectId = project.projectId;
-  const editor = useCreateForm(BucketCreateForm, BucketCreateForm.create);
+  const editor = useCreateForm(BucketCreateForm, BucketCreateForm.create, false, outcome);
   const form = Option.unwrapOr(editor.form, BucketCreateForm.create());
   const create = (): void => {
     const valid = editor.submit();
@@ -32,15 +59,18 @@ export const BucketsScreen = ({ world, project, handlers }: ScreenProps): ReactE
       note: `バケットを作成 (${valid.value.name})`,
       next: Option.none,
     });
-    editor.close();
+    editor.awaitClose();
   };
   const remove = (bucket: Readonly<{ name: string; objects: readonly unknown[] }>): void => {
-    const contents =
-      bucket.objects.length > 0 ? `（中のオブジェクト ${bucket.objects.length} 件も消えます）` : "";
+    const noncurrentCount = world.storageLab.versions.filter(
+      (v) => v.bucket === bucket.name && v.state === "NONCURRENT",
+    ).length;
+    const total = bucket.objects.length + noncurrentCount;
+    const contents = total > 0 ? `（中のオブジェクト ${total} 件も消えます）` : "";
     if (!handlers.confirm(`バケット gs://${bucket.name} を削除しますか？${contents}`)) return;
     handlers.submit({
       line: DeleteCommand.bucket(
-        { name: bucket.name, objectCount: bucket.objects.length },
+        { name: bucket.name, objectCount: bucket.objects.length, noncurrentCount },
         projectId,
       ),
       note: `バケットを削除 (${bucket.name})`,
@@ -72,10 +102,14 @@ export const BucketsScreen = ({ world, project, handlers }: ScreenProps): ReactE
           </Field>
           <Field label="ロケーション" error={editor.errors.location}>
             {(id) => (
-              <TextInput
+              <Select
                 id={id}
                 value={form.location}
-                onChange={(v) => editor.set("location", v.toUpperCase())}
+                onChange={(v) => editor.set("location", v)}
+                options={BucketLocation.all().map((loc) => ({
+                  value: loc,
+                  label: locationLabel(loc),
+                }))}
               />
             )}
           </Field>

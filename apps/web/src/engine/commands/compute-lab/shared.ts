@@ -32,6 +32,9 @@ export const sf = (k: string, required = false): FlagSpec =>
 export const zf = Flag.string("zone", "Zone (or configured compute/zone).", {
   candidates: Candidates.zones,
 });
+export const lf = Flag.string("location", "Zone location.", {
+  candidates: Candidates.zones,
+});
 export const rf = Flag.string("region", "Region; cannot be combined with --zone.", {
   candidates: Candidates.regions,
 });
@@ -58,7 +61,10 @@ export const location = (ctx: ProjectContext, a: ParsedArgs) => {
   if (ParsedArgs.has(a, "region")) {
     return CommandContext.resolveRegion(ctx, ParsedArgs.string(a, "region"));
   }
-  return CommandContext.resolveZone(ctx, ParsedArgs.string(a, "zone"));
+  return CommandContext.resolveZone(
+    ctx,
+    Option.or(ParsedArgs.string(a, "location"), ParsedArgs.string(a, "zone")),
+  );
 };
 export const ref = (ctx: ProjectContext, a: ParsedArgs) =>
   Result.map(location(ctx, a), (location) => ({

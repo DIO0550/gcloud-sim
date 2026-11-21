@@ -411,7 +411,7 @@ export const ContainerCommands: readonly CommandSpec[] = [
           OutputMessage.plain(`kubeconfig entry generated for ${cluster.name}.`),
           OutputMessage.plain(`Endpoint: ${endpoint} (https://${address.value}).`),
           OutputMessage.hint(
-            "gcloud-sim: 認証情報の取得はネットワーク到達を保証しません。sim gke check-control-planeで送信元を明示して確認してください。kubectlはネットワークを再現しない操作モデルです。",
+            "gcloud-sim: 認証情報の取得はネットワーク到達を保証しません。kubectl はこのシミュレータではネットワーク経路を再現しない操作モデルです。",
           ),
         ),
       });

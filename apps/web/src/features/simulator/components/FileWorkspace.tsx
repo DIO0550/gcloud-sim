@@ -1,4 +1,5 @@
-import { type ReactElement, useEffect, useState } from "react";
+import { type ReactElement, useState } from "react";
+import { DangerButton } from "@/components/DangerButton";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { ConfigurationFiles, type FileEdit } from "@/engine/domains/configuration-files";
@@ -21,11 +22,7 @@ export const FileWorkspace = ({ world, onEdit }: FileWorkspaceProps): ReactEleme
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const savedContent = files[name];
-  useEffect(() => {
-    if (savedContent !== undefined) {
-      setContent(savedContent);
-    }
-  }, [savedContent]);
+  const hasUnsavedChanges = savedContent === undefined ? content !== "" : content !== savedContent;
 
   const edit = (action: FileEdit): boolean => {
     const result = onEdit(action);
@@ -53,9 +50,9 @@ export const FileWorkspace = ({ world, onEdit }: FileWorkspaceProps): ReactEleme
             value={example}
             onChange={(event) => setExample(event.target.value)}
           >
-            {Object.keys(ConfigurationFiles.examples).map((name) => (
-              <option key={name} value={name}>
-                {name}
+            {Object.keys(ConfigurationFiles.examples).map((templateName) => (
+              <option key={templateName} value={templateName}>
+                {templateName}
               </option>
             ))}
           </select>
@@ -96,9 +93,9 @@ export const FileWorkspace = ({ world, onEdit }: FileWorkspaceProps): ReactEleme
           }}
         >
           <option value="">新規ファイル</option>
-          {Object.keys(files).map((name) => (
-            <option key={name} value={name}>
-              {name}
+          {Object.keys(files).map((fileName) => (
+            <option key={fileName} value={fileName}>
+              {fileName}
             </option>
           ))}
         </select>
@@ -109,24 +106,35 @@ export const FileWorkspace = ({ world, onEdit }: FileWorkspaceProps): ReactEleme
           aria-label="設定ファイル名"
           className={`${field} font-mono`}
           value={name}
-          onChange={(event) => setName(event.target.value)}
+          onChange={(event) => {
+            setName(event.target.value);
+            setNotice("");
+          }}
         />
       </label>
       <label className="block text-sm">
-        内容
+        <span className="flex items-center justify-between">
+          <span>内容</span>
+          {hasUnsavedChanges && (
+            <span className="text-warn-ink text-xs">未保存の変更があります</span>
+          )}
+        </span>
         <textarea
           aria-label="設定ファイルの内容"
-          className={`${field} min-h-72 font-mono`}
+          className={`${field} mt-1 min-h-72 font-mono`}
           spellCheck={false}
           value={content}
-          onChange={(event) => setContent(event.target.value)}
+          onChange={(event) => {
+            setContent(event.target.value);
+            setNotice("");
+          }}
         />
       </label>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <PrimaryButton onClick={() => edit({ kind: "write", name, content })}>
           ファイルを保存
         </PrimaryButton>
-        <SecondaryButton
+        <DangerButton
           disabled={!Object.hasOwn(files, name)}
           onClick={() => {
             if (edit({ kind: "delete", name })) {
@@ -136,7 +144,7 @@ export const FileWorkspace = ({ world, onEdit }: FileWorkspaceProps): ReactEleme
           }}
         >
           ファイルを削除
-        </SecondaryButton>
+        </DangerButton>
       </div>
       {error && (
         <p role="alert" className="text-danger text-sm">

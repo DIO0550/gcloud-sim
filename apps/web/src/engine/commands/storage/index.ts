@@ -605,7 +605,9 @@ export const StorageCommands: readonly CommandSpec[] = [
       Result.ok({
         world: ctx.world,
         output: CommandOutput.yamlList(
-          World.bucketsOf(ctx.world, ctx.project.projectId).map(Bucket.toRecord),
+          World.bucketsOf(ctx.world, ctx.project.projectId).map((bucket) =>
+            Bucket.toRecord(bucket, ctx.project.projectNumber),
+          ),
         ),
       }),
   }),
@@ -626,9 +628,6 @@ export const StorageCommands: readonly CommandSpec[] = [
     path: ["gcloud", "storage", "buckets", "delete"],
     summary: "Delete Cloud Storage buckets.",
     positionals: [UrlPositional],
-    flags: [
-      Flag.boolean("recursive", "Delete the objects in the bucket too.", { aliases: ["-r"] }),
-    ],
     permission: "storage.buckets.delete",
     destructive: true,
     run: remove,

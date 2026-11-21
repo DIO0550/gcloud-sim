@@ -70,7 +70,7 @@ test("peerings create は自分自身や無いネットワークとは組めな�
 });
 
 const lb = [
-  "gcloud compute health-checks create hc-http --http --port=8080",
+  "gcloud compute health-checks create http hc-http --port=8080",
   "gcloud compute backend-services create web-bs --global --protocol=HTTP --load-balancing-scheme=EXTERNAL_MANAGED --health-checks=hc-http",
   "gcloud compute url-maps create web-map --global --default-service=web-bs",
   "gcloud compute target-http-proxies create web-proxy --global --url-map=web-map",
@@ -89,8 +89,8 @@ test("health-checks → backend-services → forwarding-rules の順で組むと
 test("health-checks create の既定は TCP:80、HTTPS は 443", () => {
   const s = run(
     session(),
-    "gcloud compute health-checks create hc-tcp",
-    "gcloud compute health-checks create hc-s --https",
+    "gcloud compute health-checks create tcp hc-tcp",
+    "gcloud compute health-checks create https hc-s",
   );
   expect(s.world.healthChecks.map((h) => [h.protocol, h.port])).toEqual([
     ["TCP", 80],
@@ -109,7 +109,7 @@ test("backend-services create は無いヘルスチェックを E-005 にする"
 test("forwarding-rules create はスコープの違うバックエンドを見つけず、予約アドレスを使うと IN_USE にする", () => {
   const regional = run(
     session(),
-    "gcloud compute health-checks create hc --tcp",
+    "gcloud compute health-checks create tcp hc",
     "gcloud compute backend-services create web-bs --global --load-balancing-scheme=EXTERNAL_MANAGED --health-checks=hc",
     "gcloud compute forwarding-rules create web-fr --region=asia-northeast1 --backend-service=web-bs",
   );

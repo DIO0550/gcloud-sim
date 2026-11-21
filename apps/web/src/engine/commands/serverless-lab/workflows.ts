@@ -14,10 +14,9 @@ import {
   type Workflow,
 } from "@/engine/domains/serverless-lab/model";
 import { attachAccount, invoke } from "@/engine/domains/serverless-lab/runtime";
-import { Option } from "@/utils/Option";
 import { Result } from "@/utils/Result";
 import { patchLab } from "./resources";
-import { finish, finishInvocation, invalid, labCandidates, regionFlag } from "./shared";
+import { finish, finishInvocation, invalid, labCandidates } from "./shared";
 
 /** Fixed workflow source: no YAML expressions or user code are evaluated. */
 export const WorkflowSteps = ["run:workflow-api", "function:workflow-function"] as const;
@@ -27,7 +26,6 @@ export const WorkflowCommands: readonly CommandSpec[] = [
     summary: "Deploy the built-in workflow.yaml (run:workflow-api → function:workflow-function).",
     positionals: [Positional.required("NAME", "Workflow name.")],
     flags: [
-      regionFlag,
       Flag.string("location", "Workflow region."),
       Flag.string("source", "Built-in workflow.yaml only.", { required: true }),
       Flag.string("service-account", "Execution SA.", {
@@ -49,7 +47,7 @@ export const WorkflowCommands: readonly CommandSpec[] = [
       }
       const region = CommandContext.resolveRegion(
         ctx,
-        Option.or(ParsedArgs.string(args, "location"), ParsedArgs.string(args, "region")),
+        ParsedArgs.string(args, "location"),
         "run/region",
       );
       if (!Result.isOk(region)) {
@@ -93,7 +91,7 @@ export const WorkflowCommands: readonly CommandSpec[] = [
         action === "list"
           ? []
           : [Positional.required("NAME", "Workflow name.", labCandidates("workflows"))],
-      flags: [regionFlag, Flag.string("location", "Workflow region.")],
+      flags: [Flag.string("location", "Workflow region.")],
       permission: {
         list: "workflows.workflows.list",
         describe: "workflows.workflows.get",
@@ -105,7 +103,7 @@ export const WorkflowCommands: readonly CommandSpec[] = [
       run: (ctx, args) => {
         const region = CommandContext.resolveRegion(
           ctx,
-          Option.or(ParsedArgs.string(args, "location"), ParsedArgs.string(args, "region")),
+          ParsedArgs.string(args, "location"),
           "run/region",
         );
         if (!Result.isOk(region)) {

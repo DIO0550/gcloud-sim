@@ -121,7 +121,7 @@ export const ObservabilityGuides = {
         actions: [
           {
             kind: "command",
-            text: "gcloud monitoring uptime list --format=json",
+            text: "gcloud monitoring uptime list-configs --format=json",
           },
         ],
         points: [

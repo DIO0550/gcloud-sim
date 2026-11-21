@@ -7,10 +7,12 @@ import { TextButton } from "@/components/TextButton";
 import type { IamMember, RoleName } from "@/engine/domains/iam-policy";
 import type { PolicyTarget } from "@/engine/domains/resource-hierarchy";
 import { CustomRole, RoleCatalog } from "@/engine/domains/role-catalog";
+import { ServiceAccount } from "@/engine/domains/service-account";
 import { World } from "@/engine/domains/world";
 import { InitialWorldFixture } from "@/engine/initial-world";
 import { type BindingOrigin, BindingRow } from "@/engine/resource-tree";
 import {
+  CopyButton,
   CreateFormSection,
   Field,
   PrimaryButton,
@@ -134,7 +136,7 @@ const removeLines = (words: readonly string[]): string => {
 };
 
 /** IAM 一覧（UI 案 2d）。編集を選ぶと、継承元の詳細（s2）を開く。 */
-export const IamScreen = ({ world, project, handlers }: ScreenProps): ReactElement => {
+export const IamScreen = ({ world, project, handlers, outcome }: ScreenProps): ReactElement => {
   const projectId = project.projectId;
   const projectTarget: PolicyTarget = { type: "project", id: projectId };
   const [filter, setFilter] = useState("");
@@ -142,7 +144,7 @@ export const IamScreen = ({ world, project, handlers }: ScreenProps): ReactEleme
   const [groupKey, setGroupKey] = useState<GroupKey>("member");
   const [includeInherited, setIncludeInherited] = useState(true);
   const [picked, setPicked] = useState<Option<IamMember>>(Option.none);
-  const editor = useCreateForm(IamGrantForm, IamGrantForm.create);
+  const editor = useCreateForm(IamGrantForm, IamGrantForm.create, false, outcome);
   const allRows = BindingRow.fromWorld(world, projectTarget);
   const needle = filter.trim().toLowerCase();
   const rows = allRows.filter((row) => {
@@ -168,7 +170,7 @@ export const IamScreen = ({ world, project, handlers }: ScreenProps): ReactEleme
       note: `アクセス権を付与 (${valid.value.member})`,
       next: Option.none,
     });
-    editor.close();
+    editor.awaitClose();
   };
   const remove = (member: IamMember, role: RoleName): void => {
     if (!handlers.confirm(`${member} から ${role} を削除しますか？`)) return;
@@ -181,7 +183,7 @@ export const IamScreen = ({ world, project, handlers }: ScreenProps): ReactEleme
   return (
     <div>
       <ScreenTitle
-        eyebrow={`プロジェクト「${projectId}」の権限`}
+        eyebrow="IAM と管理"
         title="IAM"
         trailing={
           <GhostButton tone="accent" onClick={editor.open}>
@@ -207,7 +209,7 @@ export const IamScreen = ({ world, project, handlers }: ScreenProps): ReactEleme
           <Field
             label="新しいプリンシパル"
             error={editor.errors.member}
-            hint="user:alice@example.com / serviceAccount:... / group:..."
+            hint="例: alice@example.com（自動で user: を補完）/ serviceAccount:... / group:..."
           >
             {(id) => (
               <TextInput
@@ -223,7 +225,13 @@ export const IamScreen = ({ world, project, handlers }: ScreenProps): ReactEleme
                 id={id}
                 value={Option.unwrapOr(editor.form, IamGrantForm.create()).role}
                 suggestions={[
-                  ...RoleCatalog.all().map((r) => ({ value: r.name, description: r.title })),
+                  ...RoleCatalog.all().map((r) => {
+                    const ja = roleTitleJa(world, r.name);
+                    return {
+                      value: r.name,
+                      description: ja === r.title ? r.title : `${ja} (${r.title})`,
+                    };
+                  }),
                   ...World.customRolesOf(world, projectId).map((r) => ({
                     value: CustomRole.name(r),
                     description: r.title,
@@ -246,13 +254,10 @@ export const IamScreen = ({ world, project, handlers }: ScreenProps): ReactEleme
           onChange={setGroupKey}
           variant="tabs"
         />
-        <div className="flex items-center gap-2.5 text-[15px]">
-          <Checkbox
-            checked={includeInherited}
-            ariaLabel="継承されたロールを表示"
-            onChange={setIncludeInherited}
-          />
-          <span aria-hidden="true">継承されたロールを表示</span>
+        <div className="pb-2 text-[15px]">
+          <Checkbox checked={includeInherited} onChange={setIncludeInherited}>
+            継承されたロールを表示
+          </Checkbox>
         </div>
       </div>
       <label
@@ -406,6 +411,8 @@ export const IamScreen = ({ world, project, handlers }: ScreenProps): ReactEleme
           member={selected.value}
           projectTarget={projectTarget}
           onRemove={remove}
+          onCopy={handlers.copy}
+          onInsert={handlers.insert}
         />
       )}
     </div>
@@ -418,11 +425,15 @@ const MemberDetail = ({
   member,
   projectTarget,
   onRemove,
+  onCopy,
+  onInsert,
 }: Readonly<{
   world: World;
   member: IamMember;
   projectTarget: PolicyTarget;
   onRemove: (member: IamMember, role: RoleName) => void;
+  onCopy: (text: string) => void;
+  onInsert: (line: string) => void;
 }>): ReactElement => {
   // 組織 → フォルダ → プロジェクトの順（上から）。
   const levels = World.ancestry(world, projectTarget)
@@ -437,15 +448,20 @@ const MemberDetail = ({
       ),
     }));
   const own = levels.at(-1)?.roles ?? [];
-  // 外し方を示すのは、プロジェクトにいちばん近い上位のもの。
-  const inherited = levels
+  const inheritedItems = levels
     .slice(0, -1)
     .toReversed()
-    .find((l) => l.roles.length > 0);
-  const inheritedTarget = inherited?.target;
-  const inheritedRole = inherited?.roles[0];
+    .flatMap((level) => {
+      const target = level.target;
+      if (target.type !== "organization" && target.type !== "folder") return [];
+      return level.roles.map((role) => ({
+        target,
+        role,
+        words: IamGrantForm.removeCommandAt({ member, role }, target),
+      }));
+    });
   return (
-    <div className="mt-6 grid grid-cols-2 gap-6">
+    <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
       <section
         className="rounded-lg border border-line bg-surface px-6 py-5"
         aria-label={`${memberText(member)} に効いているロール`}
@@ -492,24 +508,36 @@ const MemberDetail = ({
             </ul>
           </>
         )}
-        {inheritedTarget !== undefined &&
-          inheritedRole !== undefined &&
-          (inheritedTarget.type === "organization" || inheritedTarget.type === "folder") && (
-            <>
-              <h3 className="mb-3 font-medium text-muted">継承されたロールは編集できません</h3>
-              <p className="mb-4 leading-relaxed">
-                {levelText(world, inheritedTarget)} から継承したロールを外すには、
-                {inheritedTarget.type === "organization" ? "組織" : "フォルダ"}
-                のポリシーを変更します。
-              </p>
-              <pre className="overflow-x-auto rounded-md bg-code px-4 py-3 font-mono text-sm leading-relaxed">
-                {removeLines(
-                  IamGrantForm.removeCommandAt({ member, role: inheritedRole }, inheritedTarget),
-                )}
-              </pre>
-            </>
-          )}
-        {own.length === 0 && inherited === undefined && (
+        {inheritedItems.length > 0 && (
+          <>
+            <h3 className="mb-3 font-medium text-muted">継承されたロールは編集できません</h3>
+            <p className="mb-4 text-sm leading-relaxed">
+              上位の階層から継承したロールを外すには、該当する組織またはフォルダのポリシーを変更します。
+            </p>
+            <ul className="flex flex-col gap-4">
+              {inheritedItems.map(({ target, role, words }) => {
+                const oneLine = words.join(" ");
+                return (
+                  <li key={`${target.type}/${target.id}/${role}`}>
+                    <p className="mb-1.5 text-muted text-xs">
+                      {levelText(world, target)} · {roleTitleJa(world, role)} ({role})
+                    </p>
+                    <pre className="overflow-x-auto rounded-md bg-code px-4 py-3 font-mono text-xs leading-relaxed">
+                      {removeLines(words)}
+                    </pre>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <CopyButton text={oneLine} onCopy={onCopy} />
+                      <SecondaryButton onClick={() => onInsert(oneLine)}>
+                        ターミナルに貼り付け
+                      </SecondaryButton>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
+        {own.length === 0 && inheritedItems.length === 0 && (
           <p className="text-muted">
             このプロジェクトとその上位に、このプリンシパルのロールはありません。
           </p>
@@ -520,9 +548,19 @@ const MemberDetail = ({
 };
 
 /** IAM と管理 › サービスアカウント: 一覧と作成。 */
-export const ServiceAccountsScreen = ({ world, project, handlers }: ScreenProps): ReactElement => {
+export const ServiceAccountsScreen = ({
+  world,
+  project,
+  handlers,
+  outcome,
+}: ScreenProps): ReactElement => {
   const projectId = project.projectId;
-  const editor = useCreateForm(ServiceAccountCreateForm, ServiceAccountCreateForm.create);
+  const editor = useCreateForm(
+    ServiceAccountCreateForm,
+    ServiceAccountCreateForm.create,
+    false,
+    outcome,
+  );
   const create = (): void => {
     const valid = editor.submit();
     if (!Option.isSome(valid)) return;
@@ -531,7 +569,7 @@ export const ServiceAccountsScreen = ({ world, project, handlers }: ScreenProps)
       note: `サービスアカウントを作成 (${valid.value.accountId})`,
       next: Option.none,
     });
-    editor.close();
+    editor.awaitClose();
   };
   const remove = (email: string): void => {
     if (!handlers.confirm(`サービスアカウント ${email} を削除しますか？`)) return;
@@ -542,6 +580,26 @@ export const ServiceAccountsScreen = ({ world, project, handlers }: ScreenProps)
     });
   };
   const form = Option.unwrapOr(editor.form, ServiceAccountCreateForm.create());
+  const defaultComputeEmail = ServiceAccount.defaultComputeEmail(project.projectNumber);
+  const userAccounts = World.serviceAccountsOf(world, projectId).map((s) => ({
+    email: s.email,
+    displayName: s.displayName,
+    description: s.description,
+    isDefault: false,
+  }));
+  const rows = [
+    ...(userAccounts.some((a) => a.email === defaultComputeEmail)
+      ? []
+      : [
+          {
+            email: defaultComputeEmail,
+            displayName: "Compute Engine default service account",
+            description: "Compute Engine の既定のサービスアカウント（削除不可）",
+            isDefault: true,
+          },
+        ]),
+    ...userAccounts,
+  ];
   return (
     <div>
       <ScreenTitle
@@ -591,9 +649,10 @@ export const ServiceAccountsScreen = ({ world, project, handlers }: ScreenProps)
       )}
       <ResourceTable
         label="サービスアカウント"
-        rows={World.serviceAccountsOf(world, projectId)}
+        rows={rows}
         keyOf={(s) => s.email}
         empty="サービスアカウントはまだありません。"
+        deletable={(s) => !s.isDefault}
         onDelete={(s) => remove(s.email)}
         columns={[
           { header: "メール", cell: (s) => <span className="font-mono text-xs">{s.email}</span> },
@@ -607,9 +666,9 @@ export const ServiceAccountsScreen = ({ world, project, handlers }: ScreenProps)
 };
 
 /** IAM と管理 › ロール: カタログとカスタムロールの一覧、カスタムロールの作成。 */
-export const RolesScreen = ({ world, project, handlers }: ScreenProps): ReactElement => {
+export const RolesScreen = ({ world, project, handlers, outcome }: ScreenProps): ReactElement => {
   const projectId = project.projectId;
-  const editor = useCreateForm(RoleCreateForm, RoleCreateForm.create);
+  const editor = useCreateForm(RoleCreateForm, RoleCreateForm.create, false, outcome);
   const create = (): void => {
     const valid = editor.submit();
     if (!Option.isSome(valid)) return;
@@ -618,7 +677,7 @@ export const RolesScreen = ({ world, project, handlers }: ScreenProps): ReactEle
       note: `カスタムロールを作成 (${valid.value.roleId})`,
       next: Option.none,
     });
-    editor.close();
+    editor.awaitClose();
   };
   const remove = (roleId: string): void => {
     if (!handlers.confirm(`カスタムロール ${roleId} を削除しますか？`)) return;
@@ -634,16 +693,21 @@ export const RolesScreen = ({ world, project, handlers }: ScreenProps): ReactEle
       roleId: Option.some(r.roleId),
       name: CustomRole.name(r),
       title: r.title,
+      subtitle: "",
       permissions: r.includedPermissions.length,
       kind: "カスタム",
     })),
-    ...RoleCatalog.all().map((r) => ({
-      roleId: Option.none,
-      name: r.name,
-      title: r.title,
-      permissions: r.includedPermissions.length,
-      kind: "事前定義",
-    })),
+    ...RoleCatalog.all().map((r) => {
+      const ja = roleTitleJa(world, r.name);
+      return {
+        roleId: Option.none,
+        name: r.name,
+        title: ja,
+        subtitle: ja === r.title ? "" : r.title,
+        permissions: r.includedPermissions.length,
+        kind: RoleCatalog.isBasic(r.name) ? "基本" : "事前定義",
+      };
+    }),
   ];
   return (
     <div>
@@ -695,7 +759,17 @@ export const RolesScreen = ({ world, project, handlers }: ScreenProps): ReactEle
         }}
         columns={[
           { header: "種類", cell: (r) => <span className="text-muted text-xs">{r.kind}</span> },
-          { header: "タイトル", cell: (r) => r.title },
+          {
+            header: "タイトル",
+            cell: (r) => (
+              <span>
+                {r.title}
+                {r.subtitle !== "" && (
+                  <span className="ml-1.5 text-muted text-xs">({r.subtitle})</span>
+                )}
+              </span>
+            ),
+          },
           { header: "名前", cell: (r) => <span className="font-mono text-xs">{r.name}</span> },
           { header: "権限数", cell: (r) => String(r.permissions) },
         ]}

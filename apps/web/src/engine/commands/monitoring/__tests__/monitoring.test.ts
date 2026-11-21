@@ -43,7 +43,8 @@ test("monitoring resources persist through list/describe/export/import and delet
     ["logging metrics", created.world.logMetrics[0]],
   ] as const) {
     expect(item).toBeDefined();
-    const listed = execute(session(restored), `gcloud ${group} list --format=json`);
+    const listVerb = group === "monitoring uptime" ? "list-configs" : "list";
+    const listed = execute(session(restored), `gcloud ${group} ${listVerb} --format=json`);
     expect(listed.text).toContain(item?.name);
     const described = execute(listed, `gcloud ${group} describe ${item?.name} --format=json`);
     expect(described.text).toContain(item?.name);
@@ -86,7 +87,7 @@ test("monitoring viewer can read but cannot create, editor can create, APIs and 
     "gcloud projects add-iam-policy-binding ace-dev-01 --member=user:viewer@example.com --role=roles/monitoring.viewer",
     "gcloud auth login viewer@example.com",
   );
-  expect(run(viewer, "gcloud monitoring uptime list").text).toBe("Listed 0 items.");
+  expect(run(viewer, "gcloud monitoring uptime list-configs").text).toBe("Listed 0 items.");
   expect(run(viewer, uptime).text).toContain(
     "Required 'monitoring.uptimeCheckConfigs.create' permission",
   );

@@ -23,6 +23,7 @@ import {
   finish,
   integer,
   invalid,
+  lf,
   list,
   missing,
   observed,
@@ -426,8 +427,10 @@ export const VmCommands = [
   command(
     ["gcloud", "compute", "os-config", "inventories", "describe"],
     "osconfig.inventories.get",
-    (c, a) =>
-      Result.flatMap(instanceArg(c, a), (i) => {
+    (c, a) => {
+      const location = a.flags.location;
+      const zoneArgs = location !== undefined ? { ...a, flags: { ...a.flags, zone: location } } : a;
+      return Result.flatMap(instanceArg(c, zoneArgs), (i) => {
         if (
           i.metadata["enable-osconfig"] !== "TRUE" ||
           i.status !== "RUNNING" ||
@@ -442,8 +445,9 @@ export const VmCommands = [
           agent: "simulated",
           packages: ["openssl", "curl"],
         });
-      }),
-    [zf],
+      });
+    },
+    [lf],
     true,
     "osconfig.googleapis.com",
   ),
@@ -478,7 +482,7 @@ export const VmCommands = [
           { ...policy },
         );
       }),
-    [zf, sf("instance", true), sf("policy", true)],
+    [lf, sf("instance", true), sf("policy", true)],
     true,
     "osconfig.googleapis.com",
   ),
@@ -519,7 +523,7 @@ export const VmCommands = [
             execution: "fixed package policy only",
           });
         }),
-      [zf],
+      [lf],
       true,
       "osconfig.googleapis.com",
       op === "delete",

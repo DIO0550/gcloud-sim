@@ -178,10 +178,10 @@ test("non-admin OS Login does not confer sudo; disablement prevents login", () =
 });
 test("OS Config inventory and policy cannot run without opt-in / API / permissions", () => {
   const s = run(ready(), "gcloud compute instances create no-agent --zone=us-central1-a");
-  reject(s, "gcloud compute os-config inventories describe no-agent --zone=us-central1-a");
+  reject(s, "gcloud compute os-config inventories describe no-agent --location=us-central1-a");
   reject(
     s,
-    `gcloud compute os-config inventories describe no-agent --zone=us-central1-a --account=${F.developer}`,
+    `gcloud compute os-config inventories describe no-agent --location=us-central1-a --account=${F.developer}`,
   );
 });
 test("TPU validates zone, version, API, actAs and retention references", () => {

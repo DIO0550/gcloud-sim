@@ -68,7 +68,7 @@ export const createHpa = (
     output: CommandOutput.messages(
       OutputMessage.plain(`horizontalpodautoscaler.autoscaling/${h.value.name} autoscaled`),
       OutputMessage.hint(
-        "gcloud-sim: sim kubernetes reconcile NAME --cpu=250m で1 Podあたりの教材用CPU使用量を与え、1回評価します。",
+        "gcloud-sim: HPA を登録しました（実クラスタの自動メトリクス収集はシミュレートされません）。",
       ),
     ),
   });

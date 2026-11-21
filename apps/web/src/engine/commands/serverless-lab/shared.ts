@@ -81,24 +81,14 @@ export const deploymentArg = (
     }
     return Result.ok(d);
   });
-export const RuntimeFlags = [
+const CommonRuntimeFlags = [
   Flag.keyvalue("set-env-vars", "Replace environment variables (KEY=VALUE)."),
   Flag.keyvalue("update-env-vars", "Merge environment variables."),
   Flag.list("remove-env-vars", "Remove environment variable keys."),
-  Flag.integer("min-instances", "Minimum instances (0–1000)."),
-  Flag.integer("max-instances", "Maximum instances (1–1000)."),
-  Flag.integer("concurrency", "Maximum concurrent requests per instance (1–1000)."),
   Flag.string("cpu", "CPU count: 1, 2, 4, 6, 8."),
   Flag.string("memory", "Memory size, e.g. 256Mi or 1Gi."),
   Flag.string("timeout", "Request timeout in seconds (1–3600; accepts s suffix)."),
   Flag.string("service-account", "Runtime SA email.", { candidates: Candidates.serviceAccounts }),
-  Flag.enum("ingress", "Allowed request source.", [
-    "all",
-    "internal",
-    "internal-and-cloud-load-balancing",
-  ]),
-  Flag.enum("egress-settings", "VPC egress routing.", ["private-ranges-only", "all-traffic"]),
-  Flag.enum("vpc-egress", "Cloud Run VPC egress routing.", ["private-ranges-only", "all-traffic"]),
   Flag.string("vpc-connector", "Connector in the deployment region.", {
     candidates: labCandidates("connectors"),
   }),
@@ -106,6 +96,32 @@ export const RuntimeFlags = [
     "set-secrets",
     "Secret environment references KEY=SECRET:VERSION (data is never displayed).",
   ),
+];
+const ScalingIngressFlags = [
+  Flag.integer("min-instances", "Minimum instances (0–1000)."),
+  Flag.integer("max-instances", "Maximum instances (1–1000)."),
+  Flag.integer("concurrency", "Maximum concurrent requests per instance (1–1000)."),
+  Flag.enum("ingress", "Allowed request source.", [
+    "all",
+    "internal",
+    "internal-and-cloud-load-balancing",
+  ]),
+];
+export const RunServiceFlags = [
+  ...CommonRuntimeFlags,
+  ...ScalingIngressFlags,
+  Flag.enum("vpc-egress", "Cloud Run VPC egress routing.", ["private-ranges-only", "all-traffic"]),
+  Flag.string("key", "CMEK crypto key full resource name."),
+];
+export const FunctionFlags = [
+  ...CommonRuntimeFlags,
+  ...ScalingIngressFlags,
+  Flag.enum("egress-settings", "VPC egress routing.", ["private-ranges-only", "all-traffic"]),
+  Flag.string("kms-key", "CMEK crypto key full resource name."),
+];
+export const RunJobFlags = [
+  ...CommonRuntimeFlags,
+  Flag.enum("vpc-egress", "Cloud Run VPC egress routing.", ["private-ranges-only", "all-traffic"]),
   Flag.string("key", "CMEK crypto key full resource name."),
 ];
 export const configArgs = (
@@ -166,7 +182,10 @@ export const configArgs = (
       ),
     ),
     connector: Option.unwrapOr(ParsedArgs.string(args, "vpc-connector"), c.connector),
-    cmek: Option.unwrapOr(ParsedArgs.string(args, "key"), c.cmek),
+    cmek: Option.unwrapOr(
+      Option.or(ParsedArgs.string(args, "key"), ParsedArgs.string(args, "kms-key")),
+      c.cmek,
+    ),
     secrets: args.flags["set-secrets"] ? ParsedArgs.keyvalue(args, "set-secrets") : c.secrets,
   };
   if (!validConfig(next)) {

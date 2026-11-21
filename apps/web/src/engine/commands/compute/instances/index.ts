@@ -187,19 +187,19 @@ const resolveMachineType = (ctx: ProjectContext, args: ParsedArgs, zone: Zone) =
 
 /** 遷移コマンドの綴り。規則そのものは `Instance.transition` が持ち、ここは動詞の活用だけ。 */
 const TransitionVerbs: Readonly<
-  Record<InstanceTransition, Readonly<{ progressive: string; past: string }>>
+  Record<InstanceTransition, Readonly<{ base: string; progressive: string; past: string }>>
 > = {
-  start: { progressive: "Starting", past: "started" },
-  stop: { progressive: "Stopping", past: "stopped" },
-  suspend: { progressive: "Suspending", past: "suspended" },
-  resume: { progressive: "Resuming", past: "resumed" },
+  start: { base: "Start", progressive: "Starting", past: "started" },
+  stop: { base: "Stop", progressive: "Stopping", past: "stopped" },
+  suspend: { base: "Suspend", progressive: "Suspending", past: "suspended" },
+  resume: { base: "Resume", progressive: "Resuming", past: "resumed" },
 };
 
 const transitionCommand = (transition: InstanceTransition): CommandSpec => {
   const verbs = TransitionVerbs[transition];
   return projectCommand({
     path: ["gcloud", "compute", "instances", transition],
-    summary: `${verbs.progressive.replace(/ing$/, "")} a virtual machine instance.`,
+    summary: `${verbs.base} a virtual machine instance.`,
     positionals: [
       Positional.required(
         "INSTANCE_NAME",

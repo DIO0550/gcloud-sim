@@ -391,7 +391,6 @@ export const ConnectCommands = [
             instance: s.name,
             user,
             connectionName: `${s.projectId}:${s.region}:${s.name}`,
-            next: "sim sql execute INSTANCE --database=DATABASE --sql='SELECT ...'",
           }),
         ),
       ),

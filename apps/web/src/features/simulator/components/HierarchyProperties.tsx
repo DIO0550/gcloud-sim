@@ -98,7 +98,7 @@ export const BillingProperties = ({
   selection,
 }: SelectionProps<"billing">): ReactElement => {
   const account = World.findBillingAccount(world, selection.id);
-  if (!Option.isSome(account)) return <NotFound what="請求アカウント" />;
+  if (!Option.isSome(account)) return <NotFound what="請求先アカウント" />;
   const linked = world.projects
     .filter((p) => Option.isSome(p.billingAccountId) && p.billingAccountId.value === selection.id)
     .map((p) => p.projectId);
@@ -128,7 +128,10 @@ export const BudgetProperties = ({ world, selection }: SelectionProps<"budget">)
         { label: "name", value: budget.name },
         { label: "displayName", value: budget.displayName },
         { label: "amount", value: `${budget.amount} JPY` },
-        { label: "thresholds", value: budget.thresholds.map((t) => `${t * 100}%`).join(", ") },
+        {
+          label: "thresholds",
+          value: budget.thresholds.map((t) => `${Math.round(t * 100)}%`).join(", "),
+        },
         {
           label: "projects",
           value: budget.projectIds.length === 0 ? "(アカウント全体)" : budget.projectIds.join(", "),

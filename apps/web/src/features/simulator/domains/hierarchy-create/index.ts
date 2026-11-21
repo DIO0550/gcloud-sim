@@ -22,8 +22,10 @@ export const HierarchyCreate = {
     if (input.kind === "folder") {
       return `gcloud resource-manager folders create --display-name=${quote(input.name.trim())} ${parent}`;
     }
+    const trimmedName = input.name.trim();
+    const nameFlag = trimmedName === "" ? "" : ` --name=${quote(trimmedName)}`;
     const setDefault = input.setAsDefault ? " --set-as-default" : "";
-    return `gcloud projects create ${quote(input.projectId.trim())} --name=${quote(input.name.trim())} ${parent}${setDefault}`;
+    return `gcloud projects create ${quote(input.projectId.trim())}${nameFlag} ${parent}${setDefault}`;
   },
 
   defaultParent(world: World, selection: Option<TreeSelection>): ParentRef {

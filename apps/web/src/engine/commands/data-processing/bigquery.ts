@@ -123,10 +123,7 @@ const commands: readonly CommandSpec[] = [
       if (!target.ok) {
         return target;
       }
-      const source = a.positionals[1] ?? text(a, "source");
-      if (a.positionals[1] && text(a, "source")) {
-        return invalid("Specify one input URI, as SOURCE or --source.");
-      }
+      const source = a.positionals[1] ?? "";
       const input = readInput(ctx, source);
       if (!input.ok) {
         return input;
@@ -162,7 +159,6 @@ const commands: readonly CommandSpec[] = [
     },
     [
       locationFlag,
-      sf("source"),
       sf("source_format"),
       Flag.integer("skip_leading_rows", "CSV header rows: 0 or 1."),
       Flag.boolean("replace", "Replace table rows."),
@@ -231,10 +227,7 @@ const commands: readonly CommandSpec[] = [
     [],
     (ctx, a) => {
       const location = text(a, "location");
-      const dataset = a.positionals[0] ?? text(a, "dataset");
-      if (a.positionals[0] && text(a, "dataset")) {
-        return invalid("Specify one dataset, as DATASET or --dataset.");
-      }
+      const dataset = a.positionals[0] ?? "";
       if (!locations().includes(location)) {
         return invalid("Unsupported location.");
       }
@@ -244,7 +237,7 @@ const commands: readonly CommandSpec[] = [
           return allowed;
         }
         if (dataset) {
-          return invalid("--jobs cannot be combined with --dataset.");
+          return invalid("--jobs cannot be combined with DATASET.");
         }
         return finish(ctx.world, {
           jobs: ctx.world.dataProcessing.jobs.filter(
@@ -276,11 +269,7 @@ const commands: readonly CommandSpec[] = [
         ),
       });
     },
-    [
-      locationFlag,
-      sf("dataset", false, candidates("datasets")),
-      Flag.boolean("jobs", "List retained jobs.", { aliases: ["-j"] }),
-    ],
+    [locationFlag, Flag.boolean("jobs", "List retained jobs.", { aliases: ["-j"] })],
     false,
   ),
   command(

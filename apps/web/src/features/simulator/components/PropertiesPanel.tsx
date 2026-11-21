@@ -79,7 +79,7 @@ type PropertiesPanelProps = Readonly<{
   selection: Option<TreeSelection>;
   onInsert: (command: string) => void;
   /** 「Console で開く」: Console ビューのその種別の画面へ移る */
-  onOpenConsole: (screen: ConsoleScreen) => void;
+  onOpenConsole: (screen: ConsoleScreen, projectId?: string) => void;
   /** 学習用に足した組織を消す（gcloud には無い操作なので、コマンドを挟まず直接消す） */
   onDeleteOrganization: (id: string) => void;
 }>;
@@ -416,6 +416,16 @@ const consoleScreenOf = (selection: TreeSelection): Option<ConsoleScreen> => {
   switch (selection.kind) {
     case "instance":
       return Option.some(ConsoleScreens.VmList);
+    case "disk":
+      return Option.some(ConsoleScreens.Disks);
+    case "snapshot":
+      return Option.some(ConsoleScreens.Snapshots);
+    case "instance-template":
+      return Option.some(ConsoleScreens.InstanceTemplates);
+    case "instance-group":
+      return Option.some(ConsoleScreens.InstanceGroups);
+    case "network":
+      return Option.some(ConsoleScreens.VpcNetworks);
     case "firewall":
       return Option.some(ConsoleScreens.Firewall);
     case "subnet":
@@ -430,13 +440,27 @@ const consoleScreenOf = (selection: TreeSelection): Option<ConsoleScreen> => {
       return Option.some(ConsoleScreens.ServiceAccounts);
     case "custom-role":
       return Option.some(ConsoleScreens.Roles);
+    case "billing":
     case "budget":
       return Option.some(ConsoleScreens.Budgets);
     case "iam":
       return Option.some(ConsoleScreens.Iam);
+    case "dm-deployment":
+      return Option.some(ConsoleScreens.SolutionDeployments);
     default:
       return Option.none;
   }
+};
+
+/** 選択リソースが属するプロジェクト ID（プロジェクトに紐付かないものは `undefined`）。 */
+const projectIdOf = (selection: TreeSelection): string | undefined => {
+  if ("projectId" in selection && typeof selection.projectId === "string") {
+    return selection.projectId;
+  }
+  if (selection.kind === "iam" && selection.target.type === "project") {
+    return selection.target.id;
+  }
+  return undefined;
 };
 
 /** 作成した時刻（`作成 · 14:02`）。insert のオペレーションが残っているインスタンスだけ。 */
@@ -536,7 +560,9 @@ export const PropertiesPanel = ({
               </>
             )}
             {Option.isSome(consoleScreen) && (
-              <SecondaryButton onClick={() => onOpenConsole(consoleScreen.value)}>
+              <SecondaryButton
+                onClick={() => onOpenConsole(consoleScreen.value, projectIdOf(selection.value))}
+              >
                 Console で開く →
               </SecondaryButton>
             )}

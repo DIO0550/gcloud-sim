@@ -16,14 +16,18 @@ export const Regions = {
 } as const;
 export type Region = ValueOf<typeof Regions>;
 
-const ZoneSuffixes = ["a", "b", "c"] as const;
+const RegionZones = {
+  "asia-northeast1": ["asia-northeast1-a", "asia-northeast1-b", "asia-northeast1-c"],
+  "asia-northeast2": ["asia-northeast2-a", "asia-northeast2-b", "asia-northeast2-c"],
+  "us-central1": ["us-central1-a", "us-central1-b", "us-central1-c"],
+  "us-east1": ["us-east1-b", "us-east1-c", "us-east1-d"],
+  "europe-west1": ["europe-west1-b", "europe-west1-c", "europe-west1-d"],
+} as const satisfies Record<Region, readonly string[]>;
 
-export type Zone = `${Region}-${(typeof ZoneSuffixes)[number]}`;
+export type Zone = (typeof RegionZones)[Region][number];
 
 const AllRegions: readonly Region[] = Object.values(Regions);
-const AllZones: readonly Zone[] = AllRegions.flatMap((region) =>
-  ZoneSuffixes.map((suffix): Zone => `${region}-${suffix}`),
-);
+const AllZones: readonly Zone[] = AllRegions.flatMap((region) => RegionZones[region]);
 
 export const Zone = {
   /**
@@ -46,6 +50,11 @@ export const Zone = {
    */
   region(zone: Zone): Region {
     return zone.slice(0, zone.lastIndexOf("-")) as Region;
+  },
+
+  /** 指定リージョンの最初の実在ゾーン（us-east1 は -b、europe-west1 は -b 等）。 */
+  defaultForRegion(region: Region): Zone {
+    return RegionZones[region][0];
   },
 
   all(): readonly Zone[] {
@@ -205,6 +214,11 @@ const BucketLocations: readonly BucketLocation[] = [
 ];
 
 export const BucketLocation = {
+  /** 利用できるすべてのバケットロケーション。 */
+  all(): readonly BucketLocation[] {
+    return BucketLocations;
+  },
+
   /**
    * 綴りがロケーションカタログにあるか確かめる。大文字小文字は区別しない。
    *
