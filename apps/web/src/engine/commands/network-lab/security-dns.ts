@@ -1,6 +1,6 @@
 import { CommandFailure } from "@/engine/cli/command-failure";
 import { CommandContext, type CommandSpec, Flag, ParsedArgs } from "@/engine/cli/command-spec";
-import { ProtocolRule } from "@/engine/domains/compute";
+import { Network, ProtocolRule, SubnetModes } from "@/engine/domains/compute";
 import { type DnsRecord, type PolicyRule, patchNetwork } from "@/engine/domains/network-lab/model";
 import { allows } from "@/engine/domains/serverless-lab/runtime";
 import { Result } from "@/utils/Result";
@@ -37,23 +37,39 @@ export const SecurityDnsCommands: readonly CommandSpec[] = [
       if (!n) {
         return missing("VPC network not found.");
       }
-      const updated = {
-        ...n,
-        firewallPolicyOrder: text(a, "network-firewall-policy-enforcement-order") as
-          | "BEFORE_CLASSIC_FIREWALL"
-          | "AFTER_CLASSIC_FIREWALL",
-      };
+      const order = text(a, "network-firewall-policy-enforcement-order");
+      const toCustom = ParsedArgs.boolean(a, "switch-to-custom-subnet-mode");
+      if (Boolean(order) === toCustom) {
+        return invalid(
+          "Exactly one of (--network-firewall-policy-enforcement-order | --switch-to-custom-subnet-mode) must be specified.",
+        );
+      }
+      if (toCustom && n.subnetMode === SubnetModes.Custom) {
+        return invalid(
+          `Network [${n.name}] is already a custom mode network. Switching to auto mode is not supported.`,
+        );
+      }
+      // auto → custom は一方向（元に戻せない）。既存のサブネットはそのまま残り、以後は新しい
+      // リージョンにサブネットが自動では作られない。
+      const updated = toCustom
+        ? { ...n, subnetMode: SubnetModes.Custom }
+        : {
+            ...n,
+            firewallPolicyOrder: order as "BEFORE_CLASSIC_FIREWALL" | "AFTER_CLASSIC_FIREWALL",
+          };
       return finish(
         { ...c.world, networks: c.world.networks.map((v) => (v === n ? updated : v)) },
-        updated,
+        toCustom ? Network.toRecord(updated) : updated,
       );
     },
     [
-      Flag.enum(
-        "network-firewall-policy-enforcement-order",
-        "Policy/classic rule order.",
-        ["BEFORE_CLASSIC_FIREWALL", "AFTER_CLASSIC_FIREWALL"],
-        { required: true },
+      Flag.enum("network-firewall-policy-enforcement-order", "Policy/classic rule order.", [
+        "BEFORE_CLASSIC_FIREWALL",
+        "AFTER_CLASSIC_FIREWALL",
+      ]),
+      Flag.boolean(
+        "switch-to-custom-subnet-mode",
+        "Switch an auto mode network to custom mode. This cannot be undone.",
       ),
     ],
   ),

@@ -45,6 +45,7 @@ import {
 } from "@/engine/commands/managed-databases";
 import { LogMetricCommands, MonitoringResourceCommands } from "@/engine/commands/monitoring";
 import {
+  ConnectivityTestCommands,
   HybridCommands,
   NetworkCommands,
   SecurityDnsCommands,
@@ -104,6 +105,7 @@ const implemented: readonly CommandSpec[] = [
   ...HybridCommands,
   ...NetworkCommands,
   ...SecurityDnsCommands,
+  ...ConnectivityTestCommands,
   ...BigQueryCommands,
   ...PubsubDataCommands,
   ...ProcessingCommands,

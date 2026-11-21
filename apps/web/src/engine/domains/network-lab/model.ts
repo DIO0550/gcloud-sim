@@ -1,6 +1,7 @@
 import { Region, Zone } from "@/engine/domains/catalog";
 import { type Instance, ProtocolRule, ResourceName } from "@/engine/domains/compute";
 import { Ipv4 } from "@/engine/domains/gke-control-plane";
+import type { ConnectivityTest } from "@/engine/domains/network-lab/connectivity-test";
 import type { World } from "@/engine/domains/world";
 import { Decoder as D } from "@/utils/Decoder";
 import { Result } from "@/utils/Result";
@@ -98,6 +99,8 @@ export type NetworkLab = Readonly<{
   policies: readonly Policy[];
   checks: readonly Check[];
   logs: readonly NetworkLog[];
+  /** `gcloud network-management connectivity-tests` で作った接続テスト */
+  connectivityTests: readonly ConnectivityTest[];
 }>;
 export const emptyNetworkLab = (): NetworkLab => ({
   routes: [],
@@ -114,6 +117,7 @@ export const emptyNetworkLab = (): NetworkLab => ({
   policies: [],
   checks: [],
   logs: [],
+  connectivityTests: [],
 });
 export const patchNetwork = (w: World, change: Partial<NetworkLab>): World => ({
   ...w,
@@ -967,6 +971,23 @@ export const networkLabDecoder = D.object<NetworkLab>({
       destination: D.string,
       allowed: D.boolean,
       rule: D.string,
+    }),
+  ),
+  connectivityTests: D.array(
+    D.object<ConnectivityTest>({
+      projectId: D.string,
+      name: D.string,
+      sourceZone: D.string,
+      sourceInstance: D.string,
+      destinationKind: D.literal(["instance", "ip"]),
+      destination: D.string,
+      destinationZone: D.string,
+      protocol: D.literal(["TCP", "UDP", "ICMP"]),
+      port: D.number,
+      result: D.literal(["REACHABLE", "UNREACHABLE"]),
+      cause: D.string,
+      rule: D.string,
+      verifyTime: D.string,
     }),
   ),
 });

@@ -303,6 +303,11 @@ const ApiServices = [
   },
   { name: "dns.googleapis.com", title: "Cloud DNS API", billingRequired: true },
   {
+    name: "networkmanagement.googleapis.com",
+    title: "Network Management API",
+    billingRequired: false,
+  },
+  {
     name: "deploymentmanager.googleapis.com",
     title: "Cloud Deployment Manager V2 API",
     billingRequired: true,

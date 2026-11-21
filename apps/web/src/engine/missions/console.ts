@@ -291,6 +291,149 @@ export const ConsoleMissions: readonly Mission[] = [
     assertions: [{ kind: "budgetExists", billingAccountId: F.billingAccountId, amount: 45000 }],
   },
   {
+    id: "m-console-vpc-auto",
+    domain: "計画と構成",
+    title: "Consoleで自動モードの VPC ネットワークを作る",
+    description:
+      "Console の画面だけで、ace-dev-01 に自動モードの VPC ネットワーク `mynetwork` を作ってください。作成時に、選べる 4 つのファイアウォール ルール（ICMP・ネットワーク内のすべて・RDP・SSH）をすべて付けます。作ったら、各リージョンにサブネットができたこと、us-central1 と europe-west1 のサブネットの IP 範囲を確かめます。",
+    steps: [
+      act(
+        "VPC ネットワークの画面を開く",
+        "左ナビの「すべてのプロダクト」を押してから、「VPC ネットワーク」›「VPC ネットワーク」を選ぶ",
+      ),
+      act("作成フォームを開く", "「VPC ネットワークを作成」を押す"),
+      act(
+        "名前とサブネット作成モードを決める",
+        "「名前」に mynetwork と入れ、「サブネット作成モード」は「自動」のままにする",
+        "自動モードは、各リージョンに 10.128.0.0/9 の中から /20 のサブネットを 1 つずつ作ります。",
+      ),
+      act(
+        "ファイアウォール ルールを選ぶ",
+        "「ファイアウォール ルール」の 4 つのチェックボックスをすべてオンにする",
+        "deny-all-ingress と allow-all-egress は優先度 65535 の暗黙のルールで、選択も無効化もできません。4 つの許可ルールは優先度 65534 なので、暗黙のルールより先に評価されます。",
+      ),
+      act(
+        "ネットワークを作る",
+        "右の「同等のコマンドライン」にネットワーク 1 行とファイアウォール ルール 4 行が並んでいることを確かめ、「作成」を押す",
+      ),
+      act(
+        "サブネットと IP 範囲を確かめる",
+        "左ナビの「サブネット」を選び、mynetwork のサブネットが各リージョンにあること、us-central1 が 10.128.0.0/20、europe-west1 が 10.132.0.0/20 であることを確かめる",
+        "自動モードの範囲はリージョンごとに決まっているので、どのプロジェクトで作っても同じ範囲になります。別の自動モード VPC とピアリングできないのはこのためです。",
+      ),
+    ],
+    setup: devSetup,
+    assertions: [
+      { kind: "networkExists", projectId: p, name: "mynetwork", subnetMode: "AUTO" },
+      {
+        kind: "subnetExists",
+        projectId: p,
+        name: "mynetwork",
+        region: "us-central1",
+        ipCidrRange: "10.128.0.0/20",
+      },
+      {
+        kind: "subnetExists",
+        projectId: p,
+        name: "mynetwork",
+        region: "europe-west1",
+        ipCidrRange: "10.132.0.0/20",
+      },
+      ...(
+        [
+          ["allow-icmp", "icmp", "0.0.0.0/0"],
+          ["allow-custom", "all", "10.128.0.0/9"],
+          ["allow-rdp", "tcp:3389", "0.0.0.0/0"],
+          ["allow-ssh", "tcp:22", "0.0.0.0/0"],
+        ] as const
+      ).map(([suffix, allow, sourceRange]) => ({
+        kind: "networkFirewallRule" as const,
+        projectId: p,
+        name: `mynetwork-${suffix}`,
+        network: "mynetwork",
+        allow: [allow],
+        sourceRange,
+      })),
+    ],
+  },
+  {
+    id: "m-console-vpc-custom",
+    domain: "計画と構成",
+    title: "Consoleでカスタムモードの VPC に VM を置く",
+    description:
+      "Console の画面だけで、ace-dev-01 にカスタムモードの VPC ネットワーク `managementnet` を作り、us-central1 にサブネット `managementsubnet-us`（10.130.0.0/20）を置いてください。ICMP・SSH・RDP を許可するファイアウォール ルール `managementnet-allow-icmp-ssh-rdp` を足し、us-central1-c に VM `managementnet-us-vm` をこのサブネットで作ります。",
+    steps: [
+      act(
+        "VPC ネットワークの画面を開く",
+        "左ナビの「すべてのプロダクト」を押してから、「VPC ネットワーク」›「VPC ネットワーク」を選ぶ",
+      ),
+      act("作成フォームを開く", "「VPC ネットワークを作成」を押す"),
+      act(
+        "カスタムモードにする",
+        "「名前」に managementnet と入れ、「サブネット作成モード」で「カスタム」を選ぶ",
+        "カスタムモードはサブネットを自分で決めます。本番では、範囲が重ならないよう計画できるカスタムモードを使うのが基本です。",
+      ),
+      act(
+        "サブネットを決める",
+        "「サブネットの名前」に managementsubnet-us、「リージョン」に us-central1、「IPv4 範囲」に 10.130.0.0/20 と入れる",
+      ),
+      act(
+        "ネットワークを作る",
+        "ファイアウォール ルールのチェックボックスはオフのまま「作成」を押す",
+        "ネットワークとサブネットの 2 行が順に流れます。",
+      ),
+      act(
+        "ファイアウォールの画面でルールを作る",
+        "左ナビの「ファイアウォール」を選び、「ファイアウォール ルールを作成」を押す",
+      ),
+      act(
+        "ICMP・SSH・RDP を許可する",
+        "「名前」に managementnet-allow-icmp-ssh-rdp、「ネットワーク」で managementnet を選び、「プロトコルとポート」を icmp,tcp:22,tcp:3389 にして「作成」を押す",
+        "ターゲットタグは空（すべてのインスタンス）、送信元は 0.0.0.0/0 のままにします。",
+      ),
+      act(
+        "VM の作成画面を開く",
+        "左ナビの「すべてのプロダクト」から「Compute Engine」›「VM インスタンス」を選び、「＋ インスタンスを作成」を押す",
+      ),
+      act(
+        "名前と置き場所を決める",
+        "「名前」に managementnet-us-vm と入れ、リージョンは us-central1、ゾーンは us-central1-c を選ぶ",
+      ),
+      act(
+        "ネットワークを選ぶ",
+        "左の「ネットワーキング」を開き、「ネットワーク」で managementnet、「サブネットワーク」で managementsubnet-us を選んで「作成」を押す",
+        "サブネットはリージョンのリソースなので、VM のゾーンと同じリージョンのサブネットだけが選べます。",
+      ),
+    ],
+    setup: devSetup,
+    assertions: [
+      { kind: "networkExists", projectId: p, name: "managementnet", subnetMode: "CUSTOM" },
+      {
+        kind: "subnetExists",
+        projectId: p,
+        name: "managementsubnet-us",
+        region: "us-central1",
+        ipCidrRange: "10.130.0.0/20",
+      },
+      {
+        kind: "networkFirewallRule",
+        projectId: p,
+        name: "managementnet-allow-icmp-ssh-rdp",
+        network: "managementnet",
+        allow: ["icmp", "tcp:22", "tcp:3389"],
+        sourceRange: "0.0.0.0/0",
+      },
+      {
+        kind: "instanceInNetwork",
+        projectId: p,
+        name: "managementnet-us-vm",
+        zone: "us-central1-c",
+        network: "managementnet",
+        subnet: "managementsubnet-us",
+      },
+    ],
+  },
+  {
     id: "m-console-stop",
     domain: "運用の維持",
     title: "Consoleで VM を停止する",

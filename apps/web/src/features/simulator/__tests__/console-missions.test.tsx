@@ -17,6 +17,7 @@ import {
   FirewallCreateForm,
   IamGrantForm,
   MarketplaceDeployForm,
+  NetworkCreateForm,
   RoleCreateForm,
   ServiceAccountCreateForm,
   VmAction,
@@ -99,6 +100,50 @@ const consoleLines: Readonly<Record<string, (world: World) => readonly string[]>
         projectIds: [p],
       },
       F.billingAccountId,
+    ),
+  ],
+  "m-console-vpc-auto": () =>
+    NetworkCreateForm.toSteps(
+      {
+        ...NetworkCreateForm.create(),
+        name: "mynetwork",
+        allowIcmp: true,
+        allowCustom: true,
+        allowRdp: true,
+        allowSsh: true,
+      },
+      p,
+    ).map((s) => s.line),
+  "m-console-vpc-custom": () => [
+    ...NetworkCreateForm.toSteps(
+      {
+        ...NetworkCreateForm.create(),
+        name: "managementnet",
+        subnetMode: "custom",
+        subnetName: "managementsubnet-us",
+        subnetRegion: "us-central1",
+        subnetRange: "10.130.0.0/20",
+      },
+      p,
+    ).map((s) => s.line),
+    FirewallCreateForm.toCommand(
+      {
+        ...FirewallCreateForm.create(),
+        name: "managementnet-allow-icmp-ssh-rdp",
+        network: "managementnet",
+        protocolsAndPorts: "icmp,tcp:22,tcp:3389",
+      },
+      p,
+    ),
+    VmCreateForm.toCommand(
+      {
+        ...vm,
+        name: "managementnet-us-vm",
+        zone: "us-central1-c",
+        network: "managementnet",
+        subnet: "managementsubnet-us",
+      },
+      p,
     ),
   ],
   "m-console-stop": (world) => [

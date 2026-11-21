@@ -135,8 +135,8 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
     if (!Result.isOk(copied)) dispatch({ type: "copyFailed", reason: copied.error });
   };
   const consoleHandlers: ConsoleHandlers = {
-    submit: ({ line, note, next }) =>
-      dispatch({ type: "consoleSubmitted", line, now: io.now(), note, next }),
+    submit: ({ line, note, next, rest }) =>
+      dispatch({ type: "consoleSubmitted", line, now: io.now(), note, next, rest }),
     insert: (line) => dispatch({ type: "insertRequested", text: line }),
     copy: (text) => void copy(text),
     confirm: io.confirm,
@@ -168,7 +168,7 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
         missions={Engine.missions()}
         selectedId={state.selectedMissionId}
         onSelect={(id) => dispatch({ type: "missionSelected", id })}
-        onStart={(id) => dispatch({ type: "missionStarted", id })}
+        onStart={(id) => dispatch({ type: "missionStarted", id, now: io.now() })}
         onAbandon={(id) => dispatch({ type: "missionAbandoned", id })}
         onInsert={insert}
         initialVia={initialVia}

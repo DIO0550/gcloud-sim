@@ -22,6 +22,7 @@ import { BucketsScreen } from "@/features/simulator/features/console/components/
 import {
   FirewallScreen,
   SubnetsScreen,
+  VpcNetworksScreen,
 } from "@/features/simulator/features/console/components/VpcScreens";
 import type { ConsoleScreen } from "@/features/simulator/features/console/domains/console-screen";
 import type { ScreenProps } from "@/features/simulator/features/console/types/screen-props";
@@ -52,6 +53,8 @@ export const ScreenRouter = ({
     case "operations":
     case "zones":
       return <ComputeResourceScreen {...props} screen={screen} />;
+    case "vpc-networks":
+      return <VpcNetworksScreen {...props} />;
     case "firewall":
       return <FirewallScreen {...props} />;
     case "subnets":

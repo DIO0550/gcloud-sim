@@ -11,6 +11,7 @@ import { ComputeApi } from "@/engine/commands/compute/shared";
 import { removeVmLab } from "@/engine/commands/compute-lab/vms";
 import { Candidates, CommonFlags, projectCommand } from "@/engine/commands/shared";
 import { Zone } from "@/engine/domains/catalog";
+import { SubnetModes } from "@/engine/domains/compute";
 import { patchCompute, sameRef } from "@/engine/domains/compute-lab/model";
 import { ManagedInstanceGroup } from "@/engine/domains/instance-groups";
 import { BackendService, HealthCheck, LbScope } from "@/engine/domains/load-balancing";
@@ -372,6 +373,17 @@ export const LifecycleCommands: readonly CommandSpec[] = [
           );
           if (s === undefined) {
             return Result.err(CommandFailure.notFound("subnetworks"));
+          }
+          const autoNetwork = ctx.world.networks.some(
+            (n) =>
+              n.projectId === s.projectId &&
+              n.name === s.network &&
+              n.subnetMode === SubnetModes.Auto,
+          );
+          if (autoNetwork && s.name === s.network) {
+            return invalid(
+              "Cannot delete an auto-created subnetwork from an auto mode network. Switch the network to custom mode first (gcloud compute networks update NETWORK --switch-to-custom-subnet-mode).",
+            );
           }
           if (
             ctx.world.aceSupport.resources.some(

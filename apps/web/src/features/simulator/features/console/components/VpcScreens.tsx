@@ -1,5 +1,7 @@
 import type { ReactElement } from "react";
+import { Checkbox } from "@/components/Checkbox";
 import { Select } from "@/components/Select";
+import { Regions } from "@/engine/domains/catalog";
 
 import {
   type Direction,
@@ -20,6 +22,10 @@ import {
 import {
   DeleteCommand,
   FirewallCreateForm,
+  NetworkCreateForm,
+  NetworkFirewallPresets,
+  type NetworkSubnetMode,
+  presetSourceRange,
 } from "@/features/simulator/features/console/domains/equivalent-command";
 import { useCreateForm } from "@/features/simulator/features/console/hooks/use-create-form";
 import type { ScreenProps } from "@/features/simulator/features/console/types/screen-props";
@@ -41,6 +47,154 @@ const actionText = (action: FirewallAction): string => {
     case "DENY":
       return "拒否";
   }
+};
+
+const subnetModeText = (mode: NetworkSubnetMode): string => {
+  switch (mode) {
+    case "auto":
+      return "自動";
+    case "custom":
+      return "カスタム";
+  }
+};
+
+/** VPC ネットワーク › VPC ネットワーク: 一覧と作成（サブネット作成モードと標準のファイアウォール ルール）。 */
+export const VpcNetworksScreen = ({ world, project, handlers }: ScreenProps): ReactElement => {
+  const projectId = project.projectId;
+  const editor = useCreateForm(NetworkCreateForm, NetworkCreateForm.create);
+  const form = Option.unwrapOr(editor.form, NetworkCreateForm.create());
+  const subnets = World.subnetsOf(world, projectId);
+  const create = (): void => {
+    const valid = editor.submit();
+    if (!Option.isSome(valid)) return;
+    const [first, ...rest] = NetworkCreateForm.toSteps(valid.value, projectId);
+    if (first === undefined) return;
+    handlers.submit({ ...first, next: Option.none, rest });
+    editor.close();
+  };
+  const remove = (name: string): void => {
+    if (!handlers.confirm(`VPC ネットワーク ${name} を削除しますか？`)) return;
+    handlers.submit({
+      line: DeleteCommand.network(name, projectId),
+      note: `VPC ネットワークを削除 (${name})`,
+      next: Option.none,
+    });
+  };
+  const steps = NetworkCreateForm.toSteps(form, projectId);
+  return (
+    <div>
+      <ScreenTitle
+        eyebrow="VPC ネットワーク"
+        title="VPC ネットワーク"
+        trailing={<PrimaryButton onClick={editor.open}>VPC ネットワークを作成</PrimaryButton>}
+      />
+      {Option.isSome(editor.form) && (
+        <CreateFormSection
+          label="VPC ネットワークを作成"
+          columns={2}
+          command={NetworkCreateForm.toCommand(form, projectId)}
+          onCopy={handlers.copy}
+          onInsert={() => handlers.insert(steps[0]?.line ?? "")}
+          onSubmit={create}
+          onCancel={editor.close}
+          submitLabel="作成"
+        >
+          <Field label="名前" error={editor.errors.name}>
+            {(id) => (
+              <TextInput id={id} value={form.name} onChange={(v) => editor.set("name", v)} />
+            )}
+          </Field>
+          <Field
+            label="サブネット作成モード"
+            hint={
+              form.subnetMode === "auto"
+                ? "各リージョンに 1 つずつ、10.128.0.0/9 の中からサブネットを作ります"
+                : "サブネットを自分で決めます（ここでは 1 つ目だけ作り、残りはサブネット画面か CLI で）"
+            }
+          >
+            {(id) => (
+              <Select<NetworkSubnetMode>
+                id={id}
+                value={form.subnetMode}
+                onChange={(m) => editor.set("subnetMode", m)}
+                options={(["auto", "custom"] as const).map((m) => ({
+                  value: m,
+                  label: subnetModeText(m),
+                }))}
+              />
+            )}
+          </Field>
+          {form.subnetMode === "custom" && (
+            <>
+              <Field label="サブネットの名前" error={editor.errors.subnetName}>
+                {(id) => (
+                  <TextInput
+                    id={id}
+                    value={form.subnetName}
+                    onChange={(v) => editor.set("subnetName", v)}
+                  />
+                )}
+              </Field>
+              <Field label="リージョン">
+                {(id) => (
+                  <Select
+                    id={id}
+                    value={form.subnetRegion}
+                    onChange={(r) => editor.set("subnetRegion", r)}
+                    options={Object.values(Regions).map((r) => ({ value: r, label: r }))}
+                  />
+                )}
+              </Field>
+              <Field label="IPv4 範囲" error={editor.errors.subnetRange} hint="10.130.0.0/20">
+                {(id) => (
+                  <TextInput
+                    id={id}
+                    value={form.subnetRange}
+                    onChange={(v) => editor.set("subnetRange", v)}
+                  />
+                )}
+              </Field>
+            </>
+          )}
+          <fieldset className="sm:col-span-2">
+            <legend className="mb-2 font-bold text-sm">ファイアウォール ルール</legend>
+            <div className="grid gap-2 text-sm">
+              {NetworkFirewallPresets.map((p) => (
+                <Checkbox key={p.key} checked={form[p.key]} onChange={(v) => editor.set(p.key, v)}>
+                  <span className="font-mono">
+                    {form.name || "NAME"}-{p.suffix}
+                  </span>
+                  {` ${p.label} / 送信元 ${presetSourceRange(p, form) || "（サブネットの範囲）"} / 優先度 65534`}
+                </Checkbox>
+              ))}
+              <p className="text-muted text-xs">
+                deny-all-ingress と allow-all-egress（優先度
+                65535）は暗黙のルールのため、選択も無効化もできません。
+              </p>
+            </div>
+          </fieldset>
+        </CreateFormSection>
+      )}
+      <ResourceTable
+        label="VPC ネットワーク"
+        rows={World.networksOf(world, projectId)}
+        keyOf={(n) => n.name}
+        empty="VPC ネットワークはありません。"
+        onDelete={(n) => remove(n.name)}
+        columns={[
+          { header: "名前", cell: (n) => <span className="font-mono">{n.name}</span> },
+          {
+            header: "サブネット作成モード",
+            cell: (n) => (n.subnetMode === "AUTO" ? "自動" : "カスタム"),
+          },
+          {
+            header: "サブネット",
+            cell: (n) => String(subnets.filter((s) => s.network === n.name).length),
+          },
+        ]}
+      />
+    </div>
+  );
 };
 
 /** VPC ネットワーク › ファイアウォール: 一覧と作成。 */

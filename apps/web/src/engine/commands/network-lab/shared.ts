@@ -61,7 +61,7 @@ export const ref = (c: ProjectContext, a: ParsedArgs, regional = false) =>
       region,
     }),
   );
-type Collection = Exclude<keyof NetworkLab, "shared" | "checks" | "logs">;
+type Collection = Exclude<keyof NetworkLab, "shared" | "checks" | "logs" | "connectivityTests">;
 const candidates =
   (collection: Collection): CandidateSource =>
   (w, p) =>

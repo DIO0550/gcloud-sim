@@ -1,7 +1,19 @@
-import { type CommandSpec, Flag, ParsedArgs, Positional } from "@/engine/cli/command-spec";
+import {
+  CommandOutput,
+  type CommandSpec,
+  Flag,
+  OutputMessage,
+  ParsedArgs,
+  Positional,
+} from "@/engine/cli/command-spec";
 import { storageNow } from "@/engine/commands/storage-lab/runtime";
 import { compatibleLocation, locations, patch } from "@/engine/domains/data-processing/model";
-import { parseRows, parseSchema, select } from "@/engine/domains/data-processing/tabular";
+import {
+  dryRunBytes,
+  parseRows,
+  parseSchema,
+  select,
+} from "@/engine/domains/data-processing/tabular";
 import { validIdentifier } from "@/engine/domains/relational/model";
 import { putObject } from "@/engine/domains/storage-lab/model";
 import { World } from "@/engine/domains/world";
@@ -178,6 +190,18 @@ const commands: readonly CommandSpec[] = [
       if (!rows.ok) {
         return invalid(rows.error);
       }
+      if (ParsedArgs.boolean(a, "dry_run")) {
+        // ドライランはジョブを残さず、読む列の全行分のバイト数（費用の上限）だけを返す。
+        const bytes = dryRunBytes(name(a), table.value);
+        return Result.ok({
+          world: ctx.world,
+          output: CommandOutput.messages(
+            OutputMessage.plain(
+              `Query successfully validated. Assuming the tables are not modified, running this query will process upper bound of ${bytes} bytes of data.`,
+            ),
+          ),
+        });
+      }
       const job = recordJob(
         ctx.world,
         ctx,
@@ -192,7 +216,14 @@ const commands: readonly CommandSpec[] = [
         job: job.job.name,
       });
     },
-    [locationFlag, Flag.boolean("use_legacy_sql", "Legacy SQL is unsupported.")],
+    [
+      locationFlag,
+      Flag.boolean("use_legacy_sql", "Legacy SQL is unsupported."),
+      Flag.boolean(
+        "dry_run",
+        "Validate the query and estimate the bytes it processes without running it.",
+      ),
+    ],
   ),
   command(
     ["bq", "ls"],
@@ -248,7 +279,7 @@ const commands: readonly CommandSpec[] = [
     [
       locationFlag,
       sf("dataset", false, candidates("datasets")),
-      Flag.boolean("jobs", "List retained jobs."),
+      Flag.boolean("jobs", "List retained jobs.", { aliases: ["-j"] }),
     ],
     false,
   ),
@@ -298,7 +329,7 @@ const commands: readonly CommandSpec[] = [
     },
     [
       locationFlag,
-      Flag.boolean("job", "Describe job."),
+      Flag.boolean("job", "Describe job.", { aliases: ["-j"] }),
       Flag.boolean("schema", "Show schema only."),
     ],
     true,

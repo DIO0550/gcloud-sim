@@ -469,3 +469,44 @@ test("コピーに失敗すると端末に理由付きの警告が出る", async
   await waitFor(() => expect(screenText(terminal)).toContain("NotAllowedError"));
   expect(copied).toEqual([]);
 });
+
+test("VPC ネットワークの作成はネットワーク・サブネット・選んだルールを順に流し、VM はそのサブネットを選べる", async () => {
+  const user = userEvent.setup();
+  const { terminal } = renderSimulator();
+  await openConsole(user);
+  await navigateConsole(user, "VPC ネットワーク");
+  await user.click(screen.getByRole("button", { name: "VPC ネットワークを作成" }));
+  await user.type(screen.getByLabelText("名前"), "managementnet");
+  await chooseOption(user, "サブネット作成モード", "カスタム");
+  await user.type(screen.getByLabelText("サブネットの名前"), "managementsubnet-us");
+  await user.type(screen.getByLabelText("IPv4 範囲"), "10.130.0.0/20");
+  await user.click(screen.getByRole("checkbox", { name: /managementnet-allow-ssh/ }));
+  await user.click(screen.getByRole("button", { name: "作成" }));
+  await waitFor(() =>
+    expect(
+      within(screen.getByRole("table", { name: "VPC ネットワーク" })).getByText("managementnet"),
+    ).toBeInTheDocument(),
+  );
+  const text = screenText(terminal);
+  expect(text).toContain(
+    "$ gcloud compute networks create managementnet --project=ace-dev-01 --subnet-mode=custom",
+  );
+  expect(text).toContain(
+    "$ gcloud compute networks subnets create managementsubnet-us --project=ace-dev-01 --network=managementnet --region=us-central1 --range=10.130.0.0/20",
+  );
+  expect(text).toContain(
+    "$ gcloud compute firewall-rules create managementnet-allow-ssh --project=ace-dev-01 --network=managementnet --direction=INGRESS --priority=65534 --allow=tcp:22 --source-ranges=0.0.0.0/0",
+  );
+  await openVmCreate(user);
+  await user.type(screen.getByLabelText("名前"), "mgmt-vm");
+  await chooseOption(user, "リージョン", "us-central1（アイオワ）");
+  await user.click(screen.getByRole("button", { name: /ネットワーキング/ }));
+  await chooseOption(user, "ネットワーク", "managementnet");
+  expect(screen.getByRole("combobox", { name: "サブネットワーク" })).toHaveTextContent(
+    "managementsubnet-us",
+  );
+  await user.click(screen.getByRole("button", { name: "作成" }));
+  await waitFor(() =>
+    expect(screenText(terminal)).toContain("--network=managementnet --subnet=managementsubnet-us"),
+  );
+});

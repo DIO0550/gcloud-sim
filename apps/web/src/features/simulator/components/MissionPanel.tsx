@@ -13,6 +13,7 @@ import { isConsoleMission } from "@/engine/missions/console";
 import { ExamSections, examSectionOf } from "@/engine/missions/exam-sections";
 import { MissionGuides } from "@/engine/missions/learning-guides";
 import type { MissionStep, StepDetail } from "@/engine/missions/mission-step";
+import { practiceAssertionText } from "@/engine/missions/practice-labs";
 import { MissionGuideView } from "@/features/simulator/components/MissionGuideView";
 import { Option } from "@/utils/Option";
 
@@ -71,6 +72,14 @@ const assertionLabel = (assertion: Mission["assertions"][number]): string => {
       return `Storage: ${assertion.lesson}`;
     case "networkLesson":
       return "経路・可視範囲・優先順位・接続状態と診断ログを確認する";
+    case "networkFirewallRule":
+    case "instanceInNetwork":
+    case "subnetAbsent":
+    case "connectivityTestResult":
+    case "iapSshReady":
+    case "bigQueryRows":
+    case "bigQueryQueryJob":
+      return practiceAssertionText(assertion);
     case "computeLesson":
       return "構成・配置・権限・復旧データ・更新と修復の結果を確認する";
     case "dataProcessingLesson":

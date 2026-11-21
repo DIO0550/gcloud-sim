@@ -162,6 +162,18 @@ const ComputeLoadBalancerPermissions = [
   "compute.instanceGroups.setNamedPorts",
 ] as const;
 
+/** VPC の接続テスト（Network Intelligence Center）。 */
+const ConnectivityTestPermissions = [
+  "networkmanagement.connectivitytests.create",
+  "networkmanagement.connectivitytests.delete",
+  "networkmanagement.connectivitytests.get",
+  "networkmanagement.connectivitytests.list",
+  "networkmanagement.connectivitytests.rerun",
+];
+
+/** IAP の TCP 転送でインスタンスへトンネルする権限。 */
+const IapTunnelPermissions = ["iap.tunnelInstances.accessViaIAP"];
+
 const ComputeNetworkPermissions = [
   ...NetworkLabPermissions.filter(
     (p) =>
@@ -677,6 +689,7 @@ const ArtifactAdminPermissions = [
 
 const ViewerPermissions = [
   ...AiRead,
+  ...ConnectivityTestPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
   ...AdminPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
   ...StorageLabPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
   ...NetworkLabPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
@@ -768,6 +781,7 @@ const ViewerPermissions = [
 
 const EditorPermissions = [
   ...AiWrite,
+  ...ConnectivityTestPermissions,
   ...StorageLabPermissions,
   ...ComputeSecurityPermissions,
   ...NetworkLabPermissions.filter((p) => !p.startsWith("compute.organizations.")),
@@ -805,6 +819,7 @@ const EditorPermissions = [
 
 const OwnerPermissions = [
   ...AdminPermissions,
+  ...IapTunnelPermissions,
   ...NetworkLabPermissions.filter((p) => p.startsWith("compute.organizations.")),
   ...ArtifactAdminPermissions,
   ...EditorPermissions,
@@ -1050,6 +1065,13 @@ const Roles: readonly Role[] = [
     "osconfig.inventories.list",
   ]),
   role("roles/compute.osLogin", "Compute OS Login", ["compute.instances.osLogin"]),
+  role("roles/iap.tunnelResourceAccessor", "IAP-secured Tunnel User", IapTunnelPermissions),
+  role("roles/networkmanagement.admin", "Network Management Admin", ConnectivityTestPermissions),
+  role(
+    "roles/networkmanagement.viewer",
+    "Network Management Viewer",
+    ConnectivityTestPermissions.filter((p) => p.endsWith(".get") || p.endsWith(".list")),
+  ),
   role("roles/compute.osAdminLogin", "Compute OS Admin Login", [
     "compute.instances.osAdminLogin",
     "compute.instances.osLogin",
