@@ -23,6 +23,25 @@ type Row = Readonly<{ key: string; cells: readonly string[] }>;
 type Listing = Readonly<{ headers: readonly string[]; rows: readonly Row[] }>;
 const row = (key: string, ...cells: string[]): Row => ({ key, cells });
 
+const emptyHintOf = (screen: ResourceScreen): string => {
+  switch (screen) {
+    case "instance-templates":
+      return "gcloud compute instance-templates create で作成できます。";
+    case "instance-groups":
+      return "gcloud compute instance-groups managed create で作成できます。";
+    case "disks":
+      return "gcloud compute disks create または VM 作成で作成されます。";
+    case "snapshots":
+      return "gcloud compute disks snapshot で作成できます。";
+    case "images":
+      return "gcloud compute images create でカスタムイメージを作成できます。";
+    case "operations":
+      return "Compute Engine のリソース操作を行うと履歴が表示されます。";
+    case "zones":
+      return "";
+  }
+};
+
 /** 一覧はコマンドを投入せず、CLI と共有する World の現在の内容を表示する。 */
 const listingOf = (screen: ResourceScreen, world: World, projectId: string): Listing => {
   switch (screen) {
@@ -48,11 +67,20 @@ const listingOf = (screen: ResourceScreen, world: World, projectId: string): Lis
             ),
           ),
       };
-    case "disks":
+    case "disks": {
+      const instances = World.instancesOf(world, projectId);
+      const attachedTo = (zone: string, diskName: string, users: readonly string[]): string => {
+        const fromUsers = users.map((u) => u.split("/").at(-1) ?? u);
+        if (fromUsers.length > 0) return fromUsers.join(", ");
+        const fromInstances = instances
+          .filter((inst) => inst.zone === zone && inst.disks.some((d) => d.deviceName === diskName))
+          .map((inst) => inst.name);
+        return fromInstances.length > 0 ? fromInstances.join(", ") : "-";
+      };
       return {
-        headers: ["名前", "ロケーション", "サイズ (GB)", "種類"],
+        headers: ["名前", "ロケーション", "サイズ (GB)", "種類", "使用元"],
         rows: [
-          ...World.instancesOf(world, projectId).flatMap((instance) =>
+          ...instances.flatMap((instance) =>
             instance.disks
               .filter((d) => d.boot)
               .map((d) =>
@@ -62,22 +90,38 @@ const listingOf = (screen: ResourceScreen, world: World, projectId: string): Lis
                   instance.zone,
                   String(d.sizeGb),
                   d.type,
+                  instance.name,
                 ),
               ),
           ),
           ...World.disksOf(world, projectId).map((d) =>
-            row(`${d.zone}/${d.name}`, d.name, d.zone, String(d.sizeGb), d.type),
+            row(
+              `${d.zone}/${d.name}`,
+              d.name,
+              d.zone,
+              String(d.sizeGb),
+              d.type,
+              attachedTo(d.zone, d.name, d.users),
+            ),
           ),
           ...world.computeLab.disks
             .filter((d) => d.projectId === projectId)
             .map((d) =>
-              row(`${d.location}/${d.name}`, d.name, d.location, String(d.sizeGb), d.type),
+              row(
+                `${d.location}/${d.name}`,
+                d.name,
+                d.location,
+                String(d.sizeGb),
+                d.type,
+                attachedTo(d.location, d.name, d.users),
+              ),
             ),
         ],
       };
+    }
     case "snapshots":
       return {
-        headers: ["名前", "ソースディスク", "ロケーション", "サイズ (GB)"],
+        headers: ["名前", "ソースディスク", "ソースゾーン", "サイズ (GB)"],
         rows: World.diskSnapshotsOf(world, projectId).map((s) =>
           row(s.name, s.name, s.sourceDisk, s.sourceZone, String(s.diskSizeGb)),
         ),
@@ -96,17 +140,20 @@ const listingOf = (screen: ResourceScreen, world: World, projectId: string): Lis
       };
     case "operations":
       return {
-        headers: ["名前", "操作", "対象", "状態", "ロケーション"],
-        rows: World.operationsOf(world, projectId).map((o) =>
-          row(
-            o.name,
-            o.name,
-            o.operationType,
-            o.targetName,
-            o.status,
-            Option.unwrapOr(o.zone, "global"),
+        headers: ["名前", "操作", "対象", "状態", "ロケーション", "時刻"],
+        rows: [...World.operationsOf(world, projectId)]
+          .reverse()
+          .map((o) =>
+            row(
+              o.name,
+              o.name,
+              o.operationType,
+              o.targetName,
+              o.status,
+              Option.unwrapOr(o.zone, "global"),
+              o.insertTime.slice(0, 19).replace("T", " "),
+            ),
           ),
-        ),
       };
     case "zones":
       return {
@@ -123,22 +170,21 @@ export const ComputeResourceScreen = ({
 }: ScreenProps & Readonly<{ screen: ResourceScreen }>): ReactElement => {
   const title = screenText(screen);
   const listing = listingOf(screen, world, project.projectId);
+  const hint = emptyHintOf(screen);
 
   return (
     <div>
       <ScreenTitle eyebrow="Compute Engine" title={title} />
-      <div className="overflow-x-auto">
-        <ResourceTable
-          label={title}
-          rows={listing.rows}
-          keyOf={(item) => item.key}
-          empty={`${title}はまだありません。`}
-          columns={listing.headers.map((header, index) => ({
-            header,
-            cell: (item: Row) => item.cells[index],
-          }))}
-        />
-      </div>
+      <ResourceTable
+        label={title}
+        rows={listing.rows}
+        keyOf={(item) => item.key}
+        empty={`${title}はまだありません。${hint !== "" ? ` ${hint}` : ""}`}
+        columns={listing.headers.map((header, index) => ({
+          header,
+          cell: (item: Row) => item.cells[index],
+        }))}
+      />
     </div>
   );
 };

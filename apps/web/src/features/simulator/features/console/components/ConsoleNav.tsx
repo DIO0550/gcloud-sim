@@ -10,6 +10,7 @@ import {
 type ConsoleNavProps = Readonly<{
   screen: ConsoleScreen;
   onChange: (screen: ConsoleScreen) => void;
+  onClose?: () => void;
 }>;
 
 /** 左ナビの見出し（設計書 3.1 のプロダクト名）。 */
@@ -85,7 +86,7 @@ export const screenText = (screen: ConsoleScreen): string => {
 export { sectionText };
 
 /** プロダクト別のナビ（UI 案 2b / 2d）。各項目から対応する一覧画面へ移動する。 */
-export const ConsoleNav = ({ screen, onChange }: ConsoleNavProps): ReactElement => {
+export const ConsoleNav = ({ screen, onChange, onClose }: ConsoleNavProps): ReactElement => {
   const [showProducts, setShowProducts] = useState(false);
   const current = ConsoleScreen.navItem(screen);
   const compute = ConsoleScreen.section(screen) === ConsoleSections.Compute && !showProducts;
@@ -96,7 +97,9 @@ export const ConsoleNav = ({ screen, onChange }: ConsoleNavProps): ReactElement 
   const categories: Partial<Record<ConsoleSection, string>> = {
     iam: "管理",
     compute: "コンピューティング",
-    storage: "ストレージとネットワーク",
+    storage: "ストレージ",
+    vpc: "ネットワーキング",
+    marketplace: "ソリューション",
   };
   const groups: readonly Readonly<{ heading: string; screens: readonly ConsoleScreen[] }>[] = [
     { heading: "仮想マシン", screens: ["vm-list", "instance-templates", "instance-groups"] },
@@ -108,12 +111,34 @@ export const ConsoleNav = ({ screen, onChange }: ConsoleNavProps): ReactElement 
       aria-label="Console ナビゲーション"
       className="absolute top-0 bottom-0 left-0 z-30 flex min-h-0 w-64 flex-col overflow-auto border-line border-r bg-surface py-4 md:relative md:w-auto"
     >
+      {onClose !== undefined && (
+        <div className="mb-2 flex justify-end px-4 md:hidden">
+          <button
+            type="button"
+            aria-label="ナビゲーションを閉じる"
+            className="rounded px-2 py-1 text-muted text-xs hover:bg-canvas hover:text-ink"
+            onClick={onClose}
+          >
+            ✕ 閉じる
+          </button>
+        </div>
+      )}
       {compute ? (
         <>
-          <h3 className="mb-4 flex items-center gap-3 px-5 font-medium text-base">
-            <span aria-hidden="true" className="h-6 w-6 rounded bg-accent" />
-            Compute Engine
-          </h3>
+          <div className="mb-3 px-5">
+            <h3 className="flex items-center gap-3 font-medium text-base">
+              <span aria-hidden="true" className="h-6 w-6 rounded bg-accent" />
+              Compute Engine
+            </h3>
+            <button
+              type="button"
+              className="mt-2 inline-flex items-center gap-1 text-left text-accent text-xs hover:underline"
+              onClick={() => setShowProducts(true)}
+            >
+              <span aria-hidden="true">←</span>
+              すべてのプロダクト
+            </button>
+          </div>
           {groups.map((group) => (
             <div key={group.heading} className="mb-4">
               <h4 className="px-5 pb-2 font-medium text-muted text-xs">{group.heading}</h4>
@@ -133,13 +158,6 @@ export const ConsoleNav = ({ screen, onChange }: ConsoleNavProps): ReactElement 
               </ul>
             </div>
           ))}
-          <button
-            type="button"
-            className="mt-2 px-5 py-3 text-left text-accent text-sm hover:bg-canvas"
-            onClick={() => setShowProducts(true)}
-          >
-            すべてのプロダクト
-          </button>
         </>
       ) : (
         Object.values(ConsoleSections).map((section) => (

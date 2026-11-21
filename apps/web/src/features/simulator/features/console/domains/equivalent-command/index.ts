@@ -176,6 +176,8 @@ export const VmCreateForm = {
     const changed = (key: keyof VmCreateForm): CommandMark =>
       form[key] === defaults[key] ? "plain" : "changed";
     const tags = StringEx.splitList(form.tags);
+    const defaultSubnet =
+      form.network === "default" && (form.subnet === "" || form.subnet === "default");
     return [
       {
         lead: "gcloud compute instances create ",
@@ -188,9 +190,11 @@ export const VmCreateForm = {
       flagPart("provisioning-model", form.provisioningModel, changed("provisioningModel")),
       flagPart("service-account", form.serviceAccount, "plain"),
       flagPart("scopes", form.scopes, changed("scopes")),
-      ...(tags.length === 0 ? [] : [flagPart("tags", tags.join(","), "plain")]),
+      ...(tags.length === 0 ? [] : [flagPart("tags", tags.join(","), "changed")]),
       ...(form.network === "default"
-        ? []
+        ? defaultSubnet
+          ? []
+          : [flagPart("subnet", form.subnet, "changed")]
         : [
             flagPart("network", form.network, "changed"),
             ...(form.subnet === "" ? [] : [flagPart("subnet", form.subnet, "changed")]),
@@ -205,7 +209,7 @@ export const VmCreateForm = {
           : changed("bootDiskSize"),
       ),
       flagPart("boot-disk-type", form.bootDiskType, changed("bootDiskType")),
-      ...(form.externalIp ? [] : [{ lead: "--no-address", value: "", mark: "plain" as const }]),
+      ...(form.externalIp ? [] : [{ lead: "", value: "--no-address", mark: "changed" as const }]),
     ];
   },
 } as const;
@@ -224,6 +228,7 @@ export type VmAction = (typeof VmActions)[keyof typeof VmActions];
 export const VmAction = {
   /**
    * 操作のコマンドライン。削除は Console が確認済みなので `--quiet` を付ける（shell の Y/n に落ちない）。
+   * 外部 IP が無い VM の SSH は本物 Console と同様に `--tunnel-through-iap` を付ける。
    *
    * @param action 操作
    * @param instance 対象
@@ -239,8 +244,13 @@ export const VmAction = {
         return `gcloud compute instances ${action} ${target}`;
       case "delete":
         return `gcloud compute instances delete ${target} --quiet`;
-      case "ssh":
-        return `gcloud compute ssh ${target}`;
+      case "ssh": {
+        const nic = instance.networkInterfaces[0];
+        const hasExternal = nic !== undefined && nic.externalIP.kind !== "none";
+        return hasExternal
+          ? `gcloud compute ssh ${target}`
+          : `gcloud compute ssh ${target} --tunnel-through-iap`;
+      }
     }
   },
 
@@ -261,25 +271,49 @@ export const VmAction = {
 
 export type IamGrantForm = Readonly<{ member: string; role: string }>;
 
+/** 本物の Console 同様、メールアドレスそのままの入力にも user: / serviceAccount: を補う。 */
+const normalizeIamMember = (raw: string): string => {
+  const trimmed = raw.trim();
+  if (
+    trimmed === "" ||
+    trimmed === "allUsers" ||
+    trimmed === "allAuthenticatedUsers" ||
+    /^(user|serviceAccount|group|domain):/.test(trimmed)
+  ) {
+    return trimmed;
+  }
+  if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(trimmed)) {
+    return trimmed.endsWith(".gserviceaccount.com")
+      ? `serviceAccount:${trimmed}`
+      : `user:${trimmed}`;
+  }
+  return trimmed;
+};
+
 export const IamGrantForm = {
   create(): IamGrantForm {
     return { member: "", role: "roles/viewer" };
   },
 
+  normalizeMember: normalizeIamMember,
+
   collectErrors(form: IamGrantForm): FieldErrors<IamGrantForm> {
+    const normalized = normalizeIamMember(form.member);
     return collect<IamGrantForm>([
-      ["member", errorOf(IamMember.parse(form.member))],
+      ["member", errorOf(IamMember.parse(normalized))],
       [
         "role",
         Option.isSome(RoleName.parse(form.role))
           ? Option.none
-          : Option.some(`Role must be roles/... or projects/P/roles/...: ${form.role}`),
+          : Option.some(
+              `ロールは roles/... または projects/P/roles/... の形式で指定してください: ${form.role}`,
+            ),
       ],
     ]);
   },
 
   toCommand(form: IamGrantForm, projectId: string): string {
-    return `gcloud projects add-iam-policy-binding ${projectId} ${flag("member", form.member)} ${flag("role", form.role)}`;
+    return `gcloud projects add-iam-policy-binding ${projectId} ${flag("member", normalizeIamMember(form.member))} ${flag("role", form.role)}`;
   },
 
   /** 一覧の行の「削除」（継承していない行だけに出す）。 */
@@ -394,6 +428,12 @@ export const BudgetCreateForm = {
         form.displayName.trim() === "" ? Option.some("名前を入れてください。") : Option.none,
       ],
       ["amount", errorOf(Budget.parseAmount(form.amount))],
+      [
+        "thresholds",
+        form.thresholds.length === 0
+          ? Option.some("しきい値を 1 つ以上選んでください。")
+          : Option.none,
+      ],
     ]);
   },
 
@@ -404,7 +444,9 @@ export const BudgetCreateForm = {
       flag("display-name", form.displayName),
       flag("budget-amount", `${form.amount}JPY`),
       ...form.thresholds.map((t) => flag("threshold-rule", `percent=${t}`)),
-      ...(form.projectIds.length === 0 ? [] : [flag("filter-projects", form.projectIds.join(","))]),
+      ...(form.projectIds.length === 0
+        ? []
+        : [flag("filter-projects", form.projectIds.map((id) => `projects/${id}`).join(","))]),
     ];
     return parts.join(" ");
   },
@@ -462,6 +504,7 @@ export const FirewallCreateForm = {
   toCommand(form: FirewallCreateForm, projectId: string): string {
     const list = (value: string) => StringEx.splitList(value).join(",");
     const rules = list(form.protocolsAndPorts);
+    const rangeFlag = form.direction === Directions.Egress ? "destination-ranges" : "source-ranges";
     const parts = [
       "gcloud compute firewall-rules create",
       quote(form.name),
@@ -472,7 +515,7 @@ export const FirewallCreateForm = {
       ...(form.action === FirewallActions.Allow
         ? [flag("allow", rules)]
         : ["--action=DENY", flag("rules", rules)]),
-      ...(list(form.sourceRanges) === "" ? [] : [flag("source-ranges", list(form.sourceRanges))]),
+      ...(list(form.sourceRanges) === "" ? [] : [flag(rangeFlag, list(form.sourceRanges))]),
       ...(list(form.targetTags) === "" ? [] : [flag("target-tags", list(form.targetTags))]),
     ];
     return parts.join(" ");
@@ -580,8 +623,9 @@ export const NetworkCreateForm = {
         : [];
     const rules = NetworkFirewallPresets.filter((p) => form[p.key]).map((p) => {
       const name = `${form.name}-${p.suffix}`;
+      const sourceRange = presetSourceRange(p, form) || "10.0.0.0/8";
       return {
-        line: `gcloud compute firewall-rules create ${quote(name)} ${flag("project", projectId)} ${flag("network", form.name)} --direction=INGRESS --priority=65534 ${flag("allow", p.allow)} ${flag("source-ranges", presetSourceRange(p, form))}`,
+        line: `gcloud compute firewall-rules create ${quote(name)} ${flag("project", projectId)} ${flag("network", form.name)} --direction=INGRESS --priority=65534 ${flag("allow", p.allow)} ${flag("source-ranges", sourceRange)}`,
         note: `ファイアウォール ルールを作成 (${name})`,
       };
     });
@@ -625,7 +669,7 @@ export const BucketCreateForm = {
         "location",
         Option.isSome(BucketLocation.parse(form.location))
           ? Option.none
-          : Option.some(`Unknown location: ${form.location}`),
+          : Option.some(`未対応のロケーションです: ${form.location}`),
       ],
     ]);
   },
@@ -657,9 +701,12 @@ export { StorageClass };
  * どれも `--quiet` を付ける（shell の Y/n に落ちない: VM の削除と同じ）。
  */
 export const DeleteCommand = {
-  /** 中身があれば `storage rm --recursive`（本物の Console もオブジェクトごと消す）、空なら `buckets delete`。 */
-  bucket(bucket: Readonly<{ name: string; objectCount: number }>, projectId: string): string {
-    return bucket.objectCount > 0
+  /** 中身（現行・非現行世代）があれば `storage rm --recursive`（本物の Console もオブジェクトごと消す）、空なら `buckets delete`。 */
+  bucket(
+    bucket: Readonly<{ name: string; objectCount: number; noncurrentCount?: number }>,
+    projectId: string,
+  ): string {
+    return bucket.objectCount > 0 || (bucket.noncurrentCount ?? 0) > 0
       ? `gcloud storage rm --recursive gs://${bucket.name} ${flag("project", projectId)} --quiet`
       : `gcloud storage buckets delete gs://${bucket.name} ${flag("project", projectId)} --quiet`;
   },
@@ -757,6 +804,7 @@ export const MarketplaceDeployForm = {
     ].join(",");
     return [
       `gcloud infra-manager deployments apply ${quote(`projects/${projectId}/locations/${location}/deployments/${form.name}`)}`,
+      flag("project", projectId),
       flag("service-account", `projects/${projectId}/serviceAccounts/${form.serviceAccount}`),
       flag("gcs-source", source),
       flag("input-values", inputs),

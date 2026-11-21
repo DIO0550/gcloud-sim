@@ -23,9 +23,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 
 実在するCLIの構文だけを登録します。アプリ独自のコマンドは受け付けません。HCL・YAML・JSONはCLI画面の「ファイル」タブで編集します。
 
-実在するCLIの構文だけを登録します。アプリ独自のコマンドは受け付けません。HCL・YAML・JSONはCLI画面の「ファイル」タブで編集します。
-
-## 実装済み（687）
+## 実装済み（685）
 
 ### gcloud compute
 
@@ -112,9 +110,9 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 | `gcloud compute instances list` | List Compute Engine virtual machine instances. |
 | `gcloud compute instances describe` | Describe a virtual machine instance. |
 | `gcloud compute instances start` | Start a virtual machine instance. |
-| `gcloud compute instances stop` | Stopp a virtual machine instance. |
+| `gcloud compute instances stop` | Stop a virtual machine instance. |
 | `gcloud compute instances suspend` | Suspend a virtual machine instance. |
-| `gcloud compute instances resume` | Resum a virtual machine instance. |
+| `gcloud compute instances resume` | Resume a virtual machine instance. |
 | `gcloud compute instances delete` | Delete Compute Engine virtual machine instances. |
 | `gcloud compute instances add-tags` | Add tags to Compute Engine virtual machine instances. |
 | `gcloud compute instances add-metadata` | Add or update instance metadata. |
@@ -160,7 +158,6 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 | `gcloud compute health-checks create tcp` | Create a TCP health check. |
 | `gcloud compute health-checks create http` | Create a HTTP health check. |
 | `gcloud compute health-checks create https` | Create a HTTPS health check. |
-| `gcloud compute health-checks create` | Legacy simulator alias; prefer create http/tcp/https NAME. |
 | `gcloud compute health-checks describe` | Describe a scoped health check. |
 | `gcloud compute backend-services create` | Create a backend service for the three modeled LB architectures. |
 | `gcloud compute backend-services update` | Update named port, timeout, health check and CDN configuration. |
@@ -535,7 +532,6 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 | `gcloud kms keys list` | list keys in the fixed serverless lesson. |
 | `gcloud kms keys describe` | describe keys in the fixed serverless lesson. |
 | `gcloud kms keys delete` | delete keys in the fixed serverless lesson. |
-| `gcloud kms keys versions update` | Enable or disable the lesson key's primary version (version 1). |
 | `gcloud kms keys get-iam-policy` | Read or change the resource IAM policy. |
 | `gcloud kms keys add-iam-policy-binding` | Read or change the resource IAM policy. |
 | `gcloud kms keys remove-iam-policy-binding` | Read or change the resource IAM policy. |
@@ -862,7 +858,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 
 | コマンド | 内容 |
 |---|---|
-| `gcloud database-migration connection-profiles create` | gcloud database-migration connection-profiles create (deterministic database lesson). |
+| `gcloud database-migration connection-profiles create postgresql` | gcloud database-migration connection-profiles create postgresql (deterministic database lesson). |
 | `gcloud database-migration migration-jobs create` | gcloud database-migration migration-jobs create (deterministic database lesson). |
 | `gcloud database-migration connection-profiles list` | gcloud database-migration connection-profiles list (deterministic database lesson). |
 | `gcloud database-migration connection-profiles describe` | gcloud database-migration connection-profiles describe (deterministic database lesson). |
@@ -965,7 +961,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 | `gcloud monitoring policies list` | List alertPolicies. |
 | `gcloud monitoring policies describe` | describe alertPolicies. |
 | `gcloud monitoring policies delete` | delete alertPolicies. |
-| `gcloud monitoring uptime list` | List uptimeCheckConfigs. |
+| `gcloud monitoring uptime list-configs` | List uptimeCheckConfigs. |
 | `gcloud monitoring uptime describe` | describe uptimeCheckConfigs. |
 | `gcloud monitoring uptime delete` | delete uptimeCheckConfigs. |
 | `gcloud monitoring dashboards create` | Create one single-series grid chart. JSON or cpu-dashboard.json; no real metric collection. |

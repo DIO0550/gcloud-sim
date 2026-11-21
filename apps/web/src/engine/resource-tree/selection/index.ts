@@ -492,7 +492,12 @@ export const TreeSelection = {
         const target = `${s.name} --project=${s.projectId}`;
         let flag = "";
         if (s.location) {
-          const scope = Region.parse(s.location).some ? "region" : "zone";
+          const scope =
+            s.collection === "osPolicies"
+              ? "location"
+              : Region.parse(s.location).some
+                ? "region"
+                : "zone";
           flag = ` --${scope}=${s.location}`;
         }
         const group = {
@@ -521,9 +526,11 @@ export const TreeSelection = {
           kafkaTopics: "managed-kafka topics",
         }[s.collection as "clusters" | "processingJobs" | "kafkaClusters" | "kafkaTopics"];
         const parent = s.collection === "kafkaTopics" ? ` --cluster=${s.parent}` : "";
-        return Option.some(
-          `gcloud ${group} describe ${s.name} --region=${s.location} ${project}${parent}`,
-        );
+        const locFlag =
+          s.collection === "kafkaClusters" || s.collection === "kafkaTopics"
+            ? `--location=${s.location}`
+            : `--region=${s.location}`;
+        return Option.some(`gcloud ${group} describe ${s.name} ${locFlag} ${project}${parent}`);
       }
       case "managed-database": {
         if (selection.collection === "firestoreCopies") {

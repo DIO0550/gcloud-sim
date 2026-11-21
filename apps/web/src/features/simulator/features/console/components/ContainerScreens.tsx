@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 
+import { GkePlacement } from "@/engine/domains/gke-completion";
 import { CloudRunService, type GkeCluster } from "@/engine/domains/managed-services";
 import { World } from "@/engine/domains/world";
 import {
@@ -26,14 +27,19 @@ export const ClustersScreen = ({ world, project, handlers }: ScreenProps): React
       <ResourceTable
         label="クラスタ"
         rows={World.clustersOf(world, project.projectId)}
-        keyOf={(c) => c.name}
+        keyOf={(c) => `${c.location}/${c.name}`}
+        nameOf={(c) => c.name}
         empty="クラスタはまだありません。gcloud container clusters create で作れます。"
         onDelete={remove}
         columns={[
           { header: "名前", cell: (c) => <span className="font-mono">{c.name}</span> },
           { header: "ロケーション", cell: (c) => c.location },
           { header: "モード", cell: (c) => (c.autopilot ? "Autopilot" : "Standard") },
-          { header: "ノード数", cell: (c) => (c.autopilot ? "自動" : String(c.nodeCount)) },
+          {
+            header: "総ノード数",
+            cell: (c) =>
+              c.autopilot ? "自動" : String(c.nodeCount * GkePlacement.zones(c).length),
+          },
           {
             header: "バージョン",
             cell: (c) => <span className="font-mono text-xs">{c.currentMasterVersion}</span>,
@@ -61,7 +67,8 @@ export const RunServicesScreen = ({ world, project, handlers }: ScreenProps): Re
       <ResourceTable
         label="Cloud Run サービス"
         rows={World.runServicesOf(world, project.projectId)}
-        keyOf={(s) => s.name}
+        keyOf={(s) => `${s.region}/${s.name}`}
+        nameOf={(s) => s.name}
         empty="サービスはまだありません。gcloud run deploy で作れます。"
         onDelete={remove}
         columns={[

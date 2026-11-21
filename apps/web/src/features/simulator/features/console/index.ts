@@ -4,4 +4,7 @@ export {
   type ConsoleScreen,
   ConsoleScreens,
 } from "@/features/simulator/features/console/domains/console-screen";
-export type { ConsoleHandlers } from "@/features/simulator/features/console/types/screen-props";
+export type {
+  ConsoleHandlers,
+  ConsoleOutcome,
+} from "@/features/simulator/features/console/types/screen-props";

@@ -1,4 +1,4 @@
-import { type ReactElement, type ReactNode, useId } from "react";
+import { type ReactElement, type ReactNode, useEffect, useId, useState } from "react";
 
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { RadioGroup } from "@/components/RadioGroup";
@@ -15,6 +15,29 @@ import { Option } from "@/utils/Option";
 
 export { PrimaryButton, RadioGroup, SecondaryButton, TextInput };
 
+/** コピー押下後に一時的に「コピーしました」を表示するボタン。 */
+export const CopyButton = ({
+  text,
+  onCopy,
+}: Readonly<{ text: string; onCopy: (text: string) => void }>): ReactElement => {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 1800);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+  return (
+    <SecondaryButton
+      onClick={() => {
+        onCopy(text);
+        setCopied(true);
+      }}
+    >
+      {copied ? "コピーしました" : "コピー"}
+    </SecondaryButton>
+  );
+};
+
 export const ScreenTitle = ({
   eyebrow,
   title,
@@ -22,7 +45,7 @@ export const ScreenTitle = ({
 }: Readonly<{ eyebrow: string; title: string; trailing?: ReactNode }>): ReactElement => (
   <div className="-mx-5 -mt-5 mb-5 flex min-h-14 flex-wrap items-center gap-x-6 gap-y-2 border-line border-b px-5 py-3">
     <div>
-      <p className="sr-only">{eyebrow}</p>
+      <p className="text-muted text-xs">{eyebrow}</p>
       <h2 className="font-medium text-2xl leading-tight">{title}</h2>
     </div>
     {trailing !== undefined && <div className="flex gap-2">{trailing}</div>}
@@ -98,56 +121,58 @@ export const ResourceTable = <T,>({
 }>): ReactElement => {
   const span = columns.length + (onDelete === undefined ? 0 : 1);
   return (
-    <table className="w-full text-sm" aria-label={label}>
-      <thead className="text-left text-muted text-xs">
-        <tr>
-          {columns.map((c) => (
-            <th
-              key={c.header}
-              className={`border-line border-b py-2 pr-3 font-medium ${c.className ?? ""}`}
-            >
-              {c.header}
-            </th>
-          ))}
-          {onDelete !== undefined && (
-            <th className="border-line border-b py-2">
-              <span className="sr-only">操作</span>
-            </th>
-          )}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.length === 0 ? (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm" aria-label={label}>
+        <thead className="text-left text-muted text-xs">
           <tr>
-            <td colSpan={span} className="py-6 text-center text-muted">
-              {empty}
-            </td>
+            {columns.map((c) => (
+              <th
+                key={c.header}
+                className={`border-line border-b py-2 pr-3 font-medium ${c.className ?? ""}`}
+              >
+                {c.header}
+              </th>
+            ))}
+            {onDelete !== undefined && (
+              <th className="border-line border-b py-2">
+                <span className="sr-only">操作</span>
+              </th>
+            )}
           </tr>
-        ) : (
-          rows.map((row) => (
-            <tr key={keyOf(row)} className="border-line border-b">
-              {columns.map((c) => (
-                <td key={c.header} className={`py-2 pr-3 align-top ${c.className ?? ""}`}>
-                  {c.cell(row)}
-                </td>
-              ))}
-              {onDelete !== undefined && (
-                <td className="py-1.5 text-right align-top">
-                  {(deletable === undefined || deletable(row)) && (
-                    <SecondaryButton
-                      ariaLabel={`${(nameOf ?? keyOf)(row)} を削除`}
-                      onClick={() => onDelete(row)}
-                    >
-                      削除
-                    </SecondaryButton>
-                  )}
-                </td>
-              )}
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={span} className="py-6 text-center text-muted">
+                {empty}
+              </td>
             </tr>
-          ))
-        )}
-      </tbody>
-    </table>
+          ) : (
+            rows.map((row) => (
+              <tr key={keyOf(row)} className="border-line border-b">
+                {columns.map((c) => (
+                  <td key={c.header} className={`py-2 pr-3 align-top ${c.className ?? ""}`}>
+                    {c.cell(row)}
+                  </td>
+                ))}
+                {onDelete !== undefined && (
+                  <td className="py-1.5 text-right align-top">
+                    {(deletable === undefined || deletable(row)) && (
+                      <SecondaryButton
+                        ariaLabel={`${(nameOf ?? keyOf)(row)} を削除`}
+                        onClick={() => onDelete(row)}
+                      >
+                        削除
+                      </SecondaryButton>
+                    )}
+                  </td>
+                )}
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
   );
 };
 
@@ -168,7 +193,7 @@ export const EquivalentCommandPanel = ({
     <h3 className="mb-2 font-semibold text-muted text-xs">同等のコマンドライン</h3>
     <pre className="whitespace-pre-wrap break-all font-mono text-xs">{command}</pre>
     <div className="mt-3 flex flex-wrap gap-2">
-      <SecondaryButton onClick={() => onCopy(command)}>コピー</SecondaryButton>
+      <CopyButton text={command} onCopy={onCopy} />
       <SecondaryButton onClick={() => onInsert(command)}>ターミナルに貼り付け</SecondaryButton>
     </div>
   </section>
@@ -255,7 +280,7 @@ export const CreatePage = ({
 }>): ReactElement => {
   const command = CommandPart.join(parts);
   return (
-    <div className="flex min-h-full flex-col xl:h-full xl:min-h-0">
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-14 shrink-0 items-center gap-4 border-line border-b px-5 py-3">
         {header}
       </div>
@@ -290,7 +315,7 @@ export const CreatePage = ({
             <CommandLines parts={parts} />
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
-            <SecondaryButton onClick={() => onCopy(command)}>コピー</SecondaryButton>
+            <CopyButton text={command} onCopy={onCopy} />
             <SecondaryButton onClick={() => onInsert(command)}>
               ターミナルに貼り付け
             </SecondaryButton>
@@ -363,10 +388,12 @@ export const FailureBanner = ({
   outcome,
   onEnableApi,
   onDismiss,
+  className = "",
 }: Readonly<{
   outcome: Option<ExecutionStatus>;
-  onEnableApi: () => void;
+  onEnableApi: (apiName?: string, apiTitle?: string) => void;
   onDismiss: () => void;
+  className?: string;
 }>): ReactElement => {
   if (!Option.isSome(outcome) || outcome.value.kind !== "failed")
     return <span className="hidden" />;
@@ -375,11 +402,15 @@ export const FailureBanner = ({
   return (
     <div
       role="alert"
-      className="mb-4 flex items-start justify-between gap-4 rounded-lg border border-danger bg-danger-soft px-4 py-3 text-sm"
+      className={`mb-4 flex shrink-0 items-start justify-between gap-4 rounded-lg border border-danger bg-danger-soft px-4 py-3 text-sm ${className}`}
     >
       <pre className="whitespace-pre-wrap break-all font-mono text-xs">{failure.message}</pre>
       <div className="flex shrink-0 gap-2">
-        {isApiDisabled && <PrimaryButton onClick={onEnableApi}>API を有効にする</PrimaryButton>}
+        {isApiDisabled && (
+          <PrimaryButton onClick={() => onEnableApi(failure.apiName, failure.apiTitle)}>
+            API を有効にする
+          </PrimaryButton>
+        )}
         <SecondaryButton onClick={onDismiss}>閉じる</SecondaryButton>
       </div>
     </div>

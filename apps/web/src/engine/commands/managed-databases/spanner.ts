@@ -68,7 +68,7 @@ const execute = (
       return invalid(evaluated.error);
     }
     if (readOnly && evaluated.value.attemptedWrite) {
-      return invalid("execute-sql is read-only here; use sim spanner execute for mutations.");
+      return invalid("execute-sql is read-only in this simulator.");
     }
     const permission = evaluated.value.attemptedWrite
       ? "spanner.databases.write"
@@ -277,53 +277,66 @@ const restore = command(
   ["gcloud", "spanner", "databases", "restore"],
   api,
   "spanner.databases.create",
-  (ctx, args) =>
-    Result.flatMap(instance(ctx, args), (i) => {
-      const access = permit(ctx, "spanner.backups.get");
-      if (!access.ok) {
-        return access;
-      }
-      const b = ctx.world.managedDatabases.spannerCopies.find(
-        (b) =>
-          b.projectId === i.projectId &&
-          b.instance === text(args, "backup-instance", i.name) &&
-          b.name === text(args, "backup"),
-      );
-      if (!b) {
-        return missing("Backup does not exist in the specified source instance.");
-      }
-      if (
-        b.config !== i.config ||
-        !validIdentifier(name(args)) ||
-        ctx.world.managedDatabases.spannerDatabases.some(
-          (d) => d.projectId === i.projectId && d.instance === i.name && d.name === name(args),
-        )
-      ) {
-        return invalid("Restore requires a new database on a compatible instance config.");
-      }
-      const db: SpannerDatabase = {
-        projectId: i.projectId,
-        instance: i.name,
-        name: name(args),
-        tables: b.tables,
-      };
-      return finish(
-        recovered(
-          patch(ctx.world, {
-            spannerDatabases: [...ctx.world.managedDatabases.spannerDatabases, db],
-          }),
-          {
-            projectId: i.projectId,
-            service: "spanner",
-            source: `${b.instance}/${b.database}`,
-            target: `${i.name}/${db.name}`,
-            backup: b.name,
-          },
-        ),
-        db,
-      );
-    }),
-  [instanceFlag, sf("backup", true, source("spannerCopies")), sf("backup-instance")],
+  (ctx, args) => {
+    const destInstanceName = text(args, "destination-instance");
+    const i = ctx.world.managedDatabases.spannerInstances.find(
+      (item) => item.projectId === ctx.project.projectId && item.name === destInstanceName,
+    );
+    if (!i) {
+      return missing("Spanner instance does not exist in this project.");
+    }
+    const access = permit(ctx, "spanner.backups.get");
+    if (!access.ok) {
+      return access;
+    }
+    const destDbName = text(args, "destination-database");
+    const b = ctx.world.managedDatabases.spannerCopies.find(
+      (b) =>
+        b.projectId === i.projectId &&
+        b.instance === text(args, "source-instance", i.name) &&
+        b.name === text(args, "source-backup"),
+    );
+    if (!b) {
+      return missing("Backup does not exist in the specified source instance.");
+    }
+    if (
+      b.config !== i.config ||
+      !validIdentifier(destDbName) ||
+      ctx.world.managedDatabases.spannerDatabases.some(
+        (d) => d.projectId === i.projectId && d.instance === i.name && d.name === destDbName,
+      )
+    ) {
+      return invalid("Restore requires a new database on a compatible instance config.");
+    }
+    const db: SpannerDatabase = {
+      projectId: i.projectId,
+      instance: i.name,
+      name: destDbName,
+      tables: b.tables,
+    };
+    return finish(
+      recovered(
+        patch(ctx.world, {
+          spannerDatabases: [...ctx.world.managedDatabases.spannerDatabases, db],
+        }),
+        {
+          projectId: i.projectId,
+          service: "spanner",
+          source: `${b.instance}/${b.database}`,
+          target: `${i.name}/${db.name}`,
+          backup: b.name,
+        },
+      ),
+      db,
+    );
+  },
+  [
+    sf("destination-database", true),
+    sf("destination-instance", true, source("spannerInstances")),
+    sf("source-backup", true, source("spannerCopies")),
+    sf("source-instance", true, source("spannerInstances")),
+  ],
+  false,
 );
 export const SpannerCommands = [
   ...instances,

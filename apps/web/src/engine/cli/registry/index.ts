@@ -114,7 +114,12 @@ export const CommandRegistry = {
     const tool = tokens[0];
     const trackToken = tokens[1];
     const track = ReleaseTracks.find((t) => t === trackToken && tool === "gcloud");
-    const stripped = track === undefined ? tokens : [tool as string, ...tokens.slice(2)];
+    const stripped =
+      track !== undefined
+        ? [tool as string, ...tokens.slice(2)]
+        : tool === "gsutil" && trackToken === "-m"
+          ? [tool, ...tokens.slice(2)]
+          : tokens;
     const releaseTrack: Option<"alpha" | "beta"> = Option.fromNullable(track);
 
     let path: string[] = [];

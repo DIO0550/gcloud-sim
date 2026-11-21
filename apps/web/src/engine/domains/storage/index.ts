@@ -54,6 +54,11 @@ export const BucketName = {
         `Invalid bucket name: '${value}'. Bucket names must contain only lowercase letters, numbers, dashes (-), underscores (_), and dots (.), be between 3 and 63 characters, and start and end with a number or letter.`,
       );
     }
+    if (value.includes("..") || /^\d+\.\d+\.\d+\.\d+$/.test(value)) {
+      return Result.err(
+        `Invalid bucket name: '${value}'. Bucket names cannot contain consecutive dots or be formatted as an IP address.`,
+      );
+    }
     if (value.startsWith("goog") || value.includes("google")) {
       return Result.err(
         `Invalid bucket name: '${value}'. Bucket names cannot begin with the "goog" prefix or contain "google".`,
@@ -196,7 +201,7 @@ export const Bucket = {
     return { ...bucket, iamPolicy };
   },
 
-  toRecord(bucket: Bucket): JsonRecord {
+  toRecord(bucket: Bucket, projectNumber?: string): JsonRecord {
     return {
       name: bucket.name,
       location: bucket.location,
@@ -210,7 +215,7 @@ export const Bucket = {
         rule: bucket.lifecycleRules.map((r) => ({ action: r.action, condition: r.condition })),
       },
       timeCreated: bucket.timeCreated,
-      projectNumber: bucket.projectId,
+      projectNumber: projectNumber ?? bucket.projectId,
       selfLink: `https://www.googleapis.com/storage/v1/b/${bucket.name}`,
     };
   },

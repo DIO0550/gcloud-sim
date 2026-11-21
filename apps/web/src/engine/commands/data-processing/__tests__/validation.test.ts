@@ -50,7 +50,7 @@ for (const sql of [
 for (const line of [
   "bq show warehouse.orders --location=EU",
   "bq query 'SELECT * FROM ace-prod-01.warehouse.orders' --location=US",
-  "bq load warehouse.orders --source=gs://missing/input --location=US",
+  "bq load warehouse.orders gs://missing/input --location=US",
   "bq mk broken --dataset --table --location=US",
   "bq mk warehouse.bad --table --location=US --schema=x:STRING,x:INT64",
   "bq mk warehouse.bad --table --location=US --schema=x:TIMESTAMP",
@@ -89,12 +89,12 @@ test("load type failure preserves table, jobs and snapshot", () => {
     ...DataSolutions.load.slice(0, 4),
     "sim storage objects write gs://ace-csv-input/input --data='alice,no-number'",
   );
-  denied(s, "bq load warehouse.orders --source=gs://ace-csv-input/input --location=US");
+  denied(s, "bq load warehouse.orders gs://ace-csv-input/input --location=US");
   expect(s.world.dataProcessing.jobs).toEqual([]);
 });
 test("metadata-only storage copy cannot masquerade as input bytes", () => {
   const s = setup(...DataSolutions.load, "gcloud storage cp local.csv gs://ace-csv-input/input");
-  denied(s, "bq load warehouse.orders --source=gs://ace-csv-input/input --location=US");
+  denied(s, "bq load warehouse.orders gs://ace-csv-input/input --location=US");
 });
 test("viewer cannot load/query and a jobUser cannot read table data", () => {
   const s = run(
@@ -106,7 +106,7 @@ test("viewer cannot load/query and a jobUser cannot read table data", () => {
   denied(s, `bq query 'SELECT * FROM warehouse.orders' --location=US --account=viewer@example.com`);
   denied(
     s,
-    `bq load warehouse.orders --source=gs://ace-csv-input/input --location=US --account=viewer@example.com`,
+    `bq load warehouse.orders gs://ace-csv-input/input --location=US --account=viewer@example.com`,
   );
   const granted = run(
     s,
@@ -126,7 +126,7 @@ test("BigQuery API disabled and bucket location mismatch reject loads", () => {
     "gcloud storage buckets create gs://ace-eu-input --location=EU",
     "sim storage objects write gs://ace-eu-input/input --data='alice,1'",
   );
-  denied(eu, "bq load warehouse.orders --source=gs://ace-eu-input/input --location=US");
+  denied(eu, "bq load warehouse.orders gs://ace-eu-input/input --location=US");
 });
 test("manual ACK, stale ID, independent subscriptions and no replay to late subscribers", () => {
   let s = setup(
@@ -245,9 +245,9 @@ test("Kafka wrong VPC/auth/project and dependent deletion are rejected", () => {
   for (const line of [
     "sim kafka connect event-kafka --region=us-central1 --network=other --auth=SASL_IAM",
     "sim kafka connect event-kafka --region=us-central1 --network=default --auth=PLAINTEXT",
-    "gcloud managed-kafka clusters describe event-kafka --region=europe-west1",
-    "gcloud managed-kafka topics create bad --region=us-central1 --cluster=event-kafka --replication-factor=1",
-    "gcloud managed-kafka clusters delete event-kafka --region=us-central1 --quiet",
+    "gcloud managed-kafka clusters describe event-kafka --location=europe-west1",
+    "gcloud managed-kafka topics create bad --location=us-central1 --cluster=event-kafka --replication-factor=1",
+    "gcloud managed-kafka clusters delete event-kafka --location=us-central1 --quiet",
   ]) {
     denied(s, line);
   }

@@ -6,6 +6,7 @@ import { World } from "@/engine/domains/world";
 import {
   BucketCreateForm,
   BudgetCreateForm,
+  DeleteCommand,
   FieldErrors,
   FirewallCreateForm,
   IamGrantForm,
@@ -118,7 +119,20 @@ test("IAM の付与と削除、ロール作成、ファイアウォール、バ�
     "gcloud projects remove-iam-policy-binding ace-dev-01 --member=user:dev@example.com --role=roles/viewer",
   );
   expect(
-    IamGrantForm.collectErrors({ member: "dev@example.com", role: "roles/viewer" }).member,
+    IamGrantForm.toCommand({ member: "dev@example.com", role: "roles/viewer" }, "ace-dev-01"),
+  ).toBe(
+    "gcloud projects add-iam-policy-binding ace-dev-01 --member=user:dev@example.com --role=roles/viewer",
+  );
+  expect(
+    IamGrantForm.toCommand(
+      { member: "app@ace-dev-01.iam.gserviceaccount.com", role: "roles/viewer" },
+      "ace-dev-01",
+    ),
+  ).toBe(
+    "gcloud projects add-iam-policy-binding ace-dev-01 --member=serviceAccount:app@ace-dev-01.iam.gserviceaccount.com --role=roles/viewer",
+  );
+  expect(
+    IamGrantForm.collectErrors({ member: "not-an-email", role: "roles/viewer" }).member,
   ).toContain("Member must be of the form");
   expect(
     RoleCreateForm.toCommand(
@@ -139,6 +153,20 @@ test("IAM の付与と削除、ロール作成、ファイアウォール、バ�
     ),
   ).toBe(
     "gcloud compute firewall-rules create allow-http --project=ace-dev-01 --network=default --direction=INGRESS --priority=1000 --allow=tcp:80 --source-ranges=0.0.0.0/0 --target-tags=http-server",
+  );
+  expect(
+    FirewallCreateForm.toCommand(
+      {
+        ...FirewallCreateForm.create(),
+        name: "deny-egress-smtp",
+        direction: "EGRESS",
+        action: "DENY",
+        protocolsAndPorts: "tcp:25",
+      },
+      "ace-dev-01",
+    ),
+  ).toContain(
+    "--direction=EGRESS --priority=1000 --action=DENY --rules=tcp:25 --destination-ranges=0.0.0.0/0",
   );
   expect(
     FirewallCreateForm.toCommand(
@@ -169,6 +197,35 @@ test("IAM の付与と削除、ロール作成、ファイアウォール、バ�
       "01AB2C-DEF345-6789AB",
     ),
   ).toBe(
-    'gcloud billing budgets create --billing-account=01AB2C-DEF345-6789AB --display-name="Dev budget" --budget-amount=100000JPY --threshold-rule=percent=0.5 --threshold-rule=percent=0.9 --threshold-rule=percent=1 --filter-projects=ace-dev-01',
+    'gcloud billing budgets create --billing-account=01AB2C-DEF345-6789AB --display-name="Dev budget" --budget-amount=100000JPY --threshold-rule=percent=0.5 --threshold-rule=percent=0.9 --threshold-rule=percent=1 --filter-projects=projects/ace-dev-01',
   );
+  expect(
+    BudgetCreateForm.collectErrors({
+      ...BudgetCreateForm.create(),
+      displayName: "Empty thresholds",
+      thresholds: [],
+    }).thresholds,
+  ).toBeDefined();
+});
+
+test("外部 IP のない VM への SSH は --tunnel-through-iap を付け、非現行バージョンがあるバケット削除は rm --recursive を使う", () => {
+  const s = run(
+    session(),
+    "gcloud compute instances create private-vm --zone=asia-northeast1-a --no-address",
+  );
+  const instance = Option.unwrap(
+    World.findInstance(s.world, "ace-dev-01", "asia-northeast1-a", "private-vm"),
+  );
+  expect(VmAction.toCommand("ssh", instance)).toBe(
+    "gcloud compute ssh private-vm --zone=asia-northeast1-a --project=ace-dev-01 --tunnel-through-iap",
+  );
+  expect(
+    DeleteCommand.bucket({ name: "ver-bucket", objectCount: 0, noncurrentCount: 2 }, "ace-dev-01"),
+  ).toBe("gcloud storage rm --recursive gs://ver-bucket --project=ace-dev-01 --quiet");
+  expect(
+    DeleteCommand.bucket(
+      { name: "empty-bucket", objectCount: 0, noncurrentCount: 0 },
+      "ace-dev-01",
+    ),
+  ).toBe("gcloud storage buckets delete gs://empty-bucket --project=ace-dev-01 --quiet");
 });

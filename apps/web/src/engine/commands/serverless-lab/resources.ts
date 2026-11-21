@@ -70,7 +70,13 @@ const idArgs = (
   args: ParsedArgs,
   key: Collection,
 ): Result<ResourceId, CommandFailure> => {
-  const name = ParsedArgs.requiredPositional(args, 0);
+  const name =
+    key === "databases"
+      ? Option.unwrapOr(
+          ParsedArgs.string(args, "database"),
+          Option.unwrapOr(ParsedArgs.positional(args, 0), "(default)"),
+        )
+      : ParsedArgs.requiredPositional(args, 0);
   if (key === "secrets") {
     return Result.ok({ projectId: ctx.project.projectId, name, region: "global" });
   }
@@ -110,6 +116,23 @@ type ResourceSeed<K extends Collection> = Readonly<{
     id: ResourceId,
   ) => Result<Item<K>, CommandFailure>;
 }>;
+const locationFlagsFor = (key: Collection): readonly FlagSpec[] => {
+  if (key === "secrets") {
+    return [];
+  }
+  if (key === "databases") {
+    return [
+      Flag.string("database", "Database ID (default: (default)).", {
+        candidates: labCandidates("databases"),
+      }),
+      Flag.string("location", "Database location.", { candidates: () => firestoreLocations() }),
+    ];
+  }
+  if (key === "keys") {
+    return [Flag.string("location", "Key location.", { candidates: Candidates.regions })];
+  }
+  return [regionFlag];
+};
 const crud = <K extends Collection>(seed: ResourceSeed<K>): readonly CommandSpec[] =>
   ["create", "list", "describe", "delete"].map((action) =>
     projectCommand({
@@ -118,13 +141,18 @@ const crud = <K extends Collection>(seed: ResourceSeed<K>): readonly CommandSpec
       positionals:
         action === "list"
           ? []
-          : [Positional.required("NAME", "Resource name.", labCandidates(seed.key))],
+          : seed.key === "databases"
+            ? [
+                Positional.optional(
+                  "NAME",
+                  "Database ID (or use --database).",
+                  labCandidates(seed.key),
+                ),
+              ]
+            : [Positional.required("NAME", "Resource name.", labCandidates(seed.key))],
       flags: [
-        regionFlag,
-        Flag.string("location", "Resource location.", {
-          candidates: seed.key === "databases" ? () => firestoreLocations() : Candidates.regions,
-        }),
-        ...seed.flags,
+        ...locationFlagsFor(seed.key),
+        ...(action === "create" || seed.key === "keys" ? seed.flags : []),
       ],
       destructive: action === "delete",
       permission: `${seed.permission}.${action === "describe" ? "get" : action}`,
@@ -261,11 +289,15 @@ const policyCommands = <K extends "secrets" | "keys">(
       summary: "Read or change the resource IAM policy.",
       positionals: [Positional.required("NAME", "Resource name.", labCandidates(key))],
       flags: [
-        regionFlag,
-        Flag.string("location", "Key location."),
-        Flag.string("keyring", "Key ring."),
-        Flag.string("member", "IAM member.", { candidates: Candidates.members }),
-        Flag.string("role", "IAM role.", { candidates: Candidates.roles }),
+        ...(key === "keys"
+          ? [Flag.string("location", "Key location."), Flag.string("keyring", "Key ring.")]
+          : []),
+        ...(action === "get-iam-policy"
+          ? []
+          : [
+              Flag.string("member", "IAM member.", { candidates: Candidates.members }),
+              Flag.string("role", "IAM role.", { candidates: Candidates.roles }),
+            ]),
       ],
       permission: `${permission}.${action === "get-iam-policy" ? "getIamPolicy" : "setIamPolicy"}`,
       requiredApis: [api],
@@ -529,38 +561,6 @@ const VersionCommands: readonly CommandSpec[] = [
       },
     }),
   ),
-  projectCommand({
-    path: ["gcloud", "kms", "keys", "versions", "update"],
-    summary: "Enable or disable the lesson key's primary version (version 1).",
-    positionals: [Positional.required("VERSION", "Only primary version 1 is modeled.")],
-    flags: [
-      regionFlag,
-      Flag.string("location", "Key location."),
-      Flag.string("keyring", "Key ring.", { required: true }),
-      Flag.string("key", "Crypto key.", { required: true }),
-      Flag.enum("state", "Key state.", ["enabled", "disabled"], { required: true }),
-    ],
-    permission: "cloudkms.cryptoKeyVersions.update",
-    requiredApis: ["cloudkms.googleapis.com"],
-    run: (ctx, args) => {
-      if (ParsedArgs.requiredPositional(args, 0) !== "1") {
-        return invalid("Only key version 1 is modeled.");
-      }
-      const found = itemArg(
-        ctx,
-        { ...args, positionals: [ParsedArgs.requiredString(args, "key")] },
-        "keys",
-      );
-      if (!Result.isOk(found)) {
-        return found;
-      }
-      const key = {
-        ...found.value,
-        enabled: ParsedArgs.requiredString(args, "state") === "enabled",
-      };
-      return finish(replace(ctx.world, "keys", key), { name: key.name, enabled: key.enabled });
-    },
-  }),
 ];
 const DocumentCommands: readonly CommandSpec[] = ["write", "delete", "read"].map((action) =>
   projectCommand({

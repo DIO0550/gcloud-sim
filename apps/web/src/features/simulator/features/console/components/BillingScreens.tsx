@@ -25,27 +25,30 @@ const ThresholdChoices = [0.5, 0.9, 1] as const;
 const percentText = (ratio: number): string => `${Math.round(ratio * 100)}%`;
 
 /**
- * お支払い › 予算とアラート。対象はプロジェクトにリンクされた請求アカウント
+ * お支払い › 予算とアラート。対象はプロジェクトにリンクされた請求先アカウント
  * （リンクが無ければ作れないので、その案内だけを出す: E-016 と同じ前提）。
  */
-export const BudgetsScreen = ({ world, project, handlers }: ScreenProps): ReactElement => {
+export const BudgetsScreen = ({ world, project, handlers, outcome }: ScreenProps): ReactElement => {
   const account = Option.flatMap(project.billingAccountId, (id) =>
     World.findBillingAccount(world, id),
   );
-  const editor = useCreateForm(BudgetCreateForm, BudgetCreateForm.create);
+  const editor = useCreateForm(BudgetCreateForm, BudgetCreateForm.create, false, outcome);
   const form = Option.unwrapOr(editor.form, BudgetCreateForm.create());
   if (!Option.isSome(account)) {
     return (
       <div>
         <ScreenTitle eyebrow="お支払い" title="予算とアラート" />
         <p className="text-muted text-sm">
-          このプロジェクトは請求アカウントにリンクされていません。gcloud billing projects link
+          このプロジェクトは請求先アカウントにリンクされていません。gcloud billing projects link
           でリンクすると予算を作れます。
         </p>
       </div>
     );
   }
   const accountId = account.value.id;
+  const linkedProjects = World.activeProjects(world).filter(
+    (p) => Option.isSome(p.billingAccountId) && p.billingAccountId.value === accountId,
+  );
   const command = BudgetCreateForm.toCommand(form, accountId);
   const create = (): void => {
     const valid = editor.submit();
@@ -55,7 +58,7 @@ export const BudgetsScreen = ({ world, project, handlers }: ScreenProps): ReactE
       note: `予算を作成 (${valid.value.displayName})`,
       next: Option.none,
     });
-    editor.close();
+    editor.awaitClose();
   };
   const remove = (budget: Budget): void => {
     if (!handlers.confirm(`予算「${budget.displayName}」を削除しますか？`)) return;
@@ -117,8 +120,13 @@ export const BudgetsScreen = ({ world, project, handlers }: ScreenProps): ReactE
                 </Checkbox>
               ))}
             </div>
+            {editor.errors.thresholds !== undefined && (
+              <p role="alert" className="mt-1 text-danger text-xs">
+                {editor.errors.thresholds}
+              </p>
+            )}
           </fieldset>
-          <Field label="対象プロジェクト" hint="選ばなければアカウント全体">
+          <Field label="対象プロジェクト" hint="選ばなければ請求先アカウント全体">
             {(id) => (
               <Select
                 id={id}
@@ -128,7 +136,7 @@ export const BudgetsScreen = ({ world, project, handlers }: ScreenProps): ReactE
                 }
                 options={[
                   { value: "", label: "すべてのプロジェクト" },
-                  ...World.activeProjects(world).map((p) => ({
+                  ...linkedProjects.map((p) => ({
                     value: p.projectId,
                     label: p.projectId,
                   })),

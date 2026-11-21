@@ -115,7 +115,7 @@ export const Header = ({
               options={projectOptions}
             />
           </div>
-          <div className="order-last flex min-w-0 basis-full items-center gap-2 rounded-lg bg-code px-3 lg:order-none lg:flex-1 lg:basis-auto">
+          <div className="order-last flex min-w-0 basis-full items-center gap-2 rounded-lg bg-code px-3 focus-within:ring-2 focus-within:ring-accent lg:order-none lg:flex-1 lg:basis-auto">
             <span aria-hidden="true" className="text-muted">
               ⌕
             </span>
@@ -123,6 +123,7 @@ export const Header = ({
               <SuggestInput
                 ariaLabel="プロダクト、画面を検索"
                 placeholder="プロダクト、画面を検索"
+                emptyMessage="一致する画面がありません"
                 value={search}
                 onChange={setSearch}
                 className="h-9 w-full min-w-0 bg-transparent text-sm focus:outline-none"
@@ -149,19 +150,29 @@ export const Header = ({
           <GhostButton ariaLabel="設定" onClick={onOpenSettings}>
             ⚙
           </GhostButton>
-          <GhostButton ariaLabel="リソースを作成" onClick={onCreateResource}>
-            ＋ 作成
-          </GhostButton>
-          <Select
-            variant="avatar"
-            font="sans"
-            align="end"
-            ariaLabel="プリンシパル"
-            className={isOwner ? "" : "ring-2 ring-warn"}
-            value={principalValue}
-            onChange={onPrincipalChange}
-            options={principalOptions}
-          />
+          <span title="組織・フォルダ・プロジェクトを作成">
+            <GhostButton ariaLabel="リソースを作成" onClick={onCreateResource}>
+              ＋ 作成
+            </GhostButton>
+          </span>
+          <span
+            title={
+              isOwner
+                ? `認証アカウント: ${principalValue}`
+                : `組織 Owner 以外で操作中: ${principalValue}（権限不足の動作を確認できます）`
+            }
+          >
+            <Select
+              variant="avatar"
+              font="sans"
+              align="end"
+              ariaLabel="プリンシパル"
+              className={isOwner ? "" : "ring-2 ring-warn"}
+              value={principalValue}
+              onChange={onPrincipalChange}
+              options={principalOptions}
+            />
+          </span>
         </div>
       ) : (
         <div className="flex w-full flex-wrap items-center gap-2 text-sm lg:ml-auto lg:w-auto lg:gap-3">
@@ -176,6 +187,11 @@ export const Header = ({
             />
           </div>
           <div
+            title={
+              isOwner
+                ? `認証アカウント: ${principalValue}`
+                : `組織 Owner 以外で操作中: ${principalValue}（権限不足の動作を確認できます）`
+            }
             className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 ${isOwner ? "border-line" : "border-warn bg-warn-soft"}`}
           >
             <span className="hidden whitespace-nowrap text-muted sm:inline">プリンシパル</span>
@@ -190,9 +206,11 @@ export const Header = ({
             />
           </div>
           <GhostButton onClick={onOpenSettings}>設定</GhostButton>
-          <GhostButton ariaLabel="リソースを作成" onClick={onCreateResource}>
-            ＋ 作成
-          </GhostButton>
+          <span title="組織・フォルダ・プロジェクトを作成">
+            <GhostButton ariaLabel="リソースを作成" onClick={onCreateResource}>
+              ＋ 作成
+            </GhostButton>
+          </span>
         </div>
       )}
     </header>

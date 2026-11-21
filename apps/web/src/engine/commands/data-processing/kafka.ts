@@ -24,6 +24,7 @@ export const Workloads = {
   "async-events": "pubsub",
   "kafka-protocol": "kafka",
 } as const;
+const kafkaLocationFlag = sf("location", true, Candidates.regions);
 export const KafkaCommands = [
   ...(["create", "list", "describe", "delete"] as const).map((action) =>
     command(
@@ -31,7 +32,7 @@ export const KafkaCommands = [
       "managedkafka.googleapis.com",
       `managedkafka.clusters.${action === "describe" ? "get" : action}`,
       (ctx, a) => {
-        const region = text(a, "region");
+        const region = text(a, "location");
         if (!validRegion(region)) {
           return invalid("Invalid region.");
         }
@@ -43,11 +44,10 @@ export const KafkaCommands = [
         }
         const item = items.find((c) => c.name === name(a));
         if (action === "create") {
+          const subnetName = text(a, "subnets").split(",")[0]?.trim() ?? "";
           const subnet = ctx.world.subnets.find(
             (s) =>
-              s.projectId === ctx.project.projectId &&
-              s.region === region &&
-              s.name === text(a, "subnet"),
+              s.projectId === ctx.project.projectId && s.region === region && s.name === subnetName,
           );
           const vcpu = integer(a, "cpu", 3);
           const memory = integer(a, "memory", 3221225472);
@@ -100,10 +100,10 @@ export const KafkaCommands = [
         return finish(ctx.world, { ...item });
       },
       [
-        regionFlag,
+        kafkaLocationFlag,
         ...(action === "create"
           ? [
-              sf("subnet", true, Candidates.subnets),
+              sf("subnets", true, Candidates.subnets),
               Flag.integer("cpu", "3..24 vCPU."),
               Flag.integer("memory", "Bytes; 1..4 GiB/vCPU."),
             ]
@@ -120,7 +120,7 @@ export const KafkaCommands = [
       "managedkafka.googleapis.com",
       `managedkafka.topics.${action === "describe" ? "get" : action}`,
       (ctx, a) => {
-        const region = text(a, "region");
+        const region = text(a, "location");
         const cluster = ctx.world.dataProcessing.kafkaClusters.find(
           (c) =>
             c.projectId === ctx.project.projectId &&
@@ -177,7 +177,7 @@ export const KafkaCommands = [
         return finish(ctx.world, { ...item });
       },
       [
-        regionFlag,
+        kafkaLocationFlag,
         sf("cluster", true, candidates("kafkaClusters")),
         ...(action === "create"
           ? [

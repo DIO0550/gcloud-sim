@@ -388,18 +388,6 @@ const CoreCommands: readonly CommandSpec[] = [
     }),
   ),
   projectCommand({
-    path: ["gcloud", "compute", "health-checks", "create"],
-    summary: "Legacy simulator alias; prefer create http/tcp/https NAME.",
-    positionals: [nameArg],
-    flags: [
-      ...hcFlags,
-      ...["http", "https", "tcp"].map((p) => Flag.boolean(p, "Legacy protocol alias.")),
-    ],
-    permissions: [],
-    requiredApis: [ComputeApi],
-    run: createCheck(),
-  }),
-  projectCommand({
     path: ["gcloud", "compute", "health-checks", "describe"],
     summary: "Describe a scoped health check.",
     positionals: [

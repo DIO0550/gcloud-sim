@@ -119,7 +119,7 @@ export const BuildCommands: readonly CommandSpec[] = [
         "Existing build service account: projects/PROJECT/serviceAccounts/EMAIL (required in this lesson).",
         { required: true },
       ),
-      Flag.boolean("async", "Queue only; progress using sim builds advance."),
+      Flag.boolean("async", "Return immediately, without waiting for the build to complete."),
     ],
     run: guarded((ctx, args) => {
       const { projectId, region, principal } = scope(ctx, args, "cloudbuild.builds.create");

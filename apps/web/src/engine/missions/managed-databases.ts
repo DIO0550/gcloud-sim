@@ -166,7 +166,7 @@ const ManagedDatabaseSteps: Readonly<Record<ManagedDatabaseLesson, readonly Miss
     MissionStep.run("誤って全行を削除する", spSql("restore-spanner", "DELETE FROM orders")),
     MissionStep.run(
       "バックアップを新しいデータベースrecoveredへ復元する",
-      "gcloud spanner databases restore recovered --instance=restore-spanner --backup=spanner-copy",
+      "gcloud spanner databases restore --destination-database=recovered --destination-instance=restore-spanner --source-backup=spanner-copy --source-instance=restore-spanner",
     ),
     MissionStep.run(
       "復元したデータベースで行が戻ったことを照会する",

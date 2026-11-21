@@ -39,28 +39,37 @@ export const NetworkCommands: readonly CommandSpec[] = [
         if (!s) {
           return missing("Subnetwork not found in this region.");
         }
-        const next = Ipv4.range(text(a, "prefix"));
+        const prefixLength = integer(a, "prefix-length", -1);
         const previous = Ipv4.range(s.ipCidrRange);
         if (
-          !next.some ||
           !previous.some ||
-          next.value.prefix >= previous.value.prefix ||
-          next.value.start > previous.value.start ||
-          next.value.start + next.value.size < previous.value.start + previous.value.size ||
-          s.purpose === "REGIONAL_MANAGED_PROXY" ||
-          subnetOverlap(c.world, s.projectId, s.network, text(a, "prefix"), s.name)
+          prefixLength < 8 ||
+          prefixLength > 29 ||
+          prefixLength >= previous.value.prefix ||
+          s.purpose === "REGIONAL_MANAGED_PROXY"
         ) {
           return invalid(
-            "Expansion must strictly contain the old range, stay canonical and avoid VPC/peer subnet overlap; proxy-only expansion is not modeled.",
+            "prefix-length must be an integer between 8 and 29 smaller than the current prefix; proxy-only expansion is not modeled.",
           );
         }
-        const updated = { ...s, ipCidrRange: text(a, "prefix") };
+        const mask = (~0 << (32 - prefixLength)) >>> 0;
+        const expandedStart = (previous.value.start & mask) >>> 0;
+        const expandedCidr = `${(expandedStart >>> 24) & 255}.${(expandedStart >>> 16) & 255}.${(expandedStart >>> 8) & 255}.${expandedStart & 255}/${prefixLength}`;
+        if (subnetOverlap(c.world, s.projectId, s.network, expandedCidr, s.name)) {
+          return invalid("Expanded range overlaps another subnet in the VPC or active peer VPC.");
+        }
+        const updated = { ...s, ipCidrRange: expandedCidr };
         return finish(
           { ...c.world, subnets: c.world.subnets.map((v) => (v === s ? updated : v)) },
           updated,
         );
       }),
-    [rf, sf("prefix", true)],
+    [
+      rf,
+      Flag.integer("prefix-length", "New prefix length (8..29, smaller than current).", {
+        required: true,
+      }),
+    ],
   ),
   command(
     [...routes, "create"],

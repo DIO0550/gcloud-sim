@@ -100,7 +100,7 @@ const DataSteps = {
     ),
     MissionStep.run(
       "CSVをordersテーブルへ読み込む",
-      "bq load warehouse.orders --source=gs://ace-csv-input/input --location=US --source_format=CSV --skip_leading_rows=1",
+      "bq load warehouse.orders gs://ace-csv-input/input --location=US --source_format=CSV --skip_leading_rows=1",
       "--skip_leading_rows=1で1行目の見出しを飛ばします。",
     ),
     MissionStep.run(
@@ -119,7 +119,7 @@ const DataSteps = {
     ),
     MissionStep.run(
       "CSVをordersテーブルへ読み込む",
-      "bq load filtered.orders --source=gs://ace-filtered-input/input --location=US --source_format=CSV",
+      "bq load filtered.orders gs://ace-filtered-input/input --location=US --source_format=CSV",
     ),
     MissionStep.run(
       "aliceの注文を金額の大きい順に2件取り出す",
@@ -314,12 +314,12 @@ const DataSteps = {
     ),
     MissionStep.run(
       "3 vCPU・3 GiBのKafkaクラスタを作る",
-      "gcloud managed-kafka clusters create event-kafka --region=us-central1 --subnet=kafka-subnet --cpu=3 --memory=3221225472",
+      "gcloud managed-kafka clusters create event-kafka --location=us-central1 --subnets=kafka-subnet --cpu=3 --memory=3221225472",
       "--memoryはバイト数で指定します（3221225472 = 3 GiB）。",
     ),
     MissionStep.run(
       "3パーティションのordersトピックを作る",
-      "gcloud managed-kafka topics create orders --region=us-central1 --cluster=event-kafka --partitions=3 --replication-factor=3",
+      "gcloud managed-kafka topics create orders --location=us-central1 --cluster=event-kafka --partitions=3 --replication-factor=3",
     ),
     MissionStep.run(
       "同じVPCからSASL_IAMで接続できることを確かめる",

@@ -86,7 +86,7 @@ export const ObservabilityMissions: readonly Mission[] = [
         "gcloud monitoring uptime create public-web --resource-type=uptime-url --resource-labels=host=example.com,project_id=ace-dev-01 --protocol=https --path=/healthz --period=5",
         "書式は gcloud monitoring uptime create DISPLAY_NAME --resource-type=uptime-url --resource-labels=host=HOST,project_id=PROJECT です。",
       ),
-      MissionStep.run("作成したチェックのIDを調べる", "gcloud monitoring uptime list"),
+      MissionStep.run("作成したチェックのIDを調べる", "gcloud monitoring uptime list-configs"),
       MissionStep.run(
         "チェックの設定を確かめる",
         "gcloud monitoring uptime describe ID",

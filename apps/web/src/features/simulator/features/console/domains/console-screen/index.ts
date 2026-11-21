@@ -33,10 +33,10 @@ export const ConsoleSections = {
   Iam: "iam",
   Billing: "billing",
   Compute: "compute",
-  Vpc: "vpc",
-  Storage: "storage",
   Gke: "gke",
   Run: "run",
+  Storage: "storage",
+  Vpc: "vpc",
   Marketplace: "marketplace",
 } as const;
 export type ConsoleSection = ValueOf<typeof ConsoleSections>;

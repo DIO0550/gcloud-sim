@@ -296,7 +296,7 @@ const transition = (ctx: ProjectContext, args: ParsedArgs, op: string): CommandR
   });
 export const DmsCommands = [
   command(
-    path("connection-profiles", "create"),
+    [...path("connection-profiles", "create"), "postgresql"],
     api,
     "datamigration.connectionprofiles.create",
     createProfile,

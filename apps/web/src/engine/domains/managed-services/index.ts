@@ -167,7 +167,15 @@ export const CloudRunService = {
   },
 
   url(service: CloudRunService): string {
-    return `https://${service.name}-abc123-an.a.run.app`;
+    const codes: Record<string, string> = {
+      "asia-northeast1": "an",
+      "asia-northeast2": "dt",
+      "us-central1": "uc",
+      "us-east1": "ue",
+      "europe-west1": "ew",
+    };
+    const code = codes[service.region] ?? "uc";
+    return `https://${service.name}-abc123-${code}.a.run.app`;
   },
 
   /** 最新リビジョンの名前。deploy の完了メッセージと describe の両方が出す。 */

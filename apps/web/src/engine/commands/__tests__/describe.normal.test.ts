@@ -66,7 +66,7 @@ test("addresses / routers describe は作ったものを出す", () => {
 test("ロードバランサの部品はそれぞれ describe できる", () => {
   const s = run(
     session(),
-    "gcloud compute health-checks create hc --http --port=80",
+    "gcloud compute health-checks create http hc --port=80",
     "gcloud compute backend-services create web-bes --global --load-balancing-scheme=EXTERNAL_MANAGED --health-checks=hc",
     "gcloud compute url-maps create web-map --global --default-service=web-bes",
     "gcloud compute target-http-proxies create web-proxy --global --url-map=web-map",

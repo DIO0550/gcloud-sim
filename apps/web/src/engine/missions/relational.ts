@@ -210,11 +210,11 @@ const RelationalSteps: Readonly<Record<RelationalLesson, readonly MissionStep[]>
     MissionStep.run("移行先のインスタンスを作る", sql("migration-target", "--network=default")),
     MissionStep.run(
       "移行元の接続プロファイルを作る",
-      "gcloud database-migration connection-profiles create source-profile --region=us-central1 --instance=migration-source --network=default",
+      "gcloud database-migration connection-profiles create postgresql source-profile --region=us-central1 --instance=migration-source --network=default",
     ),
     MissionStep.run(
       "移行先の接続プロファイルを作る",
-      "gcloud database-migration connection-profiles create target-profile --region=us-central1 --instance=migration-target --network=default",
+      "gcloud database-migration connection-profiles create postgresql target-profile --region=us-central1 --instance=migration-target --network=default",
     ),
     MissionStep.run(
       "2つのプロファイルをつなぐ移行ジョブを作る",

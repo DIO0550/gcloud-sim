@@ -32,16 +32,20 @@ export type CommandFailure = Readonly<{
   code: ErrorCode;
   message: string;
   hints: readonly string[];
+  apiName?: string;
+  apiTitle?: string;
 }>;
 
 const failure = (
   code: ErrorCode,
   message: string,
   hints: readonly string[] = [],
+  extra?: Readonly<{ apiName?: string; apiTitle?: string }>,
 ): CommandFailure => ({
   code,
   message,
   hints,
+  ...(extra ?? {}),
 });
 
 export const CommandFailure = {
@@ -169,6 +173,8 @@ export const CommandFailure = {
     return failure(
       ErrorCodes.ApiDisabled,
       `${apiTitle} has not been used in project ${projectId} before or it is disabled. Enable it by running:\n\n  $ gcloud services enable ${apiName} --project=${projectId}\n\nthen retry.`,
+      [],
+      { apiName, apiTitle },
     );
   },
 

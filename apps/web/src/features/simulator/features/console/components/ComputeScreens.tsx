@@ -97,20 +97,25 @@ const searchableText = (instance: Instance): string => {
     .toLowerCase();
 };
 
+const instanceKey = (instance: Instance): string => `${instance.zone}/${instance.name}`;
+
 /** Compute Engine › VM インスタンス（UI 案 2b）。選んだ VM に対する操作は CLI のコマンドとして流す。 */
 export const VmListScreen = ({ world, project, handlers }: ScreenProps): ReactElement => {
-  const [selectedNames, setSelectedNames] = useState<ReadonlySet<string>>(new Set());
+  const [selectedKeys, setSelectedKeys] = useState<ReadonlySet<string>>(new Set());
   const [filter, setFilter] = useState("");
+  const [sortAsc, setSortAsc] = useState(true);
   const filterId = useId();
   const instances = World.instancesOf(world, project.projectId);
-  const shown = instances.filter((i) => searchableText(i).includes(filter.trim().toLowerCase()));
-  const selected = instances.filter((i) => selectedNames.has(i.name));
-  const allChecked = shown.length > 0 && shown.every((i) => selectedNames.has(i.name));
-  const toggle = (name: string): void =>
-    setSelectedNames((names) => {
-      const next = new Set(names);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
+  const shown = instances
+    .filter((i) => searchableText(i).includes(filter.trim().toLowerCase()))
+    .sort((a, b) => (sortAsc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name)));
+  const selected = instances.filter((i) => selectedKeys.has(instanceKey(i)));
+  const allChecked = shown.length > 0 && shown.every((i) => selectedKeys.has(instanceKey(i)));
+  const toggle = (key: string): void =>
+    setSelectedKeys((keys) => {
+      const next = new Set(keys);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   const run = (action: VmAction, instance: Instance): void =>
@@ -118,6 +123,7 @@ export const VmListScreen = ({ world, project, handlers }: ScreenProps): ReactEl
       line: VmActionOps.toCommand(action, instance),
       note: `${actionText(action)} (${instance.name})`,
       next: Option.none,
+      openTerminal: action === "ssh",
     });
   const perform = (action: ToolbarAction): void => {
     if (
@@ -136,7 +142,7 @@ export const VmListScreen = ({ world, project, handlers }: ScreenProps): ReactEl
     <div>
       <div className="-mx-5 -mt-5 mb-0 flex min-h-14 flex-wrap items-center gap-x-6 gap-y-2 border-line border-b px-5 py-3">
         <div>
-          <p className="sr-only">Compute Engine</p>
+          <p className="text-muted text-xs">Compute Engine</p>
           <h2 className="font-medium text-2xl leading-tight">VM インスタンス</h2>
         </div>
         <div className="flex items-center gap-1 self-end pb-1 text-[15px]">
@@ -187,11 +193,11 @@ export const VmListScreen = ({ world, project, handlers }: ScreenProps): ReactEl
           variant="bare"
           font="sans"
           className="min-w-0 flex-1"
-          placeholder="プロパティ名または値を入力"
+          placeholder="名前・ゾーン・マシンタイプ・IP で絞り込み"
           value={filter}
           onChange={setFilter}
         />
-        <span className="font-mono text-muted text-sm">= --filter</span>
+        <span className="hidden text-muted text-xs sm:inline">部分一致</span>
       </label>
       <div className="overflow-x-auto rounded-lg border border-line bg-surface">
         <table className="w-full min-w-[760px] text-sm" aria-label="VM インスタンス">
@@ -202,12 +208,20 @@ export const VmListScreen = ({ world, project, handlers }: ScreenProps): ReactEl
                   ariaLabel="すべて選択"
                   checked={allChecked}
                   onChange={() =>
-                    setSelectedNames(allChecked ? new Set() : new Set(shown.map((i) => i.name)))
+                    setSelectedKeys(allChecked ? new Set() : new Set(shown.map(instanceKey)))
                   }
                 />
               </th>
               <th className="w-14 py-3 pr-3 font-bold">状態</th>
-              <th className="py-3 pr-3 font-bold">名前 ↑</th>
+              <th className="py-3 pr-3 font-bold" aria-sort={sortAsc ? "ascending" : "descending"}>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 font-bold hover:text-accent"
+                  onClick={() => setSortAsc((asc) => !asc)}
+                >
+                  名前 <span aria-hidden="true">{sortAsc ? "↑" : "↓"}</span>
+                </button>
+              </th>
               <th className="py-3 pr-3 font-bold">ゾーン</th>
               <th className="py-3 pr-3 font-bold">マシンタイプ</th>
               <th className="py-3 pr-3 font-bold">内部 IP</th>
@@ -226,32 +240,33 @@ export const VmListScreen = ({ world, project, handlers }: ScreenProps): ReactEl
               </tr>
             )}
             {shown.map((i) => {
+              const key = instanceKey(i);
               const nic = i.networkInterfaces[0];
               const address = nic === undefined ? Option.none : ExternalIp.address(nic.externalIP);
-              const isChecked = selectedNames.has(i.name);
+              const isChecked = selectedKeys.has(key);
               const canSsh = VmActionOps.availableFor(i).includes("ssh");
               return (
                 <tr
-                  key={`${i.zone}/${i.name}`}
+                  key={key}
                   className={`border-line border-t ${isChecked ? "bg-accent-soft/60" : ""}`}
                 >
                   <td className="py-3.5 pl-4">
                     <Checkbox
                       ariaLabel={`${i.name} を選択`}
                       checked={isChecked}
-                      onChange={() => toggle(i.name)}
+                      onChange={() => toggle(key)}
                     />
                   </td>
                   <td className="py-3.5 pr-3">
                     <StatusIcon instance={i} />
                   </td>
-                  <td className="py-3.5 pr-3 font-bold text-accent">{i.name}</td>
+                  <td className="py-3.5 pr-3 font-bold">{i.name}</td>
                   <td className="py-3.5 pr-3">{i.zone}</td>
                   <td className="py-3.5 pr-3 font-mono">{i.machineType}</td>
                   <td className="py-3.5 pr-3 font-mono">{nic?.networkIP ?? "-"}</td>
                   <td className="py-3.5 pr-3">
                     {Option.isSome(address) ? (
-                      <span className="font-mono text-accent">{address.value}</span>
+                      <span className="font-mono">{address.value}</span>
                     ) : (
                       <span className="text-muted">なし</span>
                     )}
@@ -274,6 +289,7 @@ export const VmListScreen = ({ world, project, handlers }: ScreenProps): ReactEl
       </div>
       <p className="mt-3 text-right text-muted text-sm">
         {shown.length === 0 ? 0 : 1}〜{shown.length} / {shown.length}
+        {filter.trim() !== "" ? `（全 ${instances.length} 件）` : ""}
       </p>
     </div>
   );
@@ -414,6 +430,7 @@ export const VmCreateScreen = ({
   const errors = {
     ...editor.errors,
     ...(form.name !== "" && live.name !== undefined ? { name: NameRuleText } : {}),
+    ...(live.bootDiskSize !== undefined ? { bootDiskSize: live.bootDiskSize } : {}),
   };
   const canCreate = FieldErrors.isEmpty(live);
   // サブネットはネットワークとゾーンのリージョンで決まる。ゾーンを変えて合わなくなったら、そのリージョンの最初のものにする。
@@ -479,7 +496,7 @@ export const VmCreateScreen = ({
         {
           id: "network",
           title: "ネットワーキング",
-          detail: form.tags === "" ? "default" : `default · ${form.tags}`,
+          detail: form.tags === "" ? form.network : `${form.network} · ${form.tags}`,
         },
         { id: "security", title: "セキュリティ", detail: "サービスアカウント、スコープ" },
         { id: "advanced", title: "詳細設定", detail: form.provisioningModel },
@@ -522,6 +539,9 @@ export const VmCreateScreen = ({
           <SecondaryButton onClick={() => handlers.changeScreen(ConsoleScreens.VmList)}>
             キャンセル
           </SecondaryButton>
+          {!canCreate && form.name === "" && (
+            <span className="text-muted text-xs">名前を入力すると作成できます</span>
+          )}
         </>
       }
       note={
@@ -553,7 +573,7 @@ export const VmCreateScreen = ({
                 variant="outlined"
                 font="sans"
                 value={region}
-                onChange={(r) => set("zone", `${r}-a`)}
+                onChange={(r) => set("zone", Zone.defaultForRegion(r))}
                 options={Region.all().map((r) => ({ value: r, label: regionText(r) }))}
               />
             )}
@@ -637,7 +657,6 @@ export const VmCreateScreen = ({
                   />
                 )}
               </Field>
-              {provisioningField}
             </div>
           </section>
         )}
@@ -690,15 +709,18 @@ export const VmCreateScreen = ({
                     id={id}
                     value={form.bootDiskType}
                     onChange={(type) => set("bootDiskType", type)}
-                    options={Object.values(BootDiskTypes).map((t) => ({ value: t, label: t }))}
+                    options={Object.values(BootDiskTypes).map((t) => ({
+                      value: t,
+                      label: `${diskTypeText(t)}永続ディスク (${t})`,
+                    }))}
                   />
                 )}
               </Field>
             </div>
           </section>
         )}
-        {(activeSection === "machine" || activeSection === "security") && (
-          <section className="border-line border-t pt-5">
+        {activeSection === "security" && (
+          <section>
             <h3 className="mb-4 font-medium text-xl">セキュリティ</h3>
             <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
               <Field label="サービスアカウント" outlined>

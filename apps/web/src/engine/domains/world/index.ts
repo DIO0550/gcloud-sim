@@ -1094,13 +1094,21 @@ export const World = {
    * @returns 消した World。サブネットが残っていれば、削除を妨げている最初のサブネット
    */
   withoutNetwork(world: World, network: Network): Result<World, Subnet> {
-    const blocking = world.subnets.find(
-      (s) => s.projectId === network.projectId && s.network === network.name,
-    );
-    if (blocking !== undefined) return Result.err(blocking);
+    if (network.subnetMode === "CUSTOM") {
+      const blocking = world.subnets.find(
+        (s) => s.projectId === network.projectId && s.network === network.name,
+      );
+      if (blocking !== undefined) return Result.err(blocking);
+    }
     return Result.ok({
       ...world,
       networks: world.networks.filter((n) => !sameInProject(network.projectId, network.name)(n)),
+      subnets:
+        network.subnetMode === "AUTO"
+          ? world.subnets.filter(
+              (s) => !(s.projectId === network.projectId && s.network === network.name),
+            )
+          : world.subnets,
       clusters: world.clusters.map((c) =>
         c.projectId === network.projectId
           ? { ...c, controlPlane: { ...c.controlPlane, lastCheck: Option.none } }

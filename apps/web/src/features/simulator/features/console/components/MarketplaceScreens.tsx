@@ -11,6 +11,7 @@ import {
   Zone,
 } from "@/engine/domains/catalog";
 import { ExternalIp } from "@/engine/domains/compute";
+import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { type InfraDeployment, MarketplaceSolution } from "@/engine/domains/infra-manager";
 import type { Project } from "@/engine/domains/resource-hierarchy";
 import { ServiceAccount } from "@/engine/domains/service-account";
@@ -178,7 +179,7 @@ const AgreementStage = ({
   const [accepted, setAccepted] = useState(false);
   return (
     <div>
-      <ScreenTitle eyebrow="Marketplace" title="Agreements" trailing={back} />
+      <ScreenTitle eyebrow="Marketplace" title="利用規約への同意" trailing={back} />
       <p className="mb-4 text-sm">
         {title} を使うには、提供元の利用規約と Google Cloud Marketplace
         の利用規約に同意してください。
@@ -222,10 +223,13 @@ const DeployStage = ({
 }>): ReactElement => {
   const projectId = project.projectId;
   const defaultAccount = ServiceAccount.defaultComputeEmail(project.projectNumber);
+  const defaultZone: Zone = Option.unwrapOr(
+    Option.flatMap(GcloudConfig.get(world.config, "compute/zone"), Zone.parse),
+    "asia-northeast1-a",
+  );
   const editor = useCreateForm(
     MarketplaceDeployForm,
-    () =>
-      MarketplaceDeployForm.create({ zone: "asia-northeast1-a", serviceAccount: defaultAccount }),
+    () => MarketplaceDeployForm.create({ zone: defaultZone, serviceAccount: defaultAccount }),
     true,
   );
   if (!Option.isSome(solution.blueprint)) return <span className="hidden" />;
@@ -271,7 +275,7 @@ const DeployStage = ({
   }
   const form = Option.unwrapOr(
     editor.form,
-    MarketplaceDeployForm.create({ zone: "asia-northeast1-a", serviceAccount: defaultAccount }),
+    MarketplaceDeployForm.create({ zone: defaultZone, serviceAccount: defaultAccount }),
   );
   const command = MarketplaceDeployForm.toCommand(form, projectId, source);
   const series = seriesOf(form.machineType);
@@ -443,7 +447,7 @@ export const SolutionDeploymentsScreen = ({
             });
             const solution = MarketplaceSolution.find(d.solution);
             return (
-              <li key={d.name}>
+              <li key={`${d.location}/${d.name}`}>
                 <section
                   aria-label={`デプロイ ${d.name}`}
                   className="rounded-lg border border-line bg-surface p-5"

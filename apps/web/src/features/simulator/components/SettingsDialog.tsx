@@ -1,4 +1,4 @@
-import { type ReactElement, useRef } from "react";
+import { type ReactElement, useEffect, useRef } from "react";
 
 import { DangerButton } from "@/components/DangerButton";
 import { IconButton } from "@/components/IconButton";
@@ -59,15 +59,31 @@ export const SettingsDialog = ({
   const fileRef = useRef<HTMLInputElement>(null);
   const bytes = saveState.kind === "saved" ? saveState.bytes : 0;
   const ratio = Math.min(100, Math.round((bytes / capacityBytes) * 100));
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
   return (
     <div
-      className="fixed inset-0 z-20 flex items-center justify-center bg-ink/30 p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
       role="presentation"
     >
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-label="設定を閉じる"
+        className="fixed inset-0 bg-ink/30"
+        onClick={onClose}
+      />
       <dialog
         open
         aria-label="設定"
-        className="static w-full max-w-[45rem] rounded-2xl border border-line bg-surface p-0 text-ink shadow-xl"
+        className="relative z-10 max-h-[90dvh] w-full max-w-[45rem] overflow-y-auto rounded-2xl border border-line bg-surface p-0 text-ink shadow-xl"
       >
         <div className="flex items-center justify-between border-line border-b px-7 py-5">
           <h2 className="font-bold text-[22px]">設定</h2>
@@ -77,7 +93,7 @@ export const SettingsDialog = ({
         </div>
         <div className="px-7 py-6">
           <h3 className="mb-3 font-bold text-muted">保存状態</h3>
-          <div className="flex items-center justify-between text-base">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-base">
             <span className="flex items-center gap-3">
               <span
                 aria-hidden="true"
@@ -95,7 +111,7 @@ export const SettingsDialog = ({
               style={{ width: `${Math.max(4, ratio)}%` }}
             />
           </div>
-          <div className="mt-3 flex justify-between text-muted">
+          <div className="mt-3 flex flex-wrap justify-between gap-2 text-muted">
             <span>
               {size(bytes)} / {size(capacityBytes)}
             </span>
@@ -104,7 +120,7 @@ export const SettingsDialog = ({
             </span>
           </div>
 
-          <div className="mt-8 grid grid-cols-2 gap-4">
+          <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <section className="rounded-lg border border-line px-4 py-5">
               <h3 className="font-bold text-lg">エクスポート</h3>
               <p className="mt-3 leading-relaxed">World とミッション進捗を JSON で書き出します。</p>

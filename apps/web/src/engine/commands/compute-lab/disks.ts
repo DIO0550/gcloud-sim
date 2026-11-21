@@ -332,7 +332,7 @@ export const DiskLabCommands = [
       let sizeGb = 0;
       let source = sourceSnapshot;
       if (sourceDisk) {
-        const loc = text(a, "source-disk-zone", text(a, "source-disk-region"));
+        const loc = text(a, "source-disk-zone");
         const info = diskInfo(c.world, {
           projectId: c.project.projectId,
           name: sourceDisk,
@@ -380,13 +380,7 @@ export const DiskLabCommands = [
         status: "READY",
       });
     },
-    [
-      sf("source-disk"),
-      sf("source-disk-zone"),
-      sf("source-disk-region"),
-      sf("source-snapshot"),
-      sf("family"),
-    ],
+    [sf("source-disk"), sf("source-disk-zone"), sf("source-snapshot"), sf("family")],
   ),
   ...(["describe", "delete"] as const).map((op) =>
     command(

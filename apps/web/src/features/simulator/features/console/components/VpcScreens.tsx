@@ -59,9 +59,14 @@ const subnetModeText = (mode: NetworkSubnetMode): string => {
 };
 
 /** VPC ネットワーク › VPC ネットワーク: 一覧と作成（サブネット作成モードと標準のファイアウォール ルール）。 */
-export const VpcNetworksScreen = ({ world, project, handlers }: ScreenProps): ReactElement => {
+export const VpcNetworksScreen = ({
+  world,
+  project,
+  handlers,
+  outcome,
+}: ScreenProps): ReactElement => {
   const projectId = project.projectId;
-  const editor = useCreateForm(NetworkCreateForm, NetworkCreateForm.create);
+  const editor = useCreateForm(NetworkCreateForm, NetworkCreateForm.create, false, outcome);
   const form = Option.unwrapOr(editor.form, NetworkCreateForm.create());
   const subnets = World.subnetsOf(world, projectId);
   const create = (): void => {
@@ -70,7 +75,7 @@ export const VpcNetworksScreen = ({ world, project, handlers }: ScreenProps): Re
     const [first, ...rest] = NetworkCreateForm.toSteps(valid.value, projectId);
     if (first === undefined) return;
     handlers.submit({ ...first, next: Option.none, rest });
-    editor.close();
+    editor.awaitClose();
   };
   const remove = (name: string): void => {
     if (!handlers.confirm(`VPC ネットワーク ${name} を削除しますか？`)) return;
@@ -109,7 +114,7 @@ export const VpcNetworksScreen = ({ world, project, handlers }: ScreenProps): Re
             hint={
               form.subnetMode === "auto"
                 ? "各リージョンに 1 つずつ、10.128.0.0/9 の中からサブネットを作ります"
-                : "サブネットを自分で決めます（ここでは 1 つ目だけ作り、残りはサブネット画面か CLI で）"
+                : "サブネットを自分で決めます（ここでは 1 つ目だけ作り、追加は CLI の gcloud compute networks subnets create で作成）"
             }
           >
             {(id) => (
@@ -198,9 +203,14 @@ export const VpcNetworksScreen = ({ world, project, handlers }: ScreenProps): Re
 };
 
 /** VPC ネットワーク › ファイアウォール: 一覧と作成。 */
-export const FirewallScreen = ({ world, project, handlers }: ScreenProps): ReactElement => {
+export const FirewallScreen = ({
+  world,
+  project,
+  handlers,
+  outcome,
+}: ScreenProps): ReactElement => {
   const projectId = project.projectId;
-  const editor = useCreateForm(FirewallCreateForm, FirewallCreateForm.create);
+  const editor = useCreateForm(FirewallCreateForm, FirewallCreateForm.create, false, outcome);
   const form = Option.unwrapOr(editor.form, FirewallCreateForm.create());
   const create = (): void => {
     const valid = editor.submit();
@@ -210,7 +220,7 @@ export const FirewallScreen = ({ world, project, handlers }: ScreenProps): React
       note: `ファイアウォール ルールを作成 (${valid.value.name})`,
       next: Option.none,
     });
-    editor.close();
+    editor.awaitClose();
   };
   const remove = (name: string): void => {
     if (!handlers.confirm(`ファイアウォール ルール ${name} を削除しますか？`)) return;
@@ -289,7 +299,9 @@ export const FirewallScreen = ({ world, project, handlers }: ScreenProps): React
               />
             )}
           </Field>
-          <Field label="送信元 IPv4 範囲">
+          <Field
+            label={form.direction === Directions.Egress ? "宛先 IPv4 範囲" : "送信元 IPv4 範囲"}
+          >
             {(id) => (
               <TextInput
                 id={id}
@@ -335,13 +347,19 @@ export const FirewallScreen = ({ world, project, handlers }: ScreenProps): React
         columns={[
           { header: "名前", cell: (r) => <span className="font-mono">{r.name}</span> },
           { header: "ネットワーク", cell: (r) => r.network },
-          { header: "方向", cell: (r) => r.direction },
+          { header: "方向", cell: (r) => directionText(r.direction) },
           { header: "優先度", cell: (r) => String(r.priority) },
           {
             header: "ターゲット",
             cell: (r) => (r.targetTags.length === 0 ? "すべて" : r.targetTags.join(", ")),
           },
-          { header: "送信元", cell: (r) => r.sourceRanges.join(", ") || "-" },
+          {
+            header: "送信元 / 宛先",
+            cell: (r) =>
+              r.direction === Directions.Egress
+                ? r.destinationRanges.join(", ") || "-"
+                : r.sourceRanges.join(", ") || "-",
+          },
           {
             header: "プロトコル / ポート",
             cell: (r) =>
@@ -373,7 +391,7 @@ export const SubnetsScreen = ({ world, project, handlers }: ScreenProps): ReactE
         rows={World.subnetsOf(world, project.projectId)}
         keyOf={(s) => `${s.region}/${s.name}`}
         nameOf={(s) => `${s.name}（${s.region}）`}
-        empty="サブネットはありません。"
+        empty="サブネットはありません。gcloud compute networks subnets create で作成できます。"
         onDelete={remove}
         columns={[
           { header: "名前", cell: (s) => <span className="font-mono">{s.name}</span> },

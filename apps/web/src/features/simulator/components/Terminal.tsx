@@ -41,7 +41,7 @@ const Banner: readonly OutputLine[] = [
     tone: "muted",
   },
   {
-    text: "対応コマンドは `gcloud --help` / docs/COMMANDS.md、Tab で補完、↑↓ で履歴、Ctrl+L で画面消去。",
+    text: "対応コマンドは `gcloud --help` で確認できます。Tab で補完、↑↓ で履歴、Ctrl+L で画面消去。",
     tone: "muted",
   },
   { text: "", tone: "plain" },
@@ -249,7 +249,7 @@ export const Terminal = (props: TerminalProps): ReactElement => {
                   ariaLabel={isMaximized ? "ターミナルを元のサイズに戻す" : "ターミナルを拡大"}
                   onClick={onMaximizeToggle}
                 >
-                  ↗
+                  {isMaximized ? "↙" : "↗"}
                 </GhostButton>
               )}
               {onClose !== undefined && (

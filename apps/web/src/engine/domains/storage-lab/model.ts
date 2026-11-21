@@ -333,8 +333,11 @@ export const deleteObject = (
 };
 export const bucketRecord = (world: World, bucket: Bucket) => {
   const p = protectionFor(world, bucket.name);
+  const projectNumber = world.projects.find(
+    (pr) => pr.projectId === bucket.projectId,
+  )?.projectNumber;
   return {
-    ...Bucket.toRecord(bucket),
+    ...Bucket.toRecord(bucket, projectNumber),
     retentionPolicy: { retentionPeriod: p.retention, isLocked: p.locked },
     softDeletePolicy: { retentionDurationSeconds: p.softDelete },
     encryption: { defaultKmsKeyName: p.defaultKey },

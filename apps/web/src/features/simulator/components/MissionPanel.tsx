@@ -344,6 +344,7 @@ const MissionBrief = ({
 }: Readonly<
   { world: World; mission: Mission } & Pick<MissionPanelProps, "onStart" | "onAbandon" | "onInsert">
 >): ReactElement => {
+  const [confirmingAbandon, setConfirmingAbandon] = useState(false);
   const progress = World.findMissionProgress(world, mission.id);
   const status = Option.isSome(progress) ? progress.value.status : MissionStatuses.Available;
   const results = Mission.assertionResults(world, mission);
@@ -356,6 +357,37 @@ const MissionBrief = ({
         <StatusBadge status={status} />
       </div>
       <p className="mb-3 text-sm">{mission.description}</p>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {status !== MissionStatuses.InProgress && (
+          <PrimaryButton
+            onClick={() => {
+              setConfirmingAbandon(false);
+              onStart(mission.id);
+            }}
+          >
+            {status === MissionStatuses.Completed ? "再挑戦" : "開始"}
+          </PrimaryButton>
+        )}
+        {status === MissionStatuses.InProgress && !confirmingAbandon && (
+          <SecondaryButton onClick={() => setConfirmingAbandon(true)}>中断</SecondaryButton>
+        )}
+        {status === MissionStatuses.InProgress && confirmingAbandon && (
+          <>
+            <span className="text-muted text-xs">挑戦中の進捗を中断しますか？</span>
+            <SecondaryButton
+              onClick={() => {
+                setConfirmingAbandon(false);
+                onAbandon(mission.id);
+              }}
+            >
+              中断する
+            </SecondaryButton>
+            <TextButton tone="muted" onClick={() => setConfirmingAbandon(false)}>
+              キャンセル
+            </TextButton>
+          </>
+        )}
+      </div>
       <h5 className="mb-2 font-semibold">達成条件</h5>
       <ul className="mb-3 space-y-1 text-sm">
         {mission.assertions.map((assertion, index) => (
@@ -391,16 +423,6 @@ const MissionBrief = ({
           ))}
         </ol>
       )}
-      <div className="flex flex-wrap gap-2">
-        {status !== MissionStatuses.InProgress && (
-          <PrimaryButton onClick={() => onStart(mission.id)}>
-            {status === MissionStatuses.Completed ? "再挑戦" : "開始"}
-          </PrimaryButton>
-        )}
-        {status === MissionStatuses.InProgress && (
-          <SecondaryButton onClick={() => onAbandon(mission.id)}>中断</SecondaryButton>
-        )}
-      </div>
     </section>
   );
 };
@@ -439,7 +461,7 @@ export const MissionPanel = ({
             setView({ kind: "categories" });
           }}
         >
-          <option value="exam">添付試験ガイドの4セクション</option>
+          <option value="exam">ACE 試験ガイドの4セクション</option>
           <option value="practice">学習分野の5カテゴリ</option>
         </select>
       </label>
@@ -482,6 +504,7 @@ export const MissionPanel = ({
         </nav>
         <p className="px-4 text-sm text-muted">{categoryOf(selected)}</p>
         <MissionBrief
+          key={selected.id}
           world={world}
           mission={selected}
           onStart={onStart}
@@ -490,7 +513,10 @@ export const MissionPanel = ({
         />
       </div>
     );
-  if (view.kind === "list")
+  if (view.kind === "list") {
+    const filteredMissions = shown
+      .filter((m) => categoryOf(m) === view.domain)
+      .filter((m) => statusFilter === "all" || statusOf(m.id) === statusFilter);
     return (
       <section aria-label={view.domain} className="p-3">
         <SecondaryButton onClick={() => setView({ kind: "categories" })}>
@@ -514,11 +540,13 @@ export const MissionPanel = ({
         <p className="mb-3 text-sm text-muted">
           ミッションを1つ選ぶと、達成条件と手順を確認できます。
         </p>
-        <ul className="space-y-2">
-          {shown
-            .filter((m) => categoryOf(m) === view.domain)
-            .filter((m) => statusFilter === "all" || statusOf(m.id) === statusFilter)
-            .map((mission) => (
+        {filteredMissions.length === 0 ? (
+          <p className="rounded border border-line bg-canvas px-4 py-6 text-center text-muted text-sm">
+            条件に一致するミッションはありません。
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {filteredMissions.map((mission) => (
               <li key={mission.id}>
                 <NavItemButton
                   current={selected?.id === mission.id}
@@ -538,9 +566,11 @@ export const MissionPanel = ({
                 </NavItemButton>
               </li>
             ))}
-        </ul>
+          </ul>
+        )}
       </section>
     );
+  }
   return (
     <section aria-label="ミッションカテゴリ" className="p-3">
       <SectionHeading className="pb-2">カテゴリを選択</SectionHeading>

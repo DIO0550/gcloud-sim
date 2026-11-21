@@ -68,7 +68,7 @@ export const NetworkSteps = {
     route("private"),
     MissionStep.run(
       "private-subnetを/23へ広げる",
-      "gcloud compute networks subnets expand-ip-range private-subnet --region=us-central1 --prefix=10.20.0.0/23",
+      "gcloud compute networks subnets expand-ip-range private-subnet --region=us-central1 --prefix-length=23",
       "広げることはできても、縮めることはできません。",
     ),
     MissionStep.run(

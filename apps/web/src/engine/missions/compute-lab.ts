@@ -210,15 +210,15 @@ export const ComputeSteps = {
     ),
     MissionStep.run(
       "VMのインベントリを確かめる",
-      "gcloud compute os-config inventories describe managed-worker --zone=us-central1-a",
+      "gcloud compute os-config inventories describe managed-worker --location=us-central1-a",
     ),
     MissionStep.run(
       "security-updatesポリシーをVMに割り当てる",
-      "gcloud compute os-config os-policy-assignments create security-baseline --zone=us-central1-a --instance=managed-worker --policy=security-updates",
+      "gcloud compute os-config os-policy-assignments create security-baseline --location=us-central1-a --instance=managed-worker --policy=security-updates",
     ),
     MissionStep.run(
       "ポリシーを適用して結果を確かめる",
-      "sim compute os-config os-policy-assignments apply security-baseline --zone=us-central1-a",
+      "sim compute os-config os-policy-assignments apply security-baseline --location=us-central1-a",
     ),
   ],
   scopes: [

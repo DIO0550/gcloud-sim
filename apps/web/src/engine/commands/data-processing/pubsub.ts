@@ -186,7 +186,16 @@ export const PubsubDataCommands = [
     (ctx, a) =>
       Result.flatMap(subscriptionArg(ctx, name(a)), (sub) => {
         const old = settings(ctx.world, sub);
-        const retention = integer(a, "message-retention-duration", old.retention);
+        const rawRetention = text(a, "message-retention-duration");
+        const parseDurationSeconds = (raw: string): number => {
+          const m = /^(\d+)(s|m|h|d)?$/i.exec(raw.trim());
+          if (!m) return -1;
+          const amount = Number(m[1]);
+          const unit = (m[2] ?? "s").toLowerCase();
+          const scale = unit === "d" ? 86400 : unit === "h" ? 3600 : unit === "m" ? 60 : 1;
+          return amount * scale;
+        };
+        const retention = rawRetention ? parseDurationSeconds(rawRetention) : old.retention;
         const maxAttempts = integer(a, "max-delivery-attempts", old.maxAttempts);
         const deadLetterTopic = text(a, "dead-letter-topic", old.deadLetterTopic);
         if (
@@ -253,7 +262,7 @@ export const PubsubDataCommands = [
         );
       }),
     [
-      Flag.integer("message-retention-duration", "Retention seconds."),
+      sf("message-retention-duration"),
       Flag.integer("max-delivery-attempts", "Dead-letter attempts."),
       sf("dead-letter-topic", false, Candidates.pubsubTopics),
       Flag.integer("ack-deadline", "ACK seconds: 10..600."),
