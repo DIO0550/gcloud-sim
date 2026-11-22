@@ -10,7 +10,6 @@ import {
 import { ScreenRouter } from "@/features/simulator/features/console/components/ScreenRouter";
 import {
   ConsoleScreen,
-  ConsoleScreens,
   type ConsoleScreen as Screen,
 } from "@/features/simulator/features/console/domains/console-screen";
 import { enableApiCommand } from "@/features/simulator/features/console/domains/equivalent-command";
@@ -71,7 +70,7 @@ export const ConsoleView = ({
       next: Option.none,
     });
   };
-  const isVmCreate = screen === ConsoleScreens.VmCreate;
+  const isFullPageCreate = ConsoleScreen.isFullPageCreate(screen);
   const body = (): ReactElement => {
     if (!Option.isSome(project)) {
       return (
@@ -87,7 +86,7 @@ export const ConsoleView = ({
     );
     if (Option.isSome(missingApi)) {
       return (
-        <div className={isVmCreate ? "p-5" : ""}>
+        <div className={isFullPageCreate ? "p-5" : ""}>
           <EnableApiPrompt apiTitle={missingApi.value} onEnable={() => enableApi(projectId)} />
         </div>
       );
@@ -98,7 +97,7 @@ export const ConsoleView = ({
           outcome={Option.map(outcome, (o) => o.outcome)}
           onEnableApi={(name, title) => enableApi(projectId, name, title)}
           onDismiss={onOutcomeDismiss}
-          className={isVmCreate ? "mx-5 mt-4 mb-0" : ""}
+          className={isFullPageCreate ? "mx-5 mt-4 mb-0" : ""}
         />
         <ScreenRouter
           key={projectId}
@@ -113,11 +112,11 @@ export const ConsoleView = ({
       className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] md:grid-cols-[var(--console-nav-width)_minmax(0,1fr)]"
       data-testid="console-view"
     >
-      {navigationOpen && !isVmCreate && (
+      {navigationOpen && !isFullPageCreate && (
         <ConsoleNav screen={screen} onChange={handlers.changeScreen} onClose={onCloseNavigation} />
       )}
       <main
-        className={`min-h-0 min-w-0 bg-surface md:col-start-2 ${isVmCreate ? "flex flex-col overflow-auto xl:overflow-hidden" : "overflow-auto px-5 py-5"} ${terminalOpen ? "pb-[var(--console-terminal-height)]" : ""}`}
+        className={`min-h-0 min-w-0 md:col-start-2 ${isFullPageCreate ? "flex flex-col overflow-auto bg-surface xl:overflow-hidden" : "overflow-auto bg-canvas px-5 py-5"} ${terminalOpen ? "pb-[var(--console-terminal-height)]" : ""}`}
         aria-label="Console"
       >
         {body()}

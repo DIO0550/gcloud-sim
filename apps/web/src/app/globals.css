@@ -4,35 +4,35 @@
    トークンを足すときはここへ `@theme { --color-... }` の形で追加する。 */
 
 @theme {
-  /* 面と文字。canvas が下地、surface がカード。 */
-  --color-canvas: #f4f8fb;
+  /* 面と文字。Google Cloud Console 準拠の Material パレット。 */
+  --color-canvas: #f8f9fa;
   --color-surface: #ffffff;
-  --color-ink: #1d2126;
-  --color-muted: #5f6570;
+  --color-ink: #202124;
+  --color-muted: #5f6368;
 
   /* 罫線。 */
-  --color-line: #d9e5ee;
+  --color-line: #dadce0;
 
-  /* アクセント（選択中・進行中）。 */
-  --color-accent: #0b6aa8;
-  --color-accent-hover: #09588c;
-  --color-accent-soft: #e2f1fb;
+  /* アクセント（Google Blue: 選択中・進行中・主操作）。 */
+  --color-accent: #1a73e8;
+  --color-accent-hover: #1765cc;
+  --color-accent-soft: #e8f0fe;
 
-  /* 等幅の文字を置く面（タグの札・コード片）。 */
-  --color-code: #edf3f8;
+  /* 等幅の文字を置く面（検索バー・タグの札・コード片）。 */
+  --color-code: #f1f3f4;
 
   /* 等幅は IBM Plex Mono（layout.tsx が next/font で読み込み、変数で渡す）。 */
   --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
 
   /* 状態の色。ok = RUNNING / クリア、warn = Owner 以外で操作中・継承、danger = エラー・リセット。 */
-  --color-ok: #1a7f37;
-  --color-ok-ink: #116329;
-  --color-ok-soft: #e8f5ec;
-  --color-warn: #d4a72c;
-  --color-warn-ink: #9a6700;
-  --color-warn-soft: #fff8e1;
-  --color-danger: #b42318;
-  --color-danger-soft: #fdecea;
+  --color-ok: #1e8e3e;
+  --color-ok-ink: #137333;
+  --color-ok-soft: #e6f4ea;
+  --color-warn: #f9ab00;
+  --color-warn-ink: #b06000;
+  --color-warn-soft: #fef7e0;
+  --color-danger: #d93025;
+  --color-danger-soft: #fce8e6;
 }
 
 :root {

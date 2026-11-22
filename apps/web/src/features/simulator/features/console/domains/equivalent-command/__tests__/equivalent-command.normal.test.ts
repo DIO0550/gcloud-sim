@@ -6,12 +6,21 @@ import { World } from "@/engine/domains/world";
 import {
   BucketCreateForm,
   BudgetCreateForm,
+  ClusterCreateForm,
+  clusterCredentialsCommand,
   DeleteCommand,
+  DiskCreateForm,
   FieldErrors,
   FirewallCreateForm,
   IamGrantForm,
+  ImageCreateForm,
+  InstanceGroupCreateForm,
+  InstanceTemplateCreateForm,
   RoleCreateForm,
+  RunServiceCreateForm,
   ServiceAccountCreateForm,
+  SnapshotCreateForm,
+  SubnetCreateForm,
   VmAction,
   VmCreateForm,
 } from "@/features/simulator/features/console/domains/equivalent-command";
@@ -228,4 +237,150 @@ test("外部 IP のない VM への SSH は --tunnel-through-iap を付け、非
       "ace-dev-01",
     ),
   ).toBe("gcloud storage buckets delete gs://empty-bucket --project=ace-dev-01 --quiet");
+});
+
+test("GKE（Autopilot / Standard）・Cloud Run・サブネットの作成コマンドが CLI でそのまま通る", () => {
+  const autoCmd = ClusterCreateForm.toCommand(
+    {
+      ...ClusterCreateForm.create({ zone: "asia-northeast1-a", region: "asia-northeast1" }),
+      name: "auto-cluster",
+    },
+    "ace-dev-01",
+  );
+  expect(autoCmd).toBe(
+    "gcloud container clusters create-auto auto-cluster --project=ace-dev-01 --region=asia-northeast1 --release-channel=regular",
+  );
+  const stdCmd = ClusterCreateForm.toCommand(
+    {
+      ...ClusterCreateForm.create({ zone: "asia-northeast1-a", region: "asia-northeast1" }),
+      mode: "standard",
+      name: "std-cluster",
+      numNodes: "2",
+      enableNetworkPolicy: true,
+      enableWorkloadIdentity: true,
+    },
+    "ace-dev-01",
+  );
+  expect(stdCmd).toContain("gcloud container clusters create std-cluster");
+  expect(stdCmd).toContain("--enable-network-policy");
+  expect(stdCmd).toContain("--workload-pool=ace-dev-01.svc.id.goog");
+  expect(
+    clusterCredentialsCommand({ name: "std-cluster", location: "asia-northeast1-a" }, "ace-dev-01"),
+  ).toBe(
+    "gcloud container clusters get-credentials std-cluster --zone=asia-northeast1-a --project=ace-dev-01",
+  );
+
+  let s = run(session(), "gcloud services enable container.googleapis.com run.googleapis.com");
+  s = run(s, autoCmd);
+  s = run(s, stdCmd);
+  expect(World.clustersOf(s.world, "ace-dev-01").map((c) => c.name)).toEqual([
+    "auto-cluster",
+    "std-cluster",
+  ]);
+
+  const runCmd = RunServiceCreateForm.toCommand(
+    { ...RunServiceCreateForm.create("asia-northeast1"), name: "hello-api" },
+    "ace-dev-01",
+  );
+  s = run(s, runCmd);
+  expect(World.runServicesOf(s.world, "ace-dev-01").map((r) => r.name)).toEqual(["hello-api"]);
+
+  s = run(s, "gcloud compute networks create custom-vpc --subnet-mode=custom");
+  const subnetCmd = SubnetCreateForm.toCommand(
+    {
+      ...SubnetCreateForm.create({ network: "custom-vpc", region: "asia-northeast1" }),
+      name: "app-sub",
+      privateIpGoogleAccess: true,
+    },
+    "ace-dev-01",
+  );
+  s = run(s, subnetCmd);
+  expect(World.findSubnet(s.world, "ace-dev-01", "asia-northeast1", "app-sub")).toEqual(
+    expect.objectContaining({ some: true }),
+  );
+});
+
+test("Compute のテンプレート・MIG・ディスク・スナップショット・イメージ作成コマンドが CLI でそのまま通る", () => {
+  let s = session();
+  const tplCmd = InstanceTemplateCreateForm.toCommand(
+    {
+      ...InstanceTemplateCreateForm.create(),
+      name: "web-tpl",
+      tags: "http-server,https-server",
+      scopes: "cloud-platform",
+      startupScript: "#!/bin/bash; apt-get update",
+      metadata: [{ key: "env", value: "prod" }],
+    },
+    "ace-dev-01",
+  );
+  expect(tplCmd).toContain("--scopes=cloud-platform");
+  expect(tplCmd).toContain("--tags=http-server,https-server");
+  expect(tplCmd).toContain('--metadata="startup-script=#!/bin/bash; apt-get update,env=prod"');
+  s = run(s, tplCmd);
+  const createdTpl = World.namedOf(s.world, "instanceTemplates", "ace-dev-01")[0];
+  expect(createdTpl?.name).toBe("web-tpl");
+  expect(createdTpl?.metadata).toEqual({
+    "startup-script": "#!/bin/bash; apt-get update",
+    env: "prod",
+  });
+
+  const migCmd = InstanceGroupCreateForm.toCommand(
+    {
+      ...InstanceGroupCreateForm.create({
+        zone: "asia-northeast1-a",
+        region: "asia-northeast1",
+        template: "web-tpl",
+      }),
+      name: "web-mig",
+      size: "2",
+    },
+    "ace-dev-01",
+  );
+  s = run(s, migCmd);
+  expect(
+    s.world.instanceGroups.filter((g) => g.projectId === "ace-dev-01").map((g) => g.name),
+  ).toEqual(["web-mig"]);
+
+  const diskCmd = DiskCreateForm.toCommand(
+    { ...DiskCreateForm.create("asia-northeast1-a"), name: "data-disk", size: "50GB" },
+    "ace-dev-01",
+  );
+  s = run(s, diskCmd);
+  expect(World.disksOf(s.world, "ace-dev-01").map((d) => d.name)).toContain("data-disk");
+
+  const snapCmd = SnapshotCreateForm.toCommand(
+    { name: "data-snap", sourceDisk: "asia-northeast1-a/data-disk" },
+    "ace-dev-01",
+  );
+  s = run(s, snapCmd);
+  expect(World.diskSnapshotsOf(s.world, "ace-dev-01").map((sn) => sn.name)).toContain("data-snap");
+
+  const imgCmd = ImageCreateForm.toCommand(
+    {
+      name: "data-img",
+      sourceKind: "snapshot",
+      sourceDisk: "",
+      sourceSnapshot: "data-snap",
+      family: "app-family",
+    },
+    "ace-dev-01",
+  );
+  s = run(s, imgCmd);
+  expect(s.world.computeLab.images.map((i) => i.name)).toContain("data-img");
+
+  const customImgTplCmd = InstanceTemplateCreateForm.toCommand(
+    {
+      ...InstanceTemplateCreateForm.create(),
+      name: "custom-img-tpl",
+      imageKind: "custom",
+      customImage: "data-img",
+    },
+    "ace-dev-01",
+  );
+  expect(customImgTplCmd).toContain("--image=data-img");
+  expect(customImgTplCmd).not.toContain("--image-family=");
+  s = run(s, customImgTplCmd);
+  expect(World.namedOf(s.world, "instanceTemplates", "ace-dev-01").map((t) => t.name)).toContain(
+    "custom-img-tpl",
+  );
 });

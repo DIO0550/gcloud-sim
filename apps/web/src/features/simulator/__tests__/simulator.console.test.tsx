@@ -510,3 +510,100 @@ test("VPC ネットワークの作成はネットワーク・サブネット・�
     expect(screenText(terminal)).toContain("--network=managementnet --subnet=managementsubnet-us"),
   );
 });
+
+test("GKE クラスタ（Autopilot / Standard）と Cloud Run サービスを GUI から作成できる", async () => {
+  const user = userEvent.setup();
+  const { terminal } = renderSimulator();
+  await typeLine(terminal, "gcloud services enable container.googleapis.com run.googleapis.com");
+  await waitFor(() => expect(screenText(terminal)).toContain("finished successfully"));
+
+  await openConsole(user);
+  await navigateConsole(user, "クラスタ");
+  await user.click(screen.getByRole("button", { name: "＋ クラスタを作成" }));
+  await user.type(screen.getByLabelText("名前"), "auto-gke");
+  await user.click(screen.getByRole("button", { name: "作成" }));
+  const clusterTable = await screen.findByRole("table", { name: "クラスタ" });
+  expect(within(clusterTable).getByText("auto-gke")).toBeInTheDocument();
+  expect(within(clusterTable).getByText("Autopilot")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "＋ クラスタを作成" }));
+  await user.click(screen.getByRole("radio", { name: /GKE Standard/ }));
+  await user.type(screen.getByLabelText("名前"), "std-gke");
+  await user.click(screen.getByRole("button", { name: "作成" }));
+  expect(await within(clusterTable).findByText("std-gke")).toBeInTheDocument();
+  expect(within(clusterTable).getByText("Standard")).toBeInTheDocument();
+
+  await user.click(within(clusterTable).getByRole("button", { name: "std-gke に接続" }));
+  await waitFor(() =>
+    expect(screenText(terminal)).toContain("gcloud container clusters get-credentials std-gke"),
+  );
+
+  await navigateConsole(user, "サービス");
+  await user.click(screen.getByRole("button", { name: "＋ サービスを作成" }));
+  await user.type(screen.getByLabelText("サービス名"), "hello-run");
+  await user.click(screen.getByRole("button", { name: "作成" }));
+  const runTable = await screen.findByRole("table", { name: "Cloud Run サービス" });
+  expect(within(runTable).getByText("hello-run")).toBeInTheDocument();
+});
+
+test("ディスク・スナップショット・カスタムイメージを GUI から順に作成できる", async () => {
+  const user = userEvent.setup();
+  renderSimulator();
+  await openConsole(user);
+
+  await navigateConsole(user, "ディスク");
+  await user.click(screen.getByRole("button", { name: "＋ ディスクを作成" }));
+  await user.type(screen.getByLabelText("名前"), "data-disk-gui");
+  await user.click(screen.getByRole("button", { name: "作成" }));
+  const diskTable = await screen.findByRole("table", { name: "ディスク" });
+  expect(within(diskTable).getByText("data-disk-gui")).toBeInTheDocument();
+
+  await navigateConsole(user, "スナップショット");
+  await user.click(screen.getByRole("button", { name: "＋ スナップショットを作成" }));
+  await user.type(screen.getByLabelText("名前"), "snap-gui");
+  await user.click(screen.getByRole("button", { name: "作成" }));
+  const snapTable = await screen.findByRole("table", { name: "スナップショット" });
+  expect(within(snapTable).getByText("snap-gui")).toBeInTheDocument();
+
+  await navigateConsole(user, "イメージ");
+  await user.click(screen.getByRole("button", { name: "＋ イメージを作成" }));
+  await user.type(screen.getByLabelText("名前"), "img-gui");
+  await user.click(screen.getByRole("button", { name: "作成" }));
+  const imageTable = await screen.findByRole("table", { name: "イメージ" });
+  expect(within(imageTable).getByText("img-gui")).toBeInTheDocument();
+});
+
+test("インスタンス テンプレート作成専用ページで HTTP タグ・起動スクリプト・メタデータを設定して作成できる", async () => {
+  const user = userEvent.setup();
+  const { terminal } = renderSimulator();
+  await openConsole(user);
+
+  await navigateConsole(user, "インスタンス テンプレート");
+  await user.click(screen.getByRole("button", { name: "＋ インスタンス テンプレートを作成" }));
+  expect(
+    screen.getByRole("navigation", { name: "インスタンス テンプレート作成の設定" }),
+  ).toBeInTheDocument();
+
+  await user.type(screen.getByLabelText("名前"), "web-tpl-v1");
+  await user.click(screen.getByRole("button", { name: /ネットワーキング/ }));
+  await user.click(screen.getByRole("checkbox", { name: /HTTP トラフィックを許可する/ }));
+  await user.click(screen.getByRole("button", { name: /管理・詳細設定/ }));
+  await user.click(screen.getByRole("button", { name: "サンプルを入力" }));
+  await user.click(screen.getByRole("button", { name: "＋ 項目を追加" }));
+  await user.type(screen.getByLabelText("メタデータ キー 1"), "env");
+  await user.type(screen.getByLabelText("メタデータ 値 1"), "prod");
+
+  const panel = screen.getByRole("region", { name: "同等のコマンドライン" });
+  expect(panel).toHaveTextContent("gcloud compute instance-templates create web-tpl-v1");
+  expect(panel).toHaveTextContent("--tags=http-server");
+  expect(panel).toHaveTextContent("startup-script=");
+  expect(panel).toHaveTextContent("env=prod");
+
+  await user.click(screen.getByRole("button", { name: "作成" }));
+  const table = await screen.findByRole("table", { name: "インスタンス テンプレート" });
+  expect(within(table).getByText("web-tpl-v1")).toBeInTheDocument();
+  expect(within(table).getByText("http-server")).toBeInTheDocument();
+  await waitFor(() =>
+    expect(screenText(terminal)).toContain("$ gcloud compute instance-templates create web-tpl-v1"),
+  );
+});

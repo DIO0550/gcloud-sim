@@ -14,6 +14,7 @@ import {
   RolesScreen,
   ServiceAccountsScreen,
 } from "@/features/simulator/features/console/components/IamScreens";
+import { InstanceTemplateCreateScreen } from "@/features/simulator/features/console/components/InstanceTemplateCreateScreen";
 import {
   MarketplaceScreen,
   SolutionDeploymentsScreen,
@@ -45,6 +46,8 @@ export const ScreenRouter = ({
       return <VmListScreen {...props} />;
     case "vm-create":
       return <VmCreateScreen {...props} />;
+    case "instance-template-create":
+      return <InstanceTemplateCreateScreen {...props} />;
     case "instance-templates":
     case "instance-groups":
     case "disks":
