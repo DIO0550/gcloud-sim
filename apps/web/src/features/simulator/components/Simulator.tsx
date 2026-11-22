@@ -4,10 +4,13 @@ import { type CSSProperties, type ReactElement, useCallback, useEffect, useState
 import { Tab } from "@/components/Tab";
 import { TextButton } from "@/components/TextButton";
 import { Engine } from "@/engine";
+import type { FileEdit } from "@/engine/domains/configuration-files";
 import { KubeContext } from "@/engine/domains/kube-context";
 import { World as WorldOps } from "@/engine/domains/world";
 import { Mission } from "@/engine/missions";
 import { ChangeLog } from "@/features/simulator/components/ChangeLog";
+import { CloudShellToolbar } from "@/features/simulator/components/CloudShellToolbar";
+import { CloudShellWebPreviewDialog } from "@/features/simulator/components/CloudShellWebPreviewDialog";
 import { FileWorkspace } from "@/features/simulator/components/FileWorkspace";
 import { Header } from "@/features/simulator/components/Header";
 import { HierarchyCreateDialog } from "@/features/simulator/components/HierarchyCreateDialog";
@@ -66,9 +69,29 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
   const [state, dispatch] = useSimulator(start);
   const [navigationOpen, setNavigationOpen] = useState(true);
   const [terminalMaximized, setTerminalMaximized] = useState(false);
+  const [cloudShellEditorOpen, setCloudShellEditorOpen] = useState(false);
+  const [webPreviewPort, setWebPreviewPort] = useState(8080);
+  const [webPreviewOpen, setWebPreviewOpen] = useState(false);
   const [consoleMissionsOpen, setConsoleMissionsOpen] = useState(false);
   const panels = usePanelWidths();
   const { world, saveState } = state;
+  const currentProjectId = Option.unwrapOr(WorldOps.currentProjectId(world), "未設定");
+  const currentPrincipal = Option.unwrapOr(WorldOps.currentPrincipal(world), "未選択");
+  const runningContainerPorts = [
+    ...new Set(
+      world.containerLab.containers
+        .filter((container) => container.status === "RUNNING" && container.hostPort > 0)
+        .map((container) => container.hostPort),
+    ),
+  ];
+  const editFiles = (edit: FileEdit): Result<void, string> => {
+    const result = Engine.editFiles(world, edit);
+    if (!result.ok) {
+      return Result.err(result.error);
+    }
+    dispatch({ type: "filesChanged", world: result.value });
+    return Result.ok(undefined);
+  };
   const namespace = Option.flatMap(WorldOps.currentProjectId(world), (projectId) =>
     Option.flatMap(KubeContext.current(world, projectId), (cluster) =>
       Option.fromNullable(KubeContext.configuredNamespace(world, cluster)),
@@ -123,7 +146,11 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
   const isCreate = ConsoleScreen.isFullPageCreate(state.consoleScreen);
   const consoleLayout = {
     "--console-nav-width": navigationOpen && !isCreate ? `${panels.console.width}px` : "0px",
-    "--console-terminal-height": terminalMaximized ? "70dvh" : "18rem",
+    "--console-terminal-height": terminalMaximized
+      ? "70dvh"
+      : cloudShellEditorOpen
+        ? "32rem"
+        : "18rem",
   } as CSSProperties;
   const panelLayout = {
     ...consoleLayout,
@@ -261,32 +288,67 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
           <div
             className={
               isConsole
-                ? `${state.consoleTerminalOpen ? "flex" : "hidden"} absolute right-0 bottom-0 left-0 z-20 h-[var(--console-terminal-height)] flex-col border-line border-t md:left-[var(--console-nav-width)]`
+                ? `${state.consoleTerminalOpen ? "flex" : "hidden"} absolute right-0 bottom-0 left-0 z-20 h-[var(--console-terminal-height)] flex-col border-line border-t bg-surface shadow-[0_-4px_16px_rgba(60,64,67,0.12)] md:left-[var(--console-nav-width)]`
                 : "contents"
             }
           >
-            <Terminal
-              transcript={state.transcript}
-              screenClearCount={state.screenClearCount}
-              pendingInsert={state.pendingInsert}
-              onInsertConsumed={insertConsumed}
-              onSubmit={submit}
-              completionCandidates={completionCandidates}
-              createView={io.createTerminalView}
-              caption={terminalCaption}
-              consoleMode={isConsole}
-              projectId={Option.unwrapOr(WorldOps.currentProjectId(world), "未設定")}
-              isMaximized={terminalMaximized}
-              onMaximizeToggle={() => setTerminalMaximized((maximized) => !maximized)}
-              onClose={() => dispatch({ type: "consoleTerminalToggled", open: false })}
-              status={
-                <span className={saveState.kind === "saved" ? "text-ok" : "text-danger"}>
-                  {saveState.kind === "saved"
-                    ? "● 自動保存済み"
-                    : `● 保存に失敗: ${saveState.reason}`}
-                </span>
-              }
-            />
+            {isConsole && (
+              <CloudShellToolbar
+                projectId={currentProjectId}
+                principal={currentPrincipal}
+                editorOpen={cloudShellEditorOpen}
+                onEditorToggle={() => setCloudShellEditorOpen((open) => !open)}
+                previewPort={webPreviewPort}
+                runningPorts={runningContainerPorts}
+                onOpenPreview={(port) => {
+                  setWebPreviewPort(port);
+                  setWebPreviewOpen(true);
+                }}
+                isMaximized={terminalMaximized}
+                onMaximizeToggle={() => setTerminalMaximized((maximized) => !maximized)}
+                onClose={() => dispatch({ type: "consoleTerminalToggled", open: false })}
+                status={
+                  <span className={saveState.kind === "saved" ? "text-ok" : "text-danger"}>
+                    {saveState.kind === "saved"
+                      ? "● 自動保存済み"
+                      : `● 保存に失敗: ${saveState.reason}`}
+                  </span>
+                }
+              />
+            )}
+            <div className={isConsole ? "flex min-h-0 flex-1 overflow-hidden" : "contents"}>
+              {isConsole && cloudShellEditorOpen && (
+                <aside
+                  aria-label="Cloud Shell エディタ"
+                  className="w-1/2 min-w-0 overflow-y-auto border-line border-r bg-surface"
+                >
+                  <FileWorkspace world={world} onEdit={editFiles} />
+                </aside>
+              )}
+              <Terminal
+                transcript={state.transcript}
+                screenClearCount={state.screenClearCount}
+                pendingInsert={state.pendingInsert}
+                onInsertConsumed={insertConsumed}
+                onSubmit={submit}
+                completionCandidates={completionCandidates}
+                createView={io.createTerminalView}
+                caption={terminalCaption}
+                consoleMode={isConsole}
+                hideHeader={isConsole}
+                projectId={currentProjectId}
+                isMaximized={terminalMaximized}
+                onMaximizeToggle={() => setTerminalMaximized((maximized) => !maximized)}
+                onClose={() => dispatch({ type: "consoleTerminalToggled", open: false })}
+                status={
+                  <span className={saveState.kind === "saved" ? "text-ok" : "text-danger"}>
+                    {saveState.kind === "saved"
+                      ? "● 自動保存済み"
+                      : `● 保存に失敗: ${saveState.reason}`}
+                  </span>
+                }
+              />
+            </div>
           </div>
         </div>
         {!isConsole && (
@@ -336,17 +398,7 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
                 <ChangeLog world={world} transcript={state.transcript} />
               )}
               {state.panelTab === PanelTabs.Files && (
-                <FileWorkspace
-                  world={world}
-                  onEdit={(edit) => {
-                    const result = Engine.editFiles(world, edit);
-                    if (!result.ok) {
-                      return Result.err(result.error);
-                    }
-                    dispatch({ type: "filesChanged", world: result.value });
-                    return Result.ok(undefined);
-                  }}
-                />
+                <FileWorkspace world={world} onEdit={editFiles} />
               )}
             </div>
           </aside>
@@ -420,6 +472,14 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
           onExport={() => io.download(world, io.now())}
           onImport={importFile}
           onReset={reset}
+        />
+      )}
+      {webPreviewOpen && (
+        <CloudShellWebPreviewDialog
+          port={webPreviewPort}
+          world={world}
+          onChangePort={(port) => setWebPreviewPort(port)}
+          onClose={() => setWebPreviewOpen(false)}
         />
       )}
     </div>
