@@ -1,13 +1,6 @@
 import type { ReactElement } from "react";
-import { Checkbox } from "@/components/Checkbox";
 import { Select } from "@/components/Select";
-import { MachineType, PublicImage, Region, Regions, Zone } from "@/engine/domains/catalog";
-import {
-  type BootDiskType,
-  BootDiskTypes,
-  type ProvisioningModel,
-  ProvisioningModels,
-} from "@/engine/domains/compute";
+import { PublicImage, Region, Regions, Zone } from "@/engine/domains/catalog";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { MigLocation } from "@/engine/domains/resource-location";
 import { World } from "@/engine/domains/world";
@@ -20,8 +13,10 @@ import {
   RadioGroup,
   ResourceTable,
   ScreenTitle,
+  SecondaryButton,
   TextInput,
 } from "@/features/simulator/features/console/components/ConsoleParts";
+import { ConsoleScreens } from "@/features/simulator/features/console/domains/console-screen";
 import {
   DeleteCommand,
   DiskCreateForm,
@@ -29,7 +24,6 @@ import {
   ImageCreateForm,
   type ImageSourceKind,
   InstanceGroupCreateForm,
-  InstanceTemplateCreateForm,
   SnapshotCreateForm,
 } from "@/features/simulator/features/console/domains/equivalent-command";
 import { useCreateForm } from "@/features/simulator/features/console/hooks/use-create-form";
@@ -82,34 +76,8 @@ const diskChoicesOf = (world: World, projectId: string): readonly DiskChoice[] =
   return list;
 };
 
-const InstanceTemplatesScreen = ({
-  world,
-  project,
-  handlers,
-  outcome,
-}: ScreenProps): ReactElement => {
+const InstanceTemplatesScreen = ({ world, project, handlers }: ScreenProps): ReactElement => {
   const projectId = project.projectId;
-  const editor = useCreateForm(
-    InstanceTemplateCreateForm,
-    InstanceTemplateCreateForm.create,
-    false,
-    outcome,
-  );
-  const form = Option.unwrapOr(editor.form, InstanceTemplateCreateForm.create());
-  const networks = World.networksOf(world, projectId);
-  const publicImages = PublicImage.all();
-  const imageKey = `${form.imageProject}/${form.imageFamily}`;
-
-  const create = (): void => {
-    const valid = editor.submit();
-    if (!Option.isSome(valid)) return;
-    handlers.submit({
-      line: InstanceTemplateCreateForm.toCommand(valid.value, projectId),
-      note: `インスタンス テンプレートを作成 (${valid.value.name})`,
-      next: Option.none,
-    });
-    editor.awaitClose();
-  };
 
   return (
     <div>
@@ -117,135 +85,53 @@ const InstanceTemplatesScreen = ({
         eyebrow="Compute Engine"
         title="インスタンス テンプレート"
         trailing={
-          <PrimaryButton onClick={editor.open}>＋ インスタンス テンプレートを作成</PrimaryButton>
+          <PrimaryButton
+            onClick={() => handlers.changeScreen(ConsoleScreens.InstanceTemplateCreate)}
+          >
+            ＋ インスタンス テンプレートを作成
+          </PrimaryButton>
         }
       />
-      {Option.isSome(editor.form) && (
-        <CreateFormSection
-          label="インスタンス テンプレートを作成"
-          columns={2}
-          command={InstanceTemplateCreateForm.toCommand(form, projectId)}
-          onCopy={handlers.copy}
-          onInsert={handlers.insert}
-          onSubmit={create}
-          onCancel={editor.close}
-          submitLabel="作成"
-        >
-          <Field label="名前" required error={editor.errors.name}>
-            {(id) => (
-              <TextInput
-                id={id}
-                value={form.name}
-                placeholder="web-template"
-                onChange={(v) => editor.set("name", v)}
-              />
-            )}
-          </Field>
-          <Field label="マシンタイプ">
-            {(id) => (
-              <Select
-                id={id}
-                value={form.machineType}
-                onChange={(m) => editor.set("machineType", m)}
-                options={MachineType.all().map((m) => ({
-                  value: m.name,
-                  label: `${m.name} (${m.guestCpus} vCPU, ${m.memoryMb / 1024} GB)`,
-                }))}
-              />
-            )}
-          </Field>
-          <Field label="ブートディスク イメージ">
-            {(id) => (
-              <Select
-                id={id}
-                value={imageKey}
-                onChange={(value) => {
-                  const found = publicImages.find(
-                    (img) => `${img.project}/${img.family}` === value,
-                  );
-                  if (found !== undefined) {
-                    editor.set("imageFamily", found.family);
-                    editor.set("imageProject", found.project);
-                  }
-                }}
-                options={publicImages.map((img) => ({
-                  value: `${img.project}/${img.family}`,
-                  label: `${img.family} (${img.project})`,
-                }))}
-              />
-            )}
-          </Field>
-          <Field label="ブートディスク サイズ" error={editor.errors.bootDiskSize}>
-            {(id) => (
-              <TextInput
-                id={id}
-                value={form.bootDiskSize}
-                onChange={(v) => editor.set("bootDiskSize", v)}
-              />
-            )}
-          </Field>
-          <Field label="ブートディスク タイプ">
-            {(id) => (
-              <Select<BootDiskType>
-                id={id}
-                value={form.bootDiskType}
-                onChange={(v) => editor.set("bootDiskType", v)}
-                options={Object.values(BootDiskTypes).map((t) => ({ value: t, label: t }))}
-              />
-            )}
-          </Field>
-          <Field label="ネットワーク">
-            {(id) => (
-              <Select
-                id={id}
-                value={form.network}
-                onChange={(v) => editor.set("network", v)}
-                options={
-                  networks.length > 0
-                    ? networks.map((n) => ({ value: n.name, label: n.name }))
-                    : [{ value: "default", label: "default" }]
-                }
-              />
-            )}
-          </Field>
-          <Field label="ネットワーク タグ" hint="カンマ区切り（例: http-server,https-server）">
-            {(id) => (
-              <TextInput id={id} value={form.tags} onChange={(v) => editor.set("tags", v)} />
-            )}
-          </Field>
-          <Field label="プロビジョニング モデル">
-            {(id) => (
-              <Select<ProvisioningModel>
-                id={id}
-                value={form.provisioningModel}
-                onChange={(v) => editor.set("provisioningModel", v)}
-                options={[
-                  { value: ProvisioningModels.Standard, label: "標準 (STANDARD)" },
-                  { value: ProvisioningModels.Spot, label: "Spot (SPOT)" },
-                ]}
-              />
-            )}
-          </Field>
-          <div className="sm:col-span-2">
-            <Checkbox checked={form.externalIp} onChange={(v) => editor.set("externalIp", v)}>
-              外部 IP アドレスを割り当てる（オフにすると --no-address）
-            </Checkbox>
-          </div>
-        </CreateFormSection>
-      )}
+      <p className="mb-4 text-muted text-xs">
+        インスタンス テンプレートは不変のグローバル
+        リソースです。作成後に変更はできないため、更新時は新しいテンプレートを作成します。
+      </p>
       <ResourceTable
         label="インスタンス テンプレート"
         rows={World.namedOf(world, "instanceTemplates", projectId)}
         keyOf={(t) => t.name}
         empty="インスタンス テンプレートはまだありません。上の「インスタンス テンプレートを作成」または gcloud compute instance-templates create で作成できます。"
+        rowActions={(t) => (
+          <SecondaryButton
+            ariaLabel={`${t.name} で MIG を作成`}
+            onClick={() => handlers.changeScreen(ConsoleScreens.InstanceGroups)}
+          >
+            MIG を作成
+          </SecondaryButton>
+        )}
         columns={[
           {
             header: "名前",
             cell: (t) => <span className="font-medium font-mono text-accent">{t.name}</span>,
           },
-          { header: "マシンタイプ", cell: (t) => t.machineType },
+          { header: "ロケーション", cell: () => "グローバル" },
+          {
+            header: "マシンタイプ",
+            cell: (t) => <span className="font-mono">{t.machineType}</span>,
+          },
           { header: "イメージ", cell: (t) => t.image.name },
-          { header: "ネットワーク", cell: (t) => t.network },
+          {
+            header: "ネットワーク",
+            cell: (t) => (Option.isSome(t.subnet) ? `${t.network} / ${t.subnet.value}` : t.network),
+          },
+          {
+            header: "タグ",
+            cell: (t) => (t.tags.length > 0 ? t.tags.join(", ") : "-"),
+          },
+          {
+            header: "プロビジョニング",
+            cell: (t) => (t.provisioningModel === "SPOT" ? "Spot" : "標準"),
+          },
         ]}
       />
     </div>

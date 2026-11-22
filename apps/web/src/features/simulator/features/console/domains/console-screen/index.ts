@@ -11,6 +11,7 @@ export const ConsoleScreens = {
   VmList: "vm-list",
   VmCreate: "vm-create",
   InstanceTemplates: "instance-templates",
+  InstanceTemplateCreate: "instance-template-create",
   InstanceGroups: "instance-groups",
   Disks: "disks",
   Snapshots: "snapshots",
@@ -65,6 +66,11 @@ const Placements: Readonly<Record<ConsoleScreen, ReturnType<typeof place>>> = {
   "vm-list": place("compute", Option.some("compute.googleapis.com")),
   "vm-create": place("compute", Option.some("compute.googleapis.com"), Option.some("vm-list")),
   "instance-templates": place("compute", Option.some("compute.googleapis.com")),
+  "instance-template-create": place(
+    "compute",
+    Option.some("compute.googleapis.com"),
+    Option.some("instance-templates"),
+  ),
   "instance-groups": place("compute", Option.some("compute.googleapis.com")),
   disks: place("compute", Option.some("compute.googleapis.com")),
   snapshots: place("compute", Option.some("compute.googleapis.com")),
@@ -99,6 +105,11 @@ export const ConsoleScreen = {
   /** 左ナビで現在地として光る項目。 */
   navItem(screen: ConsoleScreen): ConsoleScreen {
     return placementOf(screen).navItem;
+  },
+
+  /** 専用フルページの作成画面（左の製品ナビを畳み、CreatePage で描く画面）か。 */
+  isFullPageCreate(screen: ConsoleScreen): boolean {
+    return screen === ConsoleScreens.VmCreate || screen === ConsoleScreens.InstanceTemplateCreate;
   },
 
   /** セクションごとのナビ項目（自分自身がナビ項目である画面だけ）。 */

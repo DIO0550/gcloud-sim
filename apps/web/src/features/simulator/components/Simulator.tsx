@@ -19,7 +19,7 @@ import { SettingsDialog } from "@/features/simulator/components/SettingsDialog";
 import { Terminal } from "@/features/simulator/components/Terminal";
 import { HierarchyCreate } from "@/features/simulator/domains/hierarchy-create";
 import { type ConsoleHandlers, ConsoleView } from "@/features/simulator/features/console";
-import { ConsoleScreens } from "@/features/simulator/features/console/domains/console-screen";
+import { ConsoleScreen } from "@/features/simulator/features/console/domains/console-screen";
 import { usePanelWidths } from "@/features/simulator/hooks/use-panel-widths";
 import {
   type PanelTab,
@@ -120,7 +120,7 @@ export const Simulator = ({ start, io }: SimulatorProps): ReactElement => {
 
   const counts = Mission.counts(world);
   const isConsole = state.view === Views.Console;
-  const isCreate = state.consoleScreen === ConsoleScreens.VmCreate;
+  const isCreate = ConsoleScreen.isFullPageCreate(state.consoleScreen);
   const consoleLayout = {
     "--console-nav-width": navigationOpen && !isCreate ? `${panels.console.width}px` : "0px",
     "--console-terminal-height": terminalMaximized ? "70dvh" : "18rem",

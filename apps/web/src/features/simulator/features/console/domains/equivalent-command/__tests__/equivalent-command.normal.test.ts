@@ -303,13 +303,26 @@ test("GKE（Autopilot / Standard）・Cloud Run・サブネットの作成コマ
 test("Compute のテンプレート・MIG・ディスク・スナップショット・イメージ作成コマンドが CLI でそのまま通る", () => {
   let s = session();
   const tplCmd = InstanceTemplateCreateForm.toCommand(
-    { ...InstanceTemplateCreateForm.create(), name: "web-tpl", tags: "http-server" },
+    {
+      ...InstanceTemplateCreateForm.create(),
+      name: "web-tpl",
+      tags: "http-server,https-server",
+      scopes: "cloud-platform",
+      startupScript: "#!/bin/bash; apt-get update",
+      metadata: [{ key: "env", value: "prod" }],
+    },
     "ace-dev-01",
   );
+  expect(tplCmd).toContain("--scopes=cloud-platform");
+  expect(tplCmd).toContain("--tags=http-server,https-server");
+  expect(tplCmd).toContain('--metadata="startup-script=#!/bin/bash; apt-get update,env=prod"');
   s = run(s, tplCmd);
-  expect(World.namedOf(s.world, "instanceTemplates", "ace-dev-01").map((t) => t.name)).toEqual([
-    "web-tpl",
-  ]);
+  const createdTpl = World.namedOf(s.world, "instanceTemplates", "ace-dev-01")[0];
+  expect(createdTpl?.name).toBe("web-tpl");
+  expect(createdTpl?.metadata).toEqual({
+    "startup-script": "#!/bin/bash; apt-get update",
+    env: "prod",
+  });
 
   const migCmd = InstanceGroupCreateForm.toCommand(
     {
@@ -354,4 +367,20 @@ test("Compute のテンプレート・MIG・ディスク・スナップショッ
   );
   s = run(s, imgCmd);
   expect(s.world.computeLab.images.map((i) => i.name)).toContain("data-img");
+
+  const customImgTplCmd = InstanceTemplateCreateForm.toCommand(
+    {
+      ...InstanceTemplateCreateForm.create(),
+      name: "custom-img-tpl",
+      imageKind: "custom",
+      customImage: "data-img",
+    },
+    "ace-dev-01",
+  );
+  expect(customImgTplCmd).toContain("--image=data-img");
+  expect(customImgTplCmd).not.toContain("--image-family=");
+  s = run(s, customImgTplCmd);
+  expect(World.namedOf(s.world, "instanceTemplates", "ace-dev-01").map((t) => t.name)).toContain(
+    "custom-img-tpl",
+  );
 });

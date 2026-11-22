@@ -946,59 +946,167 @@ export const SubnetCreateForm = {
 
 // --- インスタンス テンプレート ---
 
+export type MetadataEntry = Readonly<{ key: string; value: string }>;
+export type TemplateImageKind = "public" | "custom";
+
 export type InstanceTemplateCreateForm = Readonly<{
   name: string;
   machineType: MachineTypeName;
+  provisioningModel: ProvisioningModel;
+  imageKind: TemplateImageKind;
   imageFamily: string;
   imageProject: string;
+  customImage: string;
   bootDiskSize: string;
   bootDiskType: BootDiskType;
+  serviceAccount: string;
+  scopes: "default" | "cloud-platform";
   network: string;
+  subnet: string;
   tags: string;
-  provisioningModel: ProvisioningModel;
   externalIp: boolean;
+  startupScript: string;
+  metadata: readonly MetadataEntry[];
 }>;
 
+const ForbiddenMetadataKeys = new Set(["__proto__", "constructor", "prototype"]);
+
+const metadataEntriesOf = (form: InstanceTemplateCreateForm): readonly MetadataEntry[] => [
+  ...(form.startupScript.trim() !== ""
+    ? [{ key: "startup-script", value: form.startupScript.trim() }]
+    : []),
+  ...form.metadata
+    .map((m) => ({ key: m.key.trim(), value: m.value.trim() }))
+    .filter((m) => m.key !== "" || m.value !== ""),
+];
+
+const metadataErrorOf = (entries: readonly MetadataEntry[]): Option<string> => {
+  for (const entry of entries) {
+    if (entry.key === "") {
+      return Option.some("メタデータのキーを入力してください");
+    }
+    if (ForbiddenMetadataKeys.has(entry.key)) {
+      return Option.some(`キー名 "${entry.key}" は使用できません`);
+    }
+    if (/[,=\s]/.test(entry.key)) {
+      return Option.some("メタデータのキーに空白・カンマ・= は含められません");
+    }
+    if (entry.value.includes(",")) {
+      return Option.some("このシミュレータの --metadata では値にカンマ (,) を含められません");
+    }
+  }
+  return Option.none;
+};
+
 export const InstanceTemplateCreateForm = {
-  create(): InstanceTemplateCreateForm {
+  create(seed?: Readonly<{ serviceAccount?: string }>): InstanceTemplateCreateForm {
     return {
       name: "",
       machineType: "e2-medium",
+      provisioningModel: ProvisioningModels.Standard,
+      imageKind: "public",
       imageFamily: "debian-12",
       imageProject: "debian-cloud",
+      customImage: "",
       bootDiskSize: "10GB",
       bootDiskType: BootDiskTypes.Balanced,
+      serviceAccount: seed?.serviceAccount ?? "",
+      scopes: "default",
       network: "default",
+      subnet: "",
       tags: "",
-      provisioningModel: ProvisioningModels.Standard,
       externalIp: true,
+      startupScript: "",
+      metadata: [],
     };
   },
 
   collectErrors(form: InstanceTemplateCreateForm): FieldErrors<InstanceTemplateCreateForm> {
+    const customEntries = form.metadata
+      .map((m) => ({ key: m.key.trim(), value: m.value.trim() }))
+      .filter((m) => m.key !== "" || m.value !== "");
     return collect<InstanceTemplateCreateForm>([
       ["name", errorOf(ResourceName.parse(form.name))],
       ["bootDiskSize", errorOf(DiskSizeGb.parse(form.bootDiskSize))],
+      ...(form.imageKind === "custom"
+        ? ([
+            [
+              "customImage",
+              form.customImage.trim() === ""
+                ? Option.some("カスタム イメージを選んでください")
+                : Option.none,
+            ],
+          ] as const)
+        : []),
+      [
+        "startupScript",
+        form.startupScript.includes(",")
+          ? Option.some("このシミュレータの --metadata ではカンマ (,) を含められません")
+          : Option.none,
+      ],
+      ["metadata", metadataErrorOf(customEntries)],
     ]);
   },
 
   toCommand(form: InstanceTemplateCreateForm, projectId: string): string {
+    return CommandPart.join(InstanceTemplateCreateForm.toParts(form, projectId));
+  },
+
+  toParts(form: InstanceTemplateCreateForm, projectId: string): readonly CommandPart[] {
+    const defaults = InstanceTemplateCreateForm.create({ serviceAccount: form.serviceAccount });
+    const changed = (key: keyof InstanceTemplateCreateForm): CommandMark =>
+      form[key] === defaults[key] ? "plain" : "changed";
     const tags = StringEx.splitList(form.tags);
+    const metaEntries = metadataEntriesOf(form);
+    const metaInvalid =
+      form.startupScript.includes(",") || Option.isSome(metadataErrorOf(metaEntries));
+    const metaValue = metaEntries.map((m) => `${m.key}=${m.value}`).join(",");
+
     return [
-      `gcloud compute instance-templates create ${quote(form.name)}`,
-      flag("project", projectId),
-      flag("machine-type", form.machineType),
-      flag("image-family", form.imageFamily),
-      flag("image-project", form.imageProject),
-      flag("boot-disk-size", form.bootDiskSize),
-      flag("boot-disk-type", form.bootDiskType),
-      ...(form.network !== "default" && form.network !== "" ? [flag("network", form.network)] : []),
-      ...(tags.length > 0 ? [flag("tags", tags.join(","))] : []),
+      {
+        lead: "gcloud compute instance-templates create ",
+        value: quote(form.name),
+        mark: Option.isSome(errorOf(ResourceName.parse(form.name))) ? "invalid" : "plain",
+      },
+      flagPart("project", projectId, "plain"),
+      flagPart("machine-type", form.machineType, changed("machineType")),
       ...(form.provisioningModel !== ProvisioningModels.Standard
-        ? [flag("provisioning-model", form.provisioningModel)]
+        ? [flagPart("provisioning-model", form.provisioningModel, "changed")]
         : []),
-      ...(form.externalIp ? [] : ["--no-address"]),
-    ].join(" ");
+      ...(form.serviceAccount !== ""
+        ? [flagPart("service-account", form.serviceAccount, "plain")]
+        : []),
+      ...(form.scopes !== "default" ? [flagPart("scopes", form.scopes, "changed")] : []),
+      ...(form.network !== "default" && form.network !== ""
+        ? [flagPart("network", form.network, "changed")]
+        : []),
+      ...(form.subnet !== "" ? [flagPart("subnet", form.subnet, "changed")] : []),
+      ...(tags.length > 0 ? [flagPart("tags", tags.join(","), "changed")] : []),
+      ...(form.externalIp ? [] : [{ lead: "", value: "--no-address", mark: "changed" as const }]),
+      ...(form.imageKind === "custom"
+        ? [
+            flagPart(
+              "image",
+              form.customImage,
+              form.customImage.trim() === "" ? "invalid" : "changed",
+            ),
+          ]
+        : [
+            flagPart("image-family", form.imageFamily, changed("imageFamily")),
+            flagPart("image-project", form.imageProject, changed("imageProject")),
+          ]),
+      flagPart(
+        "boot-disk-size",
+        form.bootDiskSize,
+        Option.isSome(errorOf(DiskSizeGb.parse(form.bootDiskSize)))
+          ? "invalid"
+          : changed("bootDiskSize"),
+      ),
+      flagPart("boot-disk-type", form.bootDiskType, changed("bootDiskType")),
+      ...(metaEntries.length > 0
+        ? [flagPart("metadata", metaValue, metaInvalid ? "invalid" : "changed")]
+        : []),
+    ];
   },
 } as const;
 

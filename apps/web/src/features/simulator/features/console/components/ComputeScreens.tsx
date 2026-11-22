@@ -318,13 +318,13 @@ const regionText = (region: Region): string => {
 };
 
 /** マシンタイプのシリーズ（`e2-small` の `E2`）。 */
-const seriesOf = (machineType: string): string =>
+export const seriesOf = (machineType: string): string =>
   (machineType.split("-")[0] ?? machineType).toUpperCase();
 
-const machineTypeText = (m: MachineType): string =>
+export const machineTypeText = (m: MachineType): string =>
   `${m.name}（${m.guestCpus} vCPU、${m.memoryMb / 1024} GB メモリ）`;
 
-const diskTypeText = (type: BootDiskType): string => {
+export const diskTypeText = (type: BootDiskType): string => {
   switch (type) {
     case "pd-standard":
       return "標準";
@@ -339,7 +339,7 @@ const diskTypeText = (type: BootDiskType): string => {
  * ネットワーク タグの入力（UI 案 s1: 確定したタグは札、打ちかけの 1 語は入力欄）。
  * 値はカンマ区切りの 1 つの文字列のまま持ち、カンマか空白・Enter で札になる。
  */
-const TagInput = ({
+export const TagInput = ({
   id,
   value,
   onChange,
@@ -395,7 +395,7 @@ const TagInput = ({
 };
 
 /** このシミュレータに収録されたマシンタイプの範囲。 */
-const seriesRange = (series: string, readValue: (type: MachineType) => number): string => {
+export const seriesRange = (series: string, readValue: (type: MachineType) => number): string => {
   const values = MachineType.all()
     .filter((type) => seriesOf(type.name) === series)
     .map(readValue);
@@ -404,7 +404,7 @@ const seriesRange = (series: string, readValue: (type: MachineType) => number): 
   return min === max ? String(min) : `${min}〜${max}`;
 };
 
-const NameRuleText = "小文字英字で始め、小文字・数字・ハイフンのみ使用できます";
+export const NameRuleText = "小文字英字で始め、小文字・数字・ハイフンのみ使用できます";
 
 /** Compute Engine › インスタンスを作成（UI 案 2c）。入力のたびに同等のコマンドを出す。 */
 export const VmCreateScreen = ({

@@ -572,3 +572,38 @@ test("ディスク・スナップショット・カスタムイメージを GUI 
   const imageTable = await screen.findByRole("table", { name: "イメージ" });
   expect(within(imageTable).getByText("img-gui")).toBeInTheDocument();
 });
+
+test("インスタンス テンプレート作成専用ページで HTTP タグ・起動スクリプト・メタデータを設定して作成できる", async () => {
+  const user = userEvent.setup();
+  const { terminal } = renderSimulator();
+  await openConsole(user);
+
+  await navigateConsole(user, "インスタンス テンプレート");
+  await user.click(screen.getByRole("button", { name: "＋ インスタンス テンプレートを作成" }));
+  expect(
+    screen.getByRole("navigation", { name: "インスタンス テンプレート作成の設定" }),
+  ).toBeInTheDocument();
+
+  await user.type(screen.getByLabelText("名前"), "web-tpl-v1");
+  await user.click(screen.getByRole("button", { name: /ネットワーキング/ }));
+  await user.click(screen.getByRole("checkbox", { name: /HTTP トラフィックを許可する/ }));
+  await user.click(screen.getByRole("button", { name: /管理・詳細設定/ }));
+  await user.click(screen.getByRole("button", { name: "サンプルを入力" }));
+  await user.click(screen.getByRole("button", { name: "＋ 項目を追加" }));
+  await user.type(screen.getByLabelText("メタデータ キー 1"), "env");
+  await user.type(screen.getByLabelText("メタデータ 値 1"), "prod");
+
+  const panel = screen.getByRole("region", { name: "同等のコマンドライン" });
+  expect(panel).toHaveTextContent("gcloud compute instance-templates create web-tpl-v1");
+  expect(panel).toHaveTextContent("--tags=http-server");
+  expect(panel).toHaveTextContent("startup-script=");
+  expect(panel).toHaveTextContent("env=prod");
+
+  await user.click(screen.getByRole("button", { name: "作成" }));
+  const table = await screen.findByRole("table", { name: "インスタンス テンプレート" });
+  expect(within(table).getByText("web-tpl-v1")).toBeInTheDocument();
+  expect(within(table).getByText("http-server")).toBeInTheDocument();
+  await waitFor(() =>
+    expect(screenText(terminal)).toContain("$ gcloud compute instance-templates create web-tpl-v1"),
+  );
+});

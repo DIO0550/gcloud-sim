@@ -52,6 +52,8 @@ export const screenText = (screen: ConsoleScreen): string => {
       return "インスタンスを作成";
     case "instance-templates":
       return "インスタンス テンプレート";
+    case "instance-template-create":
+      return "インスタンス テンプレートを作成";
     case "instance-groups":
       return "インスタンス グループ";
     case "disks":

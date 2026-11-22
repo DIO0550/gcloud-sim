@@ -297,10 +297,11 @@ const CommandLines = ({ parts }: Readonly<{ parts: readonly CommandPart[] }>): R
   </code>
 );
 
-/** VM 作成ページ（UI 案 2c）。設定ナビ・フォーム・構成概要とコマンドを並べる。 */
+/** フルページの作成ページ（VM 作成 / インスタンス テンプレート作成）。設定ナビ・フォーム・構成概要とコマンドを並べる。 */
 export const CreatePage = ({
   header,
   navigation,
+  navigationLabel = "VM 作成の設定",
   navigationOpen,
   summary,
   parts,
@@ -312,6 +313,7 @@ export const CreatePage = ({
 }: Readonly<{
   header: ReactNode;
   navigation: ReactNode;
+  navigationLabel?: string;
   navigationOpen: boolean;
   summary: ReactNode;
   parts: readonly CommandPart[];
@@ -332,7 +334,7 @@ export const CreatePage = ({
       >
         {navigationOpen && (
           <nav
-            aria-label="VM 作成の設定"
+            aria-label={navigationLabel}
             className="flex overflow-x-auto border-line border-b bg-surface py-4 lg:block lg:border-r lg:border-b-0 xl:min-h-0 xl:overflow-auto"
           >
             {navigation}
