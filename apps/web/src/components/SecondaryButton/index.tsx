@@ -6,6 +6,6 @@ import { ButtonBase, type ButtonProps } from "@/components/ButtonBase";
 export const SecondaryButton = (props: ButtonProps): ReactElement => (
   <ButtonBase
     {...props}
-    look="rounded-lg border border-line bg-surface px-3 py-1.5 text-sm hover:bg-canvas disabled:opacity-50"
+    look="rounded border border-line bg-surface px-3 py-1.5 font-medium text-ink text-sm transition-colors hover:bg-canvas disabled:opacity-50"
   />
 );

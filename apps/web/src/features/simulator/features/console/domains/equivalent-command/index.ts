@@ -752,6 +752,469 @@ export const DeleteCommand = {
   ): string {
     return `gcloud infra-manager deployments delete ${quote(deployment.name)} ${flag("location", deployment.location)} ${flag("project", projectId)} --quiet`;
   },
+
+  snapshot(name: string, projectId: string): string {
+    return `gcloud compute snapshots delete ${quote(name)} ${flag("project", projectId)} --quiet`;
+  },
+
+  image(name: string, projectId: string): string {
+    return `gcloud compute images delete ${quote(name)} ${flag("project", projectId)} --quiet`;
+  },
+} as const;
+
+// --- GKE クラスタ ---
+
+export type ClusterMode = "autopilot" | "standard";
+export type ClusterReleaseChannel = "regular" | "rapid" | "stable" | "None";
+
+export type ClusterCreateForm = Readonly<{
+  mode: ClusterMode;
+  name: string;
+  locationType: "zone" | "region";
+  zone: Zone;
+  region: Region;
+  numNodes: string;
+  machineType: MachineTypeName;
+  releaseChannel: ClusterReleaseChannel;
+  network: string;
+  enableNetworkPolicy: boolean;
+  enableWorkloadIdentity: boolean;
+}>;
+
+const positiveIntError = (raw: string, max: number): Option<string> => {
+  const n = Number(raw.trim());
+  return Number.isInteger(n) && n >= 1 && n <= max
+    ? Option.none
+    : Option.some(`1〜${max} の整数で指定してください`);
+};
+
+export const clusterCredentialsCommand = (
+  cluster: Readonly<{ name: string; location: string }>,
+  projectId: string,
+): string => {
+  const scope = Option.isSome(Zone.parse(cluster.location)) ? "zone" : "region";
+  return `gcloud container clusters get-credentials ${quote(cluster.name)} ${flag(scope, cluster.location)} ${flag("project", projectId)}`;
+};
+
+export const ClusterCreateForm = {
+  create(seed: Readonly<{ zone: Zone; region: Region }>): ClusterCreateForm {
+    return {
+      mode: "autopilot",
+      name: "",
+      locationType: "zone",
+      zone: seed.zone,
+      region: seed.region,
+      numNodes: "3",
+      machineType: "e2-medium",
+      releaseChannel: "regular",
+      network: "default",
+      enableNetworkPolicy: false,
+      enableWorkloadIdentity: false,
+    };
+  },
+
+  collectErrors(form: ClusterCreateForm): FieldErrors<ClusterCreateForm> {
+    return collect<ClusterCreateForm>([
+      ["name", errorOf(ResourceName.parse(form.name))],
+      ...(form.mode === "standard"
+        ? ([["numNodes", positiveIntError(form.numNodes, 100)]] as const)
+        : []),
+    ]);
+  },
+
+  toCommand(form: ClusterCreateForm, projectId: string): string {
+    if (form.mode === "autopilot") {
+      return [
+        `gcloud container clusters create-auto ${quote(form.name)}`,
+        flag("project", projectId),
+        flag("region", form.region),
+        flag("release-channel", form.releaseChannel),
+        ...(form.network !== "default" && form.network !== ""
+          ? [flag("network", form.network)]
+          : []),
+      ].join(" ");
+    }
+    const locationFlag =
+      form.locationType === "region" ? flag("region", form.region) : flag("zone", form.zone);
+    return [
+      `gcloud container clusters create ${quote(form.name)}`,
+      flag("project", projectId),
+      locationFlag,
+      flag("num-nodes", form.numNodes.trim() || "3"),
+      flag("machine-type", form.machineType),
+      flag("release-channel", form.releaseChannel),
+      ...(form.network !== "default" && form.network !== "" ? [flag("network", form.network)] : []),
+      ...(form.enableNetworkPolicy ? ["--enable-network-policy"] : []),
+      ...(form.enableWorkloadIdentity ? [flag("workload-pool", `${projectId}.svc.id.goog`)] : []),
+    ].join(" ");
+  },
+} as const;
+
+// --- Cloud Run サービス ---
+
+export type RunServiceCreateForm = Readonly<{
+  name: string;
+  image: string;
+  region: Region;
+  allowUnauthenticated: boolean;
+}>;
+
+export const RunServiceCreateForm = {
+  create(region: Region): RunServiceCreateForm {
+    return {
+      name: "",
+      image: "us-docker.pkg.dev/cloudrun/container/hello",
+      region,
+      allowUnauthenticated: true,
+    };
+  },
+
+  collectErrors(form: RunServiceCreateForm): FieldErrors<RunServiceCreateForm> {
+    return collect<RunServiceCreateForm>([
+      ["name", errorOf(ResourceName.parse(form.name))],
+      [
+        "image",
+        form.image.trim() === ""
+          ? Option.some("コンテナ イメージの URL を入力してください")
+          : Option.none,
+      ],
+    ]);
+  },
+
+  toCommand(form: RunServiceCreateForm, projectId: string): string {
+    return [
+      `gcloud run deploy ${quote(form.name)}`,
+      flag("project", projectId),
+      flag("image", form.image.trim()),
+      flag("region", form.region),
+      form.allowUnauthenticated ? "--allow-unauthenticated" : "--no-allow-unauthenticated",
+    ].join(" ");
+  },
+} as const;
+
+// --- VPC サブネット ---
+
+export type SubnetCreateForm = Readonly<{
+  name: string;
+  network: string;
+  region: Region;
+  range: string;
+  privateIpGoogleAccess: boolean;
+  enableFlowLogs: boolean;
+}>;
+
+export const SubnetCreateForm = {
+  create(seed: Readonly<{ network: string; region: Region }>): SubnetCreateForm {
+    return {
+      name: "",
+      network: seed.network,
+      region: seed.region,
+      range: "10.130.0.0/20",
+      privateIpGoogleAccess: false,
+      enableFlowLogs: false,
+    };
+  },
+
+  collectErrors(form: SubnetCreateForm): FieldErrors<SubnetCreateForm> {
+    return collect<SubnetCreateForm>([
+      ["name", errorOf(ResourceName.parse(form.name))],
+      [
+        "network",
+        form.network.trim() === "" ? Option.some("ネットワークを選んでください") : Option.none,
+      ],
+      [
+        "range",
+        Option.isSome(Ipv4.range(form.range.trim()))
+          ? Option.none
+          : Option.some("IPv4 CIDR 形式で指定してください（例: 10.130.0.0/20）"),
+      ],
+    ]);
+  },
+
+  toCommand(form: SubnetCreateForm, projectId: string): string {
+    return [
+      `gcloud compute networks subnets create ${quote(form.name)}`,
+      flag("project", projectId),
+      flag("network", form.network),
+      flag("region", form.region),
+      flag("range", form.range.trim()),
+      ...(form.privateIpGoogleAccess ? ["--enable-private-ip-google-access"] : []),
+      ...(form.enableFlowLogs ? ["--enable-flow-logs"] : []),
+    ].join(" ");
+  },
+} as const;
+
+// --- インスタンス テンプレート ---
+
+export type InstanceTemplateCreateForm = Readonly<{
+  name: string;
+  machineType: MachineTypeName;
+  imageFamily: string;
+  imageProject: string;
+  bootDiskSize: string;
+  bootDiskType: BootDiskType;
+  network: string;
+  tags: string;
+  provisioningModel: ProvisioningModel;
+  externalIp: boolean;
+}>;
+
+export const InstanceTemplateCreateForm = {
+  create(): InstanceTemplateCreateForm {
+    return {
+      name: "",
+      machineType: "e2-medium",
+      imageFamily: "debian-12",
+      imageProject: "debian-cloud",
+      bootDiskSize: "10GB",
+      bootDiskType: BootDiskTypes.Balanced,
+      network: "default",
+      tags: "",
+      provisioningModel: ProvisioningModels.Standard,
+      externalIp: true,
+    };
+  },
+
+  collectErrors(form: InstanceTemplateCreateForm): FieldErrors<InstanceTemplateCreateForm> {
+    return collect<InstanceTemplateCreateForm>([
+      ["name", errorOf(ResourceName.parse(form.name))],
+      ["bootDiskSize", errorOf(DiskSizeGb.parse(form.bootDiskSize))],
+    ]);
+  },
+
+  toCommand(form: InstanceTemplateCreateForm, projectId: string): string {
+    const tags = StringEx.splitList(form.tags);
+    return [
+      `gcloud compute instance-templates create ${quote(form.name)}`,
+      flag("project", projectId),
+      flag("machine-type", form.machineType),
+      flag("image-family", form.imageFamily),
+      flag("image-project", form.imageProject),
+      flag("boot-disk-size", form.bootDiskSize),
+      flag("boot-disk-type", form.bootDiskType),
+      ...(form.network !== "default" && form.network !== "" ? [flag("network", form.network)] : []),
+      ...(tags.length > 0 ? [flag("tags", tags.join(","))] : []),
+      ...(form.provisioningModel !== ProvisioningModels.Standard
+        ? [flag("provisioning-model", form.provisioningModel)]
+        : []),
+      ...(form.externalIp ? [] : ["--no-address"]),
+    ].join(" ");
+  },
+} as const;
+
+// --- インスタンス グループ (MIG) ---
+
+export type InstanceGroupCreateForm = Readonly<{
+  name: string;
+  locationType: "zone" | "region";
+  zone: Zone;
+  region: Region;
+  template: string;
+  size: string;
+  baseInstanceName: string;
+}>;
+
+export const InstanceGroupCreateForm = {
+  create(
+    seed: Readonly<{ zone: Zone; region: Region; template: string }>,
+  ): InstanceGroupCreateForm {
+    return {
+      name: "",
+      locationType: "zone",
+      zone: seed.zone,
+      region: seed.region,
+      template: seed.template,
+      size: "2",
+      baseInstanceName: "",
+    };
+  },
+
+  collectErrors(form: InstanceGroupCreateForm): FieldErrors<InstanceGroupCreateForm> {
+    return collect<InstanceGroupCreateForm>([
+      ["name", errorOf(ResourceName.parse(form.name))],
+      [
+        "template",
+        form.template.trim() === ""
+          ? Option.some("インスタンス テンプレートを先に作成してください")
+          : Option.none,
+      ],
+      ["size", positiveIntError(form.size, 1000)],
+      ...(form.baseInstanceName.trim() !== ""
+        ? ([
+            ["baseInstanceName", errorOf(ResourceName.parse(form.baseInstanceName.trim()))],
+          ] as const)
+        : []),
+    ]);
+  },
+
+  toCommand(form: InstanceGroupCreateForm, projectId: string): string {
+    const locationFlag =
+      form.locationType === "region" ? flag("region", form.region) : flag("zone", form.zone);
+    return [
+      `gcloud compute instance-groups managed create ${quote(form.name)}`,
+      flag("project", projectId),
+      locationFlag,
+      flag("template", form.template),
+      flag("size", form.size.trim() || "2"),
+      ...(form.baseInstanceName.trim() !== ""
+        ? [flag("base-instance-name", form.baseInstanceName.trim())]
+        : []),
+    ].join(" ");
+  },
+} as const;
+
+// --- ディスク ---
+
+export type DiskCreateType = "pd-balanced" | "pd-ssd" | "pd-standard" | "hyperdisk-balanced";
+
+export type DiskCreateForm = Readonly<{
+  name: string;
+  zone: Zone;
+  type: DiskCreateType;
+  size: string;
+  sourceSnapshot: string;
+}>;
+
+export const DiskCreateForm = {
+  create(zone: Zone): DiskCreateForm {
+    return {
+      name: "",
+      zone,
+      type: "pd-balanced",
+      size: "100GB",
+      sourceSnapshot: "",
+    };
+  },
+
+  collectErrors(form: DiskCreateForm): FieldErrors<DiskCreateForm> {
+    return collect<DiskCreateForm>([
+      ["name", errorOf(ResourceName.parse(form.name))],
+      ["size", errorOf(DiskSizeGb.parse(form.size))],
+    ]);
+  },
+
+  toCommand(form: DiskCreateForm, projectId: string): string {
+    return [
+      `gcloud compute disks create ${quote(form.name)}`,
+      flag("project", projectId),
+      flag("zone", form.zone),
+      flag("type", form.type),
+      flag("size", form.size),
+      ...(form.sourceSnapshot !== "" ? [flag("source-snapshot", form.sourceSnapshot)] : []),
+    ].join(" ");
+  },
+} as const;
+
+// --- スナップショット ---
+
+export type SnapshotCreateForm = Readonly<{
+  name: string;
+  /** `zone/diskName` の形式 */
+  sourceDisk: string;
+}>;
+
+const splitDiskRef = (ref: string): Readonly<{ zone: string; name: string }> => {
+  const idx = ref.indexOf("/");
+  if (idx === -1) return { zone: "", name: ref };
+  return { zone: ref.slice(0, idx), name: ref.slice(idx + 1) };
+};
+
+export const SnapshotCreateForm = {
+  create(sourceDisk: string): SnapshotCreateForm {
+    return { name: "", sourceDisk };
+  },
+
+  collectErrors(form: SnapshotCreateForm): FieldErrors<SnapshotCreateForm> {
+    return collect<SnapshotCreateForm>([
+      ["name", errorOf(ResourceName.parse(form.name))],
+      [
+        "sourceDisk",
+        form.sourceDisk.trim() === ""
+          ? Option.some("ソース ディスクを先に作成してください")
+          : Option.none,
+      ],
+    ]);
+  },
+
+  toCommand(form: SnapshotCreateForm, projectId: string): string {
+    const ref = splitDiskRef(form.sourceDisk);
+    return [
+      `gcloud compute snapshots create ${quote(form.name)}`,
+      flag("project", projectId),
+      flag("source-disk", ref.name),
+      ...(ref.zone !== "" ? [flag("source-disk-zone", ref.zone)] : []),
+    ].join(" ");
+  },
+} as const;
+
+// --- カスタム イメージ ---
+
+export type ImageSourceKind = "disk" | "snapshot";
+
+export type ImageCreateForm = Readonly<{
+  name: string;
+  sourceKind: ImageSourceKind;
+  /** `zone/diskName` の形式 */
+  sourceDisk: string;
+  sourceSnapshot: string;
+  family: string;
+}>;
+
+export const ImageCreateForm = {
+  create(seed: Readonly<{ sourceDisk: string; sourceSnapshot: string }>): ImageCreateForm {
+    return {
+      name: "",
+      sourceKind: seed.sourceSnapshot !== "" ? "snapshot" : "disk",
+      sourceDisk: seed.sourceDisk,
+      sourceSnapshot: seed.sourceSnapshot,
+      family: "",
+    };
+  },
+
+  collectErrors(form: ImageCreateForm): FieldErrors<ImageCreateForm> {
+    return collect<ImageCreateForm>([
+      ["name", errorOf(ResourceName.parse(form.name))],
+      ...(form.sourceKind === "disk"
+        ? ([
+            [
+              "sourceDisk",
+              form.sourceDisk.trim() === ""
+                ? Option.some("ソース ディスクを選んでください")
+                : Option.none,
+            ],
+          ] as const)
+        : ([
+            [
+              "sourceSnapshot",
+              form.sourceSnapshot.trim() === ""
+                ? Option.some("ソース スナップショットを選んでください")
+                : Option.none,
+            ],
+          ] as const)),
+      ...(form.family.trim() !== ""
+        ? ([["family", errorOf(ResourceName.parse(form.family.trim()))]] as const)
+        : []),
+    ]);
+  },
+
+  toCommand(form: ImageCreateForm, projectId: string): string {
+    const sourceFlags =
+      form.sourceKind === "disk"
+        ? (() => {
+            const ref = splitDiskRef(form.sourceDisk);
+            return [
+              flag("source-disk", ref.name),
+              ...(ref.zone !== "" ? [flag("source-disk-zone", ref.zone)] : []),
+            ];
+          })()
+        : [flag("source-snapshot", form.sourceSnapshot)];
+    return [
+      `gcloud compute images create ${quote(form.name)}`,
+      flag("project", projectId),
+      ...sourceFlags,
+      ...(form.family.trim() !== "" ? [flag("family", form.family.trim())] : []),
+    ].join(" ");
+  },
 } as const;
 
 // --- Cloud Marketplace のデプロイ ---

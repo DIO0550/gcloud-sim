@@ -80,18 +80,39 @@ export const Header = ({
   );
 
   return (
-    <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-3 border-line border-b bg-surface px-4 py-2 text-sm lg:flex-nowrap">
+    <header className="relative z-20 flex min-h-12 shrink-0 flex-wrap items-center gap-2.5 border-line border-b bg-surface px-3 py-1.5 text-sm shadow-[0_1px_2px_rgba(60,64,67,0.12)] lg:flex-nowrap">
       <GhostButton
         ariaLabel={`${viewText(view)} ナビゲーションを切り替え`}
         ariaExpanded={isNavigationOpen}
         onClick={onNavigationToggle}
       >
-        <svg aria-hidden="true" viewBox="0 0 20 20" className="h-5 w-5">
-          <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.5" />
+        <svg aria-hidden="true" viewBox="0 0 20 20" className="h-5 w-5 text-muted">
+          <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.6" />
         </svg>
       </GhostButton>
-      <div className="flex shrink-0 self-start items-center gap-3" data-testid="view-switcher">
-        <h1 className="shrink-0 font-bold font-mono text-lg tracking-tight">gcloud-sim</h1>
+      <div className="flex shrink-0 items-center gap-2.5" data-testid="view-switcher">
+        <div className="flex shrink-0 items-center gap-2">
+          <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6 shrink-0">
+            <path
+              d="M12 5.5a5.5 5.5 0 0 1 5.17 3.63A4 4 0 0 1 17 17H7.5a4.5 4.5 0 0 1-.82-8.92A5.5 5.5 0 0 1 12 5.5Z"
+              fill="none"
+              stroke="#4285f4"
+              strokeWidth="2"
+              strokeLinejoin="round"
+            />
+            <path d="M7.5 17H17" stroke="#34a853" strokeWidth="2" strokeLinecap="round" />
+            <path d="M12 5.5a5.5 5.5 0 0 1 4.6 2.5" stroke="#ea4335" strokeWidth="2" fill="none" />
+            <path
+              d="M6.68 8.08A4.5 4.5 0 0 0 3 12.5"
+              stroke="#fbbc04"
+              strokeWidth="2"
+              fill="none"
+            />
+          </svg>
+          <h1 className="shrink-0 font-semibold text-base text-ink tracking-tight">
+            <span className="font-mono">gcloud-sim</span>
+          </h1>
+        </div>
         <SegmentedControl
           label="表示"
           value={view}
@@ -100,13 +121,23 @@ export const Header = ({
           className="shrink-0 [&_button]:w-20"
         />
       </div>
-      <span className="hidden shrink-0 whitespace-nowrap rounded border border-line px-2 py-0.5 text-muted text-xs sm:block">
+      <span className="hidden shrink-0 whitespace-nowrap rounded-full border border-line bg-canvas px-2 py-0.5 text-[11px] text-muted sm:block">
         非公式・学習用
       </span>
       {view === Views.Console ? (
         <div className="flex w-full min-w-0 flex-wrap items-center gap-2 lg:w-auto lg:flex-1 lg:flex-nowrap">
-          <div className="flex shrink-0 items-center gap-2 rounded border border-line px-3 py-1.5">
-            <span aria-hidden="true" className="h-4 w-4 rounded-sm bg-accent" />
+          <div className="flex shrink-0 items-center gap-2 rounded border border-line bg-surface px-2.5 py-1 transition-colors hover:bg-canvas">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 18 18"
+              className="h-4 w-4 shrink-0 text-muted"
+              fill="none"
+            >
+              <circle cx="9" cy="3.5" r="2" fill="currentColor" />
+              <circle cx="4" cy="13.5" r="2" fill="currentColor" />
+              <circle cx="14" cy="13.5" r="2" fill="currentColor" />
+              <path d="M9 5.5v3.5m0 0-4 3.5m4-3.5 4 3.5" stroke="currentColor" strokeWidth="1.4" />
+            </svg>
             <Select
               variant="bare"
               ariaLabel="プロジェクト"
@@ -115,10 +146,21 @@ export const Header = ({
               options={projectOptions}
             />
           </div>
-          <div className="order-last flex min-w-0 basis-full items-center gap-2 rounded-lg bg-code px-3 focus-within:ring-2 focus-within:ring-accent lg:order-none lg:flex-1 lg:basis-auto">
-            <span aria-hidden="true" className="text-muted">
-              ⌕
-            </span>
+          <div className="order-last flex min-w-0 basis-full items-center gap-2 rounded-lg border border-transparent bg-code px-3 transition-all focus-within:border-accent focus-within:bg-surface focus-within:shadow-[0_1px_4px_rgba(60,64,67,0.2)] lg:order-none lg:mx-2 lg:max-w-xl lg:flex-1 lg:basis-auto">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 20 20"
+              className="h-4 w-4 shrink-0 text-muted"
+              fill="none"
+            >
+              <circle cx="9" cy="9" r="5.5" stroke="currentColor" strokeWidth="1.7" />
+              <path
+                d="m13.2 13.2 3.3 3.3"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+              />
+            </svg>
             <div className="min-w-0 flex-1">
               <SuggestInput
                 ariaLabel="プロダクト、画面を検索"
@@ -126,7 +168,7 @@ export const Header = ({
                 emptyMessage="一致する画面がありません"
                 value={search}
                 onChange={setSearch}
-                className="h-9 w-full min-w-0 bg-transparent text-sm focus:outline-none"
+                className="h-8 w-full min-w-0 bg-transparent text-sm focus:outline-none"
                 suggestions={searchScreens.map((screen) => ({
                   value: screenText(screen),
                   description: sectionText(ConsoleScreen.section(screen)),
@@ -140,39 +182,45 @@ export const Header = ({
                 }}
               />
             </div>
+            <kbd className="hidden rounded border border-line bg-surface px-1.5 py-0.5 font-mono text-[11px] text-muted sm:inline">
+              /
+            </kbd>
           </div>
-          <ToggleButton variant="ghost" pressed={isTerminalOpen} onClick={onTerminalToggle}>
-            <span className="font-mono">&gt;_</span> ターミナル
-          </ToggleButton>
-          <ToggleButton variant="ghost" pressed={isMissionsOpen} onClick={onMissionsToggle}>
-            ミッション
-          </ToggleButton>
-          <GhostButton ariaLabel="設定" onClick={onOpenSettings}>
-            ⚙
-          </GhostButton>
-          <span title="組織・フォルダ・プロジェクトを作成">
-            <GhostButton ariaLabel="リソースを作成" onClick={onCreateResource}>
-              ＋ 作成
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            <ToggleButton variant="ghost" pressed={isTerminalOpen} onClick={onTerminalToggle}>
+              <span className="font-mono">&gt;_</span> ターミナル
+            </ToggleButton>
+            <ToggleButton variant="ghost" pressed={isMissionsOpen} onClick={onMissionsToggle}>
+              ミッション
+            </ToggleButton>
+            <GhostButton ariaLabel="設定" onClick={onOpenSettings}>
+              ⚙
             </GhostButton>
-          </span>
-          <span
-            title={
-              isOwner
-                ? `認証アカウント: ${principalValue}`
-                : `組織 Owner 以外で操作中: ${principalValue}（権限不足の動作を確認できます）`
-            }
-          >
-            <Select
-              variant="avatar"
-              font="sans"
-              align="end"
-              ariaLabel="プリンシパル"
-              className={isOwner ? "" : "ring-2 ring-warn"}
-              value={principalValue}
-              onChange={onPrincipalChange}
-              options={principalOptions}
-            />
-          </span>
+            <span title="組織・フォルダ・プロジェクトを作成">
+              <GhostButton ariaLabel="リソースを作成" onClick={onCreateResource}>
+                ＋ 作成
+              </GhostButton>
+            </span>
+            <span
+              className="ml-1"
+              title={
+                isOwner
+                  ? `認証アカウント: ${principalValue}`
+                  : `組織 Owner 以外で操作中: ${principalValue}（権限不足の動作を確認できます）`
+              }
+            >
+              <Select
+                variant="avatar"
+                font="sans"
+                align="end"
+                ariaLabel="プリンシパル"
+                className={isOwner ? "" : "ring-2 ring-warn"}
+                value={principalValue}
+                onChange={onPrincipalChange}
+                options={principalOptions}
+              />
+            </span>
+          </div>
         </div>
       ) : (
         <div className="flex w-full flex-wrap items-center gap-2 text-sm lg:ml-auto lg:w-auto lg:gap-3">

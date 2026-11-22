@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import { Checkbox } from "@/components/Checkbox";
 import { Select } from "@/components/Select";
-import { Regions } from "@/engine/domains/catalog";
+import { Region, Regions, Zone } from "@/engine/domains/catalog";
 
 import {
   type Direction,
@@ -10,6 +10,7 @@ import {
   FirewallActions,
   ProtocolRule,
 } from "@/engine/domains/compute";
+import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { World } from "@/engine/domains/world";
 import {
   CreateFormSection,
@@ -26,6 +27,7 @@ import {
   NetworkFirewallPresets,
   type NetworkSubnetMode,
   presetSourceRange,
+  SubnetCreateForm,
 } from "@/features/simulator/features/console/domains/equivalent-command";
 import { useCreateForm } from "@/features/simulator/features/console/hooks/use-create-form";
 import type { ScreenProps } from "@/features/simulator/features/console/types/screen-props";
@@ -373,28 +375,137 @@ export const FirewallScreen = ({
   );
 };
 
-/** VPC ネットワーク › サブネット: 一覧。 */
-export const SubnetsScreen = ({ world, project, handlers }: ScreenProps): ReactElement => {
+/** VPC ネットワーク › サブネット: 一覧・作成・削除。 */
+export const SubnetsScreen = ({ world, project, handlers, outcome }: ScreenProps): ReactElement => {
+  const projectId = project.projectId;
+  const networks = World.networksOf(world, projectId);
+  const defaultRegion: Region = Option.unwrapOr(
+    Option.flatMap(GcloudConfig.get(world.config, "compute/region"), Region.parse),
+    Option.unwrapOr(
+      Option.map(
+        Option.flatMap(GcloudConfig.get(world.config, "compute/zone"), Zone.parse),
+        Zone.region,
+      ),
+      "asia-northeast1",
+    ),
+  );
+  const customNetwork = networks.find((n) => n.subnetMode === "CUSTOM")?.name;
+  const seed = (): SubnetCreateForm =>
+    SubnetCreateForm.create({
+      network: customNetwork ?? networks[0]?.name ?? "default",
+      region: defaultRegion,
+    });
+  const editor = useCreateForm(SubnetCreateForm, seed, false, outcome);
+  const form = Option.unwrapOr(editor.form, seed());
+
+  const create = (): void => {
+    const valid = editor.submit();
+    if (!Option.isSome(valid)) return;
+    handlers.submit({
+      line: SubnetCreateForm.toCommand(valid.value, projectId),
+      note: `サブネットを作成 (${valid.value.name})`,
+      next: Option.none,
+    });
+    editor.awaitClose();
+  };
+
   const remove = (subnet: Readonly<{ name: string; region: string }>): void => {
     if (!handlers.confirm(`サブネット ${subnet.name}（${subnet.region}）を削除しますか？`)) return;
     handlers.submit({
-      line: DeleteCommand.subnet(subnet, project.projectId),
+      line: DeleteCommand.subnet(subnet, projectId),
       note: `サブネットを削除 (${subnet.name})`,
       next: Option.none,
     });
   };
+
   return (
     <div>
-      <ScreenTitle eyebrow="VPC ネットワーク" title="サブネット" />
+      <ScreenTitle
+        eyebrow="VPC ネットワーク"
+        title="サブネット"
+        trailing={<PrimaryButton onClick={editor.open}>＋ サブネットを作成</PrimaryButton>}
+      />
+      {Option.isSome(editor.form) && (
+        <CreateFormSection
+          label="サブネットを作成"
+          columns={2}
+          command={SubnetCreateForm.toCommand(form, projectId)}
+          onCopy={handlers.copy}
+          onInsert={handlers.insert}
+          onSubmit={create}
+          onCancel={editor.close}
+          submitLabel="作成"
+        >
+          <Field label="名前" required error={editor.errors.name}>
+            {(id) => (
+              <TextInput
+                id={id}
+                value={form.name}
+                placeholder="app-subnet"
+                onChange={(v) => editor.set("name", v)}
+              />
+            )}
+          </Field>
+          <Field
+            label="ネットワーク"
+            error={editor.errors.network}
+            hint="カスタムモードの VPC ネットワークを指定します"
+          >
+            {(id) => (
+              <Select
+                id={id}
+                value={form.network}
+                onChange={(v) => editor.set("network", v)}
+                options={networks.map((n) => ({
+                  value: n.name,
+                  label: `${n.name} (${n.subnetMode === "AUTO" ? "自動" : "カスタム"})`,
+                }))}
+              />
+            )}
+          </Field>
+          <Field label="リージョン">
+            {(id) => (
+              <Select
+                id={id}
+                value={form.region}
+                onChange={(r) => editor.set("region", r)}
+                options={Object.values(Regions).map((r) => ({ value: r, label: r }))}
+              />
+            )}
+          </Field>
+          <Field label="IPv4 範囲" required error={editor.errors.range} hint="例: 10.130.0.0/20">
+            {(id) => (
+              <TextInput id={id} value={form.range} onChange={(v) => editor.set("range", v)} />
+            )}
+          </Field>
+          <div className="flex flex-col gap-2 sm:col-span-2">
+            <Checkbox
+              checked={form.privateIpGoogleAccess}
+              onChange={(v) => editor.set("privateIpGoogleAccess", v)}
+            >
+              限定公開の Google アクセスを有効にする（--enable-private-ip-google-access）
+            </Checkbox>
+            <Checkbox
+              checked={form.enableFlowLogs}
+              onChange={(v) => editor.set("enableFlowLogs", v)}
+            >
+              VPC フローログを有効にする（--enable-flow-logs）
+            </Checkbox>
+          </div>
+        </CreateFormSection>
+      )}
       <ResourceTable
         label="サブネット"
-        rows={World.subnetsOf(world, project.projectId)}
+        rows={World.subnetsOf(world, projectId)}
         keyOf={(s) => `${s.region}/${s.name}`}
         nameOf={(s) => `${s.name}（${s.region}）`}
-        empty="サブネットはありません。gcloud compute networks subnets create で作成できます。"
+        empty="サブネットはありません。上の「サブネットを作成」または gcloud compute networks subnets create で作成できます。"
         onDelete={remove}
         columns={[
-          { header: "名前", cell: (s) => <span className="font-mono">{s.name}</span> },
+          {
+            header: "名前",
+            cell: (s) => <span className="font-medium font-mono text-accent">{s.name}</span>,
+          },
           { header: "リージョン", cell: (s) => s.region },
           { header: "ネットワーク", cell: (s) => s.network },
           { header: "IP 範囲", cell: (s) => <span className="font-mono">{s.ipCidrRange}</span> },

@@ -510,3 +510,65 @@ test("VPC ネットワークの作成はネットワーク・サブネット・�
     expect(screenText(terminal)).toContain("--network=managementnet --subnet=managementsubnet-us"),
   );
 });
+
+test("GKE クラスタ（Autopilot / Standard）と Cloud Run サービスを GUI から作成できる", async () => {
+  const user = userEvent.setup();
+  const { terminal } = renderSimulator();
+  await typeLine(terminal, "gcloud services enable container.googleapis.com run.googleapis.com");
+  await waitFor(() => expect(screenText(terminal)).toContain("finished successfully"));
+
+  await openConsole(user);
+  await navigateConsole(user, "クラスタ");
+  await user.click(screen.getByRole("button", { name: "＋ クラスタを作成" }));
+  await user.type(screen.getByLabelText("名前"), "auto-gke");
+  await user.click(screen.getByRole("button", { name: "作成" }));
+  const clusterTable = await screen.findByRole("table", { name: "クラスタ" });
+  expect(within(clusterTable).getByText("auto-gke")).toBeInTheDocument();
+  expect(within(clusterTable).getByText("Autopilot")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "＋ クラスタを作成" }));
+  await user.click(screen.getByRole("radio", { name: /GKE Standard/ }));
+  await user.type(screen.getByLabelText("名前"), "std-gke");
+  await user.click(screen.getByRole("button", { name: "作成" }));
+  expect(await within(clusterTable).findByText("std-gke")).toBeInTheDocument();
+  expect(within(clusterTable).getByText("Standard")).toBeInTheDocument();
+
+  await user.click(within(clusterTable).getByRole("button", { name: "std-gke に接続" }));
+  await waitFor(() =>
+    expect(screenText(terminal)).toContain("gcloud container clusters get-credentials std-gke"),
+  );
+
+  await navigateConsole(user, "サービス");
+  await user.click(screen.getByRole("button", { name: "＋ サービスを作成" }));
+  await user.type(screen.getByLabelText("サービス名"), "hello-run");
+  await user.click(screen.getByRole("button", { name: "作成" }));
+  const runTable = await screen.findByRole("table", { name: "Cloud Run サービス" });
+  expect(within(runTable).getByText("hello-run")).toBeInTheDocument();
+});
+
+test("ディスク・スナップショット・カスタムイメージを GUI から順に作成できる", async () => {
+  const user = userEvent.setup();
+  renderSimulator();
+  await openConsole(user);
+
+  await navigateConsole(user, "ディスク");
+  await user.click(screen.getByRole("button", { name: "＋ ディスクを作成" }));
+  await user.type(screen.getByLabelText("名前"), "data-disk-gui");
+  await user.click(screen.getByRole("button", { name: "作成" }));
+  const diskTable = await screen.findByRole("table", { name: "ディスク" });
+  expect(within(diskTable).getByText("data-disk-gui")).toBeInTheDocument();
+
+  await navigateConsole(user, "スナップショット");
+  await user.click(screen.getByRole("button", { name: "＋ スナップショットを作成" }));
+  await user.type(screen.getByLabelText("名前"), "snap-gui");
+  await user.click(screen.getByRole("button", { name: "作成" }));
+  const snapTable = await screen.findByRole("table", { name: "スナップショット" });
+  expect(within(snapTable).getByText("snap-gui")).toBeInTheDocument();
+
+  await navigateConsole(user, "イメージ");
+  await user.click(screen.getByRole("button", { name: "＋ イメージを作成" }));
+  await user.type(screen.getByLabelText("名前"), "img-gui");
+  await user.click(screen.getByRole("button", { name: "作成" }));
+  const imageTable = await screen.findByRole("table", { name: "イメージ" });
+  expect(within(imageTable).getByText("img-gui")).toBeInTheDocument();
+});

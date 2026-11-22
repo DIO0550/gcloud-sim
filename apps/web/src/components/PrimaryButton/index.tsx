@@ -6,6 +6,6 @@ import { ButtonBase, type ButtonProps } from "@/components/ButtonBase";
 export const PrimaryButton = (props: ButtonProps): ReactElement => (
   <ButtonBase
     {...props}
-    look="rounded-lg bg-accent px-3 py-1.5 font-semibold text-sm text-white hover:bg-accent-hover disabled:opacity-50"
+    look="rounded bg-accent px-3.5 py-1.5 font-medium text-sm text-white shadow-[0_1px_2px_rgba(26,115,232,0.28)] transition-colors hover:bg-accent-hover disabled:opacity-50 disabled:shadow-none"
   />
 );

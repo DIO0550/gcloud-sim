@@ -117,7 +117,7 @@ export const ConsoleView = ({
         <ConsoleNav screen={screen} onChange={handlers.changeScreen} onClose={onCloseNavigation} />
       )}
       <main
-        className={`min-h-0 min-w-0 bg-surface md:col-start-2 ${isVmCreate ? "flex flex-col overflow-auto xl:overflow-hidden" : "overflow-auto px-5 py-5"} ${terminalOpen ? "pb-[var(--console-terminal-height)]" : ""}`}
+        className={`min-h-0 min-w-0 md:col-start-2 ${isVmCreate ? "flex flex-col overflow-auto bg-surface xl:overflow-hidden" : "overflow-auto bg-canvas px-5 py-5"} ${terminalOpen ? "pb-[var(--console-terminal-height)]" : ""}`}
         aria-label="Console"
       >
         {body()}
