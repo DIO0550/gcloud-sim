@@ -187,8 +187,13 @@ export const Header = ({
             </kbd>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-1">
-            <ToggleButton variant="ghost" pressed={isTerminalOpen} onClick={onTerminalToggle}>
-              <span className="font-mono">&gt;_</span> ターミナル
+            <ToggleButton
+              variant="ghost"
+              pressed={isTerminalOpen}
+              onClick={onTerminalToggle}
+              title="Cloud Shell をアクティブにする"
+            >
+              <span className="font-mono">&gt;_</span> Cloud Shell
             </ToggleButton>
             <ToggleButton variant="ghost" pressed={isMissionsOpen} onClick={onMissionsToggle}>
               ミッション

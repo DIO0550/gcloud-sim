@@ -74,17 +74,17 @@ test("IAM は選択するまで詳細を開かず、フィルタと継承の表�
   ).toBeInTheDocument();
 });
 
-test("Console の端末は閉じて再度開いても履歴を保ち、CLI と同じ端末を使う", async () => {
+test("Console の Cloud Shell は閉じて再度開いても履歴を保ち、CLI と同じ端末を使う", async () => {
   const user = userEvent.setup();
   const { terminal } = renderSimulator();
   await typeLine(terminal, "gcloud config list");
   await openConsole(user);
-  await user.click(screen.getByRole("button", { name: ">_ ターミナル" }));
+  await user.click(screen.getByRole("button", { name: ">_ Cloud Shell" }));
   const before = [...terminal.written];
-  await user.click(screen.getByRole("button", { name: "ターミナルを拡大" }));
-  await user.click(screen.getByRole("button", { name: "ターミナルを元のサイズに戻す" }));
-  await user.click(screen.getByRole("button", { name: "ターミナルを閉じる" }));
-  await user.click(screen.getByRole("button", { name: ">_ ターミナル" }));
+  await user.click(screen.getByRole("button", { name: "Cloud Shell を拡大" }));
+  await user.click(screen.getByRole("button", { name: "Cloud Shell を元のサイズに戻す" }));
+  await user.click(screen.getByRole("button", { name: "Cloud Shell を閉じる" }));
+  await user.click(screen.getByRole("button", { name: ">_ Cloud Shell" }));
   await user.click(screen.getByRole("button", { name: "CLI" }));
   expect(terminal.written).toEqual(before);
   await typeLine(terminal, "gcloud config get-value project");
@@ -606,4 +606,65 @@ test("インスタンス テンプレート作成専用ページで HTTP タグ�
   await waitFor(() =>
     expect(screenText(terminal)).toContain("$ gcloud compute instance-templates create web-tpl-v1"),
   );
+});
+
+test("Cloud Shell からエディタを開いてファイルを保存でき、端末の履歴も失われない", async () => {
+  const user = userEvent.setup();
+  const { terminal } = renderSimulator();
+  await typeLine(terminal, "gcloud config get-value project");
+  await waitFor(() => expect(screenText(terminal)).toContain("ace-dev-01"));
+
+  await openConsole(user);
+  await user.click(screen.getByRole("button", { name: ">_ Cloud Shell" }));
+  const before = [...terminal.written];
+
+  await user.click(screen.getByRole("button", { name: "エディタを開く" }));
+  const editor = screen.getByRole("complementary", { name: "Cloud Shell エディタ" });
+  expect(editor).toBeInTheDocument();
+
+  const fileNameInput = within(editor).getByRole("textbox", { name: "設定ファイル名" });
+  await user.clear(fileNameInput);
+  await user.type(fileNameInput, "package.json");
+  const contentInput = within(editor).getByRole("textbox", { name: "設定ファイルの内容" });
+  await user.clear(contentInput);
+  await user.type(contentInput, '{{"name":"helloworld"}}');
+  await user.click(within(editor).getByRole("button", { name: "ファイルを保存" }));
+  expect(within(editor).getByRole("status")).toHaveTextContent("保存しました。");
+
+  await user.click(screen.getByRole("button", { name: "エディタを閉じる" }));
+  expect(
+    screen.queryByRole("complementary", { name: "Cloud Shell エディタ" }),
+  ).not.toBeInTheDocument();
+  expect(terminal.written).toEqual(before);
+});
+
+test("Cloud Shell のウェブでプレビューはポート 8080 のコンテナ起動状態に応じて 502 と 200 OK を切り替える", async () => {
+  const user = userEvent.setup();
+  const { terminal } = renderSimulator();
+
+  await openConsole(user);
+  await user.click(screen.getByRole("button", { name: ">_ Cloud Shell" }));
+  await user.click(screen.getByRole("button", { name: "ウェブでプレビュー" }));
+  await user.click(screen.getByRole("menuitem", { name: /ポート 8080 でプレビュー/ }));
+
+  const dialogBefore = screen.getByRole("dialog", { name: "ウェブでプレビュー" });
+  expect(dialogBefore).toHaveTextContent("502 Bad Gateway");
+  expect(dialogBefore).toHaveTextContent("ポート 8080 に接続できませんでした");
+  await user.click(within(dialogBefore).getByRole("button", { name: "閉じる" }));
+
+  await typeLine(terminal, "docker build -t hello:v1 ./hello-web");
+  await waitFor(() => expect(screenText(terminal)).toContain("Built hello:v1"));
+  await typeLine(terminal, "docker run -d --name helloworld -p 8080:8080 hello:v1");
+  await waitFor(() => expect(screenText(terminal)).toContain("Simulated container started"));
+
+  await user.click(screen.getByRole("button", { name: "ウェブでプレビュー" }));
+  const menuItem = screen.getByRole("menuitem", { name: /ポート 8080 でプレビュー/ });
+  expect(menuItem).toHaveTextContent("実行中");
+  await user.click(menuItem);
+
+  const dialogAfter = screen.getByRole("dialog", { name: "ウェブでプレビュー" });
+  expect(dialogAfter).toHaveTextContent("200 OK");
+  expect(dialogAfter).toHaveTextContent("Hello World!");
+  expect(dialogAfter).toHaveTextContent("helloworld");
+  expect(dialogAfter).toHaveTextContent("8080 → 8080");
 });

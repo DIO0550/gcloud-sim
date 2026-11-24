@@ -24,17 +24,20 @@ export const ToggleButton = ({
   variant,
   children,
   onClick,
+  title,
   className = "",
 }: Readonly<{
   pressed: boolean;
   variant: keyof typeof ToggleLook;
   children: ReactNode;
   onClick: () => void;
+  title?: string;
   className?: string;
 }>): ReactElement => (
   <button
     type="button"
     aria-pressed={pressed}
+    title={title}
     className={`${ToggleLook[variant][pressed ? "on" : "off"]} ${className}`}
     onClick={onClick}
   >
