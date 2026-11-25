@@ -192,3 +192,209 @@ export const BucketEditForm = {
     return steps.length === 0 ? NoChangesComment : steps.map((s) => s.line).join("\n");
   },
 } as const;
+
+// --- オブジェクト（アップロード風・フォルダ作成・編集・削除） ---
+
+const ContentTypeByExt: Readonly<Record<string, string>> = {
+  txt: "text/plain",
+  md: "text/markdown",
+  csv: "text/csv",
+  html: "text/html",
+  css: "text/css",
+  js: "application/javascript",
+  json: "application/json",
+  xml: "application/xml",
+  yaml: "application/yaml",
+  yml: "application/yaml",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  svg: "image/svg+xml",
+  webp: "image/webp",
+  pdf: "application/pdf",
+  zip: "application/zip",
+  gz: "application/gzip",
+};
+
+/** 拡張子から Content-Type を推定する（不明なら application/octet-stream）。 */
+export const guessContentType = (fileName: string): string => {
+  const ext = fileName.trim().split(".").at(-1)?.toLowerCase() ?? "";
+  return ContentTypeByExt[ext] ?? "application/octet-stream";
+};
+
+const normalizeObjectPath = (prefix: string, rawName: string): string => {
+  const cleanName = rawName.trim().replace(/^\/+/, "");
+  return `${prefix}${cleanName}`;
+};
+
+/** 疑似アップロードフォーム（実際の中身は送らず、gcloud storage cp でダミーオブジェクトを登録）。 */
+export type StorageObjectUploadForm = Readonly<{
+  bucket: string;
+  prefix: string;
+  fileName: string;
+  contentType: string;
+}>;
+
+export const StorageObjectUploadForm = {
+  create(bucket: string, prefix = ""): StorageObjectUploadForm {
+    return { bucket, prefix, fileName: "", contentType: "" };
+  },
+
+  collectErrors(form: StorageObjectUploadForm): FieldErrors<StorageObjectUploadForm> {
+    const trimmed = form.fileName.trim();
+    const error: Option<string> =
+      trimmed === ""
+        ? Option.some("ファイル名を入力してください（例: index.html, data/sample.csv）")
+        : trimmed.endsWith("/")
+          ? Option.some("ファイル名は / で終われません（フォルダ作成を使ってください）")
+          : /\s/.test(trimmed) || trimmed.includes("..")
+            ? Option.some("空白や .. は使えません")
+            : Option.none;
+    return collect<StorageObjectUploadForm>([["fileName", error]]);
+  },
+
+  toSteps(form: StorageObjectUploadForm, projectId: string): readonly CommandStep[] {
+    const objectPath = normalizeObjectPath(form.prefix, form.fileName);
+    const localName =
+      objectPath
+        .split("/")
+        .filter((s) => s !== "")
+        .at(-1) ?? "object";
+    const url = `gs://${form.bucket}/${objectPath}`;
+    const steps: CommandStep[] = [
+      {
+        line: `gcloud storage cp ./${localName} ${url} ${flag("project", projectId)}`,
+        note: `オブジェクトをアップロード (${objectPath})`,
+      },
+    ];
+    const ct = form.contentType.trim() || guessContentType(localName);
+    if (ct !== "application/octet-stream") {
+      steps.push({
+        line: `gcloud storage objects update ${url} ${flag("content-type", ct)} ${flag("project", projectId)}`,
+        note: `Content-Type を設定 (${ct})`,
+      });
+    }
+    return steps;
+  },
+
+  toCommand(form: StorageObjectUploadForm, projectId: string): string {
+    return StorageObjectUploadForm.toSteps(form, projectId)
+      .map((s) => s.line)
+      .join("\n");
+  },
+} as const;
+
+/** フォルダ作成フォーム（プレースホルダー `.keep` を配置して仮想フォルダを作る）。 */
+export type StorageFolderCreateForm = Readonly<{
+  bucket: string;
+  prefix: string;
+  folderName: string;
+}>;
+
+export const StorageFolderCreateForm = {
+  create(bucket: string, prefix = ""): StorageFolderCreateForm {
+    return { bucket, prefix, folderName: "" };
+  },
+
+  collectErrors(form: StorageFolderCreateForm): FieldErrors<StorageFolderCreateForm> {
+    const trimmed = form.folderName.trim().replace(/^\/+|\/+$/g, "");
+    const error: Option<string> =
+      trimmed === ""
+        ? Option.some("フォルダ名を入力してください（例: images）")
+        : /\s/.test(trimmed) || trimmed.includes("..")
+          ? Option.some("空白や .. は使えません")
+          : Option.none;
+    return collect<StorageFolderCreateForm>([["folderName", error]]);
+  },
+
+  toCommand(form: StorageFolderCreateForm, projectId: string): string {
+    const folder = form.folderName.trim().replace(/^\/+|\/+$/g, "");
+    return `gcloud storage cp .keep gs://${form.bucket}/${form.prefix}${folder}/.keep ${flag("project", projectId)}`;
+  },
+} as const;
+
+/** オブジェクト編集フォーム（ストレージクラス・Content-Type を gcloud storage objects update で更新）。 */
+export type StorageObjectEditForm = Readonly<{
+  bucket: string;
+  name: string;
+  storageClass: StorageClass;
+  contentType: string;
+  original: Readonly<{
+    storageClass: StorageClass;
+    contentType: string;
+  }>;
+}>;
+
+export const StorageObjectEditForm = {
+  fromObject(
+    bucket: Bucket,
+    object: Readonly<{ name: string; contentType: string; storageClass: Option<StorageClass> }>,
+  ): StorageObjectEditForm {
+    const currentClass = Option.unwrapOr(object.storageClass, bucket.storageClass);
+    return {
+      bucket: bucket.name,
+      name: object.name,
+      storageClass: currentClass,
+      contentType: object.contentType,
+      original: {
+        storageClass: currentClass,
+        contentType: object.contentType,
+      },
+    };
+  },
+
+  empty(): StorageObjectEditForm {
+    return {
+      bucket: "",
+      name: "",
+      storageClass: "STANDARD",
+      contentType: "application/octet-stream",
+      original: { storageClass: "STANDARD", contentType: "application/octet-stream" },
+    };
+  },
+
+  collectErrors(form: StorageObjectEditForm): FieldErrors<StorageObjectEditForm> {
+    return collect<StorageObjectEditForm>([
+      [
+        "contentType",
+        form.contentType.trim() === ""
+          ? Option.some("Content-Type を入力してください（例: text/plain）")
+          : Option.none,
+      ],
+    ]);
+  },
+
+  toSteps(form: StorageObjectEditForm, projectId: string): readonly CommandStep[] {
+    const flags: string[] = [];
+    if (form.storageClass !== form.original.storageClass) {
+      flags.push(flag("storage-class", form.storageClass));
+    }
+    if (form.contentType.trim() !== form.original.contentType) {
+      flags.push(flag("content-type", form.contentType.trim()));
+    }
+    if (flags.length === 0) return [];
+    return [
+      {
+        line: [
+          "gcloud storage objects update",
+          `gs://${form.bucket}/${form.name}`,
+          flag("project", projectId),
+          ...flags,
+        ].join(" "),
+        note: `オブジェクトを更新 (${form.name})`,
+      },
+    ];
+  },
+
+  toCommand(form: StorageObjectEditForm, projectId: string): string {
+    const steps = StorageObjectEditForm.toSteps(form, projectId);
+    return steps.length === 0 ? NoChangesComment : steps.map((s) => s.line).join("\n");
+  },
+} as const;
+
+export const deleteObjectCommand = (
+  bucket: string,
+  objectName: string,
+  projectId: string,
+): string => `gcloud storage rm gs://${bucket}/${objectName} ${flag("project", projectId)} --quiet`;

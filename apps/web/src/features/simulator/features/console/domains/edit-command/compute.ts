@@ -66,7 +66,7 @@ export const VmEditForm = {
       initialMachineType: instance.machineType,
       machineType: instance.machineType,
       initialTags: instance.tags,
-      tags: instance.tags.length === 0 ? "" : `${instance.tags.join(",")},`,
+      tags: instance.tags.join(", "),
       initialMetadata: instance.metadata,
       metadata: Object.entries(instance.metadata)
         .map(([k, v]) => `${k}=${v}`)
