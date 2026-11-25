@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { Checkbox } from "@/components/Checkbox";
 import { Select } from "@/components/Select";
 import { PublicImage, Region, Regions, Zone } from "@/engine/domains/catalog";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
@@ -17,6 +18,10 @@ import {
   TextInput,
 } from "@/features/simulator/features/console/components/ConsoleParts";
 import { ConsoleScreens } from "@/features/simulator/features/console/domains/console-screen";
+import {
+  DiskEditForm,
+  InstanceGroupEditForm,
+} from "@/features/simulator/features/console/domains/edit-command/compute";
 import {
   DeleteCommand,
   DiskCreateForm,
@@ -138,6 +143,35 @@ const InstanceTemplatesScreen = ({ world, project, handlers }: ScreenProps): Rea
   );
 };
 
+const ReadOnlyField = ({ id, value }: Readonly<{ id: string; value: string }>): ReactElement => (
+  <output
+    id={id}
+    className="flex h-9 items-center rounded-md border border-line bg-canvas px-3 font-mono text-muted text-sm"
+  >
+    {value}
+  </output>
+);
+
+const EmptyMigEditForm = (): InstanceGroupEditForm => ({
+  name: "",
+  location: "asia-northeast1-a",
+  locationScope: "zone",
+  initialTemplate: "",
+  template: "",
+  initialSize: 1,
+  size: "1",
+  initialAutoscalingEnabled: false,
+  autoscalingEnabled: false,
+  initialMinReplicas: 1,
+  minReplicas: "1",
+  initialMaxReplicas: 5,
+  maxReplicas: "5",
+  initialTargetCpu: 0.6,
+  targetCpu: "0.6",
+  initialCoolDownSec: 60,
+  coolDownSec: "60",
+});
+
 const InstanceGroupsScreen = ({ world, project, handlers, outcome }: ScreenProps): ReactElement => {
   const projectId = project.projectId;
   const templates = World.namedOf(world, "instanceTemplates", projectId);
@@ -148,6 +182,7 @@ const InstanceGroupsScreen = ({ world, project, handlers, outcome }: ScreenProps
       template: templates[0]?.name ?? "",
     });
   const editor = useCreateForm(InstanceGroupCreateForm, seed, false, outcome);
+  const editEditor = useCreateForm(InstanceGroupEditForm, EmptyMigEditForm, false, outcome);
   const form = Option.unwrapOr(editor.form, seed());
 
   const create = (): void => {
@@ -161,13 +196,32 @@ const InstanceGroupsScreen = ({ world, project, handlers, outcome }: ScreenProps
     editor.awaitClose();
   };
 
+  const saveEdit = (): void => {
+    const valid = editEditor.submit();
+    if (!Option.isSome(valid)) return;
+    const [first, ...rest] = InstanceGroupEditForm.toSteps(valid.value, projectId);
+    if (first === undefined) {
+      editEditor.close();
+      return;
+    }
+    handlers.submit({ ...first, next: Option.none, rest });
+    editEditor.awaitClose();
+  };
+
   return (
     <div>
       <ScreenTitle
         eyebrow="Compute Engine"
         title="インスタンス グループ"
         trailing={
-          <PrimaryButton onClick={editor.open}>＋ インスタンス グループを作成</PrimaryButton>
+          <PrimaryButton
+            onClick={() => {
+              editEditor.close();
+              editor.open();
+            }}
+          >
+            ＋ インスタンス グループを作成
+          </PrimaryButton>
         }
       />
       {Option.isSome(editor.form) && (
@@ -261,11 +315,118 @@ const InstanceGroupsScreen = ({ world, project, handlers, outcome }: ScreenProps
           </Field>
         </CreateFormSection>
       )}
+      {Option.isSome(editEditor.form) &&
+        (() => {
+          const editForm = editEditor.form.value;
+          const editSteps = InstanceGroupEditForm.toSteps(editForm, projectId);
+          const templateOptions =
+            templates.length > 0
+              ? templates.map((t) => ({ value: t.name, label: t.name }))
+              : [{ value: editForm.template, label: editForm.template }];
+          return (
+            <CreateFormSection
+              label="インスタンス グループを編集"
+              columns={2}
+              command={InstanceGroupEditForm.toCommand(editForm, projectId)}
+              onCopy={handlers.copy}
+              onInsert={() => handlers.insert(editSteps[0]?.line ?? "")}
+              onSubmit={saveEdit}
+              onCancel={editEditor.close}
+              submitLabel="保存"
+            >
+              <Field label="名前">{(id) => <ReadOnlyField id={id} value={editForm.name} />}</Field>
+              <Field label="ロケーション">
+                {(id) => <ReadOnlyField id={id} value={editForm.location} />}
+              </Field>
+              <Field label="インスタンス テンプレート" required error={editEditor.errors.template}>
+                {(id) => (
+                  <Select
+                    id={id}
+                    value={editForm.template}
+                    onChange={(v) => editEditor.set("template", v)}
+                    options={templateOptions}
+                  />
+                )}
+              </Field>
+              <Field label="インスタンス数" required error={editEditor.errors.size}>
+                {(id) => (
+                  <TextInput
+                    id={id}
+                    value={editForm.size}
+                    onChange={(v) => editEditor.set("size", v)}
+                  />
+                )}
+              </Field>
+              <div className="sm:col-span-2">
+                <Checkbox
+                  checked={editForm.autoscalingEnabled}
+                  onChange={(checked) => editEditor.set("autoscalingEnabled", checked)}
+                >
+                  オートスケーリングを有効にする
+                </Checkbox>
+              </div>
+              {editForm.autoscalingEnabled && (
+                <>
+                  <Field label="最小インスタンス数" required error={editEditor.errors.minReplicas}>
+                    {(id) => (
+                      <TextInput
+                        id={id}
+                        value={editForm.minReplicas}
+                        onChange={(v) => editEditor.set("minReplicas", v)}
+                      />
+                    )}
+                  </Field>
+                  <Field label="最大インスタンス数" required error={editEditor.errors.maxReplicas}>
+                    {(id) => (
+                      <TextInput
+                        id={id}
+                        value={editForm.maxReplicas}
+                        onChange={(v) => editEditor.set("maxReplicas", v)}
+                      />
+                    )}
+                  </Field>
+                  <Field
+                    label="目標 CPU 使用率"
+                    required
+                    error={editEditor.errors.targetCpu}
+                    hint="0 より大きく 1 以下（例: 0.6）"
+                  >
+                    {(id) => (
+                      <TextInput
+                        id={id}
+                        value={editForm.targetCpu}
+                        onChange={(v) => editEditor.set("targetCpu", v)}
+                      />
+                    )}
+                  </Field>
+                  <Field
+                    label="クールダウン期間 (秒)"
+                    required
+                    error={editEditor.errors.coolDownSec}
+                  >
+                    {(id) => (
+                      <TextInput
+                        id={id}
+                        value={editForm.coolDownSec}
+                        onChange={(v) => editEditor.set("coolDownSec", v)}
+                      />
+                    )}
+                  </Field>
+                </>
+              )}
+            </CreateFormSection>
+          );
+        })()}
       <ResourceTable
         label="インスタンス グループ"
         rows={world.instanceGroups.filter((g) => g.projectId === projectId)}
         keyOf={(g) => `${MigLocation.name(g.location)}/${g.name}`}
+        nameOf={(g) => g.name}
         empty="インスタンス グループはまだありません。上の「インスタンス グループを作成」または gcloud compute instance-groups managed create で作成できます。"
+        onEdit={(g) => {
+          editor.close();
+          editEditor.openWith(InstanceGroupEditForm.from(g));
+        }}
         columns={[
           {
             header: "名前",
@@ -274,17 +435,34 @@ const InstanceGroupsScreen = ({ world, project, handlers, outcome }: ScreenProps
           { header: "ロケーション", cell: (g) => MigLocation.name(g.location) },
           { header: "テンプレート", cell: (g) => g.template },
           { header: "台数", cell: (g) => String(g.targetSize) },
+          {
+            header: "オートスケーリング",
+            cell: (g) =>
+              Option.isSome(g.autoscaling)
+                ? `${g.autoscaling.value.minReplicas}〜${g.autoscaling.value.maxReplicas} (CPU ${Math.round(g.autoscaling.value.targetCpuUtilization * 100)}%)`
+                : "オフ",
+          },
         ]}
       />
     </div>
   );
 };
 
+const EmptyDiskEditForm = (): DiskEditForm =>
+  DiskEditForm.from({
+    name: "",
+    location: "asia-northeast1-a",
+    locationScope: "zone",
+    type: "pd-balanced",
+    sizeGb: 100,
+  });
+
 const DisksScreen = ({ world, project, handlers, outcome }: ScreenProps): ReactElement => {
   const projectId = project.projectId;
   const snapshots = World.diskSnapshotsOf(world, projectId);
   const seed = (): DiskCreateForm => DiskCreateForm.create(defaultZoneOf(world));
   const editor = useCreateForm(DiskCreateForm, seed, false, outcome);
+  const editEditor = useCreateForm(DiskEditForm, EmptyDiskEditForm, false, outcome);
   const form = Option.unwrapOr(editor.form, seed());
 
   const create = (): void => {
@@ -296,6 +474,18 @@ const DisksScreen = ({ world, project, handlers, outcome }: ScreenProps): ReactE
       next: Option.none,
     });
     editor.awaitClose();
+  };
+
+  const saveEdit = (): void => {
+    const valid = editEditor.submit();
+    if (!Option.isSome(valid)) return;
+    const [first, ...rest] = DiskEditForm.toSteps(valid.value, projectId);
+    if (first === undefined) {
+      editEditor.close();
+      return;
+    }
+    handlers.submit({ ...first, next: Option.none, rest });
+    editEditor.awaitClose();
   };
 
   const instances = World.instancesOf(world, projectId);
@@ -316,18 +506,24 @@ const DisksScreen = ({ world, project, handlers, outcome }: ScreenProps): ReactE
           key: `${instance.zone}/${d.deviceName}`,
           name: d.deviceName,
           location: instance.zone,
-          sizeGb: String(d.sizeGb),
+          locationScope: "zone" as const,
+          sizeGb: d.sizeGb,
           type: d.type,
           users: instance.name,
+          iops: undefined,
+          throughput: undefined,
         })),
     ),
     ...World.disksOf(world, projectId).map((d) => ({
       key: `${d.zone}/${d.name}`,
       name: d.name,
       location: d.zone,
-      sizeGb: String(d.sizeGb),
+      locationScope: "zone" as const,
+      sizeGb: d.sizeGb,
       type: d.type,
       users: attachedTo(d.zone, d.name, d.users),
+      iops: undefined,
+      throughput: undefined,
     })),
     ...world.computeLab.disks
       .filter((d) => d.projectId === projectId)
@@ -335,9 +531,14 @@ const DisksScreen = ({ world, project, handlers, outcome }: ScreenProps): ReactE
         key: `${d.location}/${d.name}`,
         name: d.name,
         location: d.location,
-        sizeGb: String(d.sizeGb),
+        locationScope: Option.isSome(Region.parse(d.location))
+          ? ("region" as const)
+          : ("zone" as const),
+        sizeGb: d.sizeGb,
         type: d.type,
         users: attachedTo(d.location, d.name, d.users),
+        iops: d.iops,
+        throughput: d.throughput,
       })),
   ];
 
@@ -346,7 +547,16 @@ const DisksScreen = ({ world, project, handlers, outcome }: ScreenProps): ReactE
       <ScreenTitle
         eyebrow="Compute Engine"
         title="ディスク"
-        trailing={<PrimaryButton onClick={editor.open}>＋ ディスクを作成</PrimaryButton>}
+        trailing={
+          <PrimaryButton
+            onClick={() => {
+              editEditor.close();
+              editor.open();
+            }}
+          >
+            ＋ ディスクを作成
+          </PrimaryButton>
+        }
       />
       {Option.isSome(editor.form) && (
         <CreateFormSection
@@ -419,18 +629,96 @@ const DisksScreen = ({ world, project, handlers, outcome }: ScreenProps): ReactE
           </div>
         </CreateFormSection>
       )}
+      {Option.isSome(editEditor.form) &&
+        (() => {
+          const editForm = editEditor.form.value;
+          const editSteps = DiskEditForm.toSteps(editForm, projectId);
+          return (
+            <CreateFormSection
+              label="ディスクを編集"
+              columns={2}
+              command={DiskEditForm.toCommand(editForm, projectId)}
+              onCopy={handlers.copy}
+              onInsert={() => handlers.insert(editSteps[0]?.line ?? "")}
+              onSubmit={saveEdit}
+              onCancel={editEditor.close}
+              submitLabel="保存"
+            >
+              <Field label="名前">{(id) => <ReadOnlyField id={id} value={editForm.name} />}</Field>
+              <Field label="ロケーション">
+                {(id) => <ReadOnlyField id={id} value={editForm.location} />}
+              </Field>
+              <Field label="種類">{(id) => <ReadOnlyField id={id} value={editForm.type} />}</Field>
+              <Field
+                label="サイズ"
+                required
+                error={editEditor.errors.size}
+                hint={`現在 ${editForm.initialSizeGb} GB（拡張のみ可能）`}
+              >
+                {(id) => (
+                  <TextInput
+                    id={id}
+                    value={editForm.size}
+                    onChange={(v) => editEditor.set("size", v)}
+                  />
+                )}
+              </Field>
+              {editForm.isHyperdisk && (
+                <>
+                  <Field label="プロビジョニング済み IOPS" required error={editEditor.errors.iops}>
+                    {(id) => (
+                      <TextInput
+                        id={id}
+                        value={editForm.iops}
+                        onChange={(v) => editEditor.set("iops", v)}
+                      />
+                    )}
+                  </Field>
+                  <Field
+                    label="プロビジョニング済みスループット (MiB/s)"
+                    required
+                    error={editEditor.errors.throughput}
+                  >
+                    {(id) => (
+                      <TextInput
+                        id={id}
+                        value={editForm.throughput}
+                        onChange={(v) => editEditor.set("throughput", v)}
+                      />
+                    )}
+                  </Field>
+                </>
+              )}
+            </CreateFormSection>
+          );
+        })()}
       <ResourceTable
         label="ディスク"
         rows={rows}
         keyOf={(d) => d.key}
+        nameOf={(d) => d.name}
         empty="ディスクはまだありません。上の「ディスクを作成」または gcloud compute disks create で作成できます。"
+        onEdit={(d) => {
+          editor.close();
+          editEditor.openWith(
+            DiskEditForm.from({
+              name: d.name,
+              location: d.location,
+              locationScope: d.locationScope,
+              type: d.type,
+              sizeGb: d.sizeGb,
+              iops: d.iops,
+              throughput: d.throughput,
+            }),
+          );
+        }}
         columns={[
           {
             header: "名前",
             cell: (d) => <span className="font-medium font-mono text-accent">{d.name}</span>,
           },
           { header: "ロケーション", cell: (d) => d.location },
-          { header: "サイズ (GB)", cell: (d) => d.sizeGb },
+          { header: "サイズ (GB)", cell: (d) => String(d.sizeGb) },
           { header: "種類", cell: (d) => d.type },
           { header: "使用元", cell: (d) => d.users },
         ]}

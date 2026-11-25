@@ -127,6 +127,7 @@ type Column<T> = Readonly<{ header: string; cell: (row: T) => ReactNode; classNa
 /**
  * リソースの一覧の表。行が無ければ `empty` を出す。`onDelete` を渡すと行の末尾に「削除」を出す
  * （`deletable` が偽の行には出さない: 事前定義ロールなど消せないもの）。
+ * `onEdit` を渡すと「編集」を出す（`editable` が偽の行には出さない: default のリソースなど）。
  */
 export const ResourceTable = <T,>({
   label,
@@ -136,6 +137,8 @@ export const ResourceTable = <T,>({
   empty,
   onDelete,
   deletable,
+  onEdit,
+  editable,
   nameOf,
   rowActions,
 }: Readonly<{
@@ -146,12 +149,14 @@ export const ResourceTable = <T,>({
   empty: string;
   onDelete?: (row: T) => void;
   deletable?: (row: T) => boolean;
+  onEdit?: (row: T) => void;
+  editable?: (row: T) => boolean;
   /** 削除ボタンの読み上げ名に使う名前（既定は `keyOf`） */
   nameOf?: (row: T) => string;
   /** 行の末尾に追加する任意の操作ボタン（接続など） */
   rowActions?: (row: T) => ReactNode;
 }>): ReactElement => {
-  const hasActions = onDelete !== undefined || rowActions !== undefined;
+  const hasActions = onDelete !== undefined || onEdit !== undefined || rowActions !== undefined;
   const span = columns.length + (hasActions ? 1 : 0);
   return (
     <div className="overflow-x-auto rounded border border-line bg-surface">
@@ -195,6 +200,14 @@ export const ResourceTable = <T,>({
                   <td className="whitespace-nowrap px-3 py-2 text-right align-middle">
                     <div className="inline-flex items-center justify-end gap-1.5">
                       {rowActions?.(row)}
+                      {onEdit !== undefined && (editable === undefined || editable(row)) && (
+                        <SecondaryButton
+                          ariaLabel={`${(nameOf ?? keyOf)(row)} を編集`}
+                          onClick={() => onEdit(row)}
+                        >
+                          編集
+                        </SecondaryButton>
+                      )}
                       {onDelete !== undefined && (deletable === undefined || deletable(row)) && (
                         <SecondaryButton
                           ariaLabel={`${(nameOf ?? keyOf)(row)} を削除`}

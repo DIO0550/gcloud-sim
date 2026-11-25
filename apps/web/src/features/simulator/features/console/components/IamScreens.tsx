@@ -22,6 +22,11 @@ import {
   TextInput,
 } from "@/features/simulator/features/console/components/ConsoleParts";
 import {
+  IamBindingEditForm,
+  RoleEditForm,
+  ServiceAccountEditForm,
+} from "@/features/simulator/features/console/domains/edit-command/iam";
+import {
   DeleteCommand,
   IamGrantForm,
   RoleCreateForm,
@@ -31,6 +36,17 @@ import { roleTitleJa } from "@/features/simulator/features/console/domains/role-
 import { useCreateForm } from "@/features/simulator/features/console/hooks/use-create-form";
 import type { ScreenProps } from "@/features/simulator/features/console/types/screen-props";
 import { Option } from "@/utils/Option";
+
+/** 変更できない識別子（メール・ID・プリンシパル）の読み取り専用欄。 */
+const ReadOnlyInput = ({ id, value }: Readonly<{ id: string; value: string }>): ReactElement => (
+  <input
+    id={id}
+    type="text"
+    value={value}
+    disabled
+    className="h-9 w-full cursor-not-allowed rounded-md border border-line bg-canvas px-3 font-mono text-[15px] text-muted"
+  />
+);
 
 /** 継承元の綴り（UI 案 s2: `組織 example.com` / `フォルダ dev`）。自分自身に付いたものは対象ごとの綴り。 */
 export const originText = (origin: BindingOrigin): string => {
@@ -145,6 +161,7 @@ export const IamScreen = ({ world, project, handlers, outcome }: ScreenProps): R
   const [includeInherited, setIncludeInherited] = useState(true);
   const [picked, setPicked] = useState<Option<IamMember>>(Option.none);
   const editor = useCreateForm(IamGrantForm, IamGrantForm.create, false, outcome);
+  const roleUpdater = useCreateForm(IamBindingEditForm, IamBindingEditForm.create, false, outcome);
   const allRows = BindingRow.fromWorld(world, projectTarget);
   const needle = filter.trim().toLowerCase();
   const rows = allRows.filter((row) => {
@@ -162,6 +179,19 @@ export const IamScreen = ({ world, project, handlers, outcome }: ScreenProps): R
   });
   const groups = groupBy(rows, groupKey);
   const selected = Option.filter(picked, (member) => allRows.some((row) => row.member === member));
+  const roleSuggestions = [
+    ...RoleCatalog.all().map((r) => {
+      const ja = roleTitleJa(world, r.name);
+      return {
+        value: r.name,
+        description: ja === r.title ? r.title : `${ja} (${r.title})`,
+      };
+    }),
+    ...World.customRolesOf(world, projectId).map((r) => ({
+      value: CustomRole.name(r),
+      description: r.title,
+    })),
+  ];
   const grant = (): void => {
     const valid = editor.submit();
     if (!Option.isSome(valid)) return;
@@ -172,6 +202,18 @@ export const IamScreen = ({ world, project, handlers, outcome }: ScreenProps): R
     });
     editor.awaitClose();
   };
+  const updateRole = (): void => {
+    const valid = roleUpdater.submit();
+    if (!Option.isSome(valid)) return;
+    const [first, ...rest] = IamBindingEditForm.toSteps(valid.value, projectId);
+    if (first === undefined) return;
+    handlers.submit({ ...first, next: Option.none, rest });
+    roleUpdater.awaitClose();
+  };
+  const startEditRole = (member: IamMember, role: RoleName): void => {
+    editor.close();
+    roleUpdater.openWith(IamBindingEditForm.fromBinding(member, role));
+  };
   const remove = (member: IamMember, role: RoleName): void => {
     if (!handlers.confirm(`${member} から ${role} を削除しますか？`)) return;
     handlers.submit({
@@ -180,13 +222,21 @@ export const IamScreen = ({ world, project, handlers, outcome }: ScreenProps): R
       next: Option.none,
     });
   };
+  const editRoleForm = Option.unwrapOr(roleUpdater.form, IamBindingEditForm.create());
+  const editRoleSteps = IamBindingEditForm.toSteps(editRoleForm, projectId);
   return (
     <div>
       <ScreenTitle
         eyebrow="IAM と管理"
         title="IAM"
         trailing={
-          <GhostButton tone="accent" onClick={editor.open}>
+          <GhostButton
+            tone="accent"
+            onClick={() => {
+              roleUpdater.close();
+              editor.open();
+            }}
+          >
             <span aria-hidden="true">＋ </span>アクセス権を付与
           </GhostButton>
         }
@@ -224,20 +274,34 @@ export const IamScreen = ({ world, project, handlers, outcome }: ScreenProps): R
               <SuggestInput
                 id={id}
                 value={Option.unwrapOr(editor.form, IamGrantForm.create()).role}
-                suggestions={[
-                  ...RoleCatalog.all().map((r) => {
-                    const ja = roleTitleJa(world, r.name);
-                    return {
-                      value: r.name,
-                      description: ja === r.title ? r.title : `${ja} (${r.title})`,
-                    };
-                  }),
-                  ...World.customRolesOf(world, projectId).map((r) => ({
-                    value: CustomRole.name(r),
-                    description: r.title,
-                  })),
-                ]}
+                suggestions={roleSuggestions}
                 onChange={(role) => editor.set("role", role)}
+              />
+            )}
+          </Field>
+        </CreateFormSection>
+      )}
+      {Option.isSome(roleUpdater.form) && (
+        <CreateFormSection
+          label="ロールを変更"
+          columns={2}
+          command={IamBindingEditForm.toCommand(editRoleForm, projectId)}
+          onCopy={handlers.copy}
+          onInsert={() => handlers.insert(editRoleSteps[0]?.line ?? "")}
+          onSubmit={updateRole}
+          onCancel={roleUpdater.close}
+          submitLabel="保存"
+        >
+          <Field label="プリンシパル">
+            {(id) => <ReadOnlyInput id={id} value={editRoleForm.member} />}
+          </Field>
+          <Field label="ロール" error={roleUpdater.errors.role}>
+            {(id) => (
+              <SuggestInput
+                id={id}
+                value={editRoleForm.role}
+                suggestions={roleSuggestions}
+                onChange={(role) => roleUpdater.set("role", role)}
               />
             )}
           </Field>
@@ -410,6 +474,7 @@ export const IamScreen = ({ world, project, handlers, outcome }: ScreenProps): R
           world={world}
           member={selected.value}
           projectTarget={projectTarget}
+          onEdit={startEditRole}
           onRemove={remove}
           onCopy={handlers.copy}
           onInsert={handlers.insert}
@@ -424,6 +489,7 @@ const MemberDetail = ({
   world,
   member,
   projectTarget,
+  onEdit,
   onRemove,
   onCopy,
   onInsert,
@@ -431,6 +497,7 @@ const MemberDetail = ({
   world: World;
   member: IamMember;
   projectTarget: PolicyTarget;
+  onEdit: (member: IamMember, role: RoleName) => void;
   onRemove: (member: IamMember, role: RoleName) => void;
   onCopy: (text: string) => void;
   onInsert: (line: string) => void;
@@ -502,7 +569,10 @@ const MemberDetail = ({
                     {roleTitleJa(world, role)}
                     <span className="block font-mono text-muted text-xs">{role}</span>
                   </span>
-                  <SecondaryButton onClick={() => onRemove(member, role)}>削除</SecondaryButton>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <SecondaryButton onClick={() => onEdit(member, role)}>編集</SecondaryButton>
+                    <SecondaryButton onClick={() => onRemove(member, role)}>削除</SecondaryButton>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -547,7 +617,18 @@ const MemberDetail = ({
   );
 };
 
-/** IAM と管理 › サービスアカウント: 一覧と作成。 */
+/** Google 管理またはプロジェクト既定のサービスアカウントか（編集・削除不可）。 */
+const isDefaultServiceAccount = (
+  email: string,
+  projectId: string,
+  defaultComputeEmail: string,
+): boolean =>
+  email === defaultComputeEmail ||
+  email === `${projectId}@appspot.gserviceaccount.com` ||
+  email.endsWith("@developer.gserviceaccount.com") ||
+  email.endsWith("@appspot.gserviceaccount.com");
+
+/** IAM と管理 › サービスアカウント: 一覧・作成・編集。 */
 export const ServiceAccountsScreen = ({
   world,
   project,
@@ -561,6 +642,12 @@ export const ServiceAccountsScreen = ({
     false,
     outcome,
   );
+  const updater = useCreateForm(
+    ServiceAccountEditForm,
+    ServiceAccountEditForm.create,
+    false,
+    outcome,
+  );
   const create = (): void => {
     const valid = editor.submit();
     if (!Option.isSome(valid)) return;
@@ -571,6 +658,16 @@ export const ServiceAccountsScreen = ({
     });
     editor.awaitClose();
   };
+  const update = (): void => {
+    const valid = updater.submit();
+    if (!Option.isSome(valid)) return;
+    handlers.submit({
+      line: ServiceAccountEditForm.toCommand(valid.value, projectId),
+      note: `サービスアカウントを編集 (${valid.value.email})`,
+      next: Option.none,
+    });
+    updater.awaitClose();
+  };
   const remove = (email: string): void => {
     if (!handlers.confirm(`サービスアカウント ${email} を削除しますか？`)) return;
     handlers.submit({
@@ -580,12 +677,13 @@ export const ServiceAccountsScreen = ({
     });
   };
   const form = Option.unwrapOr(editor.form, ServiceAccountCreateForm.create());
+  const editForm = Option.unwrapOr(updater.form, ServiceAccountEditForm.create());
   const defaultComputeEmail = ServiceAccount.defaultComputeEmail(project.projectNumber);
   const userAccounts = World.serviceAccountsOf(world, projectId).map((s) => ({
     email: s.email,
     displayName: s.displayName,
     description: s.description,
-    isDefault: false,
+    isDefault: isDefaultServiceAccount(s.email, projectId, defaultComputeEmail),
   }));
   const rows = [
     ...(userAccounts.some((a) => a.email === defaultComputeEmail)
@@ -605,7 +703,16 @@ export const ServiceAccountsScreen = ({
       <ScreenTitle
         eyebrow="IAM と管理"
         title="サービスアカウント"
-        trailing={<PrimaryButton onClick={editor.open}>サービスアカウントを作成</PrimaryButton>}
+        trailing={
+          <PrimaryButton
+            onClick={() => {
+              updater.close();
+              editor.open();
+            }}
+          >
+            サービスアカウントを作成
+          </PrimaryButton>
+        }
       />
       {Option.isSome(editor.form) && (
         <CreateFormSection
@@ -647,11 +754,48 @@ export const ServiceAccountsScreen = ({
           </Field>
         </CreateFormSection>
       )}
+      {Option.isSome(updater.form) && (
+        <CreateFormSection
+          label="サービスアカウントを編集"
+          columns={3}
+          command={ServiceAccountEditForm.toCommand(editForm, projectId)}
+          onCopy={handlers.copy}
+          onInsert={handlers.insert}
+          onSubmit={update}
+          onCancel={updater.close}
+          submitLabel="保存"
+        >
+          <Field label="メール">{(id) => <ReadOnlyInput id={id} value={editForm.email} />}</Field>
+          <Field label="名前">
+            {(id) => (
+              <TextInput
+                id={id}
+                value={editForm.displayName}
+                onChange={(v) => updater.set("displayName", v)}
+              />
+            )}
+          </Field>
+          <Field label="説明">
+            {(id) => (
+              <TextInput
+                id={id}
+                value={editForm.description}
+                onChange={(v) => updater.set("description", v)}
+              />
+            )}
+          </Field>
+        </CreateFormSection>
+      )}
       <ResourceTable
         label="サービスアカウント"
         rows={rows}
         keyOf={(s) => s.email}
         empty="サービスアカウントはまだありません。"
+        editable={(s) => !s.isDefault}
+        onEdit={(s) => {
+          editor.close();
+          updater.openWith(ServiceAccountEditForm.fromServiceAccount(s));
+        }}
         deletable={(s) => !s.isDefault}
         onDelete={(s) => remove(s.email)}
         columns={[
@@ -665,10 +809,11 @@ export const ServiceAccountsScreen = ({
   );
 };
 
-/** IAM と管理 › ロール: カタログとカスタムロールの一覧、カスタムロールの作成。 */
+/** IAM と管理 › ロール: カタログとカスタムロールの一覧、カスタムロールの作成・編集。 */
 export const RolesScreen = ({ world, project, handlers, outcome }: ScreenProps): ReactElement => {
   const projectId = project.projectId;
   const editor = useCreateForm(RoleCreateForm, RoleCreateForm.create, false, outcome);
+  const updater = useCreateForm(RoleEditForm, RoleEditForm.create, false, outcome);
   const create = (): void => {
     const valid = editor.submit();
     if (!Option.isSome(valid)) return;
@@ -679,6 +824,16 @@ export const RolesScreen = ({ world, project, handlers, outcome }: ScreenProps):
     });
     editor.awaitClose();
   };
+  const update = (): void => {
+    const valid = updater.submit();
+    if (!Option.isSome(valid)) return;
+    handlers.submit({
+      line: RoleEditForm.toCommand(valid.value, projectId),
+      note: `カスタムロールを編集 (${valid.value.roleId})`,
+      next: Option.none,
+    });
+    updater.awaitClose();
+  };
   const remove = (roleId: string): void => {
     if (!handlers.confirm(`カスタムロール ${roleId} を削除しますか？`)) return;
     handlers.submit({
@@ -688,9 +843,10 @@ export const RolesScreen = ({ world, project, handlers, outcome }: ScreenProps):
     });
   };
   const form = Option.unwrapOr(editor.form, RoleCreateForm.create());
+  const editForm = Option.unwrapOr(updater.form, RoleEditForm.create());
   const rows = [
     ...World.customRolesOf(world, projectId).map((r) => ({
-      roleId: Option.some(r.roleId),
+      customRole: Option.some(r),
       name: CustomRole.name(r),
       title: r.title,
       subtitle: "",
@@ -700,7 +856,7 @@ export const RolesScreen = ({ world, project, handlers, outcome }: ScreenProps):
     ...RoleCatalog.all().map((r) => {
       const ja = roleTitleJa(world, r.name);
       return {
-        roleId: Option.none,
+        customRole: Option.none as Option<CustomRole>,
         name: r.name,
         title: ja,
         subtitle: ja === r.title ? "" : r.title,
@@ -714,7 +870,16 @@ export const RolesScreen = ({ world, project, handlers, outcome }: ScreenProps):
       <ScreenTitle
         eyebrow="IAM と管理"
         title="ロール"
-        trailing={<PrimaryButton onClick={editor.open}>ロールを作成</PrimaryButton>}
+        trailing={
+          <PrimaryButton
+            onClick={() => {
+              updater.close();
+              editor.open();
+            }}
+          >
+            ロールを作成
+          </PrimaryButton>
+        }
       />
       {Option.isSome(editor.form) && (
         <CreateFormSection
@@ -748,14 +913,58 @@ export const RolesScreen = ({ world, project, handlers, outcome }: ScreenProps):
           </Field>
         </CreateFormSection>
       )}
+      {Option.isSome(updater.form) && (
+        <CreateFormSection
+          label="ロールを編集"
+          columns={2}
+          command={RoleEditForm.toCommand(editForm, projectId)}
+          onCopy={handlers.copy}
+          onInsert={handlers.insert}
+          onSubmit={update}
+          onCancel={updater.close}
+          submitLabel="保存"
+        >
+          <Field label="ID">{(id) => <ReadOnlyInput id={id} value={editForm.roleId} />}</Field>
+          <Field label="タイトル">
+            {(id) => (
+              <TextInput id={id} value={editForm.title} onChange={(v) => updater.set("title", v)} />
+            )}
+          </Field>
+          <Field label="説明">
+            {(id) => (
+              <TextInput
+                id={id}
+                value={editForm.description}
+                onChange={(v) => updater.set("description", v)}
+              />
+            )}
+          </Field>
+          <Field label="権限" error={updater.errors.permissions} hint="カンマか空白で区切る">
+            {(id) => (
+              <TextInput
+                id={id}
+                value={editForm.permissions}
+                onChange={(v) => updater.set("permissions", v)}
+              />
+            )}
+          </Field>
+        </CreateFormSection>
+      )}
       <ResourceTable
         label="ロール"
         rows={rows}
         keyOf={(r) => r.name}
         empty="ロールはありません。"
-        deletable={(r) => Option.isSome(r.roleId)}
+        editable={(r) => Option.isSome(r.customRole)}
+        onEdit={(r) => {
+          if (Option.isSome(r.customRole)) {
+            editor.close();
+            updater.openWith(RoleEditForm.fromCustomRole(r.customRole.value));
+          }
+        }}
+        deletable={(r) => Option.isSome(r.customRole)}
         onDelete={(r) => {
-          if (Option.isSome(r.roleId)) remove(r.roleId.value);
+          if (Option.isSome(r.customRole)) remove(r.customRole.value.roleId);
         }}
         columns={[
           { header: "種類", cell: (r) => <span className="text-muted text-xs">{r.kind}</span> },

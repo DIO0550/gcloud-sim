@@ -23,7 +23,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 
 実在するCLIの構文だけを登録します。アプリ独自のコマンドは受け付けません。HCL・YAML・JSONはCLI画面の「ファイル」タブで編集します。
 
-## 実装済み（685）
+## 実装済み（690）
 
 ### gcloud compute
 
@@ -115,6 +115,8 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 | `gcloud compute instances resume` | Resume a virtual machine instance. |
 | `gcloud compute instances delete` | Delete Compute Engine virtual machine instances. |
 | `gcloud compute instances add-tags` | Add tags to Compute Engine virtual machine instances. |
+| `gcloud compute instances remove-tags` | Remove tags from Compute Engine virtual machine instances. |
+| `gcloud compute instances remove-metadata` | Remove instance metadata from Compute Engine virtual machine instances. |
 | `gcloud compute instances add-metadata` | Add or update instance metadata. |
 | `gcloud compute instances set-machine-type` | Set machine type for Compute Engine virtual machines (the instance must be stopped). |
 | `gcloud compute instances attach-disk` | Attach a disk to an instance. |
@@ -214,6 +216,7 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 | `gcloud compute instance-groups managed list` | List Compute Engine managed instance groups. |
 | `gcloud compute instance-groups managed describe` | Describe a managed instance group. |
 | `gcloud compute instance-groups managed set-autoscaling` | Set autoscaling parameters of a managed instance group. |
+| `gcloud compute instance-groups managed stop-autoscaling` | Stop autoscaling a managed instance group. |
 | `gcloud compute networks vpc-access connectors create` | create connectors in the fixed serverless lesson. |
 | `gcloud compute networks vpc-access connectors list` | list connectors in the fixed serverless lesson. |
 | `gcloud compute networks vpc-access connectors describe` | describe connectors in the fixed serverless lesson. |
@@ -614,12 +617,14 @@ gcloud-sim が解釈するコマンドの一覧。**本物の一部だけ**を�
 | `gcloud iam workforce-pools providers describe` | Configure bounded administration resources in the simulator. |
 | `gcloud iam workforce-pools providers delete` | Configure bounded administration resources in the simulator. |
 | `gcloud iam service-accounts create` | Create a service account for a project. |
+| `gcloud iam service-accounts update` | Update the metadata of an IAM service account. |
 | `gcloud iam service-accounts list` | List all of a project's service accounts. |
 | `gcloud iam service-accounts describe` | Show metadata for a service account from a project. |
 | `gcloud iam service-accounts delete` | Delete a service account from a project. |
 | `gcloud iam roles list` | List predefined roles known to gcloud-sim, or a project's custom roles with --project (as the real gcloud does). |
 | `gcloud iam roles describe` | Show metadata for a role, including the permissions gcloud-sim records for it. |
 | `gcloud iam roles create` | Create a custom role for a project. |
+| `gcloud iam roles update` | Update an IAM custom role. |
 | `gcloud iam roles copy` | Create a role from an existing role. |
 | `gcloud iam roles delete` | Delete a custom role from a project. |
 | `gcloud iam service-accounts keys create` | Create a private key for a service account (the key is recorded, not written to disk). |

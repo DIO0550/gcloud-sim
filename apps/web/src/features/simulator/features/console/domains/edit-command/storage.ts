@@ -1,0 +1,194 @@
+import type { BucketLocation, StorageClass } from "@/engine/domains/catalog";
+import type { Bucket } from "@/engine/domains/storage";
+import type { Protection } from "@/engine/domains/storage-lab/model";
+import {
+  collect,
+  type FieldErrors,
+  flag,
+} from "@/features/simulator/features/console/domains/equivalent-command";
+import { Option } from "@/utils/Option";
+
+export type CommandStep = Readonly<{ line: string; note: string }>;
+
+const NoChangesComment = "# 変更された項目がありません";
+
+const Units: Readonly<Record<string, number>> = { s: 1, m: 60, h: 3600, d: 86400 };
+
+/** 秒数を `7d` / `1h` / `30m` / `10s` / `0` のような期間文字列に整える。 */
+const formatDuration = (seconds: number, emptyZero: boolean): string => {
+  if (seconds === 0) return emptyZero ? "" : "0";
+  if (seconds % 86400 === 0) return `${seconds / 86400}d`;
+  if (seconds % 3600 === 0) return `${seconds / 3600}h`;
+  if (seconds % 60 === 0) return `${seconds / 60}m`;
+  return `${seconds}s`;
+};
+
+/** 期間文字列（`0`, `7d`, `1h`, `30m`, `60s`）を秒数へ変換する。不正なら `none`。 */
+const parseDuration = (raw: string): Option<number> => {
+  const trimmed = raw.trim();
+  if (trimmed === "0") return Option.some(0);
+  const match = /^(\d+)([smhd])$/.exec(trimmed);
+  if (match === null) return Option.none;
+  const seconds = Number(match[1]) * (Units[match[2] ?? ""] ?? 0);
+  return Number.isSafeInteger(seconds) && seconds >= 1 ? Option.some(seconds) : Option.none;
+};
+
+/** Cloud Storage バケット編集フォームの値。名前・ロケーションは作成後に変更不可。 */
+export type BucketEditForm = Readonly<{
+  name: string;
+  location: BucketLocation;
+  storageClass: StorageClass;
+  uniformAccess: boolean;
+  publicAccessPrevention: boolean;
+  versioning: boolean;
+  softDeleteDuration: string;
+  retentionPeriod: string;
+  retentionLocked: boolean;
+  original: Readonly<{
+    storageClass: StorageClass;
+    uniformAccess: boolean;
+    publicAccessPrevention: boolean;
+    versioning: boolean;
+    softDeleteSeconds: number;
+    retentionSeconds: number;
+  }>;
+}>;
+
+export const BucketEditForm = {
+  /** 既存のバケットと保護設定から編集フォームの初期値を作る。 */
+  fromBucket(bucket: Bucket, protection: Protection): BucketEditForm {
+    return {
+      name: bucket.name,
+      location: bucket.location,
+      storageClass: bucket.storageClass,
+      uniformAccess: bucket.uniformBucketLevelAccess,
+      publicAccessPrevention: bucket.publicAccessPrevention,
+      versioning: bucket.versioning,
+      softDeleteDuration: formatDuration(protection.softDelete, false),
+      retentionPeriod: formatDuration(protection.retention, true),
+      retentionLocked: protection.locked,
+      original: {
+        storageClass: bucket.storageClass,
+        uniformAccess: bucket.uniformBucketLevelAccess,
+        publicAccessPrevention: bucket.publicAccessPrevention,
+        versioning: bucket.versioning,
+        softDeleteSeconds: protection.softDelete,
+        retentionSeconds: protection.retention,
+      },
+    };
+  },
+
+  /** 既定の空フォーム（`useCreateForm` の初期ファクトリ用）。 */
+  empty(): BucketEditForm {
+    return {
+      name: "",
+      location: "ASIA-NORTHEAST1",
+      storageClass: "STANDARD",
+      uniformAccess: true,
+      publicAccessPrevention: true,
+      versioning: false,
+      softDeleteDuration: "7d",
+      retentionPeriod: "",
+      retentionLocked: false,
+      original: {
+        storageClass: "STANDARD",
+        uniformAccess: true,
+        publicAccessPrevention: true,
+        versioning: false,
+        softDeleteSeconds: 604800,
+        retentionSeconds: 0,
+      },
+    };
+  },
+
+  /** 論理削除と保持期間の入力を検証する。 */
+  collectErrors(form: BucketEditForm): FieldErrors<BucketEditForm> {
+    const soft = parseDuration(form.softDeleteDuration);
+    const softError: Option<string> = !Option.isSome(soft)
+      ? Option.some("0 または 7d〜89d の形式で指定してください（例: 7d, 30d, 0）")
+      : soft.value !== 0 && (soft.value < 604800 || soft.value >= 7776000)
+        ? Option.some("論理削除の保持期間は 0（無効）または 7d 以上 90d 未満で指定してください")
+        : Option.none;
+
+    const trimmedRetention = form.retentionPeriod.trim();
+    const retentionError: Option<string> = (() => {
+      if (trimmedRetention === "" || trimmedRetention === "0") {
+        return form.retentionLocked
+          ? Option.some("ロック済みの保持ポリシーは解除できません")
+          : Option.none;
+      }
+      const parsed = parseDuration(trimmedRetention);
+      if (!Option.isSome(parsed) || parsed.value === 0) {
+        return Option.some("1d, 30d, 1h のような正の期間で指定してください（空欄で解除）");
+      }
+      if (parsed.value >= 3155760000) {
+        return Option.some("保持期間が上限を超えています");
+      }
+      if (form.retentionLocked && parsed.value < form.original.retentionSeconds) {
+        return Option.some("ロック済みの保持ポリシーは短縮できません");
+      }
+      return Option.none;
+    })();
+
+    return collect<BucketEditForm>([
+      ["softDeleteDuration", softError],
+      ["retentionPeriod", retentionError],
+    ]);
+  },
+
+  /** 変更された項目だけを含む `gcloud storage buckets update` のステップを返す。 */
+  toSteps(form: BucketEditForm, projectId: string): readonly CommandStep[] {
+    const flags: string[] = [];
+    if (form.storageClass !== form.original.storageClass) {
+      flags.push(flag("default-storage-class", form.storageClass));
+    }
+    if (form.uniformAccess !== form.original.uniformAccess) {
+      flags.push(
+        form.uniformAccess ? "--uniform-bucket-level-access" : "--no-uniform-bucket-level-access",
+      );
+    }
+    if (form.publicAccessPrevention !== form.original.publicAccessPrevention) {
+      flags.push(
+        form.publicAccessPrevention
+          ? "--public-access-prevention"
+          : "--no-public-access-prevention",
+      );
+    }
+    if (form.versioning !== form.original.versioning) {
+      flags.push(form.versioning ? "--versioning" : "--no-versioning");
+    }
+    const soft = parseDuration(form.softDeleteDuration);
+    if (!Option.isSome(soft) || soft.value !== form.original.softDeleteSeconds) {
+      flags.push(flag("soft-delete-duration", form.softDeleteDuration.trim()));
+    }
+    const trimmedRetention = form.retentionPeriod.trim();
+    if (trimmedRetention === "" || trimmedRetention === "0") {
+      if (form.original.retentionSeconds > 0) {
+        flags.push("--clear-retention-period");
+      }
+    } else {
+      const parsed = parseDuration(trimmedRetention);
+      if (!Option.isSome(parsed) || parsed.value !== form.original.retentionSeconds) {
+        flags.push(flag("retention-period", trimmedRetention));
+      }
+    }
+    if (flags.length === 0) return [];
+    return [
+      {
+        line: [
+          "gcloud storage buckets update",
+          `gs://${form.name}`,
+          flag("project", projectId),
+          ...flags,
+        ].join(" "),
+        note: `バケットを更新 (${form.name})`,
+      },
+    ];
+  },
+
+  /** 同等のコマンドライン表示用。変更が無ければ案内コメントを返す。 */
+  toCommand(form: BucketEditForm, projectId: string): string {
+    const steps = BucketEditForm.toSteps(form, projectId);
+    return steps.length === 0 ? NoChangesComment : steps.map((s) => s.line).join("\n");
+  },
+} as const;
