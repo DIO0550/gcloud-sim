@@ -768,6 +768,43 @@ export const InstanceCommands: readonly CommandSpec[] = [
       ),
   }),
   projectCommand({
+    path: ["gcloud", "compute", "instances", "remove-tags"],
+    summary: "Remove tags from Compute Engine virtual machine instances.",
+    positionals: [
+      Positional.required(
+        "INSTANCE_NAME",
+        "Name of the instance to operate on.",
+        Candidates.instances,
+      ),
+    ],
+    flags: [
+      CommonFlags.zone,
+      Flag.list("tags", "Specifies strings to be removed from the instance."),
+      Flag.boolean("all", "Remove all tags from the instance."),
+    ],
+    permission: "compute.instances.setTags",
+    requiredApis: [ComputeApi],
+    run: (ctx, args) =>
+      Result.flatMap(instanceArg(ctx, args), (instance) => {
+        const all = ParsedArgs.boolean(args, "all");
+        const tags = ParsedArgs.list(args, "tags");
+        if (!all && tags.length === 0) {
+          return Result.err(
+            CommandFailure.invalidArgumentWith(
+              "Exactly one of (--all | --tags) must be specified.",
+            ),
+          );
+        }
+        if (all && tags.length > 0) {
+          return Result.err(
+            CommandFailure.invalidArgumentWith("At most one of (--all | --tags) can be specified."),
+          );
+        }
+        const nextTags = all ? [] : instance.tags.filter((t) => !tags.includes(t));
+        return updated(ctx, { ...instance, tags: nextTags }, OperationTypes.SetTags);
+      }),
+  }),
+  projectCommand({
     path: ["gcloud", "compute", "instances", "add-metadata"],
     summary: "Add or update instance metadata.",
     positionals: [
@@ -793,6 +830,47 @@ export const InstanceCommands: readonly CommandSpec[] = [
           OperationTypes.SetMetadata,
         ),
       ),
+  }),
+  projectCommand({
+    path: ["gcloud", "compute", "instances", "remove-metadata"],
+    summary: "Remove instance metadata.",
+    positionals: [
+      Positional.required(
+        "INSTANCE_NAME",
+        "Name of the instance to operate on.",
+        Candidates.instances,
+      ),
+    ],
+    flags: [
+      CommonFlags.zone,
+      Flag.list("keys", "The metadata keys to remove."),
+      Flag.boolean("all", "If provided, all metadata entries are removed."),
+    ],
+    permission: "compute.instances.setMetadata",
+    requiredApis: [ComputeApi],
+    run: (ctx, args) =>
+      Result.flatMap(instanceArg(ctx, args), (instance) => {
+        const all = ParsedArgs.boolean(args, "all");
+        const keys = ParsedArgs.list(args, "keys");
+        if (!all && keys.length === 0) {
+          return Result.err(
+            CommandFailure.invalidArgumentWith(
+              "Exactly one of (--all | --keys) must be specified.",
+            ),
+          );
+        }
+        if (all && keys.length > 0) {
+          return Result.err(
+            CommandFailure.invalidArgumentWith("At most one of (--all | --keys) can be specified."),
+          );
+        }
+        const nextMetadata = all
+          ? {}
+          : Object.fromEntries(
+              Object.entries(instance.metadata).filter(([k]) => !keys.includes(k)),
+            );
+        return updated(ctx, { ...instance, metadata: nextMetadata }, OperationTypes.SetMetadata);
+      }),
   }),
   projectCommand({
     path: ["gcloud", "compute", "instances", "set-machine-type"],

@@ -6,6 +6,12 @@ import { MachineType, Region, Regions, Zone } from "@/engine/domains/catalog";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { GkePlacement } from "@/engine/domains/gke-completion";
 import { CloudRunService, type GkeCluster } from "@/engine/domains/managed-services";
+import {
+  defaultConfig,
+  findDeployment,
+  latestRevision,
+} from "@/engine/domains/serverless-lab/model";
+import { ServiceAccount } from "@/engine/domains/service-account";
 import { World } from "@/engine/domains/world";
 import {
   ConsoleStatus,
@@ -18,6 +24,13 @@ import {
   SecondaryButton,
   TextInput,
 } from "@/features/simulator/features/console/components/ConsoleParts";
+import {
+  ClusterEditForm,
+  type RunServiceCpu,
+  RunServiceCpuChoices,
+  RunServiceEditForm,
+  type RunServiceIngress,
+} from "@/features/simulator/features/console/domains/edit-command/containers";
 import {
   ClusterCreateForm,
   type ClusterMode,
@@ -42,7 +55,7 @@ const defaultRegionOf = (world: World, key: "compute/region" | "run/region"): Re
     Zone.region(defaultZoneOf(world)),
   );
 
-/** Kubernetes Engine › クラスタ: 一覧・作成（Autopilot / Standard）・接続・削除。 */
+/** Kubernetes Engine › クラスタ: 一覧・作成（Autopilot / Standard）・編集・接続・削除。 */
 export const ClustersScreen = ({
   world,
   project,
@@ -56,8 +69,23 @@ export const ClustersScreen = ({
       region: defaultRegionOf(world, "compute/region"),
     });
   const editor = useCreateForm(ClusterCreateForm, seed, false, outcome);
+  const editEditor = useCreateForm(ClusterEditForm, ClusterEditForm.empty, false, outcome);
   const form = Option.unwrapOr(editor.form, seed());
+  const editForm = Option.unwrapOr(editEditor.form, ClusterEditForm.empty());
+  const editSteps = ClusterEditForm.toSteps(editForm, projectId);
   const networks = World.networksOf(world, projectId);
+
+  const openCreate = (): void => {
+    editEditor.close();
+    editor.open();
+  };
+
+  const startEdit = (cluster: GkeCluster): void => {
+    const pools = World.nodePoolsOf(world, cluster);
+    const primaryPool = pools.find((p) => p.name === "default-pool") ?? pools[0];
+    editor.close();
+    editEditor.openWith(ClusterEditForm.fromCluster(cluster, Option.fromNullable(primaryPool)));
+  };
 
   const create = (): void => {
     const valid = editor.submit();
@@ -68,6 +96,18 @@ export const ClustersScreen = ({
       next: Option.none,
     });
     editor.awaitClose();
+  };
+
+  const saveEdit = (): void => {
+    const valid = editEditor.submit();
+    if (!Option.isSome(valid)) return;
+    const [first, ...rest] = ClusterEditForm.toSteps(valid.value, projectId);
+    if (first === undefined) {
+      editEditor.close();
+      return;
+    }
+    handlers.submit({ ...first, next: Option.none, rest });
+    editEditor.awaitClose();
   };
 
   const connect = (cluster: GkeCluster): void => {
@@ -93,7 +133,7 @@ export const ClustersScreen = ({
       <ScreenTitle
         eyebrow="Kubernetes Engine"
         title="クラスタ"
-        trailing={<PrimaryButton onClick={editor.open}>＋ クラスタを作成</PrimaryButton>}
+        trailing={<PrimaryButton onClick={openCreate}>＋ クラスタを作成</PrimaryButton>}
       />
       {Option.isSome(editor.form) && (
         <CreateFormSection
@@ -254,6 +294,154 @@ export const ClustersScreen = ({
           )}
         </CreateFormSection>
       )}
+      {Option.isSome(editEditor.form) && (
+        <CreateFormSection
+          label={`クラスタを編集 (${editForm.name})`}
+          columns={2}
+          command={ClusterEditForm.toCommand(editForm, projectId)}
+          onCopy={handlers.copy}
+          onInsert={() => {
+            const line = editSteps[0]?.line;
+            if (line !== undefined) handlers.insert(line);
+          }}
+          onSubmit={saveEdit}
+          onCancel={editEditor.close}
+          submitLabel="保存"
+        >
+          <Field label="名前" hint="作成後に変更できません">
+            {(id) => (
+              <p
+                id={id}
+                className="rounded border border-line bg-canvas px-2.5 py-1.5 font-mono text-ink text-sm"
+              >
+                {editForm.name}
+              </p>
+            )}
+          </Field>
+          <Field label="ロケーション / モード" hint="作成後に変更できません">
+            {(id) => (
+              <p
+                id={id}
+                className="rounded border border-line bg-canvas px-2.5 py-1.5 font-mono text-ink text-sm"
+              >
+                {editForm.location} ({editForm.autopilot ? "Autopilot" : "Standard"})
+              </p>
+            )}
+          </Field>
+          {!editForm.autopilot && editForm.poolName !== "" && (
+            <>
+              <div className="sm:col-span-2">
+                <Checkbox
+                  checked={editForm.enableAutoscaling}
+                  onChange={(v) => editEditor.set("enableAutoscaling", v)}
+                >
+                  ノードプール（{editForm.poolName}）のオートスケーリングを有効にする
+                </Checkbox>
+              </div>
+              {editForm.enableAutoscaling ? (
+                <>
+                  <Field
+                    label="最小ノード数（ゾーンあたり）"
+                    error={editEditor.errors.minNodes}
+                    hint="0〜1000"
+                  >
+                    {(id) => (
+                      <TextInput
+                        id={id}
+                        value={editForm.minNodes}
+                        onChange={(v) => editEditor.set("minNodes", v)}
+                      />
+                    )}
+                  </Field>
+                  <Field
+                    label="最大ノード数（ゾーンあたり）"
+                    error={editEditor.errors.maxNodes}
+                    hint="1〜1000"
+                  >
+                    {(id) => (
+                      <TextInput
+                        id={id}
+                        value={editForm.maxNodes}
+                        onChange={(v) => editEditor.set("maxNodes", v)}
+                      />
+                    )}
+                  </Field>
+                </>
+              ) : (
+                <Field
+                  label={`ノード数（ゾーンあたり・${editForm.poolName}）`}
+                  error={editEditor.errors.numNodes}
+                  hint="0〜1000"
+                >
+                  {(id) => (
+                    <TextInput
+                      id={id}
+                      value={editForm.numNodes}
+                      onChange={(v) => editEditor.set("numNodes", v)}
+                    />
+                  )}
+                </Field>
+              )}
+              <div className="flex flex-col gap-2 sm:col-span-2">
+                <Checkbox
+                  checked={editForm.autoRepair}
+                  onChange={(v) => editEditor.set("autoRepair", v)}
+                >
+                  ノードの自動修復を有効にする（--enable-autorepair）
+                </Checkbox>
+                <Checkbox
+                  checked={editForm.autoUpgrade}
+                  onChange={(v) => editEditor.set("autoUpgrade", v)}
+                >
+                  ノードの自動アップグレードを有効にする（--enable-autoupgrade）
+                </Checkbox>
+              </div>
+            </>
+          )}
+          {!editForm.autopilot && (
+            <div className="flex flex-col gap-2 sm:col-span-2">
+              <Checkbox
+                checked={editForm.enableWorkloadIdentity}
+                onChange={(v) => editEditor.set("enableWorkloadIdentity", v)}
+              >
+                Workload Identity を有効にする（--workload-pool={projectId}.svc.id.goog）
+              </Checkbox>
+              <Checkbox
+                checked={editForm.enableVpa}
+                onChange={(v) => editEditor.set("enableVpa", v)}
+              >
+                Vertical Pod Autoscaling を有効にする（--enable-vertical-pod-autoscaling）
+              </Checkbox>
+            </div>
+          )}
+          <div className="sm:col-span-2">
+            <Checkbox
+              checked={editForm.enableAuthorizedNetworks}
+              onChange={(v) => editEditor.set("enableAuthorizedNetworks", v)}
+            >
+              コントロール プレーン承認済みネットワークを有効にする
+            </Checkbox>
+          </div>
+          {editForm.enableAuthorizedNetworks && (
+            <div className="sm:col-span-2">
+              <Field
+                label="承認済みネットワーク（IPv4 CIDR）"
+                error={editEditor.errors.authorizedNetworks}
+                hint="カンマ区切り（例: 203.0.113.0/24, 198.51.100.0/24）"
+              >
+                {(id) => (
+                  <TextInput
+                    id={id}
+                    value={editForm.authorizedNetworks}
+                    placeholder="203.0.113.0/24"
+                    onChange={(v) => editEditor.set("authorizedNetworks", v)}
+                  />
+                )}
+              </Field>
+            </div>
+          )}
+        </CreateFormSection>
+      )}
       <ResourceTable
         label="クラスタ"
         rows={World.clustersOf(world, projectId)}
@@ -265,6 +453,7 @@ export const ClustersScreen = ({
             接続
           </SecondaryButton>
         )}
+        onEdit={startEdit}
         onDelete={remove}
         columns={[
           {
@@ -299,7 +488,7 @@ export const ClustersScreen = ({
   );
 };
 
-/** Cloud Run › サービス: 一覧・作成（デプロイ）・削除。 */
+/** Cloud Run › サービス: 一覧・作成（デプロイ）・編集・削除。 */
 export const RunServicesScreen = ({
   world,
   project,
@@ -309,8 +498,32 @@ export const RunServicesScreen = ({
   const projectId = project.projectId;
   const seed = (): RunServiceCreateForm =>
     RunServiceCreateForm.create(defaultRegionOf(world, "run/region"));
+  const editSeed = (): RunServiceEditForm =>
+    RunServiceEditForm.empty(defaultRegionOf(world, "run/region"));
   const editor = useCreateForm(RunServiceCreateForm, seed, false, outcome);
+  const editEditor = useCreateForm(RunServiceEditForm, editSeed, false, outcome);
   const form = Option.unwrapOr(editor.form, seed());
+  const editForm = Option.unwrapOr(editEditor.form, editSeed());
+  const editSteps = RunServiceEditForm.toSteps(editForm, projectId);
+
+  const openCreate = (): void => {
+    editEditor.close();
+    editor.open();
+  };
+
+  const startEdit = (service: CloudRunService): void => {
+    const deployment = findDeployment(
+      world,
+      { projectId, region: service.region, name: service.name },
+      "run",
+    );
+    const config =
+      deployment !== undefined
+        ? latestRevision(deployment).config
+        : defaultConfig(ServiceAccount.defaultComputeEmail(project.projectNumber));
+    editor.close();
+    editEditor.openWith(RunServiceEditForm.fromService(service, config));
+  };
 
   const create = (): void => {
     const valid = editor.submit();
@@ -321,6 +534,18 @@ export const RunServicesScreen = ({
       next: Option.none,
     });
     editor.awaitClose();
+  };
+
+  const saveEdit = (): void => {
+    const valid = editEditor.submit();
+    if (!Option.isSome(valid)) return;
+    const [first, ...rest] = RunServiceEditForm.toSteps(valid.value, projectId);
+    if (first === undefined) {
+      editEditor.close();
+      return;
+    }
+    handlers.submit({ ...first, next: Option.none, rest });
+    editEditor.awaitClose();
   };
 
   const remove = (service: CloudRunService): void => {
@@ -337,7 +562,7 @@ export const RunServicesScreen = ({
       <ScreenTitle
         eyebrow="Cloud Run"
         title="サービス"
-        trailing={<PrimaryButton onClick={editor.open}>＋ サービスを作成</PrimaryButton>}
+        trailing={<PrimaryButton onClick={openCreate}>＋ サービスを作成</PrimaryButton>}
       />
       {Option.isSome(editor.form) && (
         <CreateFormSection
@@ -392,12 +617,160 @@ export const RunServicesScreen = ({
           </div>
         </CreateFormSection>
       )}
+      {Option.isSome(editEditor.form) && (
+        <CreateFormSection
+          label={`サービスを編集 (${editForm.name})`}
+          columns={2}
+          command={RunServiceEditForm.toCommand(editForm, projectId)}
+          onCopy={handlers.copy}
+          onInsert={() => {
+            const line = editSteps[0]?.line;
+            if (line !== undefined) handlers.insert(line);
+          }}
+          onSubmit={saveEdit}
+          onCancel={editEditor.close}
+          submitLabel="保存"
+        >
+          <Field label="サービス名" hint="作成後に変更できません">
+            {(id) => (
+              <p
+                id={id}
+                className="rounded border border-line bg-canvas px-2.5 py-1.5 font-mono text-ink text-sm"
+              >
+                {editForm.name}
+              </p>
+            )}
+          </Field>
+          <Field label="リージョン" hint="作成後に変更できません">
+            {(id) => (
+              <p
+                id={id}
+                className="rounded border border-line bg-canvas px-2.5 py-1.5 font-mono text-ink text-sm"
+              >
+                {editForm.region}
+              </p>
+            )}
+          </Field>
+          <div className="sm:col-span-2">
+            <Field label="コンテナ イメージの URL" required error={editEditor.errors.image}>
+              {(id) => (
+                <TextInput
+                  id={id}
+                  value={editForm.image}
+                  onChange={(v) => editEditor.set("image", v)}
+                />
+              )}
+            </Field>
+          </div>
+          <Field label="CPU">
+            {(id) => (
+              <Select<RunServiceCpu>
+                id={id}
+                value={editForm.cpu}
+                onChange={(v) => editEditor.set("cpu", v)}
+                options={RunServiceCpuChoices.map((c) => ({ value: c, label: `${c} vCPU` }))}
+              />
+            )}
+          </Field>
+          <Field label="メモリ" error={editEditor.errors.memory} hint="例: 256Mi, 512Mi, 1Gi, 2Gi">
+            {(id) => (
+              <TextInput
+                id={id}
+                value={editForm.memory}
+                onChange={(v) => editEditor.set("memory", v)}
+              />
+            )}
+          </Field>
+          <Field label="最小インスタンス数" error={editEditor.errors.minInstances} hint="0〜1000">
+            {(id) => (
+              <TextInput
+                id={id}
+                value={editForm.minInstances}
+                onChange={(v) => editEditor.set("minInstances", v)}
+              />
+            )}
+          </Field>
+          <Field label="最大インスタンス数" error={editEditor.errors.maxInstances} hint="1〜1000">
+            {(id) => (
+              <TextInput
+                id={id}
+                value={editForm.maxInstances}
+                onChange={(v) => editEditor.set("maxInstances", v)}
+              />
+            )}
+          </Field>
+          <Field label="最大同時リクエスト数" error={editEditor.errors.concurrency} hint="1〜1000">
+            {(id) => (
+              <TextInput
+                id={id}
+                value={editForm.concurrency}
+                onChange={(v) => editEditor.set("concurrency", v)}
+              />
+            )}
+          </Field>
+          <Field
+            label="リクエスト タイムアウト（秒）"
+            error={editEditor.errors.timeout}
+            hint="1〜3600"
+          >
+            {(id) => (
+              <TextInput
+                id={id}
+                value={editForm.timeout}
+                onChange={(v) => editEditor.set("timeout", v)}
+              />
+            )}
+          </Field>
+          <Field label="Ingress 制御">
+            {(id) => (
+              <Select<RunServiceIngress>
+                id={id}
+                value={editForm.ingress}
+                onChange={(v) => editEditor.set("ingress", v)}
+                options={[
+                  { value: "all", label: "すべて（all）" },
+                  { value: "internal", label: "内部のみ（internal）" },
+                  {
+                    value: "internal-and-cloud-load-balancing",
+                    label: "内部と Cloud Load Balancing",
+                  },
+                ]}
+              />
+            )}
+          </Field>
+          <div className="sm:col-span-2">
+            <Field
+              label="環境変数"
+              error={editEditor.errors.envVars}
+              hint="KEY=VALUE をカンマ区切りで指定（空欄ですべて削除）"
+            >
+              {(id) => (
+                <TextInput
+                  id={id}
+                  value={editForm.envVars}
+                  placeholder="APP_ENV=prod, LOG_LEVEL=info"
+                  onChange={(v) => editEditor.set("envVars", v)}
+                />
+              )}
+            </Field>
+          </div>
+          <div className="sm:col-span-2">
+            <Checkbox
+              checked={editForm.allowUnauthenticated}
+              onChange={(v) => editEditor.set("allowUnauthenticated", v)}
+            >
+              未認証の呼び出しを許可（roles/run.invoker を allUsers に付与 / 削除）
+            </Checkbox>
+          </div>
+        </CreateFormSection>
+      )}
       <ResourceTable
         label="Cloud Run サービス"
         rows={World.runServicesOf(world, projectId)}
         keyOf={(s) => `${s.region}/${s.name}`}
         nameOf={(s) => s.name}
         empty="サービスはまだありません。上の「サービスを作成」または gcloud run deploy で作れます。"
+        onEdit={startEdit}
         onDelete={remove}
         columns={[
           {

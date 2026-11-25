@@ -198,3 +198,51 @@ test("別ゾーンに同名のディスクがあっても、resize は指した�
     ["asia-northeast1-b", 20],
   ]);
 });
+
+test("remove-tags は指定したタグだけを外し、--all で全削除できる", () => {
+  const s = run(
+    session(),
+    `${create} --tags=http-server,https-server,ssh`,
+    `gcloud compute instances remove-tags web-1 ${zone} --tags=https-server`,
+  );
+  expect(s.text).toContain("Updated [");
+  expect(instance(s).tags).toEqual(["http-server", "ssh"]);
+
+  const cleared = run(s, `gcloud compute instances remove-tags web-1 ${zone} --all`);
+  expect(instance(cleared).tags).toEqual([]);
+
+  const bad = run(s, `gcloud compute instances remove-tags web-1 ${zone}`);
+  expect(bad.text).toContain("Exactly one of (--all | --tags)");
+});
+
+test("remove-metadata は指定したキーだけを外し、--all で全削除できる", () => {
+  const s = run(
+    session(),
+    `${create} --metadata=env=dev,team=web,owner=alice`,
+    `gcloud compute instances remove-metadata web-1 ${zone} --keys=team`,
+  );
+  expect(s.text).toContain("Updated [");
+  expect(instance(s).metadata).toEqual({ env: "dev", owner: "alice" });
+
+  const cleared = run(s, `gcloud compute instances remove-metadata web-1 ${zone} --all`);
+  expect(instance(cleared).metadata).toEqual({});
+
+  const bad = run(s, `gcloud compute instances remove-metadata web-1 ${zone}`);
+  expect(bad.text).toContain("Exactly one of (--all | --keys)");
+});
+
+test("instance-groups managed stop-autoscaling はオートスケーリング設定を削除する", () => {
+  const s = run(
+    session(),
+    "gcloud compute instance-templates create web-tpl",
+    `gcloud compute instance-groups managed create web-mig ${zone} --template=web-tpl --size=2`,
+    `gcloud compute instance-groups managed set-autoscaling web-mig ${zone} --max-num-replicas=5 --min-num-replicas=2`,
+    `gcloud compute instance-groups managed stop-autoscaling web-mig ${zone}`,
+  );
+  expect(s.text).toContain("Deleted [");
+  const mig = s.world.instanceGroups.find((g) => g.name === "web-mig");
+  expect(mig?.autoscaling).toEqual(Option.none);
+
+  const twice = run(s, `gcloud compute instance-groups managed stop-autoscaling web-mig ${zone}`);
+  expect(twice.text).toContain("was not found");
+});

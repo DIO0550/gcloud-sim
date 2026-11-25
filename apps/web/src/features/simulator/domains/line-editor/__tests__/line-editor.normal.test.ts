@@ -164,3 +164,48 @@ test("候補が複数のとき、並べる候補からも制御文字を落と�
   const completed = LineEditor.complete(editor, ["web\u0007-1", "web-2"]);
   expect(completed.listing).toEqual(["web-1", "web-2"]);
 });
+
+test("対話入力で行末に \\ を打って Enter すると継続行になり、次の Enter で 1 行として送信される", () => {
+  const line1 = type(LineEditor.create(), "gcloud compute networks subnets create s1 \\");
+  const cont = LineEditor.handle(line1, Keys.Enter);
+  expect(cont.effects).toEqual([{ kind: "continue" }]);
+  expect(cont.editor.buffer).toBe("");
+  expect(cont.editor.pending).toBe("gcloud compute networks subnets create s1 ");
+
+  const line2 = type(cont.editor, "--network=privatenet \\");
+  const cont2 = LineEditor.handle(line2, Keys.Enter);
+  expect(cont2.effects).toEqual([{ kind: "continue" }]);
+  expect(LineEditor.lineForCompletion(type(cont2.editor, "--reg"))).toBe(
+    "gcloud compute networks subnets create s1 --network=privatenet --reg",
+  );
+
+  const line3 = type(cont2.editor, "--region=us-central1");
+  const done = LineEditor.handle(line3, Keys.Enter);
+  expect(done.effects).toEqual([
+    {
+      kind: "submit",
+      line: "gcloud compute networks subnets create s1 --network=privatenet --region=us-central1",
+    },
+  ]);
+  expect(done.editor.pending).toBe("");
+});
+
+test("継続行の途中で Ctrl+C を押すと先行行もクリアされる", () => {
+  const line1 = type(LineEditor.create(), "gcloud compute \\");
+  const cont = LineEditor.handle(line1, Keys.Enter);
+  const aborted = LineEditor.handle(type(cont.editor, "--zone"), Keys.CtrlC);
+  expect(aborted.effects).toEqual([{ kind: "interrupt" }]);
+  expect(aborted.editor.pending).toBe("");
+  expect(aborted.editor.buffer).toBe("");
+});
+
+test("CR(\\r) 改行や \\ の後ろに空白がある貼り付けでも 1 行に繋がる", () => {
+  const stepped = LineEditor.handle(
+    LineEditor.create(),
+    "gcloud compute networks create vpc1 \\ \r  --subnet-mode=custom\r",
+  );
+  expect(stepped.effects).toContainEqual({
+    kind: "submit",
+    line: "gcloud compute networks create vpc1 --subnet-mode=custom",
+  });
+});

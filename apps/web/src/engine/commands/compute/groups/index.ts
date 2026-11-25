@@ -445,4 +445,47 @@ export const GroupCommands: readonly CommandSpec[] = [
     requiredApis: [ComputeApi],
     run: setAutoscaling,
   }),
+  projectCommand({
+    path: ["gcloud", "compute", "instance-groups", "managed", "stop-autoscaling"],
+    summary: "Stop autoscaling a managed instance group.",
+    positionals: [
+      Positional.required("NAME", "Name of the managed instance group.", Candidates.instanceGroups),
+    ],
+    flags: [CommonFlags.zone, CommonFlags.region],
+    permission: "compute.instanceGroupManagers.update",
+    requiredApis: [ComputeApi],
+    run: (ctx, args) => {
+      const location = resolveLocation(ctx, args);
+      if (!Result.isOk(location)) return location;
+      const name = ParsedArgs.requiredPositional(args, 0);
+      const group = World.findLocated(ctx.world, "instanceGroups", {
+        projectId: ctx.project.projectId,
+        name,
+        location: location.value,
+      });
+      if (!Option.isSome(group)) {
+        return Result.err(
+          CommandFailure.notFound(
+            `projects/${ctx.project.projectId}/${Option.isSome(Zone.parse(location.value)) ? "zones" : "regions"}/${location.value}/instanceGroupManagers/${name}`,
+          ),
+        );
+      }
+      if (!Option.isSome(group.value.autoscaling)) {
+        return Result.err(
+          CommandFailure.notFound(
+            `projects/${ctx.project.projectId}/${MigLocation.toPath(group.value.location)}/autoscalers/${name}`,
+          ),
+        );
+      }
+      const next: ManagedInstanceGroup = { ...group.value, autoscaling: Option.none };
+      return Result.ok({
+        world: World.replaceNamed(ctx.world, "instanceGroups", next),
+        output: CommandOutput.messages(
+          OutputMessage.plain(
+            `Deleted [https://www.googleapis.com/compute/v1/projects/${ctx.project.projectId}/${MigLocation.toPath(next.location)}/autoscalers/${next.name}].`,
+          ),
+        ),
+      });
+    },
+  }),
 ];

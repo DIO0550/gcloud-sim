@@ -246,10 +246,11 @@ export const firewallDecision = (
         (r.targetTags.length === 0 || r.targetTags.some((t) => i.tags.includes(t))) &&
         ((r.targetServiceAccounts ?? []).length === 0 ||
           r.targetServiceAccounts?.includes(i.serviceAccount)) &&
-        ((r.sourceServiceAccounts ?? []).length > 0
+        ((r.sourceServiceAccounts ?? []).length > 0 || (r.sourceTags ?? []).length > 0
           ? (source !== undefined &&
               sameNetwork(w, source, i) &&
-              r.sourceServiceAccounts?.includes(source.serviceAccount)) ||
+              ((r.sourceServiceAccounts ?? []).includes(source.serviceAccount) ||
+                (r.sourceTags ?? []).some((t) => source.tags.includes(t)))) ||
             r.sourceRanges.some((range) => Ipv4.contains(range, otherIp))
           : matchesRanges(
               direction === "INGRESS" ? r.sourceRanges : r.destinationRanges,
@@ -819,16 +820,18 @@ export const validateNetworkLab = (w: World): Result<World, string> => {
       !validProtocols([...f.allowed, ...f.denied]) ||
       (f.direction === "INGRESS" && f.destinationRanges.length > 0) ||
       (f.direction === "EGRESS" &&
-        (f.sourceRanges.length > 0 || (f.sourceServiceAccounts?.length ?? 0) > 0))
+        (f.sourceRanges.length > 0 ||
+          (f.sourceTags?.length ?? 0) > 0 ||
+          (f.sourceServiceAccounts?.length ?? 0) > 0))
     ) {
       return Result.err("Invalid firewall priority, direction, protocol/port or CIDR.");
     }
     if (
       ((f.targetServiceAccounts?.length ?? 0) > 0 || (f.sourceServiceAccounts?.length ?? 0) > 0) &&
-      f.targetTags.length > 0
+      (f.targetTags.length > 0 || (f.sourceTags?.length ?? 0) > 0)
     ) {
       return Result.err(
-        "Firewall source/target service accounts cannot combine with target network tags.",
+        "Firewall source/target service accounts cannot combine with target/source network tags.",
       );
     }
     if (

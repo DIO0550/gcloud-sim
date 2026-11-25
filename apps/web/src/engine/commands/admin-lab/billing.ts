@@ -31,7 +31,20 @@ export const BillingLabCommands: readonly CommandSpec[] = [
       flags: [
         sf("billing-account", true),
         ...(op === "update"
-          ? [sf("budget-amount"), sf("display-name"), sf("add-threshold-rule")]
+          ? [
+              sf("budget-amount"),
+              sf("display-name"),
+              Flag.literals(
+                "add-threshold-rule",
+                "Threshold rules to add, e.g. percent=50,basis=current-spend.",
+              ),
+              Flag.boolean("clear-threshold-rules", "Clear all existing threshold rules."),
+              Flag.list("filter-projects", "Project IDs the budget applies to."),
+              Flag.boolean(
+                "clear-filter-projects",
+                "Clear the project filter so the budget applies to all projects.",
+              ),
+            ]
           : []),
       ],
       destructive: op === "delete",
@@ -54,7 +67,14 @@ export const BillingLabCommands: readonly CommandSpec[] = [
           );
         }
         if (
-          !["budget-amount", "display-name", "add-threshold-rule"].some((k) => ParsedArgs.has(a, k))
+          ![
+            "budget-amount",
+            "display-name",
+            "add-threshold-rule",
+            "clear-threshold-rules",
+            "filter-projects",
+            "clear-filter-projects",
+          ].some((k) => ParsedArgs.has(a, k))
         ) {
           return invalid("Specify an amount, display name or threshold rule to update.");
         }
@@ -64,24 +84,43 @@ export const BillingLabCommands: readonly CommandSpec[] = [
         if (!amount.ok) {
           return invalid(amount.error);
         }
-        let thresholds = budget.thresholds;
+        let thresholds: readonly number[] = ParsedArgs.boolean(a, "clear-threshold-rules")
+          ? []
+          : budget.thresholds;
         if (ParsedArgs.has(a, "add-threshold-rule")) {
-          const rule = /^percent=(\d+)(?:,basis=current-spend)?$/.exec(
-            text(a, "add-threshold-rule"),
-          );
-          const percent = rule ? Number(rule[1]) : Number.NaN;
-          if (!Number.isInteger(percent) || percent < 0 || percent > 100) {
-            return invalid(
-              "Update lesson follows SDK update reference: integer percent=0..100, basis=current-spend only. Create uses fractional percent values.",
-            );
+          const added: number[] = [];
+          for (const rawRule of ParsedArgs.list(a, "add-threshold-rule")) {
+            const rule = /^percent=(\d+)(?:,basis=current-spend)?$/.exec(rawRule);
+            const percent = rule ? Number(rule[1]) : Number.NaN;
+            if (!Number.isInteger(percent) || percent < 0 || percent > 100) {
+              return invalid(
+                "Update lesson follows SDK update reference: integer percent=0..100, basis=current-spend only. Create uses fractional percent values.",
+              );
+            }
+            added.push(percent / 100);
           }
-          thresholds = [...new Set([...thresholds, percent / 100])].sort((a, b) => a - b);
+          thresholds = [...new Set([...thresholds, ...added])].sort((a, b) => a - b);
+        }
+        let projectIds = budget.projectIds;
+        if (ParsedArgs.boolean(a, "clear-filter-projects")) {
+          projectIds = [];
+        } else if (ParsedArgs.has(a, "filter-projects")) {
+          const nextProjects = ParsedArgs.list(a, "filter-projects").map((p) =>
+            p.replace(/^projects\//, ""),
+          );
+          const unknownProject = nextProjects.find(
+            (p) => !ctx.world.projects.some((proj) => proj.projectId === p),
+          );
+          if (unknownProject !== undefined) {
+            return missing(`projects/${unknownProject} was not found.`);
+          }
+          projectIds = [...new Set(nextProjects)];
         }
         const displayName = text(a, "display-name", budget.displayName);
         if (!displayName.trim()) {
           return invalid("Budget display name must not be empty.");
         }
-        const updated = { ...budget, amount: amount.value, displayName, thresholds };
+        const updated = { ...budget, amount: amount.value, displayName, thresholds, projectIds };
         return finish(
           { ...ctx.world, budgets: ctx.world.budgets.map((b) => (b === budget ? updated : b)) },
           Budget.toRecord(updated),

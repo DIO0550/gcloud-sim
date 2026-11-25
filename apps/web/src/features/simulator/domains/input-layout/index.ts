@@ -8,6 +8,8 @@ export type Redraw = Readonly<{ sequence: string; rendered: DrawnInput }>;
 
 const PromptText = "$ ";
 const PromptAnsi = "\x1b[34m$\x1b[0m ";
+const ContinuationPromptText = "> ";
+const ContinuationPromptAnsi = "\x1b[34m>\x1b[0m ";
 const PromptLength = PromptText.length;
 
 const up = (rows: number): string => (rows > 0 ? `\x1b[${rows}A` : "");
@@ -26,21 +28,24 @@ const erase = (previous: Option<DrawnInput>, cols: number): string => {
  */
 export const InputLayout = {
   Prompt: PromptText,
+  ContinuationPrompt: ContinuationPromptText,
 
   /**
    * 前回の描画を消して、今の入力行を描くエスケープ列を作る。
    *
    * @param previous 前回描いた入力行。無ければ行頭にいる前提
-   * @param editor 今のバッファとカーソル
+   * @param editor 今のバッファとカーソル（`pending` が非空なら継続プロンプト `> ` を描く）
    * @param cols 端末の列数（1 以上）
    * @returns 端末に書く列と、次回の `previous`
    */
   redraw(
     previous: Option<DrawnInput>,
-    editor: Readonly<{ buffer: string; cursor: number }>,
+    editor: Readonly<{ buffer: string; cursor: number; pending?: string }>,
     cols: number,
   ): Redraw {
     const width = Math.max(1, cols);
+    const promptAnsi =
+      editor.pending !== undefined && editor.pending !== "" ? ContinuationPromptAnsi : PromptAnsi;
     const total = PromptLength + editor.buffer.length;
     const endRow = Math.floor(total / width);
     const endCol = total % width;
@@ -48,7 +53,7 @@ export const InputLayout = {
     const settle = endCol === 0 && total > 0 ? " \x1b[D" : "";
     const targetRow = Math.floor((PromptLength + editor.cursor) / width);
     const targetCol = (PromptLength + editor.cursor) % width;
-    const sequence = `${erase(previous, width)}${PromptAnsi}${editor.buffer}${settle}${up(endRow - targetRow)}\x1b[${targetCol + 1}G`;
+    const sequence = `${erase(previous, width)}${promptAnsi}${editor.buffer}${settle}${up(endRow - targetRow)}\x1b[${targetCol + 1}G`;
     return { sequence, rendered: { length: editor.buffer.length, cursor: editor.cursor } };
   },
 

@@ -1,10 +1,12 @@
 import { Option } from "@/utils/Option";
 import { StringEx } from "@/utils/StringEx";
 
-/** 入力行の状態。バッファとカーソル、↑↓で辿る履歴。 */
+/** 入力行の状態。バッファとカーソル、↑↓で辿る履歴、行継続（`\` + Enter）の蓄積。 */
 export type LineEditor = Readonly<{
   buffer: string;
   cursor: number;
+  /** `\` + Enter で継続中の先行行 */
+  pending: string;
   history: readonly string[];
   /** 履歴を辿っている位置。辿っていなければ `none` */
   historyIndex: Option<number>;
@@ -15,6 +17,7 @@ export type LineEditor = Readonly<{
 /** キー入力を適用した結果、コンポーネントが端末に対して行うこと。 */
 export type EditorEffect =
   | Readonly<{ kind: "draw" }>
+  | Readonly<{ kind: "continue" }>
   | Readonly<{ kind: "submit"; line: string }>
   | Readonly<{ kind: "complete" }>
   | Readonly<{ kind: "clear" }>
@@ -109,15 +112,40 @@ const historyDown = (editor: LineEditor): LineEditor => {
   return { ...withBuffer(editor, line, line.length), historyIndex: Option.some(next) };
 };
 
+/** 行末にエスケープされていない `\` があるか（奇数個の `\` で終わる）。 */
+const hasTrailingContinuation = (buffer: string): boolean => /(^|[^\\])(\\\\)*\\$/.test(buffer);
+
 const submit = (editor: LineEditor): EditorStep => {
-  const line = editor.buffer;
+  if (hasTrailingContinuation(editor.buffer)) {
+    const chunk = editor.buffer.slice(0, -1);
+    return step(
+      {
+        ...editor,
+        buffer: "",
+        cursor: 0,
+        pending: editor.pending + chunk,
+        historyIndex: Option.none,
+        draft: "",
+      },
+      { kind: "continue" },
+    );
+  }
+  const line = editor.pending + editor.buffer;
   const trimmed = line.trim();
   const history =
     trimmed === "" || editor.history.at(-1) === trimmed
       ? editor.history
       : [...editor.history, trimmed];
   return step(
-    { ...editor, buffer: "", cursor: 0, history, historyIndex: Option.none, draft: "" },
+    {
+      ...editor,
+      buffer: "",
+      cursor: 0,
+      pending: "",
+      history,
+      historyIndex: Option.none,
+      draft: "",
+    },
     { kind: "submit", line },
   );
 };
@@ -136,7 +164,7 @@ const single = (editor: LineEditor, key: string): EditorStep => {
       return step(editor, { kind: "complete" });
     case Keys.CtrlC:
       return step(
-        { ...editor, buffer: "", cursor: 0, historyIndex: Option.none, draft: "" },
+        { ...editor, buffer: "", cursor: 0, pending: "", historyIndex: Option.none, draft: "" },
         { kind: "interrupt" },
       );
     case Keys.CtrlL:
@@ -187,7 +215,7 @@ export const LineEditor = {
    * @returns 何も打っていない状態
    */
   create(history: readonly string[] = []): LineEditor {
-    return { buffer: "", cursor: 0, history, historyIndex: Option.none, draft: "" };
+    return { buffer: "", cursor: 0, pending: "", history, historyIndex: Option.none, draft: "" };
   },
 
   /**
@@ -202,7 +230,7 @@ export const LineEditor = {
   handle(editor: LineEditor, data: string): EditorStep {
     const isEscape = data.startsWith("\x1b");
     if (isEscape || data.length === 1) return single(editor, data);
-    const normalized = data.replace(/\r\n/g, "\n").replace(/[ \t]*\\\n\s*/g, " ");
+    const normalized = data.replace(/\r\n?/g, "\n").replace(/[ \t]*\\[ \t]*\n\s*/g, " ");
     const effects: EditorEffect[] = [];
     let current = editor;
     for (const char of normalized) {
@@ -227,6 +255,7 @@ export const LineEditor = {
     const printable = StringEx.withoutControlChars(line);
     return {
       ...withBuffer(editor, printable, printable.length),
+      pending: "",
       historyIndex: Option.none,
       draft: "",
     };
@@ -259,8 +288,8 @@ export const LineEditor = {
     };
   },
 
-  /** 補完のために切り出す、カーソルまでの行。 */
+  /** 補完のために切り出す、カーソルまでの行（継続中の先行行を含む）。 */
   lineForCompletion(editor: LineEditor): string {
-    return editor.buffer.slice(0, editor.cursor);
+    return editor.pending + editor.buffer.slice(0, editor.cursor);
   },
 } as const;

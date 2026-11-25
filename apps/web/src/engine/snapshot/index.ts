@@ -378,6 +378,7 @@ const firewallRule = D.object<FirewallRule>({
   sourceRanges: strings,
   destinationRanges: strings,
   targetTags: strings,
+  sourceTags: optional(strings),
   targetServiceAccounts: optional(strings),
   sourceServiceAccounts: optional(strings),
   logging: optional(D.boolean),

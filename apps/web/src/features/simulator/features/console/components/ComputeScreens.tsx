@@ -18,6 +18,7 @@ import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { ServiceAccount } from "@/engine/domains/service-account";
 import { World } from "@/engine/domains/world";
 import {
+  CreateFormSection,
   CreatePage,
   Field,
   PrimaryButton,
@@ -26,6 +27,7 @@ import {
   TextInput,
 } from "@/features/simulator/features/console/components/ConsoleParts";
 import { ConsoleScreens } from "@/features/simulator/features/console/domains/console-screen";
+import { VmEditForm } from "@/features/simulator/features/console/domains/edit-command/compute";
 import {
   FieldErrors,
   type VmAction,
@@ -99,12 +101,34 @@ const searchableText = (instance: Instance): string => {
 
 const instanceKey = (instance: Instance): string => `${instance.zone}/${instance.name}`;
 
+const EmptyVmEditForm = (): VmEditForm => ({
+  name: "",
+  zone: "asia-northeast1-a",
+  status: "RUNNING",
+  initialMachineType: "e2-small",
+  machineType: "e2-small",
+  initialTags: [],
+  tags: "",
+  initialMetadata: {},
+  metadata: "",
+});
+
+const ReadOnlyField = ({ id, value }: Readonly<{ id: string; value: string }>): ReactElement => (
+  <output
+    id={id}
+    className="flex h-9 items-center rounded-md border border-line bg-canvas px-3 font-mono text-muted text-sm"
+  >
+    {value}
+  </output>
+);
+
 /** Compute Engine › VM インスタンス（UI 案 2b）。選んだ VM に対する操作は CLI のコマンドとして流す。 */
-export const VmListScreen = ({ world, project, handlers }: ScreenProps): ReactElement => {
+export const VmListScreen = ({ world, project, handlers, outcome }: ScreenProps): ReactElement => {
   const [selectedKeys, setSelectedKeys] = useState<ReadonlySet<string>>(new Set());
   const [filter, setFilter] = useState("");
   const [sortAsc, setSortAsc] = useState(true);
   const filterId = useId();
+  const editEditor = useCreateForm(VmEditForm, EmptyVmEditForm, false, outcome);
   const instances = World.instancesOf(world, project.projectId);
   const shown = instances
     .filter((i) => searchableText(i).includes(filter.trim().toLowerCase()))
@@ -138,6 +162,17 @@ export const VmListScreen = ({ world, project, handlers }: ScreenProps): ReactEl
   };
   const isEnabled = (action: ToolbarAction): boolean =>
     selected.length > 0 && selected.every((i) => Option.isSome(resolveAction(action, i)));
+  const saveEdit = (): void => {
+    const valid = editEditor.submit();
+    if (!Option.isSome(valid)) return;
+    const [first, ...rest] = VmEditForm.toSteps(valid.value, project.projectId);
+    if (first === undefined) {
+      editEditor.close();
+      return;
+    }
+    handlers.submit({ ...first, next: Option.none, rest });
+    editEditor.awaitClose();
+  };
   return (
     <div>
       <div className="-mx-5 -mt-5 mb-0 flex min-h-14 flex-wrap items-center gap-x-6 gap-y-2 border-line border-b px-5 py-3">
@@ -183,6 +218,78 @@ export const VmListScreen = ({ world, project, handlers }: ScreenProps): ReactEl
           インスタンス
         </span>
       </div>
+      {Option.isSome(editEditor.form) &&
+        (() => {
+          const editForm = editEditor.form.value;
+          const editSteps = VmEditForm.toSteps(editForm, project.projectId);
+          return (
+            <CreateFormSection
+              label="VM インスタンスを編集"
+              columns={2}
+              command={VmEditForm.toCommand(editForm, project.projectId)}
+              onCopy={handlers.copy}
+              onInsert={() => handlers.insert(editSteps[0]?.line ?? "")}
+              onSubmit={saveEdit}
+              onCancel={editEditor.close}
+              submitLabel="保存"
+            >
+              <Field label="名前">{(id) => <ReadOnlyField id={id} value={editForm.name} />}</Field>
+              <Field label="ゾーン">
+                {(id) => <ReadOnlyField id={id} value={editForm.zone} />}
+              </Field>
+              <Field
+                label="マシンタイプ"
+                error={editEditor.errors.machineType}
+                hint={
+                  editForm.status === "TERMINATED"
+                    ? undefined
+                    : "マシンタイプを変更するにはインスタンスを停止してください"
+                }
+              >
+                {(id) =>
+                  editForm.status === "TERMINATED" ? (
+                    <Select
+                      id={id}
+                      value={editForm.machineType}
+                      onChange={(machineType) => editEditor.set("machineType", machineType)}
+                      options={MachineType.all().map((m) => ({
+                        value: m.name,
+                        label: machineTypeText(m),
+                      }))}
+                    />
+                  ) : (
+                    <ReadOnlyField id={id} value={editForm.machineType} />
+                  )
+                }
+              </Field>
+              <Field label="ネットワーク タグ">
+                {(id) => (
+                  <TagInput
+                    id={id}
+                    value={editForm.tags}
+                    onChange={(tags) => editEditor.set("tags", tags)}
+                  />
+                )}
+              </Field>
+              <div className="sm:col-span-2">
+                <Field
+                  label="メタデータ"
+                  error={editEditor.errors.metadata}
+                  hint="key=value をカンマ区切りで入力（例: env=prod,enable-oslogin=TRUE）"
+                >
+                  {(id) => (
+                    <TextInput
+                      id={id}
+                      value={editForm.metadata}
+                      placeholder="env=prod,enable-oslogin=TRUE"
+                      onChange={(metadata) => editEditor.set("metadata", metadata)}
+                    />
+                  )}
+                </Field>
+              </div>
+            </CreateFormSection>
+          );
+        })()}
       <label
         htmlFor={filterId}
         className="mb-4 flex h-11 items-center gap-3 rounded-lg border border-line bg-surface px-4"
@@ -226,7 +333,7 @@ export const VmListScreen = ({ world, project, handlers }: ScreenProps): ReactEl
               <th className="py-3 pr-3 font-bold">マシンタイプ</th>
               <th className="py-3 pr-3 font-bold">内部 IP</th>
               <th className="py-3 pr-3 font-bold">外部 IP</th>
-              <th className="py-3 pr-4 font-bold">接続</th>
+              <th className="py-3 pr-4 font-bold">接続 / 操作</th>
             </tr>
           </thead>
           <tbody>
@@ -272,14 +379,22 @@ export const VmListScreen = ({ world, project, handlers }: ScreenProps): ReactEl
                     )}
                   </td>
                   <td className="py-3.5 pr-4">
-                    <TextButton
-                      ariaLabel={`${i.name} に SSH`}
-                      disabled={!canSsh}
-                      className="font-bold disabled:font-normal"
-                      onClick={() => run("ssh", i)}
-                    >
-                      SSH
-                    </TextButton>
+                    <div className="inline-flex items-center gap-2">
+                      <TextButton
+                        ariaLabel={`${i.name} に SSH`}
+                        disabled={!canSsh}
+                        className="font-bold disabled:font-normal"
+                        onClick={() => run("ssh", i)}
+                      >
+                        SSH
+                      </TextButton>
+                      <SecondaryButton
+                        ariaLabel={`${i.name} を編集`}
+                        onClick={() => editEditor.openWith(VmEditForm.from(i))}
+                      >
+                        編集
+                      </SecondaryButton>
+                    </div>
                   </td>
                 </tr>
               );

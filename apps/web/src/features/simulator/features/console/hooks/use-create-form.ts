@@ -53,6 +53,8 @@ export type CreateForm<F extends object> = Readonly<{
   /** 送信を試みた後だけ出す項目のエラー */
   errors: FieldErrors<F>;
   open: () => void;
+  /** 指定した値でフォームを開く（既存リソースの編集フォーム） */
+  openWith: (initial: F) => void;
   close: () => void;
   /** コマンド送信後に呼ぶと、成功したときだけフォームを閉じ、失敗時は入力を残す */
   awaitClose: () => void;
@@ -112,6 +114,7 @@ export const useCreateForm = <F extends object>(
     form,
     errors,
     open: () => dispatch({ type: "opened", form: create() }),
+    openWith: (initial) => dispatch({ type: "opened", form: initial }),
     close: () => dispatch({ type: "closed" }),
     awaitClose: () => {
       if (outcome === undefined) {

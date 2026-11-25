@@ -11,6 +11,7 @@ import {
   ScreenTitle,
   TextInput,
 } from "@/features/simulator/features/console/components/ConsoleParts";
+import { BudgetEditForm } from "@/features/simulator/features/console/domains/edit-command/billing";
 import {
   BudgetCreateForm,
   DeleteCommand,
@@ -33,7 +34,9 @@ export const BudgetsScreen = ({ world, project, handlers, outcome }: ScreenProps
     World.findBillingAccount(world, id),
   );
   const editor = useCreateForm(BudgetCreateForm, BudgetCreateForm.create, false, outcome);
+  const updater = useCreateForm(BudgetEditForm, BudgetEditForm.create, false, outcome);
   const form = Option.unwrapOr(editor.form, BudgetCreateForm.create());
+  const editForm = Option.unwrapOr(updater.form, BudgetEditForm.create());
   if (!Option.isSome(account)) {
     return (
       <div>
@@ -50,6 +53,7 @@ export const BudgetsScreen = ({ world, project, handlers, outcome }: ScreenProps
     (p) => Option.isSome(p.billingAccountId) && p.billingAccountId.value === accountId,
   );
   const command = BudgetCreateForm.toCommand(form, accountId);
+  const editCommand = BudgetEditForm.toCommand(editForm, accountId, project.projectId);
   const create = (): void => {
     const valid = editor.submit();
     if (!Option.isSome(valid)) return;
@@ -59,6 +63,16 @@ export const BudgetsScreen = ({ world, project, handlers, outcome }: ScreenProps
       next: Option.none,
     });
     editor.awaitClose();
+  };
+  const update = (): void => {
+    const valid = updater.submit();
+    if (!Option.isSome(valid)) return;
+    handlers.submit({
+      line: BudgetEditForm.toCommand(valid.value, accountId, project.projectId),
+      note: `予算を編集 (${valid.value.displayName})`,
+      next: Option.none,
+    });
+    updater.awaitClose();
   };
   const remove = (budget: Budget): void => {
     if (!handlers.confirm(`予算「${budget.displayName}」を削除しますか？`)) return;
@@ -75,12 +89,35 @@ export const BudgetsScreen = ({ world, project, handlers, outcome }: ScreenProps
         ? form.thresholds.filter((t) => t !== ratio)
         : [...form.thresholds, ratio].toSorted((a, b) => a - b),
     );
+  const toggleEditThreshold = (ratio: number): void =>
+    updater.set(
+      "thresholds",
+      editForm.thresholds.includes(ratio)
+        ? editForm.thresholds.filter((t) => t !== ratio)
+        : [...editForm.thresholds, ratio].toSorted((a, b) => a - b),
+    );
+  const projectOptions = [
+    { value: "", label: "すべてのプロジェクト" },
+    ...linkedProjects.map((p) => ({
+      value: p.projectId,
+      label: p.projectId,
+    })),
+  ];
   return (
     <div>
       <ScreenTitle
         eyebrow={`お支払い › ${account.value.displayName}`}
         title="予算とアラート"
-        trailing={<PrimaryButton onClick={editor.open}>予算を作成</PrimaryButton>}
+        trailing={
+          <PrimaryButton
+            onClick={() => {
+              updater.close();
+              editor.open();
+            }}
+          >
+            予算を作成
+          </PrimaryButton>
+        }
       />
       {Option.isSome(editor.form) && (
         <CreateFormSection
@@ -134,16 +171,83 @@ export const BudgetsScreen = ({ world, project, handlers, outcome }: ScreenProps
                 onChange={(projectId) =>
                   editor.set("projectIds", projectId === "" ? [] : [projectId])
                 }
-                options={[
-                  { value: "", label: "すべてのプロジェクト" },
-                  ...linkedProjects.map((p) => ({
-                    value: p.projectId,
-                    label: p.projectId,
-                  })),
-                ]}
+                options={projectOptions}
               />
             )}
           </Field>
+        </CreateFormSection>
+      )}
+      {Option.isSome(updater.form) && (
+        <CreateFormSection
+          label="予算を編集"
+          columns={2}
+          command={editCommand}
+          onCopy={handlers.copy}
+          onInsert={handlers.insert}
+          onSubmit={update}
+          onCancel={updater.close}
+          submitLabel="保存"
+        >
+          <Field label="予算 ID">
+            {(id) => (
+              <input
+                id={id}
+                type="text"
+                value={editForm.budgetId}
+                disabled
+                className="h-9 w-full cursor-not-allowed rounded-md border border-line bg-canvas px-3 font-mono text-[15px] text-muted"
+              />
+            )}
+          </Field>
+          <Field label="名前" error={updater.errors.displayName}>
+            {(id) => (
+              <TextInput
+                id={id}
+                value={editForm.displayName}
+                onChange={(v) => updater.set("displayName", v)}
+              />
+            )}
+          </Field>
+          <Field label="予算額（JPY）" error={updater.errors.amount}>
+            {(id) => (
+              <TextInput
+                id={id}
+                value={editForm.amount}
+                onChange={(v) => updater.set("amount", v)}
+              />
+            )}
+          </Field>
+          <Field label="対象プロジェクト" hint="選ばなければ請求先アカウント全体">
+            {(id) => (
+              <Select
+                id={id}
+                value={editForm.projectIds[0] ?? ""}
+                onChange={(projectId) =>
+                  updater.set("projectIds", projectId === "" ? [] : [projectId])
+                }
+                options={projectOptions}
+              />
+            )}
+          </Field>
+          <fieldset className="sm:col-span-2">
+            <legend className="mb-1 block font-medium text-sm">しきい値</legend>
+            <div className="flex gap-4 text-sm">
+              {ThresholdChoices.map((ratio) => (
+                <Checkbox
+                  key={ratio}
+                  checked={editForm.thresholds.includes(ratio)}
+                  onChange={() => toggleEditThreshold(ratio)}
+                >
+                  {percentText(ratio)}
+                </Checkbox>
+              ))}
+            </div>
+            {updater.errors.thresholds !== undefined && (
+              <p role="alert" className="mt-1 text-danger text-xs">
+                {updater.errors.thresholds}
+              </p>
+            )}
+          </fieldset>
         </CreateFormSection>
       )}
       <ResourceTable
@@ -152,6 +256,10 @@ export const BudgetsScreen = ({ world, project, handlers, outcome }: ScreenProps
         keyOf={(b) => b.name}
         empty="予算はまだありません。"
         nameOf={(b) => b.displayName}
+        onEdit={(b) => {
+          editor.close();
+          updater.openWith(BudgetEditForm.fromBudget(b));
+        }}
         onDelete={remove}
         columns={[
           { header: "名前", cell: (b) => b.displayName },

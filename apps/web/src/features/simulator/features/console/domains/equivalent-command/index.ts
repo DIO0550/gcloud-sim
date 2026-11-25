@@ -38,10 +38,10 @@ import { StringEx } from "@/utils/StringEx";
  */
 
 /** 空白や引用符を含む値をシェルの 1 語にする（Tokenizer が読める形）。 */
-const quote = (value: string): string =>
+export const quote = (value: string): string =>
   /[\s"'\\]/.test(value) ? `"${value.replace(/(["\\])/g, "\\$1")}"` : value;
 
-const flag = (name: string, value: string): string => `--${name}=${quote(value)}`;
+export const flag = (name: string, value: string): string => `--${name}=${quote(value)}`;
 
 /** フォームの項目ごとの入力エラー（UC-008 例外フロー: 項目の直下に出し、送信しない）。 */
 export type FieldErrors<F extends object> = Readonly<Partial<Record<keyof F, string>>>;
@@ -64,11 +64,11 @@ export const FieldErrors = {
 } as const;
 
 /** `Result<_, string>` を項目のエラーにする。 */
-const errorOf = <T>(result: Result<T, string>): Option<string> =>
+export const errorOf = <T>(result: Result<T, string>): Option<string> =>
   Result.isOk(result) ? Option.none : Option.some(result.error);
 
 /** 項目ごとの検証結果から、エラーのある項目だけを集める。 */
-const collect = <F extends object>(
+export const collect = <F extends object>(
   entries: readonly (readonly [keyof F, Option<string>])[],
 ): FieldErrors<F> => {
   const errors: Partial<Record<keyof F, string>> = {};
@@ -454,19 +454,36 @@ export const BudgetCreateForm = {
 
 // --- ファイアウォール ---
 
+/** ファイアウォール ルールのターゲット種別（本物 Console の「ターゲット」）。 */
+export type FirewallTargetType = "all" | "tags" | "service-accounts";
+
+/** ファイアウォール ルールの送信元フィルタ種別（本物 Console の「送信元フィルタ」）。 */
+export type FirewallSourceFilter = "ip-ranges" | "source-tags" | "service-accounts";
+
+/** プロトコルとポートの指定方法（すべて許可/拒否 か、指定したプロトコルとポートか）。 */
+export type FirewallProtocolsMode = "all" | "specified";
+
 export type FirewallCreateForm = Readonly<{
   name: string;
   network: string;
   direction: Direction;
   priority: string;
+  targetType: FirewallTargetType;
   targetTags: string;
+  targetServiceAccounts: string;
+  sourceFilter: FirewallSourceFilter;
   sourceRanges: string;
+  sourceTags: string;
+  sourceServiceAccounts: string;
+  protocolsMode: FirewallProtocolsMode;
   protocolsAndPorts: string;
   action: FirewallAction;
+  enableLogging: boolean;
+  disabled: boolean;
 }>;
 
 /** 入力欄の整数。数字だけの綴りを数にし、それ以外は `none`。 */
-const integerOf = (value: string): Option<number> =>
+export const integerOf = (value: string): Option<number> =>
   /^\d+$/.test(value) ? Option.some(Number(value)) : Option.none;
 
 export const FirewallCreateForm = {
@@ -476,35 +493,104 @@ export const FirewallCreateForm = {
       network: "default",
       direction: Directions.Ingress,
       priority: "1000",
+      targetType: "tags",
       targetTags: "",
+      targetServiceAccounts: "",
+      sourceFilter: "ip-ranges",
       sourceRanges: "0.0.0.0/0",
+      sourceTags: "",
+      sourceServiceAccounts: "",
+      protocolsMode: "specified",
       protocolsAndPorts: "tcp:80",
       action: FirewallActions.Allow,
+      enableLogging: false,
+      disabled: false,
     };
   },
 
   collectErrors(form: FirewallCreateForm): FieldErrors<FirewallCreateForm> {
-    const rules = StringEx.splitList(form.protocolsAndPorts);
+    const rules =
+      form.protocolsMode === "all" ? ["all"] : StringEx.splitList(form.protocolsAndPorts);
     const badRule = rules.map(ProtocolRule.parse).find((r) => !Result.isOk(r));
     const priority = Option.toResult(integerOf(form.priority), () => "整数にしてください。");
+    const hasTargetSa = StringEx.splitList(form.targetServiceAccounts).length > 0;
+    const hasSourceTags = StringEx.splitList(form.sourceTags).length > 0;
+    const hasSourceSa = StringEx.splitList(form.sourceServiceAccounts).length > 0;
+    const ranges = StringEx.splitList(form.sourceRanges);
+    const badRange = ranges.find((r) => !Option.isSome(Ipv4.range(r)));
+    const usesIpRanges = form.direction === Directions.Egress || form.sourceFilter === "ip-ranges";
     return collect<FirewallCreateForm>([
       ["name", errorOf(ResourceName.parse(form.name))],
       ["priority", errorOf(Result.flatMap(priority, FirewallRule.parsePriority))],
       [
+        "targetServiceAccounts",
+        form.targetType === "service-accounts" && !hasTargetSa
+          ? Option.some("ターゲット サービス アカウントを 1 つ以上入れてください。")
+          : Option.none,
+      ],
+      [
+        "sourceRanges",
+        usesIpRanges && badRange !== undefined
+          ? Option.some(`IPv4 CIDR 範囲の形式が正しくありません: ${badRange}`)
+          : Option.none,
+      ],
+      [
+        "sourceTags",
+        form.direction === Directions.Ingress &&
+        form.sourceFilter === "source-tags" &&
+        !hasSourceTags
+          ? Option.some("ソースタグを 1 つ以上入れてください。")
+          : Option.none,
+      ],
+      [
+        "sourceServiceAccounts",
+        form.direction === Directions.Ingress &&
+        form.sourceFilter === "service-accounts" &&
+        !hasSourceSa
+          ? Option.some("送信元サービス アカウントを 1 つ以上入れてください。")
+          : Option.none,
+      ],
+      [
         "protocolsAndPorts",
-        rules.length === 0
-          ? Option.some("tcp:80 のように 1 つ以上入れてください。")
-          : badRule !== undefined && !Result.isOk(badRule)
-            ? Option.some(badRule.error)
-            : Option.none,
+        form.protocolsMode === "all"
+          ? Option.none
+          : rules.length === 0
+            ? Option.some("tcp:80 のように 1 つ以上入れてください。")
+            : badRule !== undefined && !Result.isOk(badRule)
+              ? Option.some(badRule.error)
+              : Option.none,
       ],
     ]);
   },
 
   toCommand(form: FirewallCreateForm, projectId: string): string {
     const list = (value: string) => StringEx.splitList(value).join(",");
-    const rules = list(form.protocolsAndPorts);
-    const rangeFlag = form.direction === Directions.Egress ? "destination-ranges" : "source-ranges";
+    const rules = form.protocolsMode === "all" ? "all" : list(form.protocolsAndPorts);
+    const isEgress = form.direction === Directions.Egress;
+    const rangeFlag = isEgress ? "destination-ranges" : "source-ranges";
+    const sourceFlags = (): readonly string[] => {
+      if (isEgress || form.sourceFilter === "ip-ranges") {
+        const value = list(form.sourceRanges);
+        return value === "" ? [] : [flag(rangeFlag, value)];
+      }
+      if (form.sourceFilter === "source-tags") {
+        const value = list(form.sourceTags);
+        return value === "" ? [] : [flag("source-tags", value)];
+      }
+      const value = list(form.sourceServiceAccounts);
+      return value === "" ? [] : [flag("source-service-accounts", value)];
+    };
+    const targetFlags = (): readonly string[] => {
+      if (form.targetType === "tags") {
+        const value = list(form.targetTags);
+        return value === "" ? [] : [flag("target-tags", value)];
+      }
+      if (form.targetType === "service-accounts") {
+        const value = list(form.targetServiceAccounts);
+        return value === "" ? [] : [flag("target-service-accounts", value)];
+      }
+      return [];
+    };
     const parts = [
       "gcloud compute firewall-rules create",
       quote(form.name),
@@ -515,8 +601,10 @@ export const FirewallCreateForm = {
       ...(form.action === FirewallActions.Allow
         ? [flag("allow", rules)]
         : ["--action=DENY", flag("rules", rules)]),
-      ...(list(form.sourceRanges) === "" ? [] : [flag(rangeFlag, list(form.sourceRanges))]),
-      ...(list(form.targetTags) === "" ? [] : [flag("target-tags", list(form.targetTags))]),
+      ...sourceFlags(),
+      ...targetFlags(),
+      ...(form.enableLogging ? ["--enable-logging"] : []),
+      ...(form.disabled ? ["--disabled"] : []),
     ];
     return parts.join(" ");
   },

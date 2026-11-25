@@ -96,6 +96,85 @@ const createRole = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   );
 };
 
+/** `--project` 付きのカスタムロール更新。権限はカタログにあるものだけ。 */
+const updateRole = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+  const raw = ParsedArgs.requiredPositional(args, 0);
+  const roleId = raw.replace(/^projects\/[^/]+\/roles\//, "");
+  const existing = World.findCustomRoleById(ctx.world, ctx.project.projectId, roleId);
+  if (!Option.isSome(existing)) return Result.err(unknownRole(raw));
+
+  const stageRaw = ParsedArgs.string(args, "stage");
+  const stage = Option.map(stageRaw, (s) => s.toUpperCase());
+  const known = Option.filter(stage, (s) => ["GA", "BETA", "ALPHA", "DISABLED"].includes(s));
+  if (Option.isSome(stage) && !Option.isSome(known)) {
+    return Result.err(
+      CommandFailure.invalidChoice("--stage", Option.unwrapOr(stageRaw, ""), [
+        "alpha",
+        "beta",
+        "ga",
+        "disabled",
+      ]),
+    );
+  }
+
+  const hasReplace = ParsedArgs.has(args, "permissions");
+  const hasAdd = ParsedArgs.has(args, "add-permissions");
+  const hasRemove = ParsedArgs.has(args, "remove-permissions");
+  if (hasReplace && (hasAdd || hasRemove)) {
+    return Result.err(
+      CommandFailure.invalidIamArgument(
+        "INVALID_ARGUMENT: --permissions cannot be combined with --add-permissions or --remove-permissions.",
+      ),
+    );
+  }
+
+  const nextPermissions = (() => {
+    if (hasReplace) return [...new Set(ParsedArgs.list(args, "permissions"))];
+    const removed = new Set(ParsedArgs.list(args, "remove-permissions"));
+    const merged = [
+      ...existing.value.includedPermissions.filter((p) => !removed.has(p)),
+      ...ParsedArgs.list(args, "add-permissions"),
+    ];
+    return [...new Set(merged)];
+  })();
+
+  const unknown = nextPermissions.find((p) => !RoleCatalog.isKnownPermission(p));
+  if (unknown !== undefined) {
+    return Result.err(
+      CommandFailure.invalidIamArgument(
+        `INVALID_ARGUMENT: Permission ${unknown} is not valid for this resource (gcloud-sim knows only the permissions in its role catalog).`,
+      ),
+    );
+  }
+
+  const updated: CustomRole = {
+    ...existing.value,
+    title: Option.unwrapOr(ParsedArgs.string(args, "title"), existing.value.title),
+    description: Option.unwrapOr(
+      ParsedArgs.string(args, "description"),
+      existing.value.description,
+    ),
+    includedPermissions: nextPermissions,
+    stage: Option.unwrapOr(
+      Option.map(known, (s) => s as CustomRole["stage"]),
+      existing.value.stage,
+    ),
+  };
+  const updatedName = CustomRole.name(updated);
+  const world: World = {
+    ...ctx.world,
+    customRoles: ctx.world.customRoles.map((r) =>
+      CustomRole.name(r) === updatedName ? updated : r,
+    ),
+  };
+  return Result.ok({
+    world,
+    output: CommandOutput.yaml(CustomRole.toRecord(updated), [
+      OutputMessage.plain(`Updated role [${updated.roleId}].`),
+    ]),
+  });
+};
+
 const copyRole = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   const sourceRaw = ParsedArgs.requiredString(args, "source");
   const sourceName = Option.flatMap(RoleName.parse(sourceRaw), (name) =>
@@ -237,6 +316,44 @@ export const IamCommands: readonly CommandSpec[] = [
     },
   }),
   projectCommand({
+    path: ["gcloud", "iam", "service-accounts", "update"],
+    summary: "Update an IAM service account.",
+    positionals: [
+      Positional.required(
+        "SERVICE_ACCOUNT",
+        "The service account email to update.",
+        Candidates.serviceAccounts,
+      ),
+    ],
+    flags: [
+      Flag.string("display-name", "The new textual name to display for the account."),
+      Flag.string("description", "The new textual description for the account."),
+    ],
+    permission: "iam.serviceAccounts.update",
+    run: (ctx, args) => {
+      const email = ParsedArgs.requiredPositional(args, 0);
+      const existing = World.findServiceAccount(ctx.world, email);
+      if (!Option.isSome(existing)) return Result.err(unknownServiceAccount(email));
+      const updated: ServiceAccount = {
+        ...existing.value,
+        displayName: Option.unwrapOr(
+          ParsedArgs.string(args, "display-name"),
+          existing.value.displayName,
+        ),
+        description: Option.unwrapOr(
+          ParsedArgs.string(args, "description"),
+          existing.value.description,
+        ),
+      };
+      return Result.ok({
+        world: World.replaceServiceAccount(ctx.world, updated),
+        output: CommandOutput.yaml(ServiceAccount.toRecord(updated), [
+          OutputMessage.plain(`Updated serviceAccount [${email}].`),
+        ]),
+      });
+    },
+  }),
+  projectCommand({
     path: ["gcloud", "iam", "service-accounts", "delete"],
     summary: "Delete a service account from a project.",
     positionals: [
@@ -348,6 +465,30 @@ export const IamCommands: readonly CommandSpec[] = [
     ],
     permission: "iam.roles.create",
     run: createRole,
+  }),
+  projectCommand({
+    path: ["gcloud", "iam", "roles", "update"],
+    summary: "Update an IAM custom role for a project.",
+    positionals: [
+      Positional.required("ROLE_ID", "The ID of the custom role to update.", (world, projectId) =>
+        Option.isSome(projectId)
+          ? World.customRolesOf(world, projectId.value).map((r) => r.roleId)
+          : [],
+      ),
+    ],
+    flags: [
+      Flag.list(
+        "permissions",
+        "The permissions of the role to set, replacing existing permissions.",
+      ),
+      Flag.list("add-permissions", "The permissions to add to the role."),
+      Flag.list("remove-permissions", "The permissions to remove from the role."),
+      Flag.string("title", "The title of the role."),
+      Flag.string("description", "The description of the role."),
+      Flag.string("stage", "The state of the role: alpha, beta, ga or disabled."),
+    ],
+    permission: "iam.roles.update",
+    run: updateRole,
   }),
   projectCommand({
     path: ["gcloud", "iam", "roles", "copy"],

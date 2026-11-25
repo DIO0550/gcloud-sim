@@ -158,11 +158,15 @@ const createFirewallRule = (ctx: ProjectContext, args: ParsedArgs): CommandResul
   if (!Result.isOk(rule)) return rule;
   const configuredRule = {
     ...rule.value,
+    sourceTags: ParsedArgs.list(args, "source-tags"),
     targetServiceAccounts: ParsedArgs.list(args, "target-service-accounts"),
     sourceServiceAccounts: ParsedArgs.list(args, "source-service-accounts"),
     logging: ParsedArgs.boolean(args, "enable-logging"),
   };
-  if (configuredRule.sourceServiceAccounts.length > 0 && !ParsedArgs.has(args, "source-ranges")) {
+  if (
+    (configuredRule.sourceServiceAccounts.length > 0 || configuredRule.sourceTags.length > 0) &&
+    !ParsedArgs.has(args, "source-ranges")
+  ) {
     configuredRule.sourceRanges = [];
   }
   const checked = validateNetworkLab({
@@ -837,6 +841,10 @@ const NetworkSpecs: readonly CommandSpec[] = [
       Flag.list(
         "target-tags",
         "A list of instance tags indicating the set of instances on the network which may accept connections.",
+      ),
+      Flag.list(
+        "source-tags",
+        "A list of instance tags indicating the set of instances on the network which may make network connections that match the firewall rule.",
       ),
       Flag.list(
         "destination-ranges",

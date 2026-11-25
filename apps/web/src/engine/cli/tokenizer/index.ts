@@ -19,7 +19,10 @@ const flush = (scan: Scan): Scan =>
     : scan;
 
 const step = (scan: Scan, char: string): Scan => {
-  if (scan.escaped) return { ...scan, current: scan.current + char, inToken: true, escaped: false };
+  if (scan.escaped) {
+    if (char === "\n") return { ...scan, escaped: false };
+    return { ...scan, current: scan.current + char, inToken: true, escaped: false };
+  }
   if (scan.quote !== null) {
     if (char === scan.quote) return { ...scan, quote: null };
     const escapes = char === "\\" && scan.quote === '"';

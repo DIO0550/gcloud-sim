@@ -643,6 +643,7 @@ export type FirewallRule = Readonly<{
   sourceRanges: readonly string[];
   destinationRanges: readonly string[];
   targetTags: readonly string[];
+  sourceTags?: readonly string[];
   targetServiceAccounts?: readonly string[];
   sourceServiceAccounts?: readonly string[];
   logging?: boolean;
@@ -833,6 +834,7 @@ export const FirewallRule = {
       sourceRanges: rule.sourceRanges,
       destinationRanges: rule.destinationRanges,
       targetTags: rule.targetTags,
+      sourceTags: rule.sourceTags,
       targetServiceAccounts: rule.targetServiceAccounts,
       sourceServiceAccounts: rule.sourceServiceAccounts,
       logConfig: { enable: rule.logging ?? false },

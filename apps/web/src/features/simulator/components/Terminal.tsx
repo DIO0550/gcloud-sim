@@ -84,6 +84,12 @@ const handleData = (handle: TerminalHandle, data: string, callbacks: TerminalPro
       case "draw":
         draw(handle);
         break;
+      case "continue":
+        // 行末 `\` で継続中。打った行を残して改行し、`> ` プロンプトを出す。
+        handle.view.write("\r\n");
+        handle.drawn = Option.none;
+        draw(handle);
+        break;
       case "submit":
         // 打った行はそのまま残し、次の行から出力を書く。
         handle.view.write("\r\n");
@@ -108,7 +114,9 @@ const handleData = (handle: TerminalHandle, data: string, callbacks: TerminalPro
         handle.editor = completed.editor;
         if (completed.listing.length > 0) {
           eraseInput(handle);
-          handle.view.write(`${InputLayout.Prompt}${completed.editor.buffer}\r\n`);
+          const prompt =
+            completed.editor.pending !== "" ? InputLayout.ContinuationPrompt : InputLayout.Prompt;
+          handle.view.write(`${prompt}${completed.editor.buffer}\r\n`);
           handle.view.write(`${completed.listing.join("  ")}\r\n`);
         }
         draw(handle);
