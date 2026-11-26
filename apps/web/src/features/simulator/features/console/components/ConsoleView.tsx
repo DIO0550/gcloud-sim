@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import { type ReactElement, useState } from "react";
 
 import { ApiService } from "@/engine/domains/catalog";
 import { World } from "@/engine/domains/world";
@@ -10,6 +10,7 @@ import {
 import { ScreenRouter } from "@/features/simulator/features/console/components/ScreenRouter";
 import {
   ConsoleScreen,
+  type ConsoleSection,
   type ConsoleScreen as Screen,
 } from "@/features/simulator/features/console/domains/console-screen";
 import { enableApiCommand } from "@/features/simulator/features/console/domains/equivalent-command";
@@ -45,6 +46,12 @@ export const ConsoleView = ({
   onCloseNavigation,
   terminalOpen,
 }: ConsoleViewProps): ReactElement => {
+  const [pinnedSections, setPinnedSections] = useState<readonly ConsoleSection[]>([]);
+  const togglePin = (section: ConsoleSection): void => {
+    setPinnedSections((prev) =>
+      prev.includes(section) ? prev.filter((item) => item !== section) : [...prev, section],
+    );
+  };
   const project = Option.flatMap(World.currentProjectId(world), (id) =>
     World.findActiveProject(world, id),
   );
@@ -113,7 +120,13 @@ export const ConsoleView = ({
       data-testid="console-view"
     >
       {navigationOpen && !isFullPageCreate && (
-        <ConsoleNav screen={screen} onChange={handlers.changeScreen} onClose={onCloseNavigation} />
+        <ConsoleNav
+          screen={screen}
+          onChange={handlers.changeScreen}
+          onClose={onCloseNavigation}
+          pinnedSections={pinnedSections}
+          onTogglePin={togglePin}
+        />
       )}
       <main
         className={`min-h-0 min-w-0 md:col-start-2 ${isFullPageCreate ? "flex flex-col overflow-auto bg-surface xl:overflow-hidden" : "overflow-auto bg-canvas px-5 py-5"} ${terminalOpen ? "pb-[var(--console-terminal-height)]" : ""}`}

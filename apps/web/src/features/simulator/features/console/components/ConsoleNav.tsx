@@ -11,6 +11,8 @@ type ConsoleNavProps = Readonly<{
   screen: ConsoleScreen;
   onChange: (screen: ConsoleScreen) => void;
   onClose?: () => void;
+  pinnedSections?: readonly ConsoleSection[];
+  onTogglePin?: (section: ConsoleSection) => void;
 }>;
 
 /** 左ナビの見出し（設計書 3.1 のプロダクト名）。 */
@@ -24,6 +26,8 @@ const sectionText = (section: ConsoleSection): string => {
       return "Compute Engine";
     case "vpc":
       return "VPC ネットワーク";
+    case "network-services":
+      return "ネットワーク サービス";
     case "storage":
       return "Cloud Storage";
     case "gke":
@@ -72,6 +76,10 @@ export const screenText = (screen: ConsoleScreen): string => {
       return "ファイアウォール";
     case "subnets":
       return "サブネット";
+    case "cloud-nat":
+      return "Cloud NAT";
+    case "cloud-routers":
+      return "Cloud Router";
     case "buckets":
       return "バケット";
     case "clusters":
@@ -209,6 +217,17 @@ const ProductIcon = ({
           <path d="M10 6.5v3.5m0 0-4.2 3.4M10 10l4.2 3.4" stroke="currentColor" strokeWidth="1.4" />
         </svg>
       );
+    case "network-services":
+      return (
+        <svg aria-hidden="true" viewBox="0 0 20 20" className={className} fill="none">
+          <circle cx="10" cy="10" r="6.5" stroke="currentColor" strokeWidth="1.5" />
+          <path
+            d="M3.8 10h12.4M10 3.5c2 1.8 3 4.1 3 6.5s-1 4.7-3 6.5c-2-1.8-3-4.1-3-6.5s1-4.7 3-6.5Z"
+            stroke="currentColor"
+            strokeWidth="1.3"
+          />
+        </svg>
+      );
     case "marketplace":
       return (
         <svg aria-hidden="true" viewBox="0 0 20 20" className={className} fill="none">
@@ -224,6 +243,19 @@ const ProductIcon = ({
   }
 };
 
+const PinIcon = ({ pinned }: Readonly<{ pinned: boolean }>): ReactElement => (
+  <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4" fill="none">
+    <path
+      d="M7 3.5h6l-.8 4.5 2.3 2.5v1.3H5.5v-1.3l2.3-2.5L7 3.5Z"
+      fill={pinned ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinejoin="round"
+    />
+    <path d="M10 11.8v4.7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
 type NavGroup = Readonly<{ heading?: string; screens: readonly ConsoleScreen[] }>;
 
 const sectionGroups = (section: ConsoleSection): readonly NavGroup[] => {
@@ -238,10 +270,26 @@ const sectionGroups = (section: ConsoleSection): readonly NavGroup[] => {
 };
 
 /** Google Cloud Console 風のプロダクト別左ナビ。全プロダクトで統一されたサブナビ＋「すべてのプロダクト」導線を持つ。 */
-export const ConsoleNav = ({ screen, onChange, onClose }: ConsoleNavProps): ReactElement => {
+export const ConsoleNav = ({
+  screen,
+  onChange,
+  onClose,
+  pinnedSections,
+  onTogglePin,
+}: ConsoleNavProps): ReactElement => {
   const [showProducts, setShowProducts] = useState(false);
+  const [localPinned, setLocalPinned] = useState<readonly ConsoleSection[]>([]);
+  const pinned = pinnedSections ?? localPinned;
+  const togglePin =
+    onTogglePin ??
+    ((section: ConsoleSection): void => {
+      setLocalPinned((prev) =>
+        prev.includes(section) ? prev.filter((item) => item !== section) : [...prev, section],
+      );
+    });
   const current = ConsoleScreen.navItem(screen);
   const activeSection = ConsoleScreen.section(screen);
+  const isActivePinned = pinned.includes(activeSection);
   const navigate = (item: ConsoleScreen): void => {
     setShowProducts(false);
     onChange(item);
@@ -274,12 +322,32 @@ export const ConsoleNav = ({ screen, onChange, onClose }: ConsoleNavProps): Reac
       {!showProducts ? (
         <>
           <div className="mb-3 border-line border-b px-4 py-3">
-            <h3 className="flex items-center gap-2.5 font-medium text-[15px] text-ink">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-accent-soft text-accent">
-                <ProductIcon section={activeSection} className="h-4 w-4" />
-              </span>
-              <span className="truncate">{sectionText(activeSection)}</span>
-            </h3>
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="flex min-w-0 items-center gap-2.5 font-medium text-[15px] text-ink">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-accent-soft text-accent">
+                  <ProductIcon section={activeSection} className="h-4 w-4" />
+                </span>
+                <span className="truncate">{sectionText(activeSection)}</span>
+              </h3>
+              <button
+                type="button"
+                aria-label={
+                  isActivePinned
+                    ? `${sectionText(activeSection)} の固定を解除`
+                    : `${sectionText(activeSection)} を固定`
+                }
+                aria-pressed={isActivePinned}
+                title={isActivePinned ? "固定を解除" : "ナビゲーション メニューに固定"}
+                onClick={() => togglePin(activeSection)}
+                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors ${
+                  isActivePinned
+                    ? "bg-accent-soft text-accent"
+                    : "text-muted hover:bg-canvas hover:text-ink"
+                }`}
+              >
+                <PinIcon pinned={isActivePinned} />
+              </button>
+            </div>
             <button
               type="button"
               className="mt-2 inline-flex items-center gap-1 rounded px-1 py-0.5 text-left text-accent text-xs hover:bg-accent-soft"
@@ -325,35 +393,93 @@ export const ConsoleNav = ({ screen, onChange, onClose }: ConsoleNavProps): Reac
               戻る
             </button>
           </div>
-          {Object.values(ConsoleSections).map((section) => (
-            <div key={section} className="mb-3">
-              {categories[section] !== undefined && (
-                <p className="mb-1 px-4 font-medium text-[11px] text-muted uppercase tracking-wider">
-                  {categories[section]}
-                </p>
-              )}
-              <h3 className="flex items-center gap-2.5 px-4 py-1 font-medium text-ink text-xs">
-                <span className="text-muted">
-                  <ProductIcon section={section} className="h-4 w-4" />
-                </span>
-                {sectionText(section)}
-              </h3>
-              <ul className="pr-2.5">
-                {ConsoleScreen.inSection(section).map((item) => (
-                  <li key={item}>
+          {pinned.length > 0 && (
+            <div className="mb-3 border-line border-b pb-2">
+              <p className="mb-1 px-4 font-medium text-[11px] text-muted uppercase tracking-wider">
+                固定済み
+              </p>
+              {pinned.map((section) => {
+                const firstScreen = ConsoleScreen.inSection(section)[0];
+                if (firstScreen === undefined) return null;
+                return (
+                  <div key={`pinned-${section}`} className="flex items-center justify-between pr-2">
                     <NavItemButton
-                      current={item === current}
+                      current={section === activeSection}
                       currentKind="page"
-                      className={`rounded-r-full py-1.5 pr-3 pl-10 text-[13px] transition-colors ${item === current ? "font-medium text-accent" : "text-ink"}`}
-                      onClick={() => navigate(item)}
+                      className={`flex items-center gap-2.5 rounded-r-full px-4 py-1.5 text-[13px] transition-colors ${section === activeSection ? "font-medium text-accent" : "text-ink"}`}
+                      onClick={() => navigate(firstScreen)}
                     >
-                      {screenText(item)}
+                      <span className="text-muted">
+                        <ProductIcon section={section} className="h-4 w-4" />
+                      </span>
+                      {sectionText(section)}
                     </NavItemButton>
-                  </li>
-                ))}
-              </ul>
+                    <button
+                      type="button"
+                      aria-label={`${sectionText(section)} の固定を解除`}
+                      title="固定を解除"
+                      onClick={() => togglePin(section)}
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-accent hover:bg-accent-soft"
+                    >
+                      <PinIcon pinned />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
-          ))}
+          )}
+          {Object.values(ConsoleSections).map((section) => {
+            const isSectionPinned = pinned.includes(section);
+            return (
+              <div key={section} className="mb-3">
+                {categories[section] !== undefined && (
+                  <p className="mb-1 px-4 font-medium text-[11px] text-muted uppercase tracking-wider">
+                    {categories[section]}
+                  </p>
+                )}
+                <div className="flex items-center justify-between pr-2">
+                  <h3 className="flex items-center gap-2.5 px-4 py-1 font-medium text-ink text-xs">
+                    <span className="text-muted">
+                      <ProductIcon section={section} className="h-4 w-4" />
+                    </span>
+                    {sectionText(section)}
+                  </h3>
+                  <button
+                    type="button"
+                    aria-label={
+                      isSectionPinned
+                        ? `${sectionText(section)} の固定を解除`
+                        : `${sectionText(section)} を固定`
+                    }
+                    aria-pressed={isSectionPinned}
+                    title={isSectionPinned ? "固定を解除" : "固定"}
+                    onClick={() => togglePin(section)}
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors ${
+                      isSectionPinned
+                        ? "text-accent hover:bg-accent-soft"
+                        : "text-muted hover:bg-canvas hover:text-ink"
+                    }`}
+                  >
+                    <PinIcon pinned={isSectionPinned} />
+                  </button>
+                </div>
+                <ul className="pr-2.5">
+                  {ConsoleScreen.inSection(section).map((item) => (
+                    <li key={item}>
+                      <NavItemButton
+                        current={item === current}
+                        currentKind="page"
+                        className={`rounded-r-full py-1.5 pr-3 pl-10 text-[13px] transition-colors ${item === current ? "font-medium text-accent" : "text-ink"}`}
+                        onClick={() => navigate(item)}
+                      >
+                        {screenText(item)}
+                      </NavItemButton>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
         </div>
       )}
       <p className="mt-auto border-line border-t px-4 pt-3 text-[11px] text-muted leading-relaxed">

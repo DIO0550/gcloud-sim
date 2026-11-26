@@ -24,6 +24,7 @@ import {
 } from "@/engine/domains/compute";
 import { Ipv4 } from "@/engine/domains/gke-control-plane";
 import { IamMember, RoleName } from "@/engine/domains/iam-policy";
+import { validAsn } from "@/engine/domains/network-lab/model";
 import { CustomRole } from "@/engine/domains/role-catalog";
 import { ServiceAccount } from "@/engine/domains/service-account";
 import { BucketName } from "@/engine/domains/storage";
@@ -848,6 +849,14 @@ export const DeleteCommand = {
   image(name: string, projectId: string): string {
     return `gcloud compute images delete ${quote(name)} ${flag("project", projectId)} --quiet`;
   },
+
+  router(router: Readonly<{ name: string; region: string }>, projectId: string): string {
+    return `gcloud compute routers delete ${quote(router.name)} ${flag("region", router.region)} ${flag("project", projectId)} --quiet`;
+  },
+
+  nat(nat: Readonly<{ name: string; router: string; region: string }>, projectId: string): string {
+    return `gcloud compute routers nats delete ${quote(nat.name)} ${flag("router", nat.router)} ${flag("region", nat.region)} ${flag("project", projectId)} --quiet`;
+  },
 } as const;
 
 // --- GKE クラスタ ---
@@ -1467,6 +1476,124 @@ export const MarketplaceDeployForm = {
       flag("service-account", `projects/${projectId}/serviceAccounts/${form.serviceAccount}`),
       flag("gcs-source", source),
       flag("input-values", inputs),
+    ].join(" ");
+  },
+} as const;
+
+// --- Cloud Router / Cloud NAT ---
+
+export type CloudRouterCreateForm = Readonly<{
+  name: string;
+  network: string;
+  region: Region;
+  /** 空なら既定の 64512。 */
+  asn: string;
+}>;
+
+const parseRouterAsn = (raw: string): Option<string> => {
+  const trimmed = raw.trim();
+  if (trimmed === "") return Option.none;
+  if (!/^\d+$/.test(trimmed)) return Option.some("整数で入力してください。");
+  const value = Number(trimmed);
+  if (value !== 16550 && !validAsn(value)) {
+    return Option.some(
+      "プライベート ASN（64512〜65534 / 4200000000〜4294967294）または 16550 を指定してください。",
+    );
+  }
+  return Option.none;
+};
+
+export const CloudRouterCreateForm = {
+  create(seed: Readonly<{ network: string; region: Region }>): CloudRouterCreateForm {
+    return {
+      name: "",
+      network: seed.network,
+      region: seed.region,
+      asn: "",
+    };
+  },
+
+  collectErrors(form: CloudRouterCreateForm): FieldErrors<CloudRouterCreateForm> {
+    return collect<CloudRouterCreateForm>([
+      ["name", errorOf(ResourceName.parse(form.name))],
+      [
+        "network",
+        form.network.trim() === "" ? Option.some("ネットワークを選んでください。") : Option.none,
+      ],
+      ["asn", parseRouterAsn(form.asn)],
+    ]);
+  },
+
+  toCommand(form: CloudRouterCreateForm, projectId: string): string {
+    const trimmedAsn = form.asn.trim();
+    return [
+      `gcloud compute routers create ${quote(form.name)}`,
+      flag("project", projectId),
+      flag("network", form.network),
+      flag("region", form.region),
+      ...(trimmedAsn !== "" ? [flag("asn", trimmedAsn)] : []),
+    ].join(" ");
+  },
+} as const;
+
+export type NatMappingMode = "all" | "custom";
+
+export type CloudNatCreateForm = Readonly<{
+  name: string;
+  network: string;
+  region: Region;
+  router: string;
+  mappingMode: NatMappingMode;
+  subnets: readonly string[];
+  enableLogging: boolean;
+}>;
+
+export const CloudNatCreateForm = {
+  create(seed: Readonly<{ network: string; region: Region; router?: string }>): CloudNatCreateForm {
+    return {
+      name: "",
+      network: seed.network,
+      region: seed.region,
+      router: seed.router ?? "",
+      mappingMode: "all",
+      subnets: [],
+      enableLogging: false,
+    };
+  },
+
+  collectErrors(form: CloudNatCreateForm): FieldErrors<CloudNatCreateForm> {
+    return collect<CloudNatCreateForm>([
+      ["name", errorOf(ResourceName.parse(form.name))],
+      [
+        "network",
+        form.network.trim() === "" ? Option.some("ネットワークを選んでください。") : Option.none,
+      ],
+      [
+        "router",
+        form.router.trim() === ""
+          ? Option.some("Cloud Router を選択するか、新しく作成してください。")
+          : Option.none,
+      ],
+      [
+        "subnets",
+        form.mappingMode === "custom" && form.subnets.length === 0
+          ? Option.some("対象にするサブネットを 1 つ以上選んでください。")
+          : Option.none,
+      ],
+    ]);
+  },
+
+  toCommand(form: CloudNatCreateForm, projectId: string): string {
+    return [
+      `gcloud compute routers nats create ${quote(form.name)}`,
+      flag("project", projectId),
+      flag("router", form.router),
+      flag("region", form.region),
+      "--auto-allocate-nat-external-ips",
+      ...(form.mappingMode === "all"
+        ? ["--nat-all-subnet-ip-ranges"]
+        : [flag("nat-custom-subnet-ip-ranges", form.subnets.join(","))]),
+      ...(form.enableLogging ? ["--enable-logging"] : []),
     ].join(" ");
   },
 } as const;
