@@ -6,6 +6,8 @@ import { World } from "@/engine/domains/world";
 import {
   BucketCreateForm,
   BudgetCreateForm,
+  CloudNatCreateForm,
+  CloudRouterCreateForm,
   ClusterCreateForm,
   clusterCredentialsCommand,
   DeleteCommand,
@@ -383,4 +385,92 @@ test("Compute のテンプレート・MIG・ディスク・スナップショッ
   expect(World.namedOf(s.world, "instanceTemplates", "ace-dev-01").map((t) => t.name)).toContain(
     "custom-img-tpl",
   );
+});
+
+test("Cloud Router と Cloud NAT の作成・削除コマンドが CLI でそのまま通る", () => {
+  let s = run(
+    session(),
+    "gcloud compute networks create privatenet --subnet-mode=custom --project=ace-dev-01",
+  );
+  s = run(
+    s,
+    "gcloud compute networks subnets create privatenet-us --network=privatenet --region=us-central1 --range=10.130.0.0/20 --project=ace-dev-01",
+  );
+
+  expect(
+    CloudRouterCreateForm.collectErrors({
+      ...CloudRouterCreateForm.create({ network: "privatenet", region: "us-central1" }),
+      name: "nat-router",
+      asn: "100",
+    }).asn,
+  ).toBeDefined();
+
+  const routerCmd = CloudRouterCreateForm.toCommand(
+    {
+      ...CloudRouterCreateForm.create({ network: "privatenet", region: "us-central1" }),
+      name: "nat-router",
+    },
+    "ace-dev-01",
+  );
+  expect(routerCmd).toBe(
+    "gcloud compute routers create nat-router --project=ace-dev-01 --network=privatenet --region=us-central1",
+  );
+  s = run(s, routerCmd);
+  expect(s.world.routers.map((r) => r.name)).toContain("nat-router");
+
+  const natAllCmd = CloudNatCreateForm.toCommand(
+    {
+      ...CloudNatCreateForm.create({
+        network: "privatenet",
+        region: "us-central1",
+        router: "nat-router",
+      }),
+      name: "nat-config",
+    },
+    "ace-dev-01",
+  );
+  expect(natAllCmd).toBe(
+    "gcloud compute routers nats create nat-config --project=ace-dev-01 --router=nat-router --region=us-central1 --auto-allocate-nat-external-ips --nat-all-subnet-ip-ranges",
+  );
+  s = run(s, natAllCmd);
+  expect(s.world.networkLab.nats.map((n) => n.name)).toContain("nat-config");
+
+  const natCustomCmd = CloudNatCreateForm.toCommand(
+    {
+      ...CloudNatCreateForm.create({
+        network: "privatenet",
+        region: "us-central1",
+        router: "nat-router",
+      }),
+      name: "nat-custom",
+      mappingMode: "custom",
+      subnets: ["privatenet-us"],
+      enableLogging: true,
+    },
+    "ace-dev-01",
+  );
+  expect(natCustomCmd).toBe(
+    "gcloud compute routers nats create nat-custom --project=ace-dev-01 --router=nat-router --region=us-central1 --auto-allocate-nat-external-ips --nat-custom-subnet-ip-ranges=privatenet-us --enable-logging",
+  );
+  s = run(s, natCustomCmd);
+  expect(s.world.networkLab.nats.map((n) => n.name)).toContain("nat-custom");
+
+  s = run(
+    s,
+    DeleteCommand.nat(
+      { name: "nat-config", router: "nat-router", region: "us-central1" },
+      "ace-dev-01",
+    ),
+  );
+  s = run(
+    s,
+    DeleteCommand.nat(
+      { name: "nat-custom", router: "nat-router", region: "us-central1" },
+      "ace-dev-01",
+    ),
+  );
+  expect(s.world.networkLab.nats).toHaveLength(0);
+
+  s = run(s, DeleteCommand.router({ name: "nat-router", region: "us-central1" }, "ace-dev-01"));
+  expect(s.world.routers.filter((r) => r.name === "nat-router")).toHaveLength(0);
 });

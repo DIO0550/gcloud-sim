@@ -668,3 +668,70 @@ test("Cloud Shell のウェブでプレビューはポート 8080 のコンテ�
   expect(dialogAfter).toHaveTextContent("helloworld");
   expect(dialogAfter).toHaveTextContent("8080 → 8080");
 });
+
+test("検索からネットワーク サービスを開いて固定し、Cloud NAT と新しい Cloud Router を構成できる", async () => {
+  const user = userEvent.setup();
+  const { terminal } = renderSimulator();
+
+  // privatenet VPC を用意する
+  await typeLine(terminal, "gcloud compute networks create privatenet --subnet-mode=custom");
+  await waitFor(() => expect(screenText(terminal)).toContain("privatenet"));
+
+  await openConsole(user);
+
+  // タイトルバーの検索から「ネットワーク サービス」を選ぶ
+  const search = screen.getByRole("combobox", { name: "プロダクト、画面を検索" });
+  await user.type(search, "ネットワーク サービス");
+  await user.click(
+    screen.getByRole("option", { name: /ネットワーク サービス.*プロダクトとページ/ }),
+  );
+
+  // ネットワーク サービスの横にある固定アイコンをクリックする
+  const pinButton = within(consoleNav()).getByRole("button", {
+    name: "ネットワーク サービス を固定",
+  });
+  await user.click(pinButton);
+  expect(
+    within(consoleNav()).getByRole("button", { name: "ネットワーク サービス の固定を解除" }),
+  ).toHaveAttribute("aria-pressed", "true");
+
+  // 左ナビの「Cloud NAT」をクリックし、「開始」から NAT ゲートウェイを構成する
+  await user.click(within(consoleNav()).getByRole("button", { name: "Cloud NAT" }));
+  await user.click(screen.getByRole("button", { name: "開始" }));
+
+  const natForm = screen.getByRole("region", { name: "Cloud NAT ゲートウェイの作成" });
+  await user.type(within(natForm).getByLabelText("ゲートウェイの名前"), "nat-config");
+  await chooseOption(user, "ネットワーク", "privatenet");
+  await chooseOption(user, "リージョン", "us-central1");
+
+  // Cloud Router で「新しいルーターを作成」を選び、nat-router を作成する
+  await chooseOption(user, "Cloud Router", "新しいルーターを作成");
+  const routerPanel = within(natForm).getByRole("region", { name: "ルーターの作成" });
+  await user.type(within(routerPanel).getByLabelText("名前"), "nat-router");
+  await user.click(within(routerPanel).getByRole("button", { name: "作成" }));
+
+  // ルーター作成パネルが閉じて nat-router が自動選択される
+  await waitFor(() =>
+    expect(
+      within(natForm).queryByRole("region", { name: "ルーターの作成" }),
+    ).not.toBeInTheDocument(),
+  );
+  expect(within(natForm).getByLabelText("Cloud Router")).toHaveTextContent("nat-router");
+
+  // Cloud NAT ゲートウェイを作成する
+  await user.click(within(natForm).getByRole("button", { name: "作成" }));
+
+  const table = screen.getByRole("table", { name: "Cloud NAT ゲートウェイ" });
+  expect(table).toHaveTextContent("nat-config");
+  expect(table).toHaveTextContent("privatenet");
+  expect(table).toHaveTextContent("us-central1");
+  expect(table).toHaveTextContent("nat-router");
+  expect(table).toHaveTextContent("すべてのサブネット");
+
+  // Cloud Router 画面でも作成された nat-router を確認できる
+  await user.click(within(consoleNav()).getByRole("button", { name: "Cloud Router" }));
+  const routerTable = screen.getByRole("table", { name: "Cloud Router" });
+  expect(routerTable).toHaveTextContent("nat-router");
+  expect(routerTable).toHaveTextContent("privatenet");
+  expect(routerTable).toHaveTextContent("us-central1");
+});

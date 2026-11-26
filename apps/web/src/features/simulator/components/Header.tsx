@@ -10,7 +10,10 @@ import {
   screenText,
   sectionText,
 } from "@/features/simulator/features/console/components/ConsoleNav";
-import { ConsoleScreen } from "@/features/simulator/features/console/domains/console-screen";
+import {
+  ConsoleScreen,
+  ConsoleSections,
+} from "@/features/simulator/features/console/domains/console-screen";
 import { type View, Views } from "@/features/simulator/hooks/use-simulator";
 import { Option } from "@/utils/Option";
 
@@ -78,6 +81,24 @@ export const Header = ({
   const searchScreens = ConsoleScreen.all().filter(
     (screen) => ConsoleScreen.navItem(screen) === screen,
   );
+  const screenLabelSet = new Set(searchScreens.map((screen) => screenText(screen)));
+  const searchEntries: readonly Readonly<{
+    value: string;
+    description: string;
+    target: ConsoleScreen;
+  }>[] = [
+    ...searchScreens.map((screen) => ({
+      value: screenText(screen),
+      description: sectionText(ConsoleScreen.section(screen)),
+      target: screen,
+    })),
+    ...Object.values(ConsoleSections).flatMap((section) => {
+      const label = sectionText(section);
+      const firstScreen = ConsoleScreen.inSection(section)[0];
+      if (firstScreen === undefined || screenLabelSet.has(label)) return [];
+      return [{ value: label, description: "プロダクトとページ", target: firstScreen }];
+    }),
+  ];
 
   return (
     <header className="relative z-20 flex min-h-12 shrink-0 flex-wrap items-center gap-2.5 border-line border-b bg-surface px-3 py-1.5 text-sm shadow-[0_1px_2px_rgba(60,64,67,0.12)] lg:flex-nowrap">
@@ -169,14 +190,14 @@ export const Header = ({
                 value={search}
                 onChange={setSearch}
                 className="h-8 w-full min-w-0 bg-transparent text-sm focus:outline-none"
-                suggestions={searchScreens.map((screen) => ({
-                  value: screenText(screen),
-                  description: sectionText(ConsoleScreen.section(screen)),
+                suggestions={searchEntries.map(({ value, description }) => ({
+                  value,
+                  description,
                 }))}
                 onSelect={(value) => {
-                  const screen = searchScreens.find((item) => screenText(item) === value);
-                  if (screen !== undefined) {
-                    onNavigate(screen);
+                  const entry = searchEntries.find((item) => item.value === value);
+                  if (entry !== undefined) {
+                    onNavigate(entry.target);
                   }
                   setSearch("");
                 }}

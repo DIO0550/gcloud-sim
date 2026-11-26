@@ -21,6 +21,8 @@ export const ConsoleScreens = {
   VpcNetworks: "vpc-networks",
   Firewall: "firewall",
   Subnets: "subnets",
+  CloudNat: "cloud-nat",
+  CloudRouters: "cloud-routers",
   Buckets: "buckets",
   Clusters: "clusters",
   RunServices: "run-services",
@@ -38,6 +40,7 @@ export const ConsoleSections = {
   Run: "run",
   Storage: "storage",
   Vpc: "vpc",
+  NetworkServices: "network-services",
   Marketplace: "marketplace",
 } as const;
 export type ConsoleSection = ValueOf<typeof ConsoleSections>;
@@ -80,6 +83,8 @@ const Placements: Readonly<Record<ConsoleScreen, ReturnType<typeof place>>> = {
   "vpc-networks": place("vpc", Option.some("compute.googleapis.com")),
   firewall: place("vpc", Option.some("compute.googleapis.com")),
   subnets: place("vpc", Option.some("compute.googleapis.com")),
+  "cloud-nat": place("network-services", Option.some("compute.googleapis.com")),
+  "cloud-routers": place("network-services", Option.some("compute.googleapis.com")),
   buckets: place("storage", Option.none),
   clusters: place("gke", Option.some("container.googleapis.com")),
   "run-services": place("run", Option.some("run.googleapis.com")),

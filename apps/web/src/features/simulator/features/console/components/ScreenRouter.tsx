@@ -19,6 +19,10 @@ import {
   MarketplaceScreen,
   SolutionDeploymentsScreen,
 } from "@/features/simulator/features/console/components/MarketplaceScreens";
+import {
+  CloudNatScreen,
+  CloudRoutersScreen,
+} from "@/features/simulator/features/console/components/NetworkServicesScreens";
 import { BucketsScreen } from "@/features/simulator/features/console/components/StorageScreens";
 import {
   FirewallScreen,
@@ -62,6 +66,10 @@ export const ScreenRouter = ({
       return <FirewallScreen {...props} />;
     case "subnets":
       return <SubnetsScreen {...props} />;
+    case "cloud-nat":
+      return <CloudNatScreen {...props} />;
+    case "cloud-routers":
+      return <CloudRoutersScreen {...props} />;
     case "buckets":
       return <BucketsScreen {...props} />;
     case "clusters":
