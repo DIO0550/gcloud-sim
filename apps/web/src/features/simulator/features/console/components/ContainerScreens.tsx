@@ -1,11 +1,11 @@
-import type { ReactElement } from "react";
+import { type ReactElement, useState } from "react";
 
 import { Checkbox } from "@/components/Checkbox";
 import { Select } from "@/components/Select";
 import { MachineType, Region, Regions, Zone } from "@/engine/domains/catalog";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { GkePlacement } from "@/engine/domains/gke-completion";
-import { CloudRunService, type GkeCluster } from "@/engine/domains/managed-services";
+import { CloudRunService, type GkeCluster, type NodePool } from "@/engine/domains/managed-services";
 import {
   defaultConfig,
   findDeployment,
@@ -26,6 +26,7 @@ import {
 } from "@/features/simulator/features/console/components/ConsoleParts";
 import {
   ClusterEditForm,
+  NodePoolCreateForm,
   type RunServiceCpu,
   RunServiceCpuChoices,
   RunServiceEditForm,
@@ -55,7 +56,200 @@ const defaultRegionOf = (world: World, key: "compute/region" | "run/region"): Re
     Zone.region(defaultZoneOf(world)),
   );
 
-/** Kubernetes Engine › クラスタ: 一覧・作成（Autopilot / Standard）・編集・接続・削除。 */
+/** Kubernetes Engine › クラスタ › ノードプール: 一覧・追加・削除（Standard クラスタ専用）。 */
+const ClusterNodePoolsView = ({
+  world,
+  cluster,
+  projectId,
+  handlers,
+  outcome,
+  onBack,
+}: Readonly<{
+  world: World;
+  cluster: GkeCluster;
+  projectId: string;
+  handlers: ScreenProps["handlers"];
+  outcome: ScreenProps["outcome"];
+  onBack: () => void;
+}>): ReactElement => {
+  const pools = World.nodePoolsOf(world, cluster);
+  const seed = (): NodePoolCreateForm => NodePoolCreateForm.create(cluster);
+  const createEditor = useCreateForm(NodePoolCreateForm, seed, false, outcome);
+  const form = Option.unwrapOr(createEditor.form, seed());
+
+  const createPool = (): void => {
+    const valid = createEditor.submit();
+    if (!Option.isSome(valid)) return;
+    handlers.submit({
+      line: NodePoolCreateForm.toCommand(valid.value, projectId),
+      note: `ノードプールを追加 (${valid.value.name})`,
+      next: Option.none,
+    });
+    createEditor.awaitClose();
+  };
+
+  const removePool = (pool: NodePool): void => {
+    if (!handlers.confirm(`クラスタ ${cluster.name} のノードプール ${pool.name} を削除しますか？`))
+      return;
+    handlers.submit({
+      line: NodePoolCreateForm.deleteCommand(cluster, pool.name, projectId),
+      note: `ノードプールを削除 (${pool.name})`,
+      next: Option.none,
+    });
+  };
+
+  return (
+    <div>
+      <ScreenTitle
+        eyebrow="Kubernetes Engine › クラスタ › ノードプール"
+        title={cluster.name}
+        trailing={
+          <>
+            <SecondaryButton onClick={onBack}>← クラスタ一覧</SecondaryButton>
+            <PrimaryButton onClick={() => createEditor.openWith(seed())}>
+              ＋ ノードプールを追加
+            </PrimaryButton>
+          </>
+        }
+      />
+      <div className="mb-3 flex flex-wrap items-center gap-3 rounded border border-line bg-canvas px-3 py-2 text-muted text-xs">
+        <span className="font-mono text-ink">{cluster.location}</span>
+        <span>Standard</span>
+        <span>コントロール プレーン: {cluster.currentMasterVersion}</span>
+        <span className="ml-auto">{pools.length} ノードプール</span>
+      </div>
+
+      {Option.isSome(createEditor.form) && (
+        <CreateFormSection
+          label="ノードプールを追加"
+          columns={2}
+          command={NodePoolCreateForm.toCommand(form, projectId)}
+          onCopy={handlers.copy}
+          onInsert={handlers.insert}
+          onSubmit={createPool}
+          onCancel={createEditor.close}
+          submitLabel="作成"
+        >
+          <Field
+            label="名前"
+            required
+            error={createEditor.errors.name}
+            hint="英小文字・数字・ハイフン（例: high-mem-pool）"
+          >
+            {(id) => (
+              <TextInput
+                id={id}
+                value={form.name}
+                placeholder="high-mem-pool"
+                onChange={(v) => createEditor.set("name", v)}
+              />
+            )}
+          </Field>
+          <Field label="マシンタイプ">
+            {(id) => (
+              <Select
+                id={id}
+                value={form.machineType}
+                onChange={(m) => createEditor.set("machineType", m)}
+                options={MachineType.all().map((m) => ({
+                  value: m.name,
+                  label: `${m.name} (${m.guestCpus} vCPU, ${m.memoryMb / 1024} GB)`,
+                }))}
+              />
+            )}
+          </Field>
+          <Field
+            label="ノード数（ゾーンあたり）"
+            error={createEditor.errors.numNodes}
+            hint="0〜1000（既定: 3）"
+          >
+            {(id) => (
+              <TextInput
+                id={id}
+                value={form.numNodes}
+                onChange={(v) => createEditor.set("numNodes", v)}
+              />
+            )}
+          </Field>
+          <div className="flex items-center sm:col-span-2">
+            <Checkbox
+              checked={form.enableAutoscaling}
+              onChange={(v) => createEditor.set("enableAutoscaling", v)}
+            >
+              オートスケーリングを有効にする（--enable-autoscaling）
+            </Checkbox>
+          </div>
+          {form.enableAutoscaling && (
+            <>
+              <Field
+                label="最小ノード数（ゾーンあたり）"
+                error={createEditor.errors.minNodes}
+                hint="0〜1000"
+              >
+                {(id) => (
+                  <TextInput
+                    id={id}
+                    value={form.minNodes}
+                    onChange={(v) => createEditor.set("minNodes", v)}
+                  />
+                )}
+              </Field>
+              <Field
+                label="最大ノード数（ゾーンあたり）"
+                error={createEditor.errors.maxNodes}
+                hint="1〜1000"
+              >
+                {(id) => (
+                  <TextInput
+                    id={id}
+                    value={form.maxNodes}
+                    onChange={(v) => createEditor.set("maxNodes", v)}
+                  />
+                )}
+              </Field>
+            </>
+          )}
+        </CreateFormSection>
+      )}
+
+      <ResourceTable
+        label="ノードプール"
+        rows={pools}
+        keyOf={(p) => p.name}
+        nameOf={(p) => p.name}
+        empty="ノードプールはありません。「ノードプールを追加」または gcloud container node-pools create で追加できます。"
+        onDelete={removePool}
+        columns={[
+          {
+            header: "名前",
+            cell: (p) => <span className="font-medium font-mono text-accent">{p.name}</span>,
+          },
+          {
+            header: "マシンタイプ",
+            cell: (p) => <span className="font-mono text-xs">{p.machineType}</span>,
+          },
+          {
+            header: "ノード数（ゾーンあたり）",
+            cell: (p) => String(p.nodeCount),
+          },
+          {
+            header: "オートスケーリング",
+            cell: (p) =>
+              Option.isSome(p.autoscaling)
+                ? `有効 (${p.autoscaling.value.minNodes}〜${p.autoscaling.value.maxNodes})`
+                : "無効",
+          },
+          {
+            header: "バージョン",
+            cell: (p) => <span className="font-mono text-xs">{p.version}</span>,
+          },
+        ]}
+      />
+    </div>
+  );
+};
+
+/** Kubernetes Engine › クラスタ: 一覧・作成（Autopilot / Standard）・編集・接続・ノードプール・削除。 */
 export const ClustersScreen = ({
   world,
   project,
@@ -63,6 +257,7 @@ export const ClustersScreen = ({
   outcome,
 }: ScreenProps): ReactElement => {
   const projectId = project.projectId;
+  const [nodePoolsClusterName, setNodePoolsClusterName] = useState<Option<string>>(Option.none);
   const seed = (): ClusterCreateForm =>
     ClusterCreateForm.create({
       zone: defaultZoneOf(world),
@@ -74,9 +269,14 @@ export const ClustersScreen = ({
   const editForm = Option.unwrapOr(editEditor.form, ClusterEditForm.empty());
   const editSteps = ClusterEditForm.toSteps(editForm, projectId);
   const networks = World.networksOf(world, projectId);
+  const clusters = World.clustersOf(world, projectId);
+  const nodePoolsCluster = Option.isSome(nodePoolsClusterName)
+    ? clusters.find((c) => c.name === nodePoolsClusterName.value && !c.autopilot)
+    : undefined;
 
   const openCreate = (): void => {
     editEditor.close();
+    setNodePoolsClusterName(Option.none);
     editor.open();
   };
 
@@ -84,7 +284,14 @@ export const ClustersScreen = ({
     const pools = World.nodePoolsOf(world, cluster);
     const primaryPool = pools.find((p) => p.name === "default-pool") ?? pools[0];
     editor.close();
+    setNodePoolsClusterName(Option.none);
     editEditor.openWith(ClusterEditForm.fromCluster(cluster, Option.fromNullable(primaryPool)));
+  };
+
+  const openNodePools = (cluster: GkeCluster): void => {
+    editor.close();
+    editEditor.close();
+    setNodePoolsClusterName(Option.some(cluster.name));
   };
 
   const create = (): void => {
@@ -127,6 +334,19 @@ export const ClustersScreen = ({
       next: Option.none,
     });
   };
+
+  if (nodePoolsCluster !== undefined) {
+    return (
+      <ClusterNodePoolsView
+        world={world}
+        cluster={nodePoolsCluster}
+        projectId={projectId}
+        handlers={handlers}
+        outcome={outcome}
+        onBack={() => setNodePoolsClusterName(Option.none)}
+      />
+    );
+  }
 
   return (
     <div>
@@ -444,14 +664,24 @@ export const ClustersScreen = ({
       )}
       <ResourceTable
         label="クラスタ"
-        rows={World.clustersOf(world, projectId)}
+        rows={clusters}
         keyOf={(c) => `${c.location}/${c.name}`}
         nameOf={(c) => c.name}
         empty="クラスタはまだありません。上の「クラスタを作成」または gcloud container clusters create で作れます。"
         rowActions={(c) => (
-          <SecondaryButton ariaLabel={`${c.name} に接続`} onClick={() => connect(c)}>
-            接続
-          </SecondaryButton>
+          <>
+            {!c.autopilot && (
+              <SecondaryButton
+                ariaLabel={`${c.name} のノードプールを管理`}
+                onClick={() => openNodePools(c)}
+              >
+                ノードプール
+              </SecondaryButton>
+            )}
+            <SecondaryButton ariaLabel={`${c.name} に接続`} onClick={() => connect(c)}>
+              接続
+            </SecondaryButton>
+          </>
         )}
         onEdit={startEdit}
         onDelete={remove}

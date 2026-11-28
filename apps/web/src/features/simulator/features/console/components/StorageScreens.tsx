@@ -17,6 +17,8 @@ import {
 } from "@/features/simulator/features/console/components/ConsoleParts";
 import {
   BucketEditForm,
+  BucketIamGrantForm,
+  BucketIamRoles,
   deleteObjectCommand,
   guessContentType,
   StorageFolderCreateForm,
@@ -96,6 +98,7 @@ const BucketObjectsView = ({
   handlers,
   outcome,
   onBack,
+  onOpenPermissions,
   onEditBucket,
 }: Readonly<{
   bucket: Bucket;
@@ -103,6 +106,7 @@ const BucketObjectsView = ({
   handlers: ScreenProps["handlers"];
   outcome: ScreenProps["outcome"];
   onBack: () => void;
+  onOpenPermissions: () => void;
   onEditBucket: () => void;
 }>): ReactElement => {
   const [prefix, setPrefix] = useState("");
@@ -225,6 +229,7 @@ const BucketObjectsView = ({
             <SecondaryButton onClick={onBack}>← バケット一覧</SecondaryButton>
             <PrimaryButton onClick={openUpload}>ファイルをアップロード</PrimaryButton>
             <SecondaryButton onClick={openFolder}>フォルダを作成</SecondaryButton>
+            <SecondaryButton onClick={onOpenPermissions}>権限</SecondaryButton>
             <SecondaryButton onClick={onEditBucket}>バケットを編集</SecondaryButton>
           </>
         }
@@ -461,19 +466,157 @@ const BucketObjectsView = ({
   );
 };
 
-/** Cloud Storage › バケット: 一覧・作成・編集・削除・バケット内オブジェクト管理。 */
+/** バケット権限（IAM バインディング一覧・付与・削除）。 */
+const BucketPermissionsView = ({
+  bucket,
+  projectId,
+  handlers,
+  outcome,
+  onBack,
+  onOpenObjects,
+  onEditBucket,
+}: Readonly<{
+  bucket: Bucket;
+  projectId: string;
+  handlers: ScreenProps["handlers"];
+  outcome: ScreenProps["outcome"];
+  onBack: () => void;
+  onOpenObjects: () => void;
+  onEditBucket: () => void;
+}>): ReactElement => {
+  const seed = (): BucketIamGrantForm => BucketIamGrantForm.create(bucket.name);
+  const grantEditor = useCreateForm(BucketIamGrantForm, seed, false, outcome);
+  const grantForm = Option.unwrapOr(grantEditor.form, seed());
+
+  const bindings = bucket.iamPolicy.bindings.flatMap((b) =>
+    b.members.map((member) => ({ member, role: b.role })),
+  );
+
+  const submitGrant = (): void => {
+    const valid = grantEditor.submit();
+    if (!Option.isSome(valid)) return;
+    const normalizedMember = BucketIamGrantForm.normalizeMember(valid.value.member);
+    handlers.submit({
+      line: BucketIamGrantForm.toCommand(valid.value, projectId),
+      note: `バケットのアクセス権を付与 (${normalizedMember}: ${valid.value.role})`,
+      next: Option.none,
+    });
+    grantEditor.awaitClose();
+  };
+
+  const removeBinding = (binding: Readonly<{ member: string; role: string }>): void => {
+    if (
+      !handlers.confirm(
+        `バケット gs://${bucket.name} から ${binding.member} の ${binding.role} を削除しますか？`,
+      )
+    )
+      return;
+    handlers.submit({
+      line: BucketIamGrantForm.removeCommand(bucket.name, binding, projectId),
+      note: `バケットのアクセス権を削除 (${binding.member}: ${binding.role})`,
+      next: Option.none,
+    });
+  };
+
+  return (
+    <div>
+      <ScreenTitle
+        eyebrow="Cloud Storage › バケットの権限"
+        title={bucket.name}
+        trailing={
+          <>
+            <SecondaryButton onClick={onBack}>← バケット一覧</SecondaryButton>
+            <SecondaryButton onClick={onOpenObjects}>オブジェクト一覧</SecondaryButton>
+            <PrimaryButton onClick={() => grantEditor.openWith(seed())}>
+              アクセス権を付与
+            </PrimaryButton>
+            <SecondaryButton onClick={onEditBucket}>バケットを編集</SecondaryButton>
+          </>
+        }
+      />
+      <div className="mb-3 flex flex-wrap items-center gap-3 rounded border border-line bg-canvas px-3 py-2 text-muted text-xs">
+        <span className="font-mono text-ink">gs://{bucket.name}/</span>
+        <span>アクセス制御: {bucket.uniformBucketLevelAccess ? "均一" : "きめ細かい"}</span>
+        <span>公開アクセスの防止: {bucket.publicAccessPrevention ? "適用中" : "未適用"}</span>
+        <span className="ml-auto">{bindings.length} 件のバインディング</span>
+      </div>
+
+      {Option.isSome(grantEditor.form) && (
+        <CreateFormSection
+          label="アクセス権を付与"
+          columns={2}
+          command={BucketIamGrantForm.toCommand(grantForm, projectId)}
+          onCopy={handlers.copy}
+          onInsert={handlers.insert}
+          onSubmit={submitGrant}
+          onCancel={grantEditor.close}
+          submitLabel="付与"
+        >
+          <Field
+            label="プリンシパル（メンバー）"
+            required
+            error={grantEditor.errors.member}
+            hint="メールアドレス（user: / serviceAccount: は自動補完）、allUsers、allAuthenticatedUsers"
+          >
+            {(id) => (
+              <TextInput
+                id={id}
+                value={grantForm.member}
+                placeholder="user@example.com / allUsers"
+                onChange={(v) => grantEditor.set("member", v)}
+              />
+            )}
+          </Field>
+          <Field label="ロール" required error={grantEditor.errors.role}>
+            {(id) => (
+              <Select
+                id={id}
+                value={grantForm.role}
+                onChange={(r) => grantEditor.set("role", r)}
+                options={BucketIamRoles}
+              />
+            )}
+          </Field>
+        </CreateFormSection>
+      )}
+
+      <ResourceTable
+        label="バケットの権限"
+        rows={bindings}
+        keyOf={(r) => `${r.role}::${r.member}`}
+        nameOf={(r) => `${r.member} (${r.role})`}
+        empty="このバケットに直接付与された IAM 権限はありません。「アクセス権を付与」または gcloud storage buckets add-iam-policy-binding で追加できます。"
+        onDelete={removeBinding}
+        columns={[
+          {
+            header: "プリンシパル",
+            cell: (r) => <span className="font-mono text-xs">{r.member}</span>,
+          },
+          {
+            header: "ロール",
+            cell: (r) => <span className="font-mono text-xs">{r.role}</span>,
+          },
+        ]}
+      />
+    </div>
+  );
+};
+
+type BucketDetailView = Readonly<{ name: string; tab: "objects" | "permissions" }>;
+
+/** Cloud Storage › バケット: 一覧・作成・編集・削除・バケット内オブジェクト/権限管理。 */
 export const BucketsScreen = ({ world, project, handlers, outcome }: ScreenProps): ReactElement => {
   const projectId = project.projectId;
   const buckets = World.bucketsOf(world, projectId);
-  const [openBucketName, setOpenBucketName] = useState<Option<string>>(Option.none);
+  const [bucketView, setBucketView] = useState<Option<BucketDetailView>>(Option.none);
   const editor = useCreateForm(BucketCreateForm, BucketCreateForm.create, false, outcome);
   const editEditor = useCreateForm(BucketEditForm, BucketEditForm.empty, false, outcome);
   const form = Option.unwrapOr(editor.form, BucketCreateForm.create());
   const editForm = Option.unwrapOr(editEditor.form, BucketEditForm.empty());
   const editSteps = BucketEditForm.toSteps(editForm, projectId);
 
-  const openBucket = Option.isSome(openBucketName)
-    ? buckets.find((b) => b.name === openBucketName.value)
+  const activeBucket = Option.isSome(bucketView)
+    ? buckets.find((b) => b.name === bucketView.value.name)
     : undefined;
 
   const openCreate = (): void => {
@@ -482,7 +625,7 @@ export const BucketsScreen = ({ world, project, handlers, outcome }: ScreenProps
   };
   const startEdit = (bucket: Bucket): void => {
     editor.close();
-    setOpenBucketName(Option.none);
+    setBucketView(Option.none);
     editEditor.openWith(BucketEditForm.fromBucket(bucket, protectionFor(world, bucket.name)));
   };
   const create = (): void => {
@@ -523,15 +666,33 @@ export const BucketsScreen = ({ world, project, handlers, outcome }: ScreenProps
     });
   };
 
-  if (openBucket !== undefined) {
+  if (activeBucket !== undefined && Option.isSome(bucketView)) {
+    if (bucketView.value.tab === "permissions") {
+      return (
+        <BucketPermissionsView
+          bucket={activeBucket}
+          projectId={projectId}
+          handlers={handlers}
+          outcome={outcome}
+          onBack={() => setBucketView(Option.none)}
+          onOpenObjects={() =>
+            setBucketView(Option.some({ name: activeBucket.name, tab: "objects" }))
+          }
+          onEditBucket={() => startEdit(activeBucket)}
+        />
+      );
+    }
     return (
       <BucketObjectsView
-        bucket={openBucket}
+        bucket={activeBucket}
         projectId={projectId}
         handlers={handlers}
         outcome={outcome}
-        onBack={() => setOpenBucketName(Option.none)}
-        onEditBucket={() => startEdit(openBucket)}
+        onBack={() => setBucketView(Option.none)}
+        onOpenPermissions={() =>
+          setBucketView(Option.some({ name: activeBucket.name, tab: "permissions" }))
+        }
+        onEditBucket={() => startEdit(activeBucket)}
       />
     );
   }
@@ -727,9 +888,18 @@ export const BucketsScreen = ({ world, project, handlers, outcome }: ScreenProps
         keyOf={(b) => b.name}
         empty="バケットはまだありません。"
         rowActions={(b) => (
-          <SecondaryButton onClick={() => setOpenBucketName(Option.some(b.name))}>
-            開く
-          </SecondaryButton>
+          <>
+            <SecondaryButton
+              onClick={() => setBucketView(Option.some({ name: b.name, tab: "objects" }))}
+            >
+              開く
+            </SecondaryButton>
+            <SecondaryButton
+              onClick={() => setBucketView(Option.some({ name: b.name, tab: "permissions" }))}
+            >
+              権限
+            </SecondaryButton>
+          </>
         )}
         onEdit={startEdit}
         onDelete={remove}
@@ -739,7 +909,7 @@ export const BucketsScreen = ({ world, project, handlers, outcome }: ScreenProps
             cell: (b) => (
               <button
                 type="button"
-                onClick={() => setOpenBucketName(Option.some(b.name))}
+                onClick={() => setBucketView(Option.some({ name: b.name, tab: "objects" }))}
                 className="font-medium font-mono text-accent hover:underline"
               >
                 {b.name}

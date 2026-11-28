@@ -6,6 +6,9 @@ import { World } from "@/engine/domains/world";
 import {
   DiskEditForm,
   InstanceGroupEditForm,
+  InstanceTemplateCloneForm,
+  VmAttachDiskForm,
+  VmDiskCommand,
   VmEditForm,
 } from "@/features/simulator/features/console/domains/edit-command/compute";
 import { FieldErrors } from "@/features/simulator/features/console/domains/equivalent-command";
@@ -197,4 +200,91 @@ test("InstanceGroupEditForm: テンプレート・台数・オートスケーリ
   const stopped = run(after, ...stopSteps.map((step) => step.line));
   const finalMig = stopped.world.instanceGroups.find((g) => g.name === "web-mig");
   expect(finalMig?.autoscaling).toEqual(Option.none);
+});
+
+test("VmAttachDiskForm / VmDiskCommand: ディスクの接続・切断コマンドを生成しエンジンで往復できる", () => {
+  const s = run(
+    session(),
+    `gcloud compute instances create web-1 --zone=${zone}`,
+    `gcloud compute disks create data-1 --zone=${zone} --size=50GB`,
+  );
+
+  const emptyForm = VmAttachDiskForm.create("web-1", zone, "");
+  expect(VmAttachDiskForm.collectErrors(emptyForm).disk).toBeDefined();
+
+  const attachForm = VmAttachDiskForm.create("web-1", zone, "data-1");
+  expect(FieldErrors.isEmpty(VmAttachDiskForm.collectErrors(attachForm))).toBe(true);
+  const attachCmd = VmAttachDiskForm.toCommand(attachForm, projectId);
+  expect(attachCmd).toBe(
+    `gcloud compute instances attach-disk web-1 --disk=data-1 --zone=${zone} --project=${projectId}`,
+  );
+
+  const attached = run(s, attachCmd);
+  const vmAfterAttach = Option.unwrap(World.findInstance(attached.world, projectId, zone, "web-1"));
+  expect(vmAfterAttach.disks.map((d) => d.deviceName)).toEqual(["web-1", "data-1"]);
+
+  const detachCmd = VmDiskCommand.detach("web-1", "data-1", zone, projectId);
+  expect(detachCmd).toBe(
+    `gcloud compute instances detach-disk web-1 --disk=data-1 --zone=${zone} --project=${projectId}`,
+  );
+
+  const detached = run(attached, detachCmd);
+  const vmAfterDetach = Option.unwrap(World.findInstance(detached.world, projectId, zone, "web-1"));
+  expect(vmAfterDetach.disks.map((d) => d.deviceName)).toEqual(["web-1"]);
+  expect(World.disksOf(detached.world, projectId)[0]?.users).toEqual([]);
+});
+
+test("InstanceTemplateCloneForm: 既存テンプレートから複製フォームを初期化し作成コマンドを実行できる", () => {
+  const start = session();
+  const project = Option.unwrap(World.findProject(start.world, projectId));
+  const sa = `${project.projectNumber}-compute@developer.gserviceaccount.com`;
+  const s = run(
+    start,
+    `gcloud compute instance-templates create web-tpl --machine-type=e2-small --boot-disk-size=20GB --boot-disk-type=pd-ssd --tags=http-server,ssh --service-account=${sa} --provisioning-model=SPOT`,
+  );
+  const orig = World.namedOf(s.world, "instanceTemplates", projectId).find(
+    (t) => t.name === "web-tpl",
+  );
+  expect(orig).toBeDefined();
+  if (!orig) return;
+
+  const base = InstanceTemplateCloneForm.from(orig);
+  expect(base.name).toBe("web-tpl-copy");
+  expect(base.machineType).toBe("e2-small");
+  expect(base.bootDiskSize).toBe("20GB");
+  expect(base.bootDiskType).toBe("pd-ssd");
+  expect(base.network).toBe("default");
+  expect(base.tags).toBe("http-server, ssh");
+  expect(base.serviceAccount).toBe(sa);
+  expect(FieldErrors.isEmpty(InstanceTemplateCloneForm.collectErrors(base))).toBe(true);
+
+  expect(InstanceTemplateCloneForm.collectErrors({ ...base, name: "INVALID" }).name).toBeDefined();
+  expect(
+    InstanceTemplateCloneForm.collectErrors({ ...base, bootDiskSize: "0GB" }).bootDiskSize,
+  ).toBeDefined();
+
+  const edited: InstanceTemplateCloneForm = {
+    ...base,
+    name: "web-tpl-v2",
+    machineType: "e2-medium",
+    bootDiskSize: "30GB",
+    tags: "http-server, https-server",
+  };
+  const cmd = InstanceTemplateCloneForm.toCommand(edited, projectId);
+  expect(cmd).toContain("gcloud compute instance-templates create web-tpl-v2");
+  expect(cmd).toContain("--machine-type=e2-medium");
+  expect(cmd).toContain("--boot-disk-size=30GB");
+  expect(cmd).toContain("--boot-disk-type=pd-ssd");
+  expect(cmd).toContain("--tags=http-server,https-server");
+  expect(cmd).toContain(`--service-account=${sa}`);
+  expect(cmd).toContain("--provisioning-model=SPOT");
+
+  const after = run(s, cmd);
+  const cloned = World.namedOf(after.world, "instanceTemplates", projectId).find(
+    (t) => t.name === "web-tpl-v2",
+  );
+  expect(cloned?.machineType).toBe("e2-medium");
+  expect(cloned?.bootDisk).toEqual({ sizeGb: 30, type: "pd-ssd" });
+  expect(cloned?.tags).toEqual(["http-server", "https-server"]);
+  expect(cloned?.provisioningModel).toBe("SPOT");
 });

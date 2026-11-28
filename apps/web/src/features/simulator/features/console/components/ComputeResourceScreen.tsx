@@ -1,9 +1,11 @@
 import type { ReactElement } from "react";
 import { Checkbox } from "@/components/Checkbox";
 import { Select } from "@/components/Select";
-import { PublicImage, Region, Regions, Zone } from "@/engine/domains/catalog";
+import { MachineType, PublicImage, Region, Regions, Zone } from "@/engine/domains/catalog";
+import { type BootDiskType, BootDiskTypes, ProvisioningModels } from "@/engine/domains/compute";
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { MigLocation } from "@/engine/domains/resource-location";
+import { ServiceAccount } from "@/engine/domains/service-account";
 import { World } from "@/engine/domains/world";
 import { screenText } from "@/features/simulator/features/console/components/ConsoleNav";
 import {
@@ -21,6 +23,7 @@ import { ConsoleScreens } from "@/features/simulator/features/console/domains/co
 import {
   DiskEditForm,
   InstanceGroupEditForm,
+  InstanceTemplateCloneForm,
 } from "@/features/simulator/features/console/domains/edit-command/compute";
 import {
   DeleteCommand,
@@ -81,8 +84,54 @@ const diskChoicesOf = (world: World, projectId: string): readonly DiskChoice[] =
   return list;
 };
 
-const InstanceTemplatesScreen = ({ world, project, handlers }: ScreenProps): ReactElement => {
+const EmptyTemplateCloneForm = (): InstanceTemplateCloneForm => ({
+  name: "",
+  machineType: "e2-medium",
+  bootDiskSize: "10GB",
+  bootDiskType: BootDiskTypes.Balanced,
+  network: "default",
+  sourceNetwork: "default",
+  subnet: "",
+  tags: "",
+  serviceAccount: "",
+  imageFamily: "debian-12",
+  imageProject: "debian-cloud",
+  customImage: "",
+  externalIp: true,
+  provisioningModel: ProvisioningModels.Standard,
+  metadata: {},
+});
+
+const InstanceTemplatesScreen = ({
+  world,
+  project,
+  handlers,
+  outcome,
+}: ScreenProps): ReactElement => {
   const projectId = project.projectId;
+  const cloneEditor = useCreateForm(
+    InstanceTemplateCloneForm,
+    EmptyTemplateCloneForm,
+    false,
+    outcome,
+  );
+  const networks = World.networksOf(world, projectId).map((n) => n.name);
+  const defaultAccount = ServiceAccount.defaultComputeEmail(project.projectNumber);
+  const serviceAccounts = [
+    defaultAccount,
+    ...World.serviceAccountsOf(world, projectId).map((s) => s.email),
+  ];
+
+  const submitClone = (): void => {
+    const valid = cloneEditor.submit();
+    if (!Option.isSome(valid)) return;
+    handlers.submit({
+      line: InstanceTemplateCloneForm.toCommand(valid.value, projectId),
+      note: `インスタンス テンプレートを複製 (${valid.value.name})`,
+      next: Option.none,
+    });
+    cloneEditor.awaitClose();
+  };
 
   return (
     <div>
@@ -101,18 +150,132 @@ const InstanceTemplatesScreen = ({ world, project, handlers }: ScreenProps): Rea
         インスタンス テンプレートは不変のグローバル
         リソースです。作成後に変更はできないため、更新時は新しいテンプレートを作成します。
       </p>
+      {Option.isSome(cloneEditor.form) &&
+        (() => {
+          const cloneForm = cloneEditor.form.value;
+          const networkOptions = networks.includes(cloneForm.network)
+            ? networks
+            : [...networks, cloneForm.network].filter((n) => n !== "");
+          const accountOptions =
+            cloneForm.serviceAccount !== "" && !serviceAccounts.includes(cloneForm.serviceAccount)
+              ? [cloneForm.serviceAccount, ...serviceAccounts]
+              : serviceAccounts;
+          return (
+            <CreateFormSection
+              label="類似のインスタンス テンプレートを作成"
+              columns={2}
+              command={InstanceTemplateCloneForm.toCommand(cloneForm, projectId)}
+              onCopy={handlers.copy}
+              onInsert={handlers.insert}
+              onSubmit={submitClone}
+              onCancel={cloneEditor.close}
+              submitLabel="作成"
+            >
+              <Field label="名前" required error={cloneEditor.errors.name}>
+                {(id) => (
+                  <TextInput
+                    id={id}
+                    value={cloneForm.name}
+                    placeholder="web-tpl-copy"
+                    onChange={(v) => cloneEditor.set("name", v)}
+                  />
+                )}
+              </Field>
+              <Field label="マシンタイプ">
+                {(id) => (
+                  <Select
+                    id={id}
+                    value={cloneForm.machineType}
+                    onChange={(v) => cloneEditor.set("machineType", v)}
+                    options={MachineType.all().map((m) => ({
+                      value: m.name,
+                      label: `${m.name}（${m.guestCpus} vCPU、${m.memoryMb / 1024} GB メモリ）`,
+                    }))}
+                  />
+                )}
+              </Field>
+              <Field
+                label="ブートディスク サイズ"
+                required
+                error={cloneEditor.errors.bootDiskSize}
+                hint="例: 10GB"
+              >
+                {(id) => (
+                  <TextInput
+                    id={id}
+                    value={cloneForm.bootDiskSize}
+                    onChange={(v) => cloneEditor.set("bootDiskSize", v)}
+                  />
+                )}
+              </Field>
+              <Field label="ブートディスク タイプ">
+                {(id) => (
+                  <Select<BootDiskType>
+                    id={id}
+                    value={cloneForm.bootDiskType}
+                    onChange={(v) => cloneEditor.set("bootDiskType", v)}
+                    options={Object.values(BootDiskTypes).map((t) => ({ value: t, label: t }))}
+                  />
+                )}
+              </Field>
+              <Field label="ネットワーク">
+                {(id) => (
+                  <Select
+                    id={id}
+                    value={cloneForm.network}
+                    onChange={(v) => cloneEditor.set("network", v)}
+                    options={networkOptions.map((n) => ({ value: n, label: n }))}
+                  />
+                )}
+              </Field>
+              <Field label="ネットワーク タグ" hint="カンマ区切り（例: http-server,https-server）">
+                {(id) => (
+                  <TextInput
+                    id={id}
+                    value={cloneForm.tags}
+                    placeholder="http-server,https-server"
+                    onChange={(v) => cloneEditor.set("tags", v)}
+                  />
+                )}
+              </Field>
+              <div className="sm:col-span-2">
+                <Field label="サービス アカウント">
+                  {(id) => (
+                    <Select
+                      id={id}
+                      value={cloneForm.serviceAccount}
+                      onChange={(v) => cloneEditor.set("serviceAccount", v)}
+                      options={[
+                        { value: "", label: "（デフォルト）" },
+                        ...accountOptions.map((a) => ({ value: a, label: a })),
+                      ]}
+                    />
+                  )}
+                </Field>
+              </div>
+            </CreateFormSection>
+          );
+        })()}
       <ResourceTable
         label="インスタンス テンプレート"
         rows={World.namedOf(world, "instanceTemplates", projectId)}
         keyOf={(t) => t.name}
         empty="インスタンス テンプレートはまだありません。上の「インスタンス テンプレートを作成」または gcloud compute instance-templates create で作成できます。"
         rowActions={(t) => (
-          <SecondaryButton
-            ariaLabel={`${t.name} で MIG を作成`}
-            onClick={() => handlers.changeScreen(ConsoleScreens.InstanceGroups)}
-          >
-            MIG を作成
-          </SecondaryButton>
+          <>
+            <SecondaryButton
+              ariaLabel={`${t.name} を複製`}
+              onClick={() => cloneEditor.openWith(InstanceTemplateCloneForm.from(t))}
+            >
+              複製
+            </SecondaryButton>
+            <SecondaryButton
+              ariaLabel={`${t.name} で MIG を作成`}
+              onClick={() => handlers.changeScreen(ConsoleScreens.InstanceGroups)}
+            >
+              MIG を作成
+            </SecondaryButton>
+          </>
         )}
         columns={[
           {

@@ -1,12 +1,15 @@
 import type { BucketLocation, StorageClass } from "@/engine/domains/catalog";
+import { IamMember, RoleName } from "@/engine/domains/iam-policy";
 import type { Bucket } from "@/engine/domains/storage";
 import type { Protection } from "@/engine/domains/storage-lab/model";
 import {
   collect,
   type FieldErrors,
   flag,
+  IamGrantForm,
 } from "@/features/simulator/features/console/domains/equivalent-command";
 import { Option } from "@/utils/Option";
+import { Result } from "@/utils/Result";
 
 export type CommandStep = Readonly<{ line: string; note: string }>;
 
@@ -398,3 +401,86 @@ export const deleteObjectCommand = (
   objectName: string,
   projectId: string,
 ): string => `gcloud storage rm gs://${bucket}/${objectName} ${flag("project", projectId)} --quiet`;
+
+// --- バケット IAM 権限 ---
+
+export const BucketIamRoles: readonly Readonly<{ value: string; label: string }>[] = [
+  {
+    value: "roles/storage.objectViewer",
+    label: "Storage オブジェクト閲覧者 (roles/storage.objectViewer)",
+  },
+  {
+    value: "roles/storage.objectCreator",
+    label: "Storage オブジェクト作成者 (roles/storage.objectCreator)",
+  },
+  {
+    value: "roles/storage.objectUser",
+    label: "Storage オブジェクト ユーザー (roles/storage.objectUser)",
+  },
+  {
+    value: "roles/storage.objectAdmin",
+    label: "Storage オブジェクト管理者 (roles/storage.objectAdmin)",
+  },
+  {
+    value: "roles/storage.admin",
+    label: "Storage 管理者 (roles/storage.admin)",
+  },
+  {
+    value: "roles/storage.legacyBucketReader",
+    label: "Storage レガシー バケット閲覧者 (roles/storage.legacyBucketReader)",
+  },
+];
+
+/** Cloud Storage バケットの IAM バインディング付与フォーム。 */
+export type BucketIamGrantForm = Readonly<{
+  bucket: string;
+  member: string;
+  role: string;
+}>;
+
+export const BucketIamGrantForm = {
+  create(bucket = ""): BucketIamGrantForm {
+    return { bucket, member: "", role: "roles/storage.objectViewer" };
+  },
+
+  normalizeMember: IamGrantForm.normalizeMember,
+
+  collectErrors(form: BucketIamGrantForm): FieldErrors<BucketIamGrantForm> {
+    const normalized = IamGrantForm.normalizeMember(form.member);
+    const parsedMember = IamMember.parse(normalized);
+    const memberError = Result.isOk(parsedMember) ? Option.none : Option.some(parsedMember.error);
+    const roleError = Option.isSome(RoleName.parse(form.role))
+      ? Option.none
+      : Option.some(
+          `ロールは roles/... または projects/P/roles/... の形式で指定してください: ${form.role}`,
+        );
+    return collect<BucketIamGrantForm>([
+      ["member", memberError],
+      ["role", roleError],
+    ]);
+  },
+
+  toCommand(form: BucketIamGrantForm, projectId: string): string {
+    return [
+      "gcloud storage buckets add-iam-policy-binding",
+      `gs://${form.bucket}`,
+      flag("member", IamGrantForm.normalizeMember(form.member)),
+      flag("role", form.role),
+      flag("project", projectId),
+    ].join(" ");
+  },
+
+  removeCommand(
+    bucket: string,
+    binding: Readonly<{ member: string; role: string }>,
+    projectId: string,
+  ): string {
+    return [
+      "gcloud storage buckets remove-iam-policy-binding",
+      `gs://${bucket}`,
+      flag("member", binding.member),
+      flag("role", binding.role),
+      flag("project", projectId),
+    ].join(" ");
+  },
+} as const;

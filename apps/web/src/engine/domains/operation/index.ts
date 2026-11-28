@@ -15,6 +15,7 @@ export const OperationTypes = {
   SetMetadata: "setMetadata",
   SetMachineType: "setMachineType",
   AttachDisk: "attachDisk",
+  DetachDisk: "detachDisk",
   Resize: "resize",
 } as const;
 export type OperationType = ValueOf<typeof OperationTypes>;

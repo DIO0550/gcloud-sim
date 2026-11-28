@@ -4,6 +4,7 @@ import { Option } from "@/utils/Option";
 
 /** Console ビューの画面（設計書 3.1 の一覧 + ロール）。左ナビの現在地。 */
 export const ConsoleScreens = {
+  ApisServices: "apis-services",
   Iam: "iam",
   ServiceAccounts: "service-accounts",
   Roles: "roles",
@@ -21,6 +22,8 @@ export const ConsoleScreens = {
   VpcNetworks: "vpc-networks",
   Firewall: "firewall",
   Subnets: "subnets",
+  IpAddresses: "ip-addresses",
+  VpcPeerings: "vpc-peerings",
   CloudNat: "cloud-nat",
   CloudRouters: "cloud-routers",
   Buckets: "buckets",
@@ -33,6 +36,7 @@ export type ConsoleScreen = ValueOf<typeof ConsoleScreens>;
 
 /** 左ナビの見出しの単位（本物の Console のプロダクト）。綴りは表示側が決める。 */
 export const ConsoleSections = {
+  Apis: "apis",
   Iam: "iam",
   Billing: "billing",
   Compute: "compute",
@@ -62,6 +66,7 @@ const place = (
 ) => ({ section, api, navItem });
 
 const Placements: Readonly<Record<ConsoleScreen, ReturnType<typeof place>>> = {
+  "apis-services": place("apis", Option.none),
   iam: place("iam", Option.none),
   "service-accounts": place("iam", Option.none),
   roles: place("iam", Option.none),
@@ -83,6 +88,8 @@ const Placements: Readonly<Record<ConsoleScreen, ReturnType<typeof place>>> = {
   "vpc-networks": place("vpc", Option.some("compute.googleapis.com")),
   firewall: place("vpc", Option.some("compute.googleapis.com")),
   subnets: place("vpc", Option.some("compute.googleapis.com")),
+  "ip-addresses": place("vpc", Option.some("compute.googleapis.com")),
+  "vpc-peerings": place("vpc", Option.some("compute.googleapis.com")),
   "cloud-nat": place("network-services", Option.some("compute.googleapis.com")),
   "cloud-routers": place("network-services", Option.some("compute.googleapis.com")),
   buckets: place("storage", Option.none),

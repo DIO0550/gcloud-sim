@@ -1,4 +1,10 @@
-import { type Region, Zone } from "@/engine/domains/catalog";
+import {
+  DefaultMachineType,
+  type MachineTypeName,
+  type Region,
+  Zone,
+} from "@/engine/domains/catalog";
+import { ResourceName } from "@/engine/domains/compute";
 import { Ipv4 } from "@/engine/domains/gke-control-plane";
 import type { CloudRunService, GkeCluster, NodePool } from "@/engine/domains/managed-services";
 import type { RuntimeConfig } from "@/engine/domains/serverless-lab/model";
@@ -314,6 +320,101 @@ export const ClusterEditForm = {
   toCommand(form: ClusterEditForm, projectId: string): string {
     const steps = ClusterEditForm.toSteps(form, projectId);
     return steps.length === 0 ? NoChangesComment : steps.map((s) => s.line).join("\n");
+  },
+} as const;
+
+// --- GKE ノードプール ---
+
+/** GKE Standard クラスタのノードプール作成フォームの値。 */
+export type NodePoolCreateForm = Readonly<{
+  clusterName: string;
+  location: Zone | Region;
+  name: string;
+  machineType: MachineTypeName;
+  numNodes: string;
+  enableAutoscaling: boolean;
+  minNodes: string;
+  maxNodes: string;
+}>;
+
+const clusterScopeFlag = (location: Zone | Region): string =>
+  Option.isSome(Zone.parse(location)) ? flag("zone", location) : flag("region", location);
+
+export const NodePoolCreateForm = {
+  create(cluster: Pick<GkeCluster, "name" | "location">): NodePoolCreateForm {
+    return {
+      clusterName: cluster.name,
+      location: cluster.location,
+      name: "",
+      machineType: DefaultMachineType,
+      numNodes: "3",
+      enableAutoscaling: false,
+      minNodes: "1",
+      maxNodes: "3",
+    };
+  },
+
+  empty(): NodePoolCreateForm {
+    return NodePoolCreateForm.create({ name: "", location: "asia-northeast1-a" });
+  },
+
+  collectErrors(form: NodePoolCreateForm): FieldErrors<NodePoolCreateForm> {
+    const parsedName = ResourceName.parse(form.name.trim());
+    const nameError = Result.isOk(parsedName) ? Option.none : Option.some(parsedName.error);
+    const numNodesError = intRangeError(form.numNodes, 0, 1000);
+    const min = integerOf(form.minNodes.trim());
+    const max = integerOf(form.maxNodes.trim());
+    const minError = form.enableAutoscaling ? intRangeError(form.minNodes, 0, 1000) : Option.none;
+    const maxError: Option<string> = (() => {
+      if (!form.enableAutoscaling) return Option.none;
+      const rangeErr = intRangeError(form.maxNodes, 1, 1000);
+      if (Option.isSome(rangeErr)) return rangeErr;
+      if (Option.isSome(min) && Option.isSome(max) && max.value < min.value) {
+        return Option.some("最大ノード数は最小ノード数以上にしてください");
+      }
+      return Option.none;
+    })();
+    return collect<NodePoolCreateForm>([
+      ["name", nameError],
+      ["numNodes", numNodesError],
+      ["minNodes", minError],
+      ["maxNodes", maxError],
+    ]);
+  },
+
+  toCommand(form: NodePoolCreateForm, projectId: string): string {
+    const parts = [
+      "gcloud container node-pools create",
+      quote(form.name.trim()),
+      flag("cluster", form.clusterName),
+      clusterScopeFlag(form.location),
+      flag("project", projectId),
+      flag("machine-type", form.machineType),
+      flag("num-nodes", form.numNodes.trim()),
+    ];
+    if (form.enableAutoscaling) {
+      parts.push(
+        "--enable-autoscaling",
+        flag("min-nodes", form.minNodes.trim()),
+        flag("max-nodes", form.maxNodes.trim()),
+      );
+    }
+    return parts.join(" ");
+  },
+
+  deleteCommand(
+    cluster: Pick<GkeCluster, "name" | "location">,
+    poolName: string,
+    projectId: string,
+  ): string {
+    return [
+      "gcloud container node-pools delete",
+      quote(poolName),
+      flag("cluster", cluster.name),
+      clusterScopeFlag(cluster.location),
+      flag("project", projectId),
+      "--quiet",
+    ].join(" ");
   },
 } as const;
 

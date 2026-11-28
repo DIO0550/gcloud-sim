@@ -525,6 +525,45 @@ const attachDisk = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
   return updated({ ...ctx, world }, attached.value, OperationTypes.AttachDisk);
 };
 
+const detachDisk = (ctx: ProjectContext, args: ParsedArgs): CommandResult => {
+  const instance = instanceArg(ctx, args);
+  if (!Result.isOk(instance)) return instance;
+  const diskName = ParsedArgs.requiredString(args, "disk");
+  const labDisk = ctx.world.computeLab.disks.find(
+    (d) =>
+      d.projectId === instance.value.projectId &&
+      d.name === diskName &&
+      d.users.includes(`${instance.value.zone}/${instance.value.name}`),
+  );
+  if (labDisk) {
+    const next = { ...labDisk, users: [] };
+    const world = patchCompute(ctx.world, {
+      disks: ctx.world.computeLab.disks.map((v) => (sameRef(v, labDisk) ? next : v)),
+    });
+    const checked = World.validate(world);
+    return Result.map(Result.mapErr(checked, CommandFailure.invalidState), (validated) => ({
+      world: validated,
+      output: CommandOutput.yaml({ ...next }),
+    }));
+  }
+  const detached = Result.mapErr(
+    Instance.withoutAttachedDisk(instance.value, diskName),
+    CommandFailure.invalidState,
+  );
+  if (!Result.isOk(detached)) return detached;
+  const found = findZonedDisk(ctx, instance.value.zone, diskName);
+  const standalone = Option.flatMap(found, (d) =>
+    d.kind === "standalone" ? Option.some(d.disk) : Option.none,
+  );
+  const world = Option.isSome(standalone)
+    ? World.replaceDisk(ctx.world, {
+        ...standalone.value,
+        users: standalone.value.users.filter((u) => u !== instance.value.name),
+      })
+    : ctx.world;
+  return updated({ ...ctx, world }, detached.value, OperationTypes.DetachDisk);
+};
+
 const projectInfoRecord = (ctx: ProjectContext) =>
   ProjectMetadata.toRecord(World.projectMetadataOf(ctx.world, ctx.project.projectId));
 
@@ -937,6 +976,27 @@ export const InstanceCommands: readonly CommandSpec[] = [
     permission: "compute.instances.attachDisk",
     requiredApis: [ComputeApi],
     run: attachDisk,
+  }),
+  projectCommand({
+    path: ["gcloud", "compute", "instances", "detach-disk"],
+    summary: "Detach a disk from an instance.",
+    positionals: [
+      Positional.required(
+        "INSTANCE_NAME",
+        "Name of the instance to operate on.",
+        Candidates.instances,
+      ),
+    ],
+    flags: [
+      CommonFlags.zone,
+      Flag.string("disk", "The name of the disk to detach from the instance.", {
+        required: true,
+        candidates: Candidates.disks,
+      }),
+    ],
+    permission: "compute.instances.detachDisk",
+    requiredApis: [ComputeApi],
+    run: detachDisk,
   }),
   projectCommand({
     path: ["gcloud", "compute", "ssh"],

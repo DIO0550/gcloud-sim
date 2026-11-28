@@ -27,7 +27,11 @@ import {
   TextInput,
 } from "@/features/simulator/features/console/components/ConsoleParts";
 import { ConsoleScreens } from "@/features/simulator/features/console/domains/console-screen";
-import { VmEditForm } from "@/features/simulator/features/console/domains/edit-command/compute";
+import {
+  VmAttachDiskForm,
+  VmDiskCommand,
+  VmEditForm,
+} from "@/features/simulator/features/console/domains/edit-command/compute";
 import {
   FieldErrors,
   type VmAction,
@@ -127,6 +131,9 @@ export const VmListScreen = ({ world, project, handlers, outcome }: ScreenProps)
   const [selectedKeys, setSelectedKeys] = useState<ReadonlySet<string>>(new Set());
   const [filter, setFilter] = useState("");
   const [sortAsc, setSortAsc] = useState(true);
+  const [diskTargetKey, setDiskTargetKey] = useState<Option<string>>(Option.none);
+  const [attachDiskName, setAttachDiskName] = useState("");
+  const [attachError, setAttachError] = useState<string | undefined>(undefined);
   const filterId = useId();
   const editEditor = useCreateForm(VmEditForm, EmptyVmEditForm, false, outcome);
   const instances = World.instancesOf(world, project.projectId);
@@ -290,6 +297,169 @@ export const VmListScreen = ({ world, project, handlers, outcome }: ScreenProps)
             </CreateFormSection>
           );
         })()}
+      {Option.isSome(diskTargetKey) &&
+        (() => {
+          const diskVm = instances.find((i) => instanceKey(i) === diskTargetKey.value);
+          if (diskVm === undefined) return null;
+          const attachedDisks = [
+            ...diskVm.disks.map((d) => ({
+              name: d.deviceName,
+              sizeGb: d.sizeGb,
+              type: d.type,
+              boot: d.boot,
+            })),
+            ...world.computeLab.disks
+              .filter(
+                (d) =>
+                  d.projectId === project.projectId &&
+                  d.users.includes(`${diskVm.zone}/${diskVm.name}`),
+              )
+              .map((d) => ({
+                name: d.name,
+                sizeGb: d.sizeGb,
+                type: d.type,
+                boot: false,
+              })),
+          ];
+          const seenUnattached = new Set<string>();
+          const unattachedDisks: { name: string; label: string }[] = [];
+          for (const d of World.disksOf(world, project.projectId)) {
+            if (d.zone === diskVm.zone && d.users.length === 0 && !seenUnattached.has(d.name)) {
+              seenUnattached.add(d.name);
+              unattachedDisks.push({
+                name: d.name,
+                label: `${d.name} (${d.sizeGb} GB・${d.type})`,
+              });
+            }
+          }
+          for (const d of world.computeLab.disks) {
+            if (
+              d.projectId === project.projectId &&
+              d.location === diskVm.zone &&
+              d.users.length === 0 &&
+              !seenUnattached.has(d.name)
+            ) {
+              seenUnattached.add(d.name);
+              unattachedDisks.push({
+                name: d.name,
+                label: `${d.name} (${d.sizeGb} GB・${d.type})`,
+              });
+            }
+          }
+          const selectedDisk = unattachedDisks.some((d) => d.name === attachDiskName)
+            ? attachDiskName
+            : (unattachedDisks[0]?.name ?? "");
+          const attachForm = VmAttachDiskForm.create(diskVm.name, diskVm.zone, selectedDisk);
+          const submitAttach = (): void => {
+            const errors = VmAttachDiskForm.collectErrors(attachForm);
+            if (!FieldErrors.isEmpty(errors)) {
+              setAttachError(errors.disk);
+              return;
+            }
+            setAttachError(undefined);
+            handlers.submit({
+              line: VmAttachDiskForm.toCommand(attachForm, project.projectId),
+              note: `ディスクを接続 (${attachForm.disk})`,
+              next: Option.none,
+            });
+            setAttachDiskName("");
+          };
+          return (
+            <div className="mb-5 flex flex-col gap-3">
+              <section
+                className="rounded border border-line bg-surface p-4"
+                aria-label="接続中のディスク"
+              >
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <h3 className="font-medium text-ink text-sm">
+                    接続中のディスク（<span className="font-mono">{diskVm.name}</span> ·{" "}
+                    <span className="font-mono text-muted">{diskVm.zone}</span>）
+                  </h3>
+                  <SecondaryButton onClick={() => setDiskTargetKey(Option.none)}>
+                    閉じる
+                  </SecondaryButton>
+                </div>
+                <ul className="divide-y divide-line rounded border border-line bg-canvas text-sm">
+                  {attachedDisks.map((d) => (
+                    <li
+                      key={d.name}
+                      className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium font-mono">{d.name}</span>
+                        <span className="text-muted text-xs">
+                          {d.sizeGb} GB · {d.type}
+                        </span>
+                        <span className="rounded bg-surface px-1.5 py-0.5 text-muted text-xs">
+                          {d.boot ? "ブートディスク" : "データディスク"}
+                        </span>
+                      </div>
+                      {!d.boot && (
+                        <SecondaryButton
+                          ariaLabel={`${d.name} を切断`}
+                          onClick={() =>
+                            handlers.submit({
+                              line: VmDiskCommand.detach(
+                                diskVm.name,
+                                d.name,
+                                diskVm.zone,
+                                project.projectId,
+                              ),
+                              note: `ディスクを切断 (${d.name})`,
+                              next: Option.none,
+                            })
+                          }
+                        >
+                          切断
+                        </SecondaryButton>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+              <CreateFormSection
+                label="ディスクを接続"
+                columns={2}
+                command={VmAttachDiskForm.toCommand(attachForm, project.projectId)}
+                onCopy={handlers.copy}
+                onInsert={handlers.insert}
+                onSubmit={submitAttach}
+                onCancel={() => setDiskTargetKey(Option.none)}
+                submitLabel="接続"
+              >
+                <Field label="インスタンス">
+                  {(id) => <ReadOnlyField id={id} value={`${diskVm.name} (${diskVm.zone})`} />}
+                </Field>
+                <Field
+                  label="未接続のディスク"
+                  required
+                  error={attachError}
+                  hint={
+                    unattachedDisks.length === 0
+                      ? "同じゾーンに未接続のディスクがありません。「ディスク」画面から作成できます。"
+                      : undefined
+                  }
+                >
+                  {(id) => (
+                    <Select
+                      id={id}
+                      value={selectedDisk}
+                      onChange={(value) => {
+                        setAttachDiskName(value);
+                        setAttachError(undefined);
+                      }}
+                      options={
+                        unattachedDisks.length > 0
+                          ? unattachedDisks.map((d) => ({ value: d.name, label: d.label }))
+                          : [{ value: "", label: "（未接続のディスクがありません）" }]
+                      }
+                    />
+                  )}
+                </Field>
+              </CreateFormSection>
+            </div>
+          );
+        })()}
       <label
         htmlFor={filterId}
         className="mb-4 flex h-11 items-center gap-3 rounded-lg border border-line bg-surface px-4"
@@ -390,9 +560,23 @@ export const VmListScreen = ({ world, project, handlers, outcome }: ScreenProps)
                       </TextButton>
                       <SecondaryButton
                         ariaLabel={`${i.name} を編集`}
-                        onClick={() => editEditor.openWith(VmEditForm.from(i))}
+                        onClick={() => {
+                          setDiskTargetKey(Option.none);
+                          editEditor.openWith(VmEditForm.from(i));
+                        }}
                       >
                         編集
+                      </SecondaryButton>
+                      <SecondaryButton
+                        ariaLabel={`${i.name} のディスクを管理`}
+                        onClick={() => {
+                          editEditor.close();
+                          setDiskTargetKey(Option.some(key));
+                          setAttachDiskName("");
+                          setAttachError(undefined);
+                        }}
+                      >
+                        ディスク
                       </SecondaryButton>
                     </div>
                   </td>

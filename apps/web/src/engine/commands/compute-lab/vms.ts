@@ -191,32 +191,6 @@ export const VmCommands = [
     [zf, Flag.boolean("admin", "Check administrator OS Login.")],
   ),
   command(
-    ["gcloud", "compute", "instances", "detach-disk"],
-    "compute.instances.attachDisk",
-    (c, a) =>
-      Result.flatMap(instanceArg(c, a), (i) => {
-        const d = c.world.computeLab.disks.find(
-          (d) =>
-            d.projectId === i.projectId &&
-            d.name === text(a, "disk") &&
-            d.users.includes(`${i.zone}/${i.name}`),
-        );
-        if (!d) {
-          return missing(
-            "Attached Compute lab disk missing; legacy disks are outside this detach lesson.",
-          );
-        }
-        const next = { ...d, users: [] };
-        return finish(
-          patchCompute(c.world, {
-            disks: c.world.computeLab.disks.map((v) => (sameRef(v, d) ? next : v)),
-          }),
-          { ...next },
-        );
-      }),
-    [zf, sf("disk", true)],
-  ),
-  command(
     ["gcloud", "compute", "instances", "set-scheduling"],
     "compute.instances.setScheduling",
     (c, a) =>

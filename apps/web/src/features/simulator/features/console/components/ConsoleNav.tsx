@@ -18,6 +18,8 @@ type ConsoleNavProps = Readonly<{
 /** 左ナビの見出し（設計書 3.1 のプロダクト名）。 */
 const sectionText = (section: ConsoleSection): string => {
   switch (section) {
+    case "apis":
+      return "API とサービス";
     case "iam":
       return "IAM と管理";
     case "billing":
@@ -42,6 +44,8 @@ const sectionText = (section: ConsoleSection): string => {
 /** 画面の名前（左ナビの項目と画面の見出し）。 */
 export const screenText = (screen: ConsoleScreen): string => {
   switch (screen) {
+    case "apis-services":
+      return "有効な API とサービス";
     case "iam":
       return "IAM";
     case "service-accounts":
@@ -76,6 +80,10 @@ export const screenText = (screen: ConsoleScreen): string => {
       return "ファイアウォール";
     case "subnets":
       return "サブネット";
+    case "ip-addresses":
+      return "IP アドレス";
+    case "vpc-peerings":
+      return "VPC ネットワーク ピアリング";
     case "cloud-nat":
       return "Cloud NAT";
     case "cloud-routers":
@@ -101,6 +109,19 @@ const ProductIcon = ({
   className = "h-5 w-5",
 }: Readonly<{ section: ConsoleSection; className?: string }>): ReactElement => {
   switch (section) {
+    case "apis":
+      return (
+        <svg aria-hidden="true" viewBox="0 0 20 20" className={className} fill="none">
+          <path
+            d="M4 6.5h4.5M11.5 6.5H16M4 13.5h4.5M11.5 13.5H16M10 3v14"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          />
+          <circle cx="10" cy="6.5" r="1.8" fill="currentColor" />
+          <circle cx="10" cy="13.5" r="1.8" fill="currentColor" />
+        </svg>
+      );
     case "iam":
       return (
         <svg aria-hidden="true" viewBox="0 0 20 20" className={className} fill="none">
