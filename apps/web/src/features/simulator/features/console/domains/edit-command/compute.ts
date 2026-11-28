@@ -1,6 +1,14 @@
 import type { MachineTypeName, Zone } from "@/engine/domains/catalog";
-import { DiskSizeGb, type Instance, type InstanceStatus } from "@/engine/domains/compute";
-import type { ManagedInstanceGroup } from "@/engine/domains/instance-groups";
+import {
+  type BootDiskType,
+  DiskSizeGb,
+  type Instance,
+  type InstanceStatus,
+  type ProvisioningModel,
+  ProvisioningModels,
+  ResourceName,
+} from "@/engine/domains/compute";
+import type { InstanceTemplate, ManagedInstanceGroup } from "@/engine/domains/instance-groups";
 import { MigLocation } from "@/engine/domains/resource-location";
 import {
   collect,
@@ -426,5 +434,128 @@ export const InstanceGroupEditForm = {
 
   toCommand(form: InstanceGroupEditForm, projectId: string): string {
     return joinSteps(InstanceGroupEditForm.toSteps(form, projectId));
+  },
+} as const;
+
+// --- VM ディスク接続・切断 ---
+
+export type VmAttachDiskForm = Readonly<{
+  instanceName: string;
+  zone: Zone;
+  disk: string;
+}>;
+
+export const VmAttachDiskForm = {
+  create(instanceName: string, zone: Zone, disk = ""): VmAttachDiskForm {
+    return { instanceName, zone, disk };
+  },
+
+  collectErrors(form: VmAttachDiskForm): FieldErrors<VmAttachDiskForm> {
+    return collect<VmAttachDiskForm>([
+      [
+        "disk",
+        form.disk.trim() === "" ? Option.some("接続するディスクを選択してください") : Option.none,
+      ],
+    ]);
+  },
+
+  toCommand(form: VmAttachDiskForm, projectId: string): string {
+    return `gcloud compute instances attach-disk ${quote(form.instanceName)} ${flag("disk", form.disk.trim())} ${flag("zone", form.zone)} ${flag("project", projectId)}`;
+  },
+} as const;
+
+export const VmDiskCommand = {
+  detach(instanceName: string, diskName: string, zone: Zone, projectId: string): string {
+    return `gcloud compute instances detach-disk ${quote(instanceName)} ${flag("disk", diskName)} ${flag("zone", zone)} ${flag("project", projectId)}`;
+  },
+} as const;
+
+// --- インスタンス テンプレート複製 ---
+
+export type InstanceTemplateCloneForm = Readonly<{
+  name: string;
+  machineType: MachineTypeName;
+  bootDiskSize: string;
+  bootDiskType: BootDiskType;
+  network: string;
+  sourceNetwork: string;
+  subnet: string;
+  tags: string;
+  serviceAccount: string;
+  imageFamily: string;
+  imageProject: string;
+  customImage: string;
+  externalIp: boolean;
+  provisioningModel: ProvisioningModel;
+  metadata: Readonly<Record<string, string>>;
+}>;
+
+const cloneNameOf = (original: string): string => {
+  const suffix = "-copy";
+  const maxPrefix = 63 - suffix.length;
+  const prefix = original.slice(0, maxPrefix).replace(/-+$/, "");
+  return `${prefix}${suffix}`;
+};
+
+export const InstanceTemplateCloneForm = {
+  from(template: InstanceTemplate): InstanceTemplateCloneForm {
+    const isCustomImage =
+      template.image.project === template.projectId || template.image.family === "";
+    return {
+      name: cloneNameOf(template.name),
+      machineType: template.machineType,
+      bootDiskSize: `${template.bootDisk.sizeGb}GB`,
+      bootDiskType: template.bootDisk.type,
+      network: template.network,
+      sourceNetwork: template.network,
+      subnet: Option.unwrapOr(template.subnet, ""),
+      tags: template.tags.join(", "),
+      serviceAccount: Option.unwrapOr(template.serviceAccount, ""),
+      imageFamily: isCustomImage ? "" : template.image.family,
+      imageProject: isCustomImage ? "" : template.image.project,
+      customImage: isCustomImage ? template.image.name : "",
+      externalIp: template.externalIp,
+      provisioningModel: template.provisioningModel,
+      metadata: template.metadata,
+    };
+  },
+
+  collectErrors(form: InstanceTemplateCloneForm): FieldErrors<InstanceTemplateCloneForm> {
+    return collect<InstanceTemplateCloneForm>([
+      ["name", errorOf(ResourceName.parse(form.name))],
+      ["bootDiskSize", errorOf(DiskSizeGb.parse(form.bootDiskSize))],
+    ]);
+  },
+
+  toCommand(form: InstanceTemplateCloneForm, projectId: string): string {
+    const tags = [...new Set(StringEx.splitList(form.tags))];
+    const metaEntries = Object.entries(form.metadata);
+    const flags: string[] = [
+      flag("project", projectId),
+      flag("machine-type", form.machineType),
+      ...(form.provisioningModel !== ProvisioningModels.Standard
+        ? [flag("provisioning-model", form.provisioningModel)]
+        : []),
+      ...(form.serviceAccount.trim() !== ""
+        ? [flag("service-account", form.serviceAccount.trim())]
+        : []),
+      ...(form.network.trim() !== "" ? [flag("network", form.network.trim())] : []),
+      ...(form.subnet !== "" && form.network === form.sourceNetwork
+        ? [flag("subnet", form.subnet)]
+        : []),
+      ...(tags.length > 0 ? [flag("tags", tags.join(","))] : []),
+      ...(form.externalIp ? [] : ["--no-address"]),
+      ...(form.customImage !== ""
+        ? [flag("image", form.customImage)]
+        : form.imageFamily !== ""
+          ? [flag("image-family", form.imageFamily), flag("image-project", form.imageProject)]
+          : []),
+      flag("boot-disk-size", form.bootDiskSize.trim()),
+      flag("boot-disk-type", form.bootDiskType),
+      ...(metaEntries.length > 0
+        ? [flag("metadata", metaEntries.map(([k, v]) => `${k}=${v}`).join(","))]
+        : []),
+    ];
+    return `gcloud compute instance-templates create ${quote(form.name)} ${flags.join(" ")}`;
   },
 } as const;

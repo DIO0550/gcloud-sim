@@ -15,6 +15,7 @@ import {
 import { GcloudConfig } from "@/engine/domains/gcloud-config";
 import { World } from "@/engine/domains/world";
 import {
+  ConsoleStatus,
   CreateFormSection,
   Field,
   PrimaryButton,
@@ -23,8 +24,12 @@ import {
   TextInput,
 } from "@/features/simulator/features/console/components/ConsoleParts";
 import {
+  AddressCreateForm,
+  deleteAddressCommand,
+  deletePeeringCommand,
   FirewallEditForm,
   type FirewallPolicyOrder,
+  PeeringCreateForm,
   SubnetEditForm,
   VpcNetworkEditForm,
 } from "@/features/simulator/features/console/domains/edit-command/vpc";
@@ -1141,6 +1146,321 @@ export const SubnetsScreen = ({ world, project, handlers, outcome }: ScreenProps
           {
             header: "フローログ",
             cell: (s) => (s.flowLogs ? "オン" : "オフ"),
+          },
+        ]}
+      />
+    </div>
+  );
+};
+
+/** VPC ネットワーク › IP アドレス: 静的 IP アドレスの一覧・予約・解放。 */
+export const IpAddressesScreen = ({
+  world,
+  project,
+  handlers,
+  outcome,
+}: ScreenProps): ReactElement => {
+  const projectId = project.projectId;
+  const addresses = world.addresses.filter((a) => a.projectId === projectId);
+  const subnets = World.subnetsOf(world, projectId);
+  const defaultRegion: Region = Option.unwrapOr(
+    Option.flatMap(GcloudConfig.get(world.config, "compute/region"), Region.parse),
+    "asia-northeast1",
+  );
+  const seed = (): AddressCreateForm => AddressCreateForm.create(defaultRegion);
+  const editor = useCreateForm(AddressCreateForm, seed, false, outcome);
+  const form = Option.unwrapOr(editor.form, seed());
+  const regionalSubnets = subnets.filter((s) => s.region === form.region);
+
+  const create = (): void => {
+    const valid = editor.submit();
+    if (!Option.isSome(valid)) return;
+    handlers.submit({
+      line: AddressCreateForm.toCommand(valid.value, projectId),
+      note: `静的 IP アドレスを予約 (${valid.value.name})`,
+      next: Option.none,
+    });
+    editor.awaitClose();
+  };
+
+  const remove = (address: (typeof addresses)[number]): void => {
+    if (!handlers.confirm(`静的 IP アドレス ${address.name} (${address.address}) を解放しますか？`))
+      return;
+    handlers.submit({
+      line: deleteAddressCommand(address, projectId),
+      note: `静的 IP アドレスを解放 (${address.name})`,
+      next: Option.none,
+    });
+  };
+
+  return (
+    <div>
+      <ScreenTitle
+        eyebrow="VPC ネットワーク"
+        title="IP アドレス"
+        trailing={<PrimaryButton onClick={editor.open}>静的 IP アドレスを予約</PrimaryButton>}
+      />
+      {Option.isSome(editor.form) && (
+        <CreateFormSection
+          label="静的 IP アドレスを予約"
+          columns={3}
+          command={AddressCreateForm.toCommand(form, projectId)}
+          onCopy={handlers.copy}
+          onInsert={handlers.insert}
+          onSubmit={create}
+          onCancel={editor.close}
+          submitLabel="予約"
+        >
+          <Field label="名前" required error={editor.errors.name}>
+            {(id) => (
+              <TextInput
+                id={id}
+                value={form.name}
+                placeholder="web-static-ip"
+                onChange={(v) => editor.set("name", v)}
+              />
+            )}
+          </Field>
+          <Field label="アドレスの種類">
+            {(id) => (
+              <Select<"EXTERNAL" | "INTERNAL">
+                id={id}
+                value={form.addressType}
+                onChange={(t) => {
+                  editor.set("addressType", t);
+                  if (t === "INTERNAL") editor.set("scope", "regional");
+                }}
+                options={[
+                  { value: "EXTERNAL", label: "外部（EXTERNAL）" },
+                  { value: "INTERNAL", label: "内部（INTERNAL）" },
+                ]}
+              />
+            )}
+          </Field>
+          <Field label="タイプ">
+            {(id) => (
+              <Select<"regional" | "global">
+                id={id}
+                value={form.addressType === "INTERNAL" ? "regional" : form.scope}
+                onChange={(s) => editor.set("scope", s)}
+                options={
+                  form.addressType === "INTERNAL"
+                    ? [{ value: "regional", label: "リージョン" }]
+                    : [
+                        { value: "regional", label: "リージョン" },
+                        { value: "global", label: "グローバル" },
+                      ]
+                }
+              />
+            )}
+          </Field>
+          {(form.scope === "regional" || form.addressType === "INTERNAL") && (
+            <Field label="リージョン">
+              {(id) => (
+                <Select
+                  id={id}
+                  value={form.region}
+                  onChange={(r) => editor.set("region", r)}
+                  options={Object.values(Regions).map((r) => ({ value: r, label: r }))}
+                />
+              )}
+            </Field>
+          )}
+          {form.addressType === "EXTERNAL" ? (
+            <Field label="ネットワーク サービス ティア">
+              {(id) => (
+                <Select<"PREMIUM" | "STANDARD">
+                  id={id}
+                  value={form.networkTier}
+                  onChange={(t) => editor.set("networkTier", t)}
+                  options={[
+                    { value: "PREMIUM", label: "プレミアム（PREMIUM）" },
+                    { value: "STANDARD", label: "スタンダード（STANDARD）" },
+                  ]}
+                />
+              )}
+            </Field>
+          ) : (
+            <Field label="サブネット" required error={editor.errors.subnet}>
+              {(id) => (
+                <Select
+                  id={id}
+                  value={form.subnet}
+                  onChange={(s) => editor.set("subnet", s)}
+                  options={[
+                    { value: "", label: "サブネットを選択…" },
+                    ...regionalSubnets.map((s) => ({
+                      value: s.name,
+                      label: `${s.name} (${s.ipCidrRange})`,
+                    })),
+                  ]}
+                />
+              )}
+            </Field>
+          )}
+        </CreateFormSection>
+      )}
+      <ResourceTable
+        label="IP アドレス"
+        rows={addresses}
+        keyOf={(a) => `${a.scope.kind === "global" ? "global" : a.scope.region}/${a.name}`}
+        nameOf={(a) => a.name}
+        empty="予約済みの静的 IP アドレスはありません。「静的 IP アドレスを予約」または gcloud compute addresses create で作成できます。"
+        onDelete={remove}
+        columns={[
+          { header: "名前", cell: (a) => <span className="font-mono">{a.name}</span> },
+          { header: "IP アドレス", cell: (a) => <span className="font-mono">{a.address}</span> },
+          {
+            header: "種別",
+            cell: (a) => (a.addressType === "EXTERNAL" ? "外部" : "内部"),
+          },
+          {
+            header: "リージョン / グローバル",
+            cell: (a) => (a.scope.kind === "global" ? "グローバル" : a.scope.region),
+          },
+          { header: "ティア", cell: (a) => a.networkTier ?? "PREMIUM" },
+          { header: "ステータス", cell: (a) => <ConsoleStatus status={a.status} /> },
+        ]}
+      />
+    </div>
+  );
+};
+
+/** VPC ネットワーク › VPC ネットワーク ピアリング: 一覧・作成・削除。 */
+export const VpcPeeringsScreen = ({
+  world,
+  project,
+  handlers,
+  outcome,
+}: ScreenProps): ReactElement => {
+  const projectId = project.projectId;
+  const networks = World.networksOf(world, projectId);
+  const peerings = world.peerings.filter((p) => p.projectId === projectId);
+  const seed = (): PeeringCreateForm =>
+    PeeringCreateForm.create({
+      network: networks[0]?.name ?? "default",
+      peerProject: projectId,
+      peerNetwork: networks[1]?.name ?? "",
+    });
+  const editor = useCreateForm(PeeringCreateForm, seed, false, outcome);
+  const form = Option.unwrapOr(editor.form, seed());
+
+  const create = (): void => {
+    const valid = editor.submit();
+    if (!Option.isSome(valid)) return;
+    handlers.submit({
+      line: PeeringCreateForm.toCommand(valid.value, projectId),
+      note: `VPC ピアリングを作成 (${valid.value.name})`,
+      next: Option.none,
+    });
+    editor.awaitClose();
+  };
+
+  const remove = (peering: (typeof peerings)[number]): void => {
+    if (!handlers.confirm(`VPC ピアリング ${peering.name} を削除しますか？`)) return;
+    handlers.submit({
+      line: deletePeeringCommand(peering, projectId),
+      note: `VPC ピアリングを削除 (${peering.name})`,
+      next: Option.none,
+    });
+  };
+
+  return (
+    <div>
+      <ScreenTitle
+        eyebrow="VPC ネットワーク"
+        title="VPC ネットワーク ピアリング"
+        trailing={<PrimaryButton onClick={editor.open}>ピアリング接続を作成</PrimaryButton>}
+      />
+      {Option.isSome(editor.form) && (
+        <CreateFormSection
+          label="VPC ネットワーク ピアリングを作成"
+          columns={2}
+          command={PeeringCreateForm.toCommand(form, projectId)}
+          onCopy={handlers.copy}
+          onInsert={handlers.insert}
+          onSubmit={create}
+          onCancel={editor.close}
+          submitLabel="作成"
+        >
+          <Field label="名前" required error={editor.errors.name}>
+            {(id) => (
+              <TextInput
+                id={id}
+                value={form.name}
+                placeholder="peer-a-to-b"
+                onChange={(v) => editor.set("name", v)}
+              />
+            )}
+          </Field>
+          <Field label="自分の VPC ネットワーク" required error={editor.errors.network}>
+            {(id) => (
+              <Select
+                id={id}
+                value={form.network}
+                onChange={(v) => editor.set("network", v)}
+                options={networks.map((n) => ({ value: n.name, label: n.name }))}
+              />
+            )}
+          </Field>
+          <Field label="ピアリング先のプロジェクト ID" hint="同一プロジェクトならそのまま">
+            {(id) => (
+              <TextInput
+                id={id}
+                value={form.peerProject}
+                onChange={(v) => editor.set("peerProject", v)}
+              />
+            )}
+          </Field>
+          <Field
+            label="ピアリング先の VPC ネットワーク名"
+            required
+            error={editor.errors.peerNetwork}
+          >
+            {(id) => (
+              <TextInput
+                id={id}
+                value={form.peerNetwork}
+                placeholder="vpc-b"
+                onChange={(v) => editor.set("peerNetwork", v)}
+              />
+            )}
+          </Field>
+          <div className="flex flex-wrap gap-5 sm:col-span-2">
+            <Checkbox
+              checked={form.exportCustomRoutes}
+              onChange={(v) => editor.set("exportCustomRoutes", v)}
+            >
+              カスタムルートをエクスポート（--export-custom-routes）
+            </Checkbox>
+            <Checkbox
+              checked={form.importCustomRoutes}
+              onChange={(v) => editor.set("importCustomRoutes", v)}
+            >
+              カスタムルートをインポート（--import-custom-routes）
+            </Checkbox>
+          </div>
+        </CreateFormSection>
+      )}
+      <ResourceTable
+        label="VPC ネットワーク ピアリング"
+        rows={peerings}
+        keyOf={(p) => `${p.network}/${p.name}`}
+        nameOf={(p) => p.name}
+        empty="VPC ネットワーク ピアリングはありません。双方の VPC からピアリングを作成すると ACTIVE になります。"
+        onDelete={remove}
+        columns={[
+          { header: "名前", cell: (p) => <span className="font-mono">{p.name}</span> },
+          { header: "自分のネットワーク", cell: (p) => p.network },
+          { header: "ピア プロジェクト", cell: (p) => p.peerProjectId },
+          { header: "ピア ネットワーク", cell: (p) => p.peerNetwork },
+          { header: "ステータス", cell: (p) => <ConsoleStatus status={p.state} /> },
+          {
+            header: "カスタムルート",
+            cell: (p) =>
+              [p.exportCustomRoutes ? "エクスポート" : "", p.importCustomRoutes ? "インポート" : ""]
+                .filter((s) => s !== "")
+                .join(" / ") || "なし",
           },
         ]}
       />

@@ -7,6 +7,7 @@ import {
   IamBindingEditForm,
   RoleEditForm,
   ServiceAccountEditForm,
+  ServiceAccountKeyCreateForm,
 } from "@/features/simulator/features/console/domains/edit-command/iam";
 
 test("ServiceAccountEditForm は既存の SA から update コマンドを組み立ててエンジンで通る", () => {
@@ -98,4 +99,41 @@ test("IamBindingEditForm はロール変更の 2 ステップを検証・生成�
     .map((b) => b.role);
   expect(roles).toContain("roles/compute.viewer");
   expect(roles).not.toContain("roles/viewer");
+});
+
+test("ServiceAccountKeyCreateForm はキーの作成・削除コマンドを検証・生成し、エンジンで通る", () => {
+  const email = "web-sa@ace-dev-01.iam.gserviceaccount.com";
+  const initial = ServiceAccountKeyCreateForm.forServiceAccount(email);
+  expect(initial).toEqual({ email, outputFile: "./web-sa-key.json" });
+
+  expect(
+    ServiceAccountKeyCreateForm.collectErrors({ ...initial, outputFile: "   " }).outputFile,
+  ).toBeDefined();
+  expect(
+    ServiceAccountKeyCreateForm.collectErrors({ ...initial, outputFile: "my key.json" }).outputFile,
+  ).toBeDefined();
+  expect(ServiceAccountKeyCreateForm.collectErrors(initial)).toEqual({});
+
+  const createLine = ServiceAccountKeyCreateForm.toCommand(initial, "ace-dev-01");
+  expect(createLine).toBe(
+    "gcloud iam service-accounts keys create ./web-sa-key.json --iam-account=web-sa@ace-dev-01.iam.gserviceaccount.com --project=ace-dev-01",
+  );
+
+  const created = run(session(), createLine);
+  const createdKey = created.world.serviceAccountKeys.find(
+    (k) => k.serviceAccountEmail === email && k.file === "./web-sa-key.json",
+  );
+  expect(createdKey).toBeDefined();
+
+  const deleteLine = ServiceAccountKeyCreateForm.deleteCommand(
+    createdKey?.keyId ?? "",
+    email,
+    "ace-dev-01",
+  );
+  expect(deleteLine).toBe(
+    `gcloud iam service-accounts keys delete ${createdKey?.keyId ?? ""} --iam-account=${email} --project=ace-dev-01 --quiet`,
+  );
+
+  const deleted = run(created, deleteLine);
+  expect(deleted.world.serviceAccountKeys.some((k) => k.keyId === createdKey?.keyId)).toBe(false);
 });

@@ -4,7 +4,11 @@ import { run, session } from "@/engine/__tests__/setup";
 import { Directions, FirewallActions, SubnetModes } from "@/engine/domains/compute";
 import { World } from "@/engine/domains/world";
 import {
+  AddressCreateForm,
+  deleteAddressCommand,
+  deletePeeringCommand,
   FirewallEditForm,
+  PeeringCreateForm,
   SubnetEditForm,
   VpcNetworkEditForm,
 } from "@/features/simulator/features/console/domains/edit-command/vpc";
@@ -179,5 +183,52 @@ describe("VpcNetworkEditForm / SubnetEditForm", () => {
     const updated = World.subnetsOf(s.world, PROJECT).find((sub) => sub.name === "app-sub");
     expect(updated?.privateIpGoogleAccess).toBe(true);
     expect(updated?.flowLogs).toBe(true);
+  });
+});
+
+describe("AddressCreateForm / PeeringCreateForm", () => {
+  test("静的外部 IP アドレスを予約して解放できる", () => {
+    const createCmd = AddressCreateForm.toCommand(
+      { ...AddressCreateForm.create("asia-northeast1"), name: "web-ip", scope: "global" },
+      PROJECT,
+    );
+    expect(createCmd).toContain("gcloud compute addresses create web-ip");
+    expect(createCmd).toContain("--global");
+    let s = run(session(), createCmd);
+    const reserved = s.world.addresses.find((a) => a.name === "web-ip");
+    expect(reserved).toBeDefined();
+    if (reserved === undefined) return;
+
+    s = run(s, deleteAddressCommand(reserved, PROJECT));
+    expect(s.world.addresses.some((a) => a.name === "web-ip")).toBe(false);
+  });
+
+  test("VPC ネットワーク ピアリングを作成して削除できる", () => {
+    let s = run(
+      session(),
+      "gcloud compute networks create vpc-a --project=ace-dev-01 --subnet-mode=custom",
+    );
+    s = run(s, "gcloud compute networks create vpc-b --project=ace-dev-01 --subnet-mode=custom");
+    const createCmd = PeeringCreateForm.toCommand(
+      {
+        ...PeeringCreateForm.create({
+          network: "vpc-a",
+          peerProject: PROJECT,
+          peerNetwork: "vpc-b",
+        }),
+        name: "a-to-b",
+        exportCustomRoutes: true,
+      },
+      PROJECT,
+    );
+    expect(createCmd).toContain("gcloud compute networks peerings create a-to-b");
+    expect(createCmd).toContain("--export-custom-routes");
+    s = run(s, createCmd);
+    const peering = s.world.peerings.find((p) => p.name === "a-to-b");
+    expect(peering).toBeDefined();
+    if (peering === undefined) return;
+
+    s = run(s, deletePeeringCommand(peering, PROJECT));
+    expect(s.world.peerings.some((p) => p.name === "a-to-b")).toBe(false);
   });
 });

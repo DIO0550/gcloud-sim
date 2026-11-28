@@ -155,3 +155,57 @@ export const IamBindingEditForm = {
       .join("\n");
   },
 } as const;
+
+// --- サービスアカウントのキー作成・削除 ---
+
+export type ServiceAccountKeyCreateForm = Readonly<{
+  email: string;
+  outputFile: string;
+}>;
+
+export const ServiceAccountKeyCreateForm = {
+  create(): ServiceAccountKeyCreateForm {
+    return { email: "", outputFile: "" };
+  },
+
+  /** 対象のサービスアカウントからキー作成フォームの初期値を作る。 */
+  forServiceAccount(email: string): ServiceAccountKeyCreateForm {
+    const localPart = email.split("@")[0] ?? "service-account";
+    return { email, outputFile: `./${localPart}-key.json` };
+  },
+
+  collectErrors(form: ServiceAccountKeyCreateForm): FieldErrors<ServiceAccountKeyCreateForm> {
+    const trimmed = form.outputFile.trim();
+    return collect<ServiceAccountKeyCreateForm>([
+      [
+        "outputFile",
+        trimmed === ""
+          ? Option.some("出力ファイル名を入力してください（例: ./key.json）。")
+          : /\s/.test(trimmed)
+            ? Option.some("出力ファイル名に空白は含められません。")
+            : Option.none,
+      ],
+    ]);
+  },
+
+  /** `gcloud iam service-accounts keys create OUTPUT_FILE --iam-account=EMAIL --project=P` */
+  toCommand(form: ServiceAccountKeyCreateForm, projectId: string): string {
+    return [
+      "gcloud iam service-accounts keys create",
+      quote(form.outputFile.trim()),
+      flag("iam-account", form.email),
+      flag("project", projectId),
+    ].join(" ");
+  },
+
+  /** `gcloud iam service-accounts keys delete KEY_ID --iam-account=EMAIL --project=P --quiet` */
+  deleteCommand(keyId: string, email: string, projectId: string): string {
+    return [
+      "gcloud iam service-accounts keys delete",
+      quote(keyId),
+      flag("iam-account", email),
+      flag("project", projectId),
+      "--quiet",
+    ].join(" ");
+  },
+} as const;

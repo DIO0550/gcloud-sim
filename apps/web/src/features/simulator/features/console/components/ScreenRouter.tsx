@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { ApisServicesScreen } from "@/features/simulator/features/console/components/ApisScreens";
 import { BudgetsScreen } from "@/features/simulator/features/console/components/BillingScreens";
 import { ComputeResourceScreen } from "@/features/simulator/features/console/components/ComputeResourceScreen";
 import {
@@ -26,8 +27,10 @@ import {
 import { BucketsScreen } from "@/features/simulator/features/console/components/StorageScreens";
 import {
   FirewallScreen,
+  IpAddressesScreen,
   SubnetsScreen,
   VpcNetworksScreen,
+  VpcPeeringsScreen,
 } from "@/features/simulator/features/console/components/VpcScreens";
 import type { ConsoleScreen } from "@/features/simulator/features/console/domains/console-screen";
 import type { ScreenProps } from "@/features/simulator/features/console/types/screen-props";
@@ -38,6 +41,8 @@ export const ScreenRouter = ({
   props,
 }: Readonly<{ screen: ConsoleScreen; props: ScreenProps }>): ReactElement => {
   switch (screen) {
+    case "apis-services":
+      return <ApisServicesScreen {...props} />;
     case "iam":
       return <IamScreen {...props} />;
     case "service-accounts":
@@ -66,6 +71,10 @@ export const ScreenRouter = ({
       return <FirewallScreen {...props} />;
     case "subnets":
       return <SubnetsScreen {...props} />;
+    case "ip-addresses":
+      return <IpAddressesScreen {...props} />;
+    case "vpc-peerings":
+      return <VpcPeeringsScreen {...props} />;
     case "cloud-nat":
       return <CloudNatScreen {...props} />;
     case "cloud-routers":

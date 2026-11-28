@@ -25,6 +25,7 @@ import {
   IamBindingEditForm,
   RoleEditForm,
   ServiceAccountEditForm,
+  ServiceAccountKeyCreateForm,
 } from "@/features/simulator/features/console/domains/edit-command/iam";
 import {
   DeleteCommand,
@@ -628,7 +629,7 @@ const isDefaultServiceAccount = (
   email.endsWith("@developer.gserviceaccount.com") ||
   email.endsWith("@appspot.gserviceaccount.com");
 
-/** IAM と管理 › サービスアカウント: 一覧・作成・編集。 */
+/** IAM と管理 › サービスアカウント: 一覧・作成・編集・キー管理。 */
 export const ServiceAccountsScreen = ({
   world,
   project,
@@ -648,6 +649,13 @@ export const ServiceAccountsScreen = ({
     false,
     outcome,
   );
+  const keyCreator = useCreateForm(
+    ServiceAccountKeyCreateForm,
+    ServiceAccountKeyCreateForm.create,
+    false,
+    outcome,
+  );
+  const [keysEmail, setKeysEmail] = useState<Option<string>>(Option.none);
   const create = (): void => {
     const valid = editor.submit();
     if (!Option.isSome(valid)) return;
@@ -676,8 +684,27 @@ export const ServiceAccountsScreen = ({
       next: Option.none,
     });
   };
+  const createKey = (): void => {
+    const valid = keyCreator.submit();
+    if (!Option.isSome(valid)) return;
+    handlers.submit({
+      line: ServiceAccountKeyCreateForm.toCommand(valid.value, projectId),
+      note: `サービスアカウントのキーを作成 (${valid.value.email})`,
+      next: Option.none,
+    });
+    keyCreator.awaitClose();
+  };
+  const removeKey = (email: string, keyId: string): void => {
+    if (!handlers.confirm(`キー ${keyId} を削除しますか？`)) return;
+    handlers.submit({
+      line: ServiceAccountKeyCreateForm.deleteCommand(keyId, email, projectId),
+      note: `サービスアカウントのキーを削除 (${keyId})`,
+      next: Option.none,
+    });
+  };
   const form = Option.unwrapOr(editor.form, ServiceAccountCreateForm.create());
   const editForm = Option.unwrapOr(updater.form, ServiceAccountEditForm.create());
+  const keyForm = Option.unwrapOr(keyCreator.form, ServiceAccountKeyCreateForm.create());
   const defaultComputeEmail = ServiceAccount.defaultComputeEmail(project.projectNumber);
   const userAccounts = World.serviceAccountsOf(world, projectId).map((s) => ({
     email: s.email,
@@ -685,6 +712,9 @@ export const ServiceAccountsScreen = ({
     description: s.description,
     isDefault: isDefaultServiceAccount(s.email, projectId, defaultComputeEmail),
   }));
+  const activeKeysEmail = Option.filter(keysEmail, (email) =>
+    userAccounts.some((a) => a.email === email),
+  );
   const rows = [
     ...(userAccounts.some((a) => a.email === defaultComputeEmail)
       ? []
@@ -707,6 +737,7 @@ export const ServiceAccountsScreen = ({
           <PrimaryButton
             onClick={() => {
               updater.close();
+              keyCreator.close();
               editor.open();
             }}
           >
@@ -791,9 +822,25 @@ export const ServiceAccountsScreen = ({
         rows={rows}
         keyOf={(s) => s.email}
         empty="サービスアカウントはまだありません。"
+        rowActions={(s) =>
+          !s.isDefault && (
+            <SecondaryButton
+              ariaLabel={`${s.email} のキーを管理`}
+              onClick={() => {
+                editor.close();
+                updater.close();
+                keyCreator.close();
+                setKeysEmail(Option.some(s.email));
+              }}
+            >
+              キー
+            </SecondaryButton>
+          )
+        }
         editable={(s) => !s.isDefault}
         onEdit={(s) => {
           editor.close();
+          keyCreator.close();
           updater.openWith(ServiceAccountEditForm.fromServiceAccount(s));
         }}
         deletable={(s) => !s.isDefault}
@@ -805,6 +852,96 @@ export const ServiceAccountsScreen = ({
           { header: "鍵", cell: (s) => String(World.keysOf(world, s.email).length) },
         ]}
       />
+      {Option.isSome(activeKeysEmail) && (
+        <section
+          className="mt-6 rounded-lg border border-line bg-surface p-5"
+          aria-label={`${activeKeysEmail.value} のキー`}
+        >
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="font-medium text-base text-ink">キー管理</h3>
+              <p className="font-mono text-muted text-xs">{activeKeysEmail.value}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <PrimaryButton
+                onClick={() => {
+                  editor.close();
+                  updater.close();
+                  keyCreator.openWith(
+                    ServiceAccountKeyCreateForm.forServiceAccount(activeKeysEmail.value),
+                  );
+                }}
+              >
+                新しいキーを作成
+              </PrimaryButton>
+              <SecondaryButton
+                onClick={() => {
+                  keyCreator.close();
+                  setKeysEmail(Option.none);
+                }}
+              >
+                閉じる
+              </SecondaryButton>
+            </div>
+          </div>
+          {Option.isSome(keyCreator.form) && (
+            <CreateFormSection
+              label="新しいキーを作成"
+              columns={2}
+              command={ServiceAccountKeyCreateForm.toCommand(keyForm, projectId)}
+              onCopy={handlers.copy}
+              onInsert={handlers.insert}
+              onSubmit={createKey}
+              onCancel={keyCreator.close}
+              submitLabel="作成"
+            >
+              <Field label="サービスアカウント">
+                {(id) => <ReadOnlyInput id={id} value={keyForm.email} />}
+              </Field>
+              <Field
+                label="出力ファイル"
+                error={keyCreator.errors.outputFile}
+                hint="例: ./key.json（秘密鍵は書き出されず、シミュレータ内に記録されます）"
+              >
+                {(id) => (
+                  <TextInput
+                    id={id}
+                    value={keyForm.outputFile}
+                    onChange={(v) => keyCreator.set("outputFile", v)}
+                  />
+                )}
+              </Field>
+            </CreateFormSection>
+          )}
+          <ResourceTable
+            label={`${activeKeysEmail.value} のキー`}
+            rows={World.keysOf(world, activeKeysEmail.value)}
+            keyOf={(k) => k.keyId}
+            empty="このサービスアカウントにはキーがありません。"
+            onDelete={(k) => removeKey(activeKeysEmail.value, k.keyId)}
+            columns={[
+              {
+                header: "キー ID",
+                cell: (k) => <span className="font-mono text-xs">{k.keyId}</span>,
+              },
+              {
+                header: "種類",
+                cell: (k) => <span className="text-muted text-xs">{k.keyType}</span>,
+              },
+              {
+                header: "ファイル",
+                cell: (k) => <span className="font-mono text-xs">{k.file}</span>,
+              },
+              {
+                header: "作成日時",
+                cell: (k) => (
+                  <span className="font-mono text-muted text-xs">{k.validAfterTime}</span>
+                ),
+              },
+            ]}
+          />
+        </section>
+      )}
     </div>
   );
 };

@@ -5,6 +5,7 @@ import {
   FirewallRule,
   type Network,
   ProtocolRule,
+  ResourceName,
   type Subnet,
   SubnetModes,
 } from "@/engine/domains/compute";
@@ -321,3 +322,133 @@ export const SubnetEditForm = {
     ].join(" ");
   },
 } as const;
+
+// --- 静的 IP アドレス ---
+
+export type AddressCreateForm = Readonly<{
+  name: string;
+  scope: "regional" | "global";
+  region: string;
+  addressType: "EXTERNAL" | "INTERNAL";
+  networkTier: "PREMIUM" | "STANDARD";
+  subnet: string;
+}>;
+
+export const AddressCreateForm = {
+  create(region: string): AddressCreateForm {
+    return {
+      name: "",
+      scope: "regional",
+      region,
+      addressType: "EXTERNAL",
+      networkTier: "PREMIUM",
+      subnet: "",
+    };
+  },
+
+  collectErrors(form: AddressCreateForm): FieldErrors<AddressCreateForm> {
+    return collect<AddressCreateForm>([
+      ["name", errorOf(ResourceName.parse(form.name))],
+      [
+        "subnet",
+        form.addressType === "INTERNAL" && form.subnet.trim() === ""
+          ? Option.some("内部静的 IP を予約するにはサブネットを指定してください。")
+          : Option.none,
+      ],
+    ]);
+  },
+
+  toCommand(form: AddressCreateForm, projectId: string): string {
+    const isGlobal = form.scope === "global" && form.addressType === "EXTERNAL";
+    const parts = [
+      "gcloud compute addresses create",
+      quote(form.name),
+      flag("project", projectId),
+      isGlobal ? "--global" : flag("region", form.region),
+      flag("address-type", form.addressType),
+      ...(form.addressType === "EXTERNAL" ? [flag("network-tier", form.networkTier)] : []),
+      ...(form.addressType === "INTERNAL" && form.subnet.trim() !== ""
+        ? [flag("subnet", form.subnet.trim())]
+        : []),
+    ];
+    return parts.join(" ");
+  },
+} as const;
+
+export const deleteAddressCommand = (
+  address: Readonly<{
+    name: string;
+    scope: Readonly<{ kind: "global" } | { kind: "region"; region: string }>;
+  }>,
+  projectId: string,
+): string => {
+  const scopeFlag =
+    address.scope.kind === "global" ? "--global" : flag("region", address.scope.region);
+  return `gcloud compute addresses delete ${quote(address.name)} ${scopeFlag} ${flag("project", projectId)} --quiet`;
+};
+
+// --- VPC ネットワーク ピアリング ---
+
+export type PeeringCreateForm = Readonly<{
+  name: string;
+  network: string;
+  peerProject: string;
+  peerNetwork: string;
+  exportCustomRoutes: boolean;
+  importCustomRoutes: boolean;
+}>;
+
+export const PeeringCreateForm = {
+  create(
+    seed: Readonly<{ network: string; peerProject: string; peerNetwork: string }>,
+  ): PeeringCreateForm {
+    return {
+      name: "",
+      network: seed.network,
+      peerProject: seed.peerProject,
+      peerNetwork: seed.peerNetwork,
+      exportCustomRoutes: false,
+      importCustomRoutes: false,
+    };
+  },
+
+  collectErrors(form: PeeringCreateForm): FieldErrors<PeeringCreateForm> {
+    return collect<PeeringCreateForm>([
+      ["name", errorOf(ResourceName.parse(form.name))],
+      [
+        "network",
+        form.network.trim() === ""
+          ? Option.some("VPC ネットワークを選んでください。")
+          : Option.none,
+      ],
+      [
+        "peerNetwork",
+        form.peerNetwork.trim() === ""
+          ? Option.some("ピアリング先の VPC ネットワークを入れてください。")
+          : Option.none,
+      ],
+    ]);
+  },
+
+  toCommand(form: PeeringCreateForm, projectId: string): string {
+    const parts = [
+      "gcloud compute networks peerings create",
+      quote(form.name),
+      flag("project", projectId),
+      flag("network", form.network),
+      flag("peer-network", form.peerNetwork.trim()),
+      ...(form.peerProject.trim() !== "" && form.peerProject.trim() !== projectId
+        ? [flag("peer-project", form.peerProject.trim())]
+        : []),
+      ...(form.exportCustomRoutes ? ["--export-custom-routes"] : []),
+      ...(form.importCustomRoutes ? ["--import-custom-routes"] : []),
+    ];
+    return parts.join(" ");
+  },
+} as const;
+
+export const deletePeeringCommand = (
+  peering: Readonly<{ name: string; network: string }>,
+  projectId: string,
+): string =>
+  `gcloud compute networks peerings delete ${quote(peering.name)} ${flag("network", peering.network)} ${flag("project", projectId)} --quiet`;

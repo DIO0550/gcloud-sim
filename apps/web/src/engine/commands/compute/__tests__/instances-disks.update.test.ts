@@ -246,3 +246,28 @@ test("instance-groups managed stop-autoscaling はオートスケーリング設
   const twice = run(s, `gcloud compute instance-groups managed stop-autoscaling web-mig ${zone}`);
   expect(twice.text).toContain("was not found");
 });
+
+test("detach-disk は非ブートディスクを切断し、ブートディスクや未接続ディスクは拒否する", () => {
+  const s = run(
+    session(),
+    create,
+    `gcloud compute disks create data-1 ${zone} --size=100GB`,
+    `gcloud compute instances attach-disk web-1 ${zone} --disk=data-1`,
+  );
+  expect(instance(s).disks.map((d) => d.deviceName)).toEqual(["web-1", "data-1"]);
+  expect(World.disksOf(s.world, "ace-dev-01")[0]?.users).toEqual(["web-1"]);
+
+  const bootReject = run(s, `gcloud compute instances detach-disk web-1 ${zone} --disk=web-1`);
+  expect(bootReject.text).toContain("Cannot detach boot disk");
+
+  const detached = run(s, `gcloud compute instances detach-disk web-1 ${zone} --disk=data-1`);
+  expect(detached.text).toContain("Updated [");
+  expect(instance(detached).disks.map((d) => d.deviceName)).toEqual(["web-1"]);
+  expect(World.disksOf(detached.world, "ace-dev-01")[0]?.users).toEqual([]);
+
+  const missingReject = run(
+    detached,
+    `gcloud compute instances detach-disk web-1 ${zone} --disk=data-1`,
+  );
+  expect(missingReject.text).toContain("is not attached");
+});

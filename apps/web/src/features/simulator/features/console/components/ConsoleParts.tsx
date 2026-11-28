@@ -56,9 +56,14 @@ export const ScreenTitle = ({
   </div>
 );
 
-/** 稼働状態（RUNNING / READY / ACTIVE 等）に Google Cloud Console 風の緑チェック丸アイコンを添える。 */
+/** 稼働状態（RUNNING / READY / ACTIVE / ENABLED 等）に Google Cloud Console 風の緑チェック丸アイコンを添える。 */
 export const ConsoleStatus = ({ status }: Readonly<{ status: string }>): ReactElement => {
-  const ok = status === "RUNNING" || status === "READY" || status === "ACTIVE" || status === "DONE";
+  const ok =
+    status === "RUNNING" ||
+    status === "READY" ||
+    status === "ACTIVE" ||
+    status === "DONE" ||
+    status === "ENABLED";
   return (
     <span className="inline-flex items-center gap-1.5 text-xs">
       {ok ? (

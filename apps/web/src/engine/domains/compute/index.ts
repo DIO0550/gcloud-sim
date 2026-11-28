@@ -386,6 +386,27 @@ export const Instance = {
   },
 
   /**
+   * 繋いでいる非ブートディスクを外す（`detach-disk`）。
+   *
+   * @param instance 元
+   * @param diskName 外すディスク名（デバイス名）
+   * @returns 外したインスタンス。未接続またはブートディスクなら理由
+   */
+  withoutAttachedDisk(instance: Instance, diskName: string): Result<Instance, string> {
+    const target = instance.disks.find((d) => d.deviceName === diskName);
+    if (target === undefined) {
+      return Result.err(`Disk '${diskName}' is not attached to instance '${instance.name}'.`);
+    }
+    if (target.boot) {
+      return Result.err(`Cannot detach boot disk '${diskName}' from instance '${instance.name}'.`);
+    }
+    return Result.ok({
+      ...instance,
+      disks: instance.disks.filter((d) => d.deviceName !== diskName),
+    });
+  },
+
+  /**
    * 繋いでいるディスクの大きさを替える（ブートディスクの `disks resize`）。
    *
    * @param instance 元

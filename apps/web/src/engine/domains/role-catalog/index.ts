@@ -66,6 +66,7 @@ const ComputeInstancePermissions = [
   "compute.zoneOperations.list",
   "compute.instances.osLogin",
   "compute.instances.attachDisk",
+  "compute.instances.detachDisk",
   "compute.instances.setMachineType",
   "compute.disks.get",
   "compute.disks.update",
